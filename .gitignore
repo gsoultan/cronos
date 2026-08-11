@@ -1,0 +1,10 @@
+bin/
+dist/
+node_modules/
+shots/
+
+# Local env overrides
+.env
+.env.local
+
+.DS_Store
