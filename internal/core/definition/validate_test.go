@@ -9,7 +9,7 @@ import (
 func good() Dataset {
 	return Dataset{
 		Name:    "invoices",
-		Sources: []string{"warehouse"},
+		Sources: []SourceRef{{Ref: "warehouse"}},
 		Query:   "SELECT id, total, currency FROM invoices",
 		Params: []Param{
 			{Name: "from", Type: Date, Required: true},

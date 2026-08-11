@@ -47,6 +47,9 @@ spec:
     - {name: customer_name, type: string,  role: dimension, label: Customer}
     - {name: issued_at,     type: date,    role: dimension, label: Issued}
     - {name: status,        type: string,  role: dimension, label: Status}
+    # Selected by the query and named by total's currencyField, so it has to be
+    # declared — a measure cannot take its currency from a field nobody has.
+    - {name: currency,      type: string,  role: dimension, hidden: true}
     - name: total
       type: decimal
       role: measure

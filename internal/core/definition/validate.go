@@ -29,8 +29,8 @@ func (d Dataset) Validate() error {
 	if d.Query == "" {
 		return fmt.Errorf("%w: dataset %q has no query", ErrInvalid, d.Name)
 	}
-	if len(d.Sources) == 0 {
-		return fmt.Errorf("%w: dataset %q names no source", ErrInvalid, d.Name)
+	if err := d.validateSources(); err != nil {
+		return err
 	}
 	if err := d.validateParams(); err != nil {
 		return err
@@ -39,6 +39,30 @@ func (d Dataset) Validate() error {
 		return err
 	}
 	return d.validateRowScope()
+}
+
+func (d Dataset) validateSources() error {
+	if len(d.Sources) == 0 {
+		return fmt.Errorf("%w: dataset %q names no source", ErrInvalid, d.Name)
+	}
+	seen := map[string]bool{}
+	for _, s := range d.Sources {
+		switch {
+		case !slug.MatchString(s.Ref):
+			return fmt.Errorf("%w: source %q is not a datasource name", ErrInvalid, s.Ref)
+		case s.As != "" && !identifier.MatchString(s.As):
+			// The alias is what the query writes, so it has to be something a
+			// query can write.
+			return fmt.Errorf("%w: source %q is aliased to %q, which is not an identifier",
+				ErrInvalid, s.Ref, s.As)
+		case seen[s.Name()]:
+			// Two sources under one name means the query says one thing and
+			// means whichever the planner picked.
+			return fmt.Errorf("%w: two sources are both called %q", ErrInvalid, s.Name())
+		}
+		seen[s.Name()] = true
+	}
+	return nil
 }
 
 func (d Dataset) validateParams() error {

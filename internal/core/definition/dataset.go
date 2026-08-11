@@ -9,8 +9,9 @@ package definition
 type Dataset struct {
 	Name        string `json:"name" yaml:"name"`
 	Description string `json:"description,omitempty" yaml:"description,omitempty"`
-	// Sources are the datasource names the query may reference.
-	Sources []string `json:"sources" yaml:"sources"`
+	// Sources are the datasources the query may reference, and what it calls
+	// them.
+	Sources []SourceRef `json:"sources" yaml:"sources"`
 	// Query is SQL with {{ .params.x }} holes. Holes become bind arguments;
 	// nothing in this string is ever assembled from caller input.
 	Query  string  `json:"query" yaml:"query"`

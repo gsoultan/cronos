@@ -13,7 +13,7 @@ import (
 func invoices() definition.Dataset {
 	return definition.Dataset{
 		Name:    "invoices",
-		Sources: []string{"warehouse"},
+		Sources: []definition.SourceRef{{Ref: "warehouse"}},
 		Query: `SELECT i.id, c.name AS customer_name, i.total
 FROM warehouse.invoices i
 JOIN warehouse.customers c ON c.id = i.customer_id
