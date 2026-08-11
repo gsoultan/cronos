@@ -33,7 +33,7 @@ const payload = (filtered) => ({
       coverage: { applied: ['period'], ignored: ['status'] },
     },
     {
-      kind: 'bar', title: 'Billed by month',
+      kind: 'chart', chart: 'bar', title: 'Billed by month',
       series: [
         { label: 'May', value: 40, formatted: '€4.0M' },
         { label: 'Jun', value: 80, formatted: '€8.0M' },
@@ -62,6 +62,7 @@ const HOST = `<!doctype html><meta charset="utf-8">
 let requests = 0
 let lastBody = null
 let unauthorized = false
+let future = false
 
 const server = createServer((req, res) => {
   if (req.url === '/' || req.url === '') {
@@ -83,6 +84,13 @@ const server = createServer((req, res) => {
         return res.end(JSON.stringify({ error: 'This report link has expired.' }))
       }
       res.writeHead(200, { 'content-type': 'application/json' })
+      if (future) {
+        // A shape only a later cronos knows how to draw.
+        return res.end(JSON.stringify({
+          title: 'From the future',
+          blocks: [{ kind: 'sankey', title: 'Flows', nodes: [], links: [] }],
+        }))
+      }
       res.end(JSON.stringify(payload(body.includes('overdue'))))
     })
   }
@@ -155,6 +163,24 @@ ok("an expired link says so in the server's words",
 /* -- Removal -------------------------------------------------------------- */
 await page.evaluate(() => document.querySelector('#r').remove())
 ok('removing it does not throw', await page.evaluate(() => true))
+
+/* A host page pins a bundle version and cronos ships features afterwards, so a
+   block kind this build has never heard of is a normal condition rather than a
+   bug. It used to fall through to the table renderer and throw on columns.map,
+   which took the whole host page down with it. */
+unauthorized = false // the 401 case above is finished with
+future = true
+const fresh = await browser.newPage()
+const thrown = []
+fresh.on('pageerror', (e) => thrown.push(String(e)))
+await fresh.goto(base, { waitUntil: 'domcontentloaded' })
+await fresh.evaluate((b) => document.querySelector('#r').setAttribute('endpoint', b), base)
+await fresh.locator('#r').locator('.panel').first().waitFor()
+
+ok('a block kind from a newer server renders a message, not an exception',
+  (await fresh.locator('#r').locator('.grid').innerText()).includes('newer viewer'))
+ok('and nothing was thrown into the host page', thrown.length === 0)
+await fresh.close()
 
 console.log(fails ? `\n${fails} failed` : '\nall passed')
 await browser.close()

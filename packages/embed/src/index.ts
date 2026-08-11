@@ -2,7 +2,7 @@ import { CronosReport } from './element'
 
 export { CronosReport }
 export type {
-  Block, BarBlock, Coverage, Delta, FilterDef, FilterValues,
+  Block, ChartBlock, Coverage, Delta, FilterDef, FilterValues,
   ReportPayload, StatBlock, TableBlock,
 } from './types'
 

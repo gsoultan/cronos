@@ -26,6 +26,13 @@ var relative = map[string]func(time.Time) time.Time{
 }
 
 func asDate(p definition.Param, raw any, now func() time.Time) (any, error) {
+	// YAML resolves an unquoted 2026-07-01 to a timestamp, so a definition's
+	// own default arrives here already parsed. Refusing it would mean every
+	// author has to know to quote a date, and the ones who do not would get
+	// "wants a date as YYYY-MM-DD" about a date.
+	if t, isTime := raw.(time.Time); isTime {
+		return t.Format(DateLayout), nil
+	}
 	s, ok := raw.(string)
 	if !ok {
 		return nil, typeErr(p, "a date as YYYY-MM-DD")

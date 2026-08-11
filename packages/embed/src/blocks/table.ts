@@ -9,21 +9,22 @@ import { el } from '../dom'
  * their page rather than ours.
  */
 export function tableBlock(b: TableBlock): HTMLElement {
-  const head = el('tr', {}, ...b.columns.map((c) =>
+  const columns = b.columns ?? []
+  const head = el('tr', {}, ...columns.map((c) =>
     el('th', c.align === 'right' ? { class: 'r' } : {}, c.label)))
 
-  const body = b.rows.map((row) =>
+  const body = (b.rows ?? []).map((row) =>
     el('tr', {}, ...row.map((cell, i) =>
-      el('td', b.columns[i]?.align === 'right' ? { class: 'r' } : {}, cell))))
+      el('td', columns[i]?.align === 'right' ? { class: 'r' } : {}, cell))))
 
   const panel = el('section', { class: 'panel wide', part: 'panel' },
     el('h3', {}, b.title))
 
-  if (b.total !== undefined && b.total > b.rows.length) {
+  if (b.total !== undefined && b.total > (b.rows?.length ?? 0)) {
     // Saying which is shown beats letting someone conclude the report is
     // wrong because they counted 50 of 1,284 invoices.
     panel.append(el('p', { class: 'unaffected' },
-      `Showing ${b.rows.length} of ${b.total} rows`))
+      `Showing ${b.rows?.length ?? 0} of ${b.total} rows`))
   }
 
   panel.append(el('div', { class: 'scroll' },

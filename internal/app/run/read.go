@@ -19,7 +19,8 @@ func read(blk definition.Block, ds definition.Dataset, rows Rows, cov *Coverage)
 	case definition.StatBlock:
 		out.Value, err = readStat(rows)
 	case definition.ChartBlock:
-		out.Series, err = readSeries(rows)
+		out.Chart = blk.Chart
+		out.Series, err = readSeries(rows, blk.X.Grain)
 	case definition.TableBlock:
 		out.Columns, out.Rows, err = readTable(blk, ds, rows)
 		out.Total = len(out.Rows)
@@ -52,15 +53,15 @@ func readStat(rows Rows) (string, error) {
 }
 
 // readSeries reads (bucket, value) pairs.
-func readSeries(rows Rows) ([]Bar, error) {
-	var out []Bar
+func readSeries(rows Rows, grain string) ([]Bar, error) {
+	out := []Bar{}
 	for rows.Next() {
 		var label, value any
 		if err := rows.Scan(&label, &value); err != nil {
 			return nil, err
 		}
 		n, _ := number(value)
-		out = append(out, Bar{Label: cell(label), Value: n, Formatted: compact(n)})
+		out = append(out, Bar{Label: bucketLabel(label, grain), Value: n, Formatted: compact(n)})
 	}
 	return out, nil
 }
@@ -73,7 +74,7 @@ func readTable(blk definition.Block, ds definition.Dataset, rows Rows) ([]Column
 	}
 	cols := headings(blk, ds, names)
 
-	var out [][]string
+	out := [][]string{}
 	for rows.Next() {
 		cells := make([]any, len(names))
 		into := make([]any, len(names))

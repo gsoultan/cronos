@@ -38,8 +38,10 @@ export interface StatBlock {
   coverage?: Coverage
 }
 
-export interface BarBlock {
-  kind: 'bar'
+export interface ChartBlock {
+  kind: 'chart'
+  /** Which chart. A new type here is not a new block kind. */
+  chart: string
   title: string
   /** Bars in the order they should be drawn. Values are numbers because the
    *  chart has to compare them; labels carry the formatted text. */
@@ -57,7 +59,7 @@ export interface TableBlock {
   coverage?: Coverage
 }
 
-export type Block = StatBlock | BarBlock | TableBlock
+export type Block = StatBlock | ChartBlock | TableBlock
 
 export interface FilterDef {
   name: string

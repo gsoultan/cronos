@@ -1,46 +1,67 @@
 # cronos
 
-A report engine and report repository: define reports over SQL databases, big data
-sources and CSV files, render them as tables, charts and paginated documents, and
-schedule and distribute them — embeddable in other applications.
+A report engine and repository. Definitions are files, queries are governed,
+and a report can be embedded in someone else's application.
 
-## Local development
+Licensed under the [Business Source License 1.1](LICENSE) — internal
+production use is unrestricted; offering cronos itself as a service to third
+parties needs a commercial licence. It converts to Apache 2.0 on 2030-08-10.
+
+## Run it
 
 ```bash
-make setup     # verify toolchain, install dependencies, smoke-test the build
-make dev       # run the API and portal together
+make setup          # verify the toolchain, install dependencies
+make dev            # the API and the portal together
 ```
 
-`make dev` starts both with prefixed output and stops both on one Ctrl-C. If one
-side goes down the other keeps running — a crashed API should not end a session
-you were using to work on the portal.
+The demo serves `demo/definitions` over `demo/seed.sql`, so there is real data
+behind the first report you open.
+
+```bash
+export CRONOS_SIGNING_KEY="development-key-at-least-32-bytes-long"
+CRONOS_DEFINITIONS=demo/definitions CRONOS_SEED=demo/seed.sql go run ./cmd/cronosd
+
+# What a host application's backend does, server to server:
+TOKEN=$(go run ./cmd/cronos-token -scope customer_id=c-1 -report billing-summary)
+
+curl -s -X POST localhost:8787/v1/embed/reports/billing-summary \
+  -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -d '{"filters":{"period":{"op":"between","values":["2026-01-01","2026-12-31"]}}}'
+```
+
+Change `-scope customer_id=c-2` and the same report returns a different
+customer's invoices. Drop `-scope` and it returns none — see
+[docs/tenancy.md](docs/tenancy.md).
+
+## What is here
 
 | | |
 | :--- | :--- |
-| `make dev-web` / `make dev-api` | run one side only |
-| `CRONOS_WEB_PORT` · `CRONOS_API_PORT` | override ports (defaults 5173 / 8080) |
-| `make check` | everything CI runs — build, vet, license boundary, typecheck, lint, bundle budgets |
-| `make shots` | drive the portal in headless Chrome, write screenshots |
-| `make help` | all targets |
+| `internal/core/` | Definitions, validation, query compilation. No external dependencies. |
+| `internal/app/run/` | Report → SQL → rows → what a viewer draws |
+| `internal/adapter/` | YAML, `database/sql`, the Typst renderer, the HTTP API |
+| `apps/portal/` | The authoring UI — React 19, Mantine, Tailwind, PWA |
+| `packages/embed/` | `<cronos-report>`, 3.2 KB gzipped, framework-agnostic |
+| `packages/react/` | A React wrapper for it |
+| `ee/` | Commercially licensed. Nothing under `internal/core` may import it. |
 
-**The API is a stub.** `cmd/cronosd` has no HTTP server yet, so it prints its
-wiring and exits — `make dev` reports that and keeps the portal up. The portal
-runs on mock data until the engine exists. See [docs/product.md](docs/product.md)
-for what is being built and in what order.
+## Checks
 
-Requires Go 1.26+ and [Bun](https://bun.sh) 1.3+.
+```bash
+make check          # build, vet, gofmt, test, licence boundary, typecheck, budgets
+make ui             # every browser suite, plus the embed against a real server
+make live           # just the embed against a real cronosd
+make pdf            # render a sample statement and open it
+```
 
-## Licensing
+`make live` is the one that matters most. The Go tests prove the server
+computes the right numbers and the package checks prove the component renders
+what it is handed; only this proves they agree about the shape in between.
 
-cronos is source-available under the [Business Source License 1.1](LICENSE), which
-converts to the Apache License 2.0 on **2030-08-10**.
+## Reading order
 
-**You may use cronos freely, including in production, for internal use within your
-own organization.** No fees, no user limits.
-
-**A commercial license is required** to offer cronos to third parties as a hosted,
-managed, or embedded reporting or analytics service — for example, embedding its
-reports or UI into a product you sell, or running it as a service for your
-customers. See the Additional Use Grant in [LICENSE](LICENSE) for the exact terms.
-
-For commercial licensing, contact the maintainer.
+[docs/product.md](docs/product.md) — what this is for, and for whom ·
+[docs/report-format.md](docs/report-format.md) — the file format ·
+[docs/tenancy.md](docs/tenancy.md) — the three levels of scope, and how they
+fail · [docs/rendering.md](docs/rendering.md) — paginated PDF ·
+[AGENTS.md](AGENTS.md) — the rules the code is held to.

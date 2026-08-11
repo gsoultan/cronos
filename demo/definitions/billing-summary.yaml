@@ -1,0 +1,48 @@
+apiVersion: cronos.dev/v1
+kind: Report
+metadata:
+  name: billing-summary
+  folder: /finance
+  description: What you have been billed, and what is still open.
+spec:
+  dataset: invoices
+
+  filters:
+    - name: period
+      label: Period
+      type: date
+      bind:
+        invoices: issued_at
+    - name: region
+      label: Region
+      type: string
+      # Bound to a dataset this report does not read, so every block reports
+      # itself unaffected — which is the behaviour the viewer must announce.
+      bind:
+        shipments: region
+
+  outputs:
+    - name: interactive
+      renderer: interactive
+      layout:
+        - kind: stat
+          label: Total billed
+          value: {field: total, aggregate: sum}
+
+        - kind: stat
+          label: Outstanding
+          value: {field: total, aggregate: sum}
+          filter: "status = 'overdue'"
+
+        - kind: chart
+          chart: bar
+          title: Billed by month
+          x: {field: issued_at, grain: month}
+          y: {field: total, aggregate: sum}
+
+        - kind: table
+          title: Invoices
+          columns: [issued_at, status, total]
+          sort:
+            - {field: issued_at, dir: desc}
+          pageSize: 50

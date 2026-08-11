@@ -13,12 +13,19 @@ type Block struct {
 	// Stat.
 	Value string `json:"value,omitempty"`
 
-	// Chart.
-	Series []Bar `json:"series,omitempty"`
+	// Chart. Kind stays "chart" and the type travels beside it, so a line
+	// chart later is a new value here rather than a new kind every renderer
+	// has to learn.
+	Chart string `json:"chart,omitempty"`
+	// Never omitempty. A nil slice would drop the key entirely, and a viewer
+	// reading `series.map` on a report that matched no rows crashes on the
+	// emptiest, most ordinary case there is. An empty array is data; a missing
+	// field is a question.
+	Series []Bar `json:"series"`
 
-	// Table.
-	Columns []Column   `json:"columns,omitempty"`
-	Rows    [][]string `json:"rows,omitempty"`
+	// Table. Also never omitempty, for the same reason.
+	Columns []Column   `json:"columns"`
+	Rows    [][]string `json:"rows"`
 	// Total is how many rows matched, which may exceed those returned. Saying
 	// so beats letting someone conclude the report is wrong because they
 	// counted fifty of twelve hundred.

@@ -107,7 +107,14 @@ note "cronos dev"
 printf '\n'
 
 if [ "$RUN_API" = 1 ]; then
-	CRONOS_ADDR=":$API_PORT" start api "$C_API" "$ROOT" go run ./cmd/cronosd
+	# The demo definitions over the demo seed, so the first report someone
+	# opens has real numbers in it rather than an empty state.
+	CRONOS_ADDR=":$API_PORT" \
+	CRONOS_SIGNING_KEY="${CRONOS_SIGNING_KEY:-development-key-at-least-32-bytes-long}" \
+	CRONOS_DEFINITIONS="${CRONOS_DEFINITIONS:-demo/definitions}" \
+	CRONOS_SEED="${CRONOS_SEED:-demo/seed.sql}" \
+	CRONOS_ORIGINS="${CRONOS_ORIGINS:-http://localhost:$WEB_PORT}" \
+		start api "$C_API" "$ROOT" go run ./cmd/cronosd
 fi
 if [ "$RUN_WEB" = 1 ]; then
 	# The binary directly, not `bun run vite` — the wrapper survives long enough
@@ -134,7 +141,7 @@ while :; do
 		else
 			if [ "${PID_api:-}" = "$pid" ] && [ "$reported_api" = 0 ]; then
 				reported_api=1
-				printf '%s│%s %sapi exited%s — cmd/cronosd has no HTTP server yet, so it prints and stops.\n' \
+				printf '%s│%s %sapi exited%s — check the output above.\n' \
 					"$C_DIM" "$C_OFF" "$C_ERR" "$C_OFF"
 				note '  the portal is still running; it uses mock data until the engine exists.'
 			fi

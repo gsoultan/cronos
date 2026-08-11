@@ -1,0 +1,44 @@
+apiVersion: cronos.dev/v1
+kind: Dataset
+metadata:
+  name: invoices
+  description: Issued invoices with customer detail, scoped to the caller's customer.
+spec:
+  sources:
+    - ref: warehouse
+
+  query: |
+    SELECT i.id,
+           i.customer_id,
+           c.name AS customer_name,
+           i.issued_at,
+           i.currency,
+           i.total,
+           i.status
+    FROM invoices i
+    JOIN customers c ON c.id = i.customer_id
+    WHERE i.issued_at >= {{ .params.from }}
+
+  params:
+    # Wide by default. `today` reads sensibly and means an empty report for
+    # anything not billed in the last few hours — a default that makes the
+    # first thing a new user sees an empty screen is the wrong default.
+    - {name: from, type: date, required: true, default: 2020-01-01, label: From}
+
+  fields:
+    - {name: id,            type: string,  role: dimension, hidden: true}
+    - {name: customer_id,   type: string,  role: dimension, hidden: true}
+    - {name: customer_name, type: string,  role: dimension, label: Customer}
+    - {name: issued_at,     type: date,    role: dimension, label: Issued}
+    - {name: currency,      type: string,  role: dimension, hidden: true}
+    - {name: status,        type: string,  role: dimension, label: Status}
+    - name: total
+      type: decimal
+      role: measure
+      aggregate: sum
+      label: Amount
+
+  # The embed token carries customer_id. Without it this dataset returns
+  # nothing — see docs/tenancy.md.
+  rowLevelSecurity:
+    - predicate: customer_id = {{ .scope.customer_id }}

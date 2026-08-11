@@ -1,4 +1,4 @@
-import type { BarBlock } from '../types'
+import type { ChartBlock } from '../types'
 import { el } from '../dom'
 
 /**
@@ -12,9 +12,12 @@ import { el } from '../dom'
  * chosen by a scale library, because the label beside each bar carries the
  * real number. The bar ranks; the label states.
  */
-export function barBlock(b: BarBlock): HTMLElement {
-  const max = Math.max(...b.series.map((s) => s.value), 0)
-  const rows = b.series.map((s) =>
+export function barBlock(b: ChartBlock): HTMLElement {
+  /* `?? []` because a nil slice from an older server arrives as a missing
+     key, and the emptiest report is the one most likely to hit it. */
+  const series = b.series ?? []
+  const max = Math.max(...series.map((s) => s.value), 0)
+  const rows = series.map((s) =>
     el('div', { class: 'bar-row' },
       el('span', {}, s.label),
       el('div', { class: 'track' },

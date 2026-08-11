@@ -5,6 +5,7 @@ import { unaffectedNote } from './coverage'
 import { statBlock } from './blocks/stat'
 import { barBlock } from './blocks/bar'
 import { tableBlock } from './blocks/table'
+import { unsupported } from './blocks/unsupported'
 import type { Block, FilterDef, FilterValues, ReportPayload } from './types'
 
 /*
@@ -127,12 +128,31 @@ export class CronosReport extends Base {
     fill(this.#body, ...payload.blocks.map((b) => this.#block(b, filters)))
   }
 
+  /* An explicit switch with a default, not a chain of ternaries. The previous
+     version fell through to the table renderer for anything it did not
+     recognise, which meant a block kind it had never heard of crashed on
+     `columns.map` — a server that grows a feature must not take a host page
+     down with it. */
   #block(b: Block, filters: FilterDef[]): HTMLElement {
-    const node =
-      b.kind === 'stat' ? statBlock(b) : b.kind === 'bar' ? barBlock(b) : tableBlock(b)
+    const node = this.#draw(b)
     const note = unaffectedNote(b.coverage, filters)
     if (note) node.append(note)
     return node
+  }
+
+  #draw(b: Block): HTMLElement {
+    switch (b.kind) {
+      case 'stat':
+        return statBlock(b)
+      case 'chart':
+        return b.chart === 'bar'
+          ? barBlock(b)
+          : unsupported(`${b.chart} charts need a newer viewer`)
+      case 'table':
+        return tableBlock(b)
+      default:
+        return unsupported('This block needs a newer viewer')
+    }
   }
 
   #say(text: string, isError: boolean) {
