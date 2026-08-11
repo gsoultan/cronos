@@ -16,6 +16,7 @@ bun run people   # assert user management: roles, grants, last-owner rule
 bun run security # assert 2FA enrolment order, recovery codes, org policy
 bun run share    # assert sharing: channels, validation, disclosure copy
 bun run branding # assert logo upload: previews, print check, per-org isolation
+bun run data     # assert search and paging on sources and datasets
 bun run acl      # assert the org/project access rules in a real browser
 ```
 
@@ -185,6 +186,26 @@ being decided about, which is the thing you want to look at.
 `people.ts` and `workspace.ts` must agree on your own role in each organisation
 — they are the same fact stored twice, and the first version disagreed, which
 surfaced as the admin screen rendering read-only.
+
+## Search and paging
+
+One search box across sources *and* datasets. Someone hunting for "invoices" is
+looking for a thing, not a category, and making them guess which of two boxes
+to type into is a question the interface should answer.
+
+**Previous/next, not numbered pages.** Numbered pages commit the API to offset
+paging, and an offset over a list being written to skips and repeats rows — the
+"I saw that one twice on page three" bug. Previous/next reads the same to a
+person and survives a later move to cursors.
+
+Three details that are the difference between working and nearly working:
+
+- **Searching resets to page one.** Not doing so strands you on an empty page
+  three and reads as no results.
+- **`paginate` clamps a page that ran off the end** rather than returning an
+  empty slice, for the same reason. Unit-tested.
+- **No pagination chrome when everything fits.** Controls under a list of three
+  are noise answering a question nobody had.
 
 ## The cronos mark
 

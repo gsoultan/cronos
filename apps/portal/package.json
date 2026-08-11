@@ -8,6 +8,7 @@
     "build": "tsc --noEmit && vite build",
     "builder": "node scripts/builder-check.mjs",
     "check": "tsc --noEmit && oxlint src plugins && bun test && vite build && node scripts/check-bundle-size.mjs",
+    "data": "node scripts/data-check.mjs",
     "dev": "vite",
     "identifier": "node scripts/identifier-check.mjs",
     "lint": "oxlint src plugins",
