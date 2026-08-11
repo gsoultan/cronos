@@ -1,0 +1,24 @@
+apiVersion: cronos.dev/v1
+kind: Dataset
+metadata:
+  name: statement-lines
+  description: One customer's invoices, for a burst to fan out over.
+spec:
+  sources:
+    - ref: warehouse
+  query: |
+    SELECT i.id, i.customer_id, i.issued_at, i.total, i.status
+    FROM invoices i
+    WHERE i.customer_id = {{ .params.customer_id }}
+      AND i.issued_at >= {{ .params.from }}
+      AND i.issued_at < {{ .params.to }}
+  params:
+    - {name: customer_id, type: string, required: true, label: Customer}
+    - {name: from, type: date, required: true, label: From}
+    - {name: to,   type: date, required: true, label: To}
+  fields:
+    - {name: id,          type: string, role: dimension, hidden: true}
+    - {name: customer_id, type: string, role: dimension, hidden: true}
+    - {name: issued_at,   type: date,   role: dimension, label: Issued}
+    - {name: status,      type: string, role: dimension, label: Status}
+    - {name: total, type: decimal, role: measure, aggregate: sum, label: Amount}

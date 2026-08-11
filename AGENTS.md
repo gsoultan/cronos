@@ -77,7 +77,7 @@ internal/
     run/                 Report → SQL → rows → view             ✓
     publish/             Validate, version, store                ✓
     burst/               One document per recipient, bounded     ✓
-    schedule/            Cron loop
+    schedule/            Cron loop, no catch-up, no overlap        ✓
   adapter/             Port implementations.
     codec/yaml/          The file format authors write          ✓
     api/                 The embed endpoint, CORS               ✓
@@ -88,7 +88,9 @@ internal/
     render/paginated/    Typst PDF                              ✓
     render/              spreadsheet
     deliver/file/        Documents to a directory                ✓
-    deliver/             email · s3 · sftp · webhook
+    deliver/email/       SMTP with a MIME attachment             ✓
+    deliver/s3/          Object storage, S3 API                  ✓
+    deliver/             sftp · webhook
   platform/
     token/               Embed tokens — not JWT, see its doc.go ✓
     config/              Environment                            ✓

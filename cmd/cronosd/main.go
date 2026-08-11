@@ -67,7 +67,22 @@ func serve(log *slog.Logger) error {
 		return err
 	}
 
-	runner := run.New(repo, sqldriver.NewExecutor(db), query.NewBuilder(dialect))
+	exec := sqldriver.NewExecutor(db)
+	runner := run.New(repo, exec, query.NewBuilder(dialect))
+
+	if cfg.Scheduler {
+		sched, err := scheduler(cfg, repo, runner, exec, log)
+		if err != nil {
+			return err
+		}
+		ctx, stop := context.WithCancel(context.Background())
+		defer stop()
+		go func() {
+			if err := sched.Start(ctx); err != nil {
+				log.Error("scheduler stopped", "err", err)
+			}
+		}()
+	}
 
 	writer := file.NewWriter(cfg.Definitions, repo)
 	handler := api.RoutesWith(repo, runner, signer, cfg.Origins, log,
@@ -79,6 +94,7 @@ func serve(log *slog.Logger) error {
 		"addr", cfg.Addr, "driver", cfg.Driver,
 		"datasets", datasets, "reports", reports, "schedules", schedules,
 		"origins", cfg.Origins, "management", len(cfg.AdminKey) > 0,
+		"scheduler", cfg.Scheduler,
 		"auth", extension.Auth().Name(), "audit", extension.Audit().Name())
 
 	return listen(cfg.Addr, handler, log)

@@ -1,0 +1,23 @@
+apiVersion: cronos.dev/v1
+kind: Report
+metadata:
+  name: customer-statement
+  folder: Acme Logistics
+  description: One statement per customer, for the period just closed.
+spec:
+  # Scoped by parameter, not by row scope: a burst runs as the schedule's
+  # owner, who has no embed token — see docs/tenancy.md.
+  dataset: statement-lines
+  outputs:
+    - name: pdf
+      renderer: paginated
+      page: {size: A4, orientation: portrait, margins: 18mm}
+      layout:
+        - kind: stat
+          label: Total billed
+          value: {field: total, aggregate: sum}
+        - kind: table
+          title: Invoices
+          columns: [issued_at, status, total]
+          sort:
+            - {field: issued_at, dir: desc}

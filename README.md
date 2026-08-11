@@ -58,6 +58,34 @@ reproducible.
 
 Changes are live immediately; there is no restart.
 
+## Schedules
+
+`CRONOS_SCHEDULER=1` arms them. Off by default, because two instances both
+running the same bursts deliver every customer two documents — which one
+schedules is a deployment decision, not a default.
+
+```bash
+CRONOS_SCHEDULER=1 CRONOS_DELIVERIES=/tmp/out ./bin/cronosd
+# armed schedule=monthly-statements next=2026-09-01T06:00:00+02:00
+# schedule delivered schedule=monthly-statements period="August 2026" recipients=3
+```
+
+It does not catch up. A server down for a week comes back and runs each
+schedule once, at its next due time — nobody wants seven copies of last week's
+invoices. It does not overlap either: a run still going when the next is due is
+skipped and logged, because two bursts of the same statements racing each other
+deliver every customer two documents that disagree.
+
+The period comes from the cadence rather than being declared. The span between
+the previous firing and this one *is* the period, whatever the cron expression
+happens to be, which is what `{{ .run.periodStart }}` and `{{ .run.periodEnd }}`
+resolve to.
+
+Delivery channels register only when configured — `CRONOS_SMTP_HOST` and
+`CRONOS_SMTP_FROM` for email, `CRONOS_S3_ACCESS_KEY` and `CRONOS_S3_SECRET_KEY`
+for object storage. A channel nobody set up is absent rather than present and
+always failing.
+
 ## What is here
 
 | | |

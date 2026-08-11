@@ -27,6 +27,15 @@ type Server struct {
 	// file store holds one — see api.AdminKey.
 	Org     string
 	Project string
+	// Deliveries is where the file channel writes. Empty disables it.
+	Deliveries string
+	// Scheduler arms schedules when true. Off by default: two instances both
+	// running the same bursts deliver every customer two documents, and
+	// deciding which one schedules is a deployment decision rather than a
+	// default.
+	Scheduler bool
+	SMTP      SMTP
+	S3        S3
 	// Seed is a .sql file applied at startup. Development only: it exists so
 	// an in-memory database has something in it, and a deployment that points
 	// this at a real DSN is running DDL on every restart.
@@ -49,6 +58,16 @@ func Load() (Server, error) {
 		AdminKey:   []byte(os.Getenv("CRONOS_ADMIN_KEY")),
 		Org:        env("CRONOS_ORG", "default"),
 		Project:    env("CRONOS_PROJECT", "default"),
+		Deliveries: env("CRONOS_DELIVERIES", "deliveries"),
+		Scheduler:  os.Getenv("CRONOS_SCHEDULER") == "1",
+		SMTP: SMTP{
+			Host: os.Getenv("CRONOS_SMTP_HOST"), From: os.Getenv("CRONOS_SMTP_FROM"),
+			Username: os.Getenv("CRONOS_SMTP_USER"), Password: os.Getenv("CRONOS_SMTP_PASSWORD"),
+		},
+		S3: S3{
+			Endpoint: os.Getenv("CRONOS_S3_ENDPOINT"), Region: os.Getenv("CRONOS_S3_REGION"),
+			AccessKey: os.Getenv("CRONOS_S3_ACCESS_KEY"), SecretKey: os.Getenv("CRONOS_S3_SECRET_KEY"),
+		},
 	}
 	if origins := os.Getenv("CRONOS_ORIGINS"); origins != "" {
 		s.Origins = strings.Split(origins, ",")
@@ -68,3 +87,29 @@ func env(key, fallback string) string {
 	}
 	return fallback
 }
+
+// SMTP is the mail relay, if one is configured.
+//
+// A channel with no host is not registered rather than registered and always
+// failing. A schedule delivering via a channel nobody configured should say
+// "no channel named email" at publish, not at six in the morning.
+type SMTP struct {
+	Host     string
+	From     string
+	Username string
+	Password string
+}
+
+// S3 is object storage, if it is configured.
+type S3 struct {
+	Endpoint  string
+	Region    string
+	AccessKey string
+	SecretKey string
+}
+
+// Configured reports whether there is enough to register the channel.
+func (s SMTP) Configured() bool { return s.Host != "" && s.From != "" }
+
+// Configured reports whether there is enough to register the channel.
+func (s S3) Configured() bool { return s.AccessKey != "" && s.SecretKey != "" }

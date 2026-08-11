@@ -1,0 +1,13 @@
+apiVersion: cronos.dev/v1
+kind: Dataset
+metadata:
+  name: active-customers
+  description: Who receives a statement.
+spec:
+  sources:
+    - ref: warehouse
+  query: SELECT id, name, city FROM customers ORDER BY id
+  fields:
+    - {name: id,   type: string, role: dimension, label: Customer}
+    - {name: name, type: string, role: dimension, label: Name}
+    - {name: city, type: string, role: dimension, label: City}

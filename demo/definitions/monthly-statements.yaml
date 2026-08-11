@@ -1,0 +1,28 @@
+apiVersion: cronos.dev/v1
+kind: Schedule
+metadata:
+  name: monthly-statements
+  description: 06:00 on the 1st — one PDF per customer, for the month just closed.
+spec:
+  report: customer-statement
+  output: pdf
+  cron: "0 6 1 * *"
+  timezone: Europe/Berlin
+
+  burst:
+    over:
+      dataset: active-customers
+    # The period comes from the cadence: {{ .run.periodStart }} is the previous
+    # firing and {{ .run.periodEnd }} is this one.
+    bind:
+      customer_id: "{{ .row.id }}"
+      from: "{{ .run.periodStart }}"
+      to: "{{ .run.periodEnd }}"
+    concurrency: 4
+
+  deliver:
+    - via: file
+      to: "{{ .row.id }}"
+      subject: "Your {{ .run.periodLabel }} statement"
+      attach:
+        filename: "statement-{{ .row.id }}-{{ .run.periodEnd }}.pdf"
