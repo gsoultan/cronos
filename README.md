@@ -212,6 +212,10 @@ cost belongs in a build that only ever reads one Postgres. Without the tag
 cronos is pure Go, cross-compiles to anything, and asking for federation is a
 clear error rather than a missing symbol.
 
+All of it runs on every push — `.github/workflows/check.yml`, split so a
+bundle over budget and a broken query compiler are different conversations. The
+Go job runs with `-race`.
+
 `make live` is the one that matters most. The Go tests prove the server
 computes the right numbers and the package checks prove the component renders
 what it is handed; only this proves they agree about the shape in between.

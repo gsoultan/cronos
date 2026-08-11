@@ -1,0 +1,159 @@
+# Everything `make check` runs, on every push and pull request.
+#
+# The gates all existed and nothing ran them, which is how a repository with
+# good tests quietly becomes one with tests nobody runs. Split into jobs that
+# fail independently: a bundle over budget and a broken query compiler are
+# different conversations, and one red tick that could mean either is a tick
+# people stop reading.
+name: check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A second push supersedes the first. Reviewing a branch does not need the
+# results of the commit before the one you are looking at.
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    name: go
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # The paginated renderer shells out to typst. Required rather than
+      # skipped: a renderer nobody exercised is a renderer nobody trusts.
+      - name: install typst
+        run: |
+          curl -fsSL https://github.com/typst/typst/releases/download/v0.15.1/typst-x86_64-unknown-linux-musl.tar.xz \
+            | tar -xJ --strip-components=1 -C /usr/local/bin typst-x86_64-unknown-linux-musl/typst
+          typst --version
+
+      # openpyxl reads every .xlsx the spreadsheet renderer writes. Hand-written
+      # OOXML is only a defensible trade because a real reader checks it.
+      - name: install the xlsx oracle
+        run: |
+          python3 -m venv /tmp/xlsxvenv
+          /tmp/xlsxvenv/bin/pip install --quiet openpyxl
+
+      - run: go build ./...
+      - run: go vet ./...
+      - name: gofmt
+        run: |
+          unformatted="$(gofmt -l . | grep -v node_modules || true)"
+          if [ -n "$unformatted" ]; then
+            echo "these files need gofmt:"; echo "$unformatted"; exit 1
+          fi
+      - run: CRONOS_XLSX_PYTHON=/tmp/xlsxvenv/bin/python go test -race ./...
+      - name: licence boundary
+        run: ./scripts/check-license-boundary.sh
+
+  # Federation needs cgo and a 460 MB module download, so it is its own job:
+  # every other check should not wait for it, and it should not be the reason
+  # a typo in a comment takes six minutes to fail.
+  duckdb:
+    name: duckdb
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go build -tags duckdb ./...
+      - run: go test -tags duckdb ./internal/adapter/driver/duckdb/
+
+  portal:
+    name: portal
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - working-directory: apps/portal
+        run: bun install --frozen-lockfile
+      - working-directory: apps/portal
+        run: bunx tsc --noEmit
+      - working-directory: apps/portal
+        run: bun run lint
+      - working-directory: apps/portal
+        run: bun test
+      - working-directory: apps/portal
+        run: bun run build
+      # The budget is the product decision: ≤500 KB raw and ≤150 KB gzip for
+      # the initial route. Enforced rather than aspired to, because a bundle
+      # that drifts past it does not announce itself.
+      - working-directory: apps/portal
+        run: node scripts/check-bundle-size.mjs
+
+  packages:
+    name: embed + react
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - working-directory: packages/embed
+        run: bun run check
+      - working-directory: packages/react
+        run: bun run check
+
+  browser:
+    name: browser suites
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: oven-sh/setup-bun@v2
+
+      - run: bun install --frozen-lockfile
+      - working-directory: apps/portal
+        run: bun install --frozen-lockfile
+
+      # Chrome, because the suites launch it by channel rather than using
+      # Playwright's bundled build — the same browser a person would use.
+      - name: install chrome
+        run: bunx playwright install --with-deps chrome
+
+      - name: install typst
+        run: |
+          curl -fsSL https://github.com/typst/typst/releases/download/v0.15.1/typst-x86_64-unknown-linux-musl.tar.xz \
+            | tar -xJ --strip-components=1 -C /usr/local/bin typst-x86_64-unknown-linux-musl/typst
+
+      - working-directory: apps/portal
+        run: bun run build
+
+      # The sample-data suites: 133 assertions about an interface that has to
+      # work before a server exists.
+      - name: portal
+        working-directory: apps/portal
+        run: |
+          bunx vite --port 5173 --strictPort &
+          npx --yes wait-on http://localhost:5173 --timeout 60000
+          bun run verify
+
+      - name: embed and its wrappers
+        run: |
+          cd packages/embed && bun run build && bun run embed && bun run vue
+          cd ../react && bun run react
+
+      # The seam nothing else covers: the component and the portal against a
+      # real cronosd. A Go field name, a JSON tag and a TypeScript interface
+      # agreeing is not something either side's own tests can check.
+      - name: live integration
+        run: |
+          ./scripts/live-embed.sh
+          ./scripts/live-portal.sh
