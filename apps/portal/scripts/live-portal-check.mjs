@@ -188,10 +188,16 @@ ok('and whether they arrived',
    bytes. */
 ok('and the version of the report it ran', /[0-9a-f]{12}/.test(activity))
 
+/* Not while it is still sending: a run in flight has however many deliveries
+   have been written so far, and asserting on that count is asserting on how
+   fast the machine is. */
+await page.locator('[data-testid=run-status]').first()
+  .filter({ hasNotText: 'Sending' }).waitFor({ timeout: 30000 })
+
 await page.locator('[data-testid=run-toggle]').first().click()
-/* The list renders as soon as the query resolves, and asserting on it the
-   instant it appears reads whatever React had committed by then. Waiting for
-   the last row is waiting for the answer rather than for the element. */
+/* Waiting for the last row rather than for the element, because the list
+   renders as soon as the query resolves and reading it then reads whatever
+   React had committed by that instant. */
 await page.locator('[data-testid=run-deliveries] li').nth(2).waitFor({ timeout: 15000 })
 const recipients = await page.locator('[data-testid=run-deliveries]').innerText()
 /* All three, not just the first. A burst that delivered one document is a
@@ -201,6 +207,70 @@ ok('and every recipient it attempted',
 /* The demo delivers to files, so the destination is a path — whichever channel
    it is, a delivery record that cannot say where it went is not one. */
 ok('with where each one went', recipients.includes('statement'))
+
+/* -- Sharing -------------------------------------------------------------
+   A report handed to somebody with no account here. The whole token design
+   exists for this, and until now nothing minted one. */
+
+/* billing-summary reads a row-scoped dataset, and the recipient of a share
+   holds an embed token — which docs/tenancy.md says row scope applies to. So
+   the link would either show nothing or, if the token quietly claimed project
+   membership, show every customer's rows to whoever it was forwarded to.
+   Refused, and the message says which dataset and why. */
+await page.goto(`${B}/reports/billing-summary`, { waitUntil: 'domcontentloaded' })
+await page.locator('[data-testid=share-button]').waitFor({ timeout: 20000 })
+await page.locator('[data-testid=share-button]').click()
+await page.locator('[role=tab]:has-text("Get a link")').click()
+await page.locator('[data-testid=audience-anyone]').click()
+await page.locator('[data-testid=create-link]').click()
+await page.locator('[data-testid=share-error]').waitFor({ timeout: 15000 })
+const refused = await page.locator('[data-testid=share-error]').innerText()
+ok('a report whose rows belong to one customer cannot be shared to anyone',
+  refused.includes('scoped per customer') || refused.includes('one customer at a time'))
+ok('and the refusal names the dataset', refused.includes('invoices'))
+
+/* customer-overview reads a dataset that is not row-scoped, so a link to it
+   shows the same thing to everybody — which is what a link to it means. */
+await page.goto(`${B}/reports/customer-overview`, { waitUntil: 'domcontentloaded' })
+await page.locator('[data-testid=share-button]').waitFor({ timeout: 20000 })
+await page.locator('[data-testid=share-button]').click()
+await page.locator('[role=tab]:has-text("Get a link")').click()
+await page.locator('[data-testid=audience-anyone]').click()
+
+ok('no link exists until somebody asks for one',
+  await page.locator('[data-testid=share-link]').count() === 0)
+await page.locator('[data-testid=create-link]').click()
+await page.locator('[data-testid=share-link]').waitFor({ timeout: 15000 })
+const shareUrl = await page.locator('[data-testid=share-link]').inputValue()
+ok('and asking records one', /\/s\/shr_[0-9a-f]{16}$/.test(shareUrl))
+
+/* A fresh context: no session, no localStorage, nothing the portal put there.
+   Sharing that works only for somebody already signed in is not sharing. */
+const stranger = await browser.newContext()
+const guest = await stranger.newPage()
+await guest.goto(shareUrl, { waitUntil: 'domcontentloaded' })
+await guest.locator('[data-testid=live-report]').waitFor({ timeout: 20000 })
+const shared = await guest.locator('body').innerText()
+
+ok('a stranger with the link reads the report',
+  await guest.locator('[data-testid=live-report]').isVisible())
+ok('and is told it was shared with them',
+  shared.includes('Shared with you'))
+/* No rail, no sign-in, no way into the rest of the project. */
+ok('and is offered nothing else in the portal',
+  !shared.includes('Schedules') && !shared.includes('Settings'))
+
+/* Revoked from the project, and dead for the stranger on the next request —
+   not at the next expiry, which is what a signature alone would give. */
+const shareId = shareUrl.split('/s/')[1]
+await fetch(`${process.env.API}/v1/shares/${shareId}`, {
+  method: 'DELETE', headers: { authorization: `Bearer ${process.env.TOKEN}` },
+})
+await guest.reload({ waitUntil: 'domcontentloaded' })
+await guest.locator('text=does not open').waitFor({ timeout: 15000 })
+ok('revoking stops it on the next request',
+  (await guest.locator('body').innerText()).includes('This link does not open'))
+await stranger.close()
 
 console.log(fails ? `\n${fails} failed` : '\nall passed')
 await browser.close()

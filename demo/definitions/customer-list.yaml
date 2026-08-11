@@ -1,0 +1,23 @@
+apiVersion: cronos.dev/v1
+kind: Dataset
+metadata:
+  name: customer-list
+  description: Every customer, with what they have been billed.
+spec:
+  sources:
+    - ref: warehouse
+  # Not row-scoped, deliberately. It is the same figures the finance team
+  # reads in a meeting, and a report over it is one they can hand to somebody
+  # outside without naming a customer first — which is what makes it the
+  # example of a report that can be shared by link.
+  query: |
+    SELECT c.id, c.name, c.city, SUM(i.total) AS billed
+    FROM customers c
+    LEFT JOIN invoices i ON i.customer_id = c.id
+    GROUP BY c.id, c.name, c.city
+    ORDER BY c.name
+  fields:
+    - {name: id,     type: string, role: dimension, hidden: true}
+    - {name: name,   type: string, role: dimension, label: Customer}
+    - {name: city,   type: string, role: dimension, label: City}
+    - {name: billed, type: number, role: measure, aggregate: sum, label: Billed, format: currency}

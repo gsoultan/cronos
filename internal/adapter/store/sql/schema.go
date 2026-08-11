@@ -94,6 +94,32 @@ CREATE TABLE IF NOT EXISTS cronos_users (
   last_seen  TEXT,
   disabled   BOOLEAN NOT NULL DEFAULT FALSE
 );
+
+-- A share is a token somebody handed out, and the record that lets them take
+-- it back. The token itself is not here: it is signed, so it needs no storage
+-- to be valid, and keeping a copy would put a live credential in a table that
+-- is backed up, replicated and read by whoever can read the others.
+CREATE TABLE IF NOT EXISTS cronos_shares (
+  id         TEXT PRIMARY KEY,
+  org        TEXT NOT NULL,
+  project    TEXT NOT NULL,
+  report     TEXT NOT NULL,
+  -- The row constraint the recipient sees through, as JSON. Copied from the
+  -- sharer at the moment of sharing: a link that widened when its author's
+  -- own access widened would be a grant nobody made.
+  scope      TEXT NOT NULL DEFAULT '',
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  -- Null means it does not expire, which is a choice somebody made rather
+  -- than a default: EXPIRIES offers Never and hiding it would not stop it.
+  expires_at TEXT,
+  revoked_at TEXT
+);
+
+-- Listing a project's shares is the whole read pattern; by id is the primary
+-- key already.
+CREATE INDEX IF NOT EXISTS cronos_shares_by_project
+  ON cronos_shares (org, project, created_at DESC);
 `
 
 // Schema is the DDL for a driver.

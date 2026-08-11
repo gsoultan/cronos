@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -18,15 +19,41 @@ const maxBody = 64 << 10
 
 // Embed serves reports to embedded viewers.
 type Embed struct {
-	reports Reports
-	runner  *run.Service
-	signer  *token.Signer
-	log     *slog.Logger
+	reports     Reports
+	runner      *run.Service
+	signer      *token.Signer
+	revocations Revocations
+	log         *slog.Logger
 }
 
 // NewEmbed wires the handler.
 func NewEmbed(r Reports, s *run.Service, sg *token.Signer, log *slog.Logger) *Embed {
 	return &Embed{reports: r, runner: s, signer: sg, log: log}
+}
+
+// Revocations answers whether a token we issued still counts.
+type Revocations interface {
+	Allows(ctx context.Context, id, org, project string) bool
+}
+
+// WithRevocations checks tokens against the shares they were issued for.
+//
+// Absent, a token is governed by its expiry alone — which is the correct
+// behaviour for a deployment that mints no shares, and for the tokens a host
+// mints for its own users, which we never issued and cannot withdraw.
+func (e *Embed) WithRevocations(rv Revocations) *Embed {
+	e.revocations = rv
+	return e
+}
+
+// allowed is true unless a share we issued this token against has been
+// withdrawn. Fails closed: a token naming a share nobody can find is not one
+// to honour.
+func (e *Embed) allowed(ctx context.Context, claims token.Claims) bool {
+	if e.revocations == nil || claims.ID == "" {
+		return true
+	}
+	return e.revocations.Allows(ctx, claims.ID, claims.Org, claims.Project)
 }
 
 // ServeHTTP handles POST /v1/embed/reports/{name}.
@@ -44,6 +71,16 @@ func (e *Embed) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// One message for every token failure. Distinguishing expired from
 		// forged tells an attacker which half of their attempt worked.
 		e.log.Info("embed token rejected", "report", name, "err", err)
+		fail(w, http.StatusUnauthorized, "This report link is no longer valid.")
+		return
+	}
+	// The half a signature cannot do. A token is valid until it expires and
+	// nothing about the signature can be taken back, so a token we issued
+	// against a share is only good while that share still is — checked here,
+	// per request, because revoking is worth nothing if it takes a day.
+	if !e.allowed(r.Context(), claims) {
+		e.log.Info("embed token rejected", "report", name, "share", claims.ID,
+			"err", "the share was withdrawn or has expired")
 		fail(w, http.StatusUnauthorized, "This report link is no longer valid.")
 		return
 	}

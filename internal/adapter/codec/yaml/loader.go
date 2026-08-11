@@ -56,6 +56,7 @@ func (l Loader) Dataset(data []byte) (definition.Dataset, error) {
 			ErrDecode, e.Metadata.Name, err)
 	}
 	ds.Name = e.Metadata.Name
+	ds.Title = e.Metadata.Title
 	ds.Description = e.Metadata.Description
 
 	return ds, ds.Validate()
@@ -74,6 +75,7 @@ func (l Loader) Report(data []byte) (definition.Report, error) {
 			ErrDecode, e.Metadata.Name, err)
 	}
 	r.Name = e.Metadata.Name
+	r.Title = e.Metadata.Title
 	r.Description = e.Metadata.Description
 	r.Folder = e.Metadata.Folder
 
@@ -93,6 +95,7 @@ func (l Loader) DataSource(data []byte) (definition.DataSource, error) {
 			ErrDecode, e.Metadata.Name, err)
 	}
 	ds.Name = e.Metadata.Name
+	ds.Title = e.Metadata.Title
 	ds.Description = e.Metadata.Description
 	ds.Labels = e.Metadata.Labels
 
@@ -112,6 +115,7 @@ func (l Loader) Schedule(data []byte) (definition.Schedule, error) {
 			ErrDecode, e.Metadata.Name, err)
 	}
 	s.Name = e.Metadata.Name
+	s.Title = e.Metadata.Title
 	s.Description = e.Metadata.Description
 
 	return s, s.Validate()

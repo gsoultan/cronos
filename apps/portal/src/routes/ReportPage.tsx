@@ -93,7 +93,7 @@ function SampleReport({ name }: { name: string }) {
 
       {sharing && (
         <div className="mb-6">
-          <SharePanel reportLabel={report.label} projectName={report.folder}
+          <SharePanel reportName={report.name} reportLabel={report.label} projectName={report.folder}
             outputs={report.outputs} onClose={() => setSharing(false)} />
         </div>
       )}
@@ -151,6 +151,8 @@ function SampleReport({ name }: { name: string }) {
 
 /** A report as the server computed it, with the states a request can be in. */
 function ServerReport({ name, query }: { name: string; query: ReturnType<typeof useReport> }) {
+  const [sharing, setSharing] = useState(false)
+
   if (query.isPending) {
     return <p data-testid="report-loading" className="p-8 text-center text-ink-muted">Loading…</p>
   }
@@ -178,10 +180,25 @@ function ServerReport({ name, query }: { name: string; query: ReturnType<typeof 
            erases the router's path types, and `params` stops being checked
            against the route it belongs to. */
         actions={
-          <Button variant="default" renderRoot={(props) => (
-            <Link to="/reports/$name/edit" params={{ name }} {...props} />
-          )}>Edit</Button>
+          <>
+            <Button variant="default" onClick={() => setSharing((v) => !v)}
+              data-testid="share-button">Share</Button>
+            <Button variant="default" renderRoot={(props) => (
+              <Link to="/reports/$name/edit" params={{ name }} {...props} />
+            )}>Edit</Button>
+          </>
         } />
+
+      {sharing && (
+        <div className="mb-6">
+          {/* The report's own name, not its title: a share is recorded against
+              the definition, and the title is what somebody renamed it to this
+              morning. */}
+          <SharePanel reportName={name} reportLabel={query.data.title}
+            projectName={name} outputs={['pdf', 'xlsx', 'csv']}
+            onClose={() => setSharing(false)} />
+        </div>
+      )}
       <LiveReport view={query.data} />
     </>
   )

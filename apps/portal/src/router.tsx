@@ -43,6 +43,14 @@ const dataRoute = createRoute({
   component: lazyRouteComponent(() => import('./routes/DataPage'), 'DataPage'),
 })
 
+/* Outside the shell, and outside sign-in. A share is read by somebody with no
+   account, which is the whole point of handing one out. */
+const sharedRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/s/$id',
+  component: lazyRouteComponent(() => import('./routes/SharedPage'), 'SharedPage'),
+})
+
 const activityRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/activity',
@@ -84,7 +92,7 @@ const schedulesRoute = createRoute({
 
 const routeTree = rootRoute.addChildren([
   indexRoute, newReportRoute, reportRoute, settingsRoute, accountRoute,
-  dataRoute, schedulesRoute, activityRoute,
+  dataRoute, schedulesRoute, activityRoute, sharedRoute,
   editReportRoute, editDatasetRoute, editSourceRoute, editScheduleRoute,
 ])
 

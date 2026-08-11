@@ -115,6 +115,14 @@ claim becomes a full-table disclosure. A principal nobody marked is treated as
 an end customer, so forgetting costs a blank report rather than everybody's
 data.
 
+A **share link** is an embed token, so this rule decides what it can be. The
+recipient is by definition not a project member, which means a link to a report
+whose dataset is row-scoped would show them nothing — and the only way to make
+it show something would be to mark the token as a member, which is this rule
+with the check removed. So such a share is refused, and the message says which
+dataset made it one. Sharing a per-customer report means saying which customer,
+which is a question only the person sharing can answer.
+
 For an end customer, a dataset whose row-level security references
 `{{ .scope.x }}` **cannot be read without that scope**. If the value is absent the predicate matches nothing; it
 is never dropped, and never treated as "no constraint". The alternative — an

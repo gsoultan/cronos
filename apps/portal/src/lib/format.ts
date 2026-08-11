@@ -30,12 +30,22 @@ const DATE = new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric' })
 const MONTH = new Intl.DateTimeFormat('en', { month: 'short' })
 
 export function shortDate(d: Date | string): string {
-  return DATE.format(typeof d === 'string' ? new Date(d) : d)
+  const date = typeof d === 'string' ? new Date(d) : d
+  if (Number.isNaN(date.getTime())) return String(d)
+  return DATE.format(date)
 }
 
-/** "Feb ’26" — plain "Feb 26" reads as a day of the month on an axis. */
+/**
+ * "Feb '26" — plain "Feb 26" reads as a day of the month on an axis.
+ *
+ * A value that is not a date comes back as it arrived. A chart's x axis is
+ * whatever dimension it was grouped by, and grouping by customer is as
+ * ordinary as grouping by month — formatting "Aurora Freight" as a date throws
+ * from Intl, which takes the whole page down rather than one label with it.
+ */
 export function monthLabel(d: Date | string): string {
   const date = typeof d === 'string' ? new Date(d) : d
+  if (Number.isNaN(date.getTime())) return String(d)
   return `${MONTH.format(date)} ’${String(date.getFullYear()).slice(2)}`
 }
 

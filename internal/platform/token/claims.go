@@ -31,6 +31,14 @@ type Claims struct {
 	Scope map[string]string `json:"scp,omitempty"`
 	// Params are dataset parameters the host fixed. A caller cannot widen them.
 	Params map[string]any `json:"prm,omitempty"`
+	// ID names a token that can be withdrawn before it expires.
+	//
+	// A signed token is valid until it is not, and nothing about the signature
+	// can be taken back — so revocation is a record somewhere that this one no
+	// longer counts, and this is what that record is keyed by. Empty for the
+	// tokens a host mints for itself: there is nothing to revoke a token by
+	// that we never issued and cannot list.
+	ID string `json:"jti,omitempty"`
 
 	IssuedAt  int64 `json:"iat"`
 	ExpiresAt int64 `json:"exp"`

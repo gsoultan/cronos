@@ -267,3 +267,74 @@ func TestDurationsReadAsAuthorsWriteThem(t *testing.T) {
 		t.Errorf("120s parsed as %s", ds.Limits.StatementTimeout)
 	}
 }
+
+// Every kind carries a display name, and the loader must copy it.
+//
+// The name is an identifier other definitions point at; the title is what a
+// person calls it. A form that asks for both and has one silently discarded is
+// a form that comes back with a blank field, and a strict decoder that has
+// never heard of the key refuses the document outright.
+func TestTitleSurvivesEveryKind(t *testing.T) {
+	load := Loader{}
+
+	ds, err := load.Dataset([]byte(`apiVersion: cronos.dev/v1
+kind: Dataset
+metadata: {name: invoices, title: Invoices}
+spec:
+  sources: [{ref: warehouse}]
+  query: SELECT 1 AS id
+  fields: [{name: id, type: string, role: dimension}]
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ds.Title != "Invoices" || ds.Heading() != "Invoices" {
+		t.Fatalf("dataset title: %q, heading %q", ds.Title, ds.Heading())
+	}
+
+	src, err := load.DataSource([]byte(`apiVersion: cronos.dev/v1
+kind: DataSource
+metadata: {name: warehouse, title: Production warehouse}
+spec: {driver: sqlite, dsn: "file:x?mode=memory"}
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if src.Title != "Production warehouse" {
+		t.Fatalf("datasource title: %q", src.Title)
+	}
+
+	rep, err := load.Report([]byte(`apiVersion: cronos.dev/v1
+kind: Report
+metadata: {name: monthly, title: Monthly statement}
+spec:
+  dataset: invoices
+  outputs:
+    - name: interactive
+      renderer: interactive
+      layout: [{kind: table, columns: [id]}]
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Title != "Monthly statement" || rep.Heading() != "Monthly statement" {
+		t.Fatalf("report title: %q", rep.Title)
+	}
+
+	sc, err := load.Schedule([]byte(`apiVersion: cronos.dev/v1
+kind: Schedule
+metadata: {name: monthly, title: Monthly send}
+spec:
+  report: monthly
+  output: interactive
+  cron: "0 6 1 * *"
+  timezone: Europe/Berlin
+  deliver: [{via: email, to: a@b.example}]
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sc.Title != "Monthly send" {
+		t.Fatalf("schedule title: %q", sc.Title)
+	}
+}

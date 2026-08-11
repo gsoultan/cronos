@@ -294,6 +294,69 @@ export function runSchedule(name: string) {
     `/v1/schedules/${encodeURIComponent(name)}/run`, { method: 'POST' })
 }
 
+/* ---------------------------------------------------------------------- *
+ * Sharing: a report handed to somebody who is not in the project.
+ * ---------------------------------------------------------------------- */
+
+export interface Share {
+  id: string
+  report: string
+  state: 'live' | 'expired' | 'revoked'
+  createdBy: string
+  createdAt: string
+  expiresAt?: string
+  revokedAt?: string
+  scoped?: boolean
+}
+
+/** Records a link to one report. Days of 0 means it does not expire. */
+export function createShare(report: string, days: number) {
+  return call<Share>('/v1/shares', {
+    method: 'POST',
+    body: JSON.stringify({ report, days }),
+  })
+}
+
+export function listShares() {
+  return call<{ shares: Share[] }>('/v1/shares')
+}
+
+/** Withdraws a link. Takes effect on the next request, not on the next expiry. */
+export function revokeShare(id: string) {
+  return call<void>(`/v1/shares/${encodeURIComponent(id)}`, { method: 'DELETE' })
+}
+
+/**
+ * Opens a share, and reads the report behind it.
+ *
+ * The only pair of calls in this file that send no session: whoever follows a
+ * share link is not signed in and has no identity here. The link is exchanged
+ * for a short-lived token pinned to one report, and that token — not the
+ * session — is what reads it.
+ */
+export async function openShare(id: string): Promise<{ token: string; report: string }> {
+  const base = apiBase()
+  if (!base) throw new ApiError(0, 'This portal is not connected to a server.')
+
+  const r = await fetch(`${base}/v1/shares/${encodeURIComponent(id)}/open`, { method: 'POST' })
+  if (!r.ok) throw new ApiError(r.status, await serverMessage(r))
+  return r.json() as Promise<{ token: string; report: string }>
+}
+
+/** Renders a shared report with the token that opening it returned. */
+export async function readShared(token: string, report: string): Promise<ReportView> {
+  const base = apiBase()
+  if (!base) throw new ApiError(0, 'This portal is not connected to a server.')
+
+  const r = await fetch(`${base}/v1/embed/reports/${encodeURIComponent(report)}`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+    body: '{}',
+  })
+  if (!r.ok) throw new ApiError(r.status, await serverMessage(r))
+  return r.json() as Promise<ReportView>
+}
+
 export function readRun(id: string) {
   return call<{ run: Run; deliveries: RunDelivery[] }>(`/v1/runs/${encodeURIComponent(id)}`)
 }

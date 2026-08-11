@@ -67,8 +67,14 @@ export const LINK_AUDIENCES: LinkOption[] = [
     id: 'anyone',
     label: 'Anyone with the link',
     hint: 'No sign-in. The link is the credential.',
-    sees: 'A snapshot of your rows, frozen when you created the link.',
-    live: false,
+    /* Live, not frozen. A snapshot would need the rendered document kept
+       somewhere, and a stored copy of somebody's invoices is a second place
+       for that data to leak from — so what a share hands out is the report,
+       read through the sharer's own access, at the moment it is opened. Said
+       here because a reader assuming "frozen" would share more freely than
+       they should. */
+    sees: 'Current data, exactly the rows you can see. It is not frozen — it shows what the report says when they open it.',
+    live: true,
   },
 ]
 
@@ -78,6 +84,16 @@ export const EXPIRIES = [
   { value: '30', label: 'After 30 days' },
   { value: '0', label: 'Never' },
 ]
+
+/**
+ * How long the credential behind a link lives, whatever the link's own expiry.
+ *
+ * The link is not the token. Following one exchanges it for a token that opens
+ * a single report and lives this long at most — so a URL forwarded around a
+ * company is not a permanent key, and revoking the share stops it on the next
+ * request rather than at the next expiry.
+ */
+export const TOKEN_HOURS = 24
 
 /* -- Telegram destinations ------------------------------------------------ */
 

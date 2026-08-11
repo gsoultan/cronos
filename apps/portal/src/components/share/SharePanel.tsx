@@ -1,13 +1,16 @@
 import { useMemo, useState } from 'react'
 import { Button, MultiSelect, Select, Textarea, TextInput } from '@mantine/core'
 import { Field } from '../form/Field'
+import { ApiError, createShare } from '../../lib/api'
 import { Tag } from '../StatusPill'
 import {
-  CHANNELS, EXPIRIES, LINK_AUDIENCES, channel, invalidEmails, splitRecipients,
+  CHANNELS, EXPIRIES, LINK_AUDIENCES, TOKEN_HOURS, channel, invalidEmails, splitRecipients,
   telegramConnection, type Channel, type LinkAudience,
 } from '../../lib/sharing'
 
 interface Props {
+  /** The report's API name, which is what a share is recorded against. */
+  reportName?: string
   reportLabel: string
   projectName: string
   outputs: string[]
@@ -31,7 +34,7 @@ const FORMATS: Record<string, string> = {
  * option states what the recipient will actually see, in a sentence, next to
  * the control, because "share" is the word under which data leaves.
  */
-export function SharePanel({ reportLabel, projectName, outputs, onClose }: Props) {
+export function SharePanel({ reportName, reportLabel, projectName, outputs, onClose }: Props) {
   const [tab, setTab] = useState<Tab>('send')
   const [via, setVia] = useState<Channel>('email')
   const [emails, setEmails] = useState('')
@@ -43,6 +46,9 @@ export function SharePanel({ reportLabel, projectName, outputs, onClose }: Props
   const [audience, setAudience] = useState<LinkAudience>('project')
   const [expiry, setExpiry] = useState('7')
   const [copied, setCopied] = useState(false)
+  const [link, setLink] = useState<string | null>(null)
+  const [minting, setMinting] = useState(false)
+  const [failed, setFailed] = useState('')
 
   const spec = channel(via)
   const bad = useMemo(() => (via === 'email' ? invalidEmails(emails) : []), [via, emails])
@@ -50,7 +56,39 @@ export function SharePanel({ reportLabel, projectName, outputs, onClose }: Props
   const canSend = recipients > 0 && bad.length === 0
 
   const chosen = LINK_AUDIENCES.find((a) => a.id === audience)!
-  const url = `https://cronos.acme.com/s/${audience === 'anyone' ? 'p8Kx2Qm4' : 'r/monthly-invoice-statement'}`
+
+  /* A link for people already in the project is the report's own URL: they
+     sign in as themselves and the dataset's row scope applies to them. Nothing
+     needs minting, and minting something would hand them a second way in that
+     bypasses the first. */
+  const memberUrl = `${globalThis.location?.origin ?? ''}/reports/${reportName ?? ''}`
+  const url = audience === 'project' ? memberUrl : link
+
+  /* Recorded when they ask for it, not when the panel opens. A link that
+     existed because somebody looked at this tab would be one nobody chose to
+     hand out and everybody would still have to revoke. */
+  async function mint() {
+    if (!reportName) return
+    setMinting(true)
+    setFailed('')
+    try {
+      const share = await createShare(reportName, Number(expiry))
+      setLink(`${globalThis.location?.origin ?? ''}/s/${share.id}`)
+    } catch (err) {
+      setFailed(err instanceof ApiError ? err.message : 'Could not reach the server.')
+    } finally {
+      setMinting(false)
+    }
+  }
+
+  /* Changing either invalidates the link already made: it was recorded with
+     the old expiry, and leaving it on screen beside a new choice would be the
+     panel claiming something it did not do. */
+  function reconfigure(next: () => void) {
+    setLink(null)
+    setCopied(false)
+    next()
+  }
 
   return (
     <section className="rounded-lg border border-line bg-surface shadow-card"
@@ -161,7 +199,7 @@ export function SharePanel({ reportLabel, projectName, outputs, onClose }: Props
           <Field label="Who can open it">
             <div className="grid gap-2">
               {LINK_AUDIENCES.map((a) => (
-                <button key={a.id} type="button" onClick={() => setAudience(a.id)}
+                <button key={a.id} type="button" onClick={() => reconfigure(() => setAudience(a.id))}
                   data-testid={`audience-${a.id}`} role="radio" aria-checked={audience === a.id}
                   className={`grid cursor-pointer gap-1 rounded-lg border bg-surface p-3
                     text-left text-ink hover:border-accent
@@ -182,7 +220,8 @@ export function SharePanel({ reportLabel, projectName, outputs, onClose }: Props
               ? 'Anyone holding the URL can open it until then.'
               : 'They still need to be a member of ' + projectName + '.'}>
             <Select allowDeselect={false} value={expiry} data={EXPIRIES} w={220}
-              aria-label="Link expires" onChange={(v) => setExpiry(v ?? '7')} />
+              aria-label="Link expires" disabled={audience === 'project'}
+              onChange={(v) => reconfigure(() => setExpiry(v ?? '7'))} />
           </Field>
 
           {audience === 'anyone' && expiry === '0' && (
@@ -194,19 +233,37 @@ export function SharePanel({ reportLabel, projectName, outputs, onClose }: Props
             </p>
           )}
 
-          <Field label="Link">
-            <div className="flex items-center gap-2">
-              <TextInput readOnly value={url} className="min-w-0 flex-1"
-                classNames={{ input: 'font-mono text-caption' }} aria-label="Share link" />
-              <Button variant="default"
-                onClick={() => { void navigator.clipboard?.writeText(url); setCopied(true) }}>
-                {copied ? 'Copied' : 'Copy'}
-              </Button>
-            </div>
-          </Field>
+          {url ? (
+            <Field label="Link">
+              <div className="flex items-center gap-2">
+                <TextInput readOnly value={url} className="min-w-0 flex-1" data-testid="share-link"
+                  classNames={{ input: 'font-mono text-caption' }} aria-label="Share link" />
+                <Button variant="default"
+                  onClick={() => { void navigator.clipboard?.writeText(url); setCopied(true) }}>
+                  {copied ? 'Copied' : 'Copy'}
+                </Button>
+              </div>
+            </Field>
+          ) : (
+            <Button onClick={mint} loading={minting} disabled={!reportName}
+              data-testid="create-link" className="justify-self-start">
+              Create link
+            </Button>
+          )}
+
+          {failed && (
+            <p role="alert" data-testid="share-error"
+              className="rounded-md border border-serious/30 bg-serious/10 px-3 py-2 text-small text-ink">
+              {failed}
+            </p>
+          )}
 
           <p className="text-caption text-ink-muted">
-            {chosen.sees} Every link can be revoked from the report at any time.
+            {chosen.sees}
+            {audience === 'anyone' && (
+              <> Whoever opens it gets a key to this one report that lasts {TOKEN_HOURS} hours;
+              revoking the link stops it on their next request.</>
+            )}
           </p>
         </div>
       )}

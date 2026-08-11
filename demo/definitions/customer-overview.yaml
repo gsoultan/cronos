@@ -1,0 +1,26 @@
+apiVersion: cronos.dev/v1
+kind: Report
+metadata:
+  name: customer-overview
+  title: Customers
+  description: Who we bill, where they are, and how much.
+spec:
+  dataset: customer-list
+  outputs:
+    - name: interactive
+      renderer: interactive
+      layout:
+        - kind: stat
+          label: Billed
+          value: {field: billed, aggregate: sum}
+        - kind: stat
+          label: Customers
+          value: {field: id, aggregate: count}
+        - kind: chart
+          title: Billed by customer
+          chart: bar
+          x: {field: name}
+          y: {field: billed, aggregate: sum}
+        - kind: table
+          title: Customers
+          columns: [name, city, billed]

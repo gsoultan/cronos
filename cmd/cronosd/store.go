@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/gsoultan/cronos/internal/adapter/store/file"
 	sqlstore "github.com/gsoultan/cronos/internal/adapter/store/sql"
@@ -36,7 +37,7 @@ func definitionStore(ctx context.Context, cfg config.Server, repo *file.Reposito
 	if driver == "postgres" {
 		driver = "pgx"
 	}
-	db, err := sql.Open(driver, cfg.StoreDSN)
+	db, err := sql.Open(driver, waitable(cfg.StoreDriver, cfg.StoreDSN))
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -89,14 +90,42 @@ func tune(ctx context.Context, db *sql.DB, driver string) error {
 	if driver != "sqlite" {
 		return nil
 	}
-	for _, pragma := range []string{
-		"PRAGMA journal_mode = WAL",
-		"PRAGMA busy_timeout = 5000",
-		"PRAGMA synchronous = NORMAL",
-	} {
-		if _, err := db.ExecContext(ctx, pragma); err != nil {
-			return fmt.Errorf("definition store: %s: %w", pragma, err)
-		}
+	// journal_mode is a property of the file and survives the connection that
+	// set it, so this one is still worth executing once. The rest are not, and
+	// live in the DSN — see waitable.
+	if _, err := db.ExecContext(ctx, "PRAGMA journal_mode = WAL"); err != nil {
+		return fmt.Errorf("definition store: journal_mode: %w", err)
 	}
 	return nil
+}
+
+/*
+waitable makes a SQLite connection wait for a lock rather than refuse.
+
+A pragma is per-connection, and database/sql hands out a pool of them. Running
+`PRAGMA busy_timeout` once sets it on whichever connection happened to serve
+that statement and leaves every other one at the default, which is zero: the
+first concurrent write returns SQLITE_BUSY immediately.
+
+That is not a theoretical race. A burst delivers to its recipients in parallel
+and records each one as it lands, and the symptom was a run reporting three
+delivered with two rows to show for it — the third having been written to a
+customer and lost from the audit, with an error line in a log nobody reads.
+
+Postgres needs none of this and is left alone.
+*/
+func waitable(driver, dsn string) string {
+	if driver != "sqlite" {
+		return dsn
+	}
+	if strings.Contains(dsn, "busy_timeout") {
+		return dsn // an operator who set it meant it
+	}
+	sep := "?"
+	if strings.Contains(dsn, "?") {
+		sep = "&"
+	}
+	// Five seconds. Long enough that a burst's writes queue rather than fail,
+	// short enough that a genuinely stuck lock is an error rather than a hang.
+	return dsn + sep + "_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)"
 }

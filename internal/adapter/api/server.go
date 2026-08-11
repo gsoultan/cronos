@@ -17,7 +17,7 @@ import (
 func Routes(reports Reports, runner *run.Service, signer *token.Signer,
 	origins []string, log *slog.Logger) http.Handler {
 	return RoutesWith(reports, runner, signer, origins, log,
-		nil, nil, nil, nil, nil, nil, nil, nil, "", "")
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, "", "")
 }
 
 // RoutesWith adds the management API when an admin key is configured.
@@ -29,9 +29,13 @@ func Routes(reports Reports, runner *run.Service, signer *token.Signer,
 func RoutesWith(reports Reports, runner *run.Service, signer *token.Signer,
 	origins []string, log *slog.Logger,
 	pub *publish.Service, store publish.Store, admin *AdminKey, runs History,
-	users Users, defs Repository, due Due, fires Firing, org, project string) http.Handler {
+	users Users, defs Repository, due Due, fires Firing, shares Sharing,
+	org, project string) http.Handler {
 
 	embed := NewEmbed(reports, runner, signer, log)
+	if rv, ok := shares.(Revocations); ok {
+		embed = embed.WithRevocations(rv)
+	}
 	author := NewAuthor(signer, admin)
 
 	mux := http.NewServeMux()
@@ -48,6 +52,16 @@ func RoutesWith(reports Reports, runner *run.Service, signer *token.Signer,
 	if defs != nil {
 		mux.Handle("/v1/catalog", NewCatalog(defs, due, author, log))
 	}
+	// Sharing needs somewhere to record what was handed out, so that it can be
+	// withdrawn. A deployment without one has no way to take a link back, and
+	// a link that cannot be taken back is not a link anybody should be offered.
+	if shares != nil {
+		h := NewShares(shares, author, log)
+		mux.Handle("/v1/shares", h)
+		mux.Handle("/v1/shares/{id}", h)
+		mux.Handle("/v1/shares/{id}/open", h)
+	}
+
 	mux.HandleFunc("/v1/health", func(w http.ResponseWriter, _ *http.Request) {
 		send(w, http.StatusOK, map[string]string{"status": "ok"})
 	})

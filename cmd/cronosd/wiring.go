@@ -19,9 +19,11 @@ import (
 	"github.com/gsoultan/cronos/internal/app/publish"
 	"github.com/gsoultan/cronos/internal/app/run"
 	"github.com/gsoultan/cronos/internal/app/schedule"
+	"github.com/gsoultan/cronos/internal/app/share"
 	"github.com/gsoultan/cronos/internal/core/definition"
 	"github.com/gsoultan/cronos/internal/core/principal"
 	"github.com/gsoultan/cronos/internal/platform/config"
+	"github.com/gsoultan/cronos/internal/platform/token"
 )
 
 // channels registers every delivery channel the configuration supports.
@@ -277,4 +279,16 @@ func adoptDirectory(ctx context.Context, store publish.Store, repo *file.Reposit
 		}
 	}
 	return n, nil
+}
+
+// sharing wires the share service, where there is somewhere to record shares.
+//
+// A file-backed deployment has nowhere to write one, and a share that cannot
+// be recorded cannot be withdrawn — so the endpoints are not mounted at all
+// rather than mounted and handing out links nobody can take back.
+func sharing(records *sqlstore.Store, signer *token.Signer, repo *file.Repository) api.Sharing {
+	if records == nil {
+		return nil
+	}
+	return share.New(records, signer, repo)
 }

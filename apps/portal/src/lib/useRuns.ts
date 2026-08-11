@@ -45,6 +45,12 @@ export function useRun(id: string | undefined) {
     queryFn: () => readRun(id ?? ''),
     enabled: live && !!id,
     refetchOnWindowFocus: false,
+    // A burst writes its deliveries as they happen, so a list opened while one
+    // is running is a list that is still filling. Without this it would show
+    // whatever had been written the moment somebody clicked and never say
+    // another word — which reads as "these are the recipients" rather than
+    // "these are the recipients so far".
+    refetchInterval: (q) => (q.state.data?.run.status === 'running' ? 2_000 : false),
     retry: 1,
   })
 

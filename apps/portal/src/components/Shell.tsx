@@ -63,6 +63,18 @@ export function Shell() {
     return () => window.removeEventListener('keydown', onKey)
   }, [drawer])
 
+  /* A shared report is the page and nothing else, and before the sign-in check
+     rather than after: whoever follows a share link has no account here, and
+     asking them to sign in to read something they were deliberately given
+     without one would be the interface undoing the feature. */
+  if (path.startsWith('/s/')) {
+    return (
+      <Suspense fallback={<main className="min-h-screen bg-canvas" />}>
+        <Outlet />
+      </Suspense>
+    )
+  }
+
   /* A configured server with nobody signed in is the sign-in page and nothing
      else — no shell, no navigation to pages that would only 401. Sample mode
      never reaches here, which is what keeps the interface workable before a

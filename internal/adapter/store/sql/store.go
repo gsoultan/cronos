@@ -55,8 +55,12 @@ func (s *Store) WithClock(now func() time.Time) *Store { s.now = now; return s }
 // arrives as one string works on SQLite and fails on Postgres, which is the
 // same asymmetry the types had.
 func (s *Store) Migrate(ctx context.Context) error {
-	for _, stmt := range strings.Split(Schema(s.driver), ";") {
-		if strings.TrimSpace(stripComments(stmt)) == "" {
+	// Comments first, then the split. A semicolon inside a comment is not a
+	// statement boundary, and splitting before stripping turns the rest of that
+	// comment into SQL — which fails with a syntax error naming a word from an
+	// English sentence, and takes a while to recognise as such.
+	for _, stmt := range strings.Split(stripComments(Schema(s.driver)), ";") {
+		if strings.TrimSpace(stmt) == "" {
 			continue
 		}
 		if _, err := s.db.ExecContext(ctx, stmt); err != nil {
