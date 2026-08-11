@@ -26,7 +26,7 @@ const NAV: { to: string; label: string; hint: string; icon: IconName }[] = [
  */
 export function Shell() {
   const path = useRouterState({ select: (s) => s.location.pathname })
-  const { org, project, setContext } = useWorkspace()
+  const { org, project, setContext, branding } = useWorkspace()
   const { collapsed, toggle } = useSidebar()
   const [theme, setTheme] = useState<'light' | 'dark'>('light')
 
@@ -51,7 +51,7 @@ export function Shell() {
                       md:sticky md:top-14 md:h-[calc(100vh-3.5rem)] md:border-r
                       ${collapsed ? 'md:items-center' : ''}`}>
           <WorkspaceSwitcher org={org} project={project} onChange={setContext}
-            collapsed={collapsed} />
+            collapsed={collapsed} mark={branding.mark?.url} />
 
           <nav aria-label="Main">
             <ul className="grid gap-1 max-md:auto-cols-max max-md:grid-flow-col max-md:overflow-x-auto">

@@ -15,6 +15,7 @@ bun run identifier # assert the API-name field: collapsed, follows, stops follow
 bun run people   # assert user management: roles, grants, last-owner rule
 bun run security # assert 2FA enrolment order, recovery codes, org policy
 bun run share    # assert sharing: channels, validation, disclosure copy
+bun run branding # assert logo upload: previews, print check, per-org isolation
 bun run acl      # assert the org/project access rules in a real browser
 ```
 
@@ -184,6 +185,30 @@ being decided about, which is the thing you want to look at.
 `people.ts` and `workspace.ts` must agree on your own role in each organisation
 — they are the same fact stored twice, and the first version disagreed, which
 surfaced as the admin screen rendering read-only.
+
+## Organisation branding
+
+A logo here is not decoration: it lands on the paginated statement that gets
+mailed to a customer, on embedded views inside someone's product, and on the
+emails those arrive in. Two failure modes drive the upload, and neither shows
+up in a single preview on a white card.
+
+- **Dark ink vanishes on a dark surface.** Both surfaces are previewed side by
+  side rather than one and a hope.
+- **A 200px PNG is crisp in a header and a smear on paper.** Raster uploads are
+  measured against print at 300dpi, not against the screen, and told what width
+  they would need. A vector sidesteps the question and says so.
+
+Two slots, because one file cannot do both jobs: a wide **wordmark** for
+documents and headers, and a square **mark** for the collapsed rail and
+favicons. The mark is wired into the workspace switcher, so branding is
+demonstrably used rather than merely stored.
+
+**Branding is per organisation, and lives only in the workspace context.** Two
+bugs here came from the same mistake — state duplicated into a component does
+not switch when the organisation does. The logo was mirrored locally and leaked
+across orgs; the name and API-name fields keep genuine draft state, so that
+panel is keyed by `org.id` and remounts instead.
 
 ## Sharing
 

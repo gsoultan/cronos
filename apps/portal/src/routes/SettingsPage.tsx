@@ -15,8 +15,9 @@ import {
 import { relativeTime } from '../lib/format'
 import { SecurityPolicy } from '../components/settings/SecurityPolicy'
 import { ChannelsPanel } from '../components/settings/ChannelsPanel'
+import { OrganizationPanel } from '../components/settings/OrganizationPanel'
 
-type Tab = 'people' | 'projects' | 'security' | 'channels'
+type Tab = 'organization' | 'people' | 'projects' | 'security' | 'channels'
 type Panel = 'none' | 'invite' | 'new-project'
 
 const CARD = 'mb-4 overflow-hidden rounded-lg border border-line bg-surface shadow-card'
@@ -32,7 +33,7 @@ const HEAD = 'flex flex-wrap items-center justify-between gap-4 border-b border-
  * direction.
  */
 export function SettingsPage() {
-  const [tab, setTab] = useState<Tab>('people')
+  const [tab, setTab] = useState<Tab>('organization')
   const [panel, setPanel] = useState<Panel>('none')
   const [query, setQuery] = useState('')
   const [directory, setDirectory] = useState<Person[]>(seedPeople)
@@ -72,14 +73,14 @@ export function SettingsPage() {
       <PageHeader title="Settings" description="Who can reach what, at both levels." />
 
       <div className="mb-4 flex gap-1 border-b border-line" role="tablist">
-        {([['people', 'People'], ['projects', 'Projects'], ['security', 'Security'], ['channels', 'Channels']] as const).map(([id, label]) => (
+        {([['organization', 'Organization'], ['people', 'People'], ['projects', 'Projects'], ['security', 'Security'], ['channels', 'Channels']] as const).map(([id, label]) => (
           <button key={id} type="button" role="tab" aria-selected={tab === id}
             onClick={() => setTab(id)}
             className={`cursor-pointer border-b-2 px-3 py-2.5 text-small font-medium ${
               tab === id ? 'border-accent text-ink'
                 : 'border-transparent text-ink-secondary hover:text-ink'}`}>
             {label}
-            {id !== 'security' && id !== 'channels' && (
+            {(id === 'people' || id === 'projects') && (
               <span className="ml-1.5 text-caption text-ink-muted">
                 {id === 'people' ? members.length : projects.filter((p) => p.orgId === org.id).length}
               </span>
@@ -170,6 +171,11 @@ export function SettingsPage() {
           )}
         </>
       )}
+
+      {/* Keyed by organisation: the panel holds draft edits to the name and
+          API name, and a draft belongs to the organisation it was typed into.
+          Without this the fields keep the previous org's values after a switch. */}
+      {tab === 'organization' && <OrganizationPanel key={org.id} canAdmin={canAdminOrg} />}
 
       {tab === 'channels' && <ChannelsPanel canAdmin={canAdminOrg} />}
 

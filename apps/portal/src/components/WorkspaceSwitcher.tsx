@@ -8,6 +8,8 @@ interface Props {
   onChange: (org: Organization, project: Project) => void
   /** Icon-rail mode: the trigger shrinks to a badge, the menu keeps its width. */
   collapsed?: boolean
+  /** The organisation's square mark, once one has been uploaded. */
+  mark?: string
 }
 
 const ITEM = `grid w-full cursor-pointer grid-cols-[1fr_auto] items-center gap-x-2
@@ -27,7 +29,9 @@ const LABEL = 'mx-2 mt-1 mb-1 text-micro font-semibold tracking-[0.06em] text-in
  * in the eager bundle on every page load, and the library's menu costs ~90 KB
  * there — the whole initial-route budget overage on its own.
  */
-export function WorkspaceSwitcher({ org, project, onChange, collapsed = false }: Props) {
+export function WorkspaceSwitcher({
+  org, project, onChange, collapsed = false, mark,
+}: Props) {
   const [open, setOpen] = useState(false)
   const root = useRef<HTMLDivElement>(null)
   const trigger = useRef<HTMLButtonElement>(null)
@@ -93,10 +97,12 @@ export function WorkspaceSwitcher({ org, project, onChange, collapsed = false }:
         <button type="button" ref={trigger} data-testid="workspace-trigger"
           onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-haspopup="menu"
           aria-label={label} title={`${org.name} · ${project.name}`}
-          className="grid size-10 cursor-pointer place-items-center rounded-md border
-                     border-line bg-sunken text-small font-semibold text-ink
+          className="grid size-10 cursor-pointer place-items-center overflow-hidden rounded-md
+                     border border-line bg-sunken text-small font-semibold text-ink
                      hover:border-accent">
-          {project.name.slice(0, 2).toUpperCase()}
+          {mark
+            ? <img src={mark} alt="" className="size-7 object-contain" />
+            : project.name.slice(0, 2).toUpperCase()}
         </button>
       ) : (
         <button type="button" ref={trigger} data-testid="workspace-trigger"
@@ -105,7 +111,10 @@ export function WorkspaceSwitcher({ org, project, onChange, collapsed = false }:
           className="grid w-full cursor-pointer grid-cols-[1fr_auto] items-center gap-x-2
                      rounded-md border border-line bg-sunken px-3 py-2 text-left text-ink
                      transition-colors duration-150 ease-out-quick hover:border-accent">
-          <span className="col-start-1 truncate text-caption text-ink-muted">{org.name}</span>
+          <span className="col-start-1 flex items-center gap-1.5 truncate text-caption text-ink-muted">
+            {mark && <img src={mark} alt="" className="size-4 shrink-0 object-contain" />}
+            {org.name}
+          </span>
           <span className="col-start-1 flex min-w-0 items-baseline gap-2 font-semibold">
             <span className="truncate">{project.name}</span>
             <span className="shrink-0 text-micro font-medium tracking-[0.04em] text-ink-muted uppercase">

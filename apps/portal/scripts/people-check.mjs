@@ -10,6 +10,8 @@ let f = 0
 const ok = (n, c) => { console.log(`  ${c ? 'ok  ' : 'FAIL'} ${n}`); if (!c) f++ }
 
 await p.goto(B + '/settings', { waitUntil: 'networkidle' })
+// Settings opens on Organization; People is a tab away.
+await p.click('[role=tab]:has-text("People")')
 await p.waitForSelector('[data-testid=people-list]')
 const rows = p.locator('[data-testid=people-list] li')
 
@@ -23,6 +25,7 @@ ok('a member gets no Invite button',
 await p.click('[data-testid=workspace-trigger]')
 await p.click('[data-testid=workspace-item]:has-text("Northwind")')
 await p.waitForTimeout(400)
+await p.click('[role=tab]:has-text("People")')
 await p.waitForSelector('[data-testid=people-list]')
 ok(`the org member list actually lists people (${await rows.count()})`, await rows.count() >= 4)
 ok('an admin gets the Invite button', await p.locator('button:has-text("Invite people")').isVisible())

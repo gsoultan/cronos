@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "acl": "node scripts/acl-check.mjs",
+    "branding": "node scripts/branding-check.mjs",
     "build": "tsc --noEmit && vite build",
     "builder": "node scripts/builder-check.mjs",
     "check": "tsc --noEmit && oxlint src plugins && bun test && vite build && node scripts/check-bundle-size.mjs",
