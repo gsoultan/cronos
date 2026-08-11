@@ -11,7 +11,7 @@ import (
 
 func mustFail(t *testing.T, ds definition.Dataset, in map[string]any, want error) error {
 	t.Helper()
-	_, err := NewBuilder(Dollar{}).WithClock(jan1).Build(ds, in, embedded("c-9"))
+	_, err := NewBuilder(Postgres{}).WithClock(jan1).Build(ds, in, embedded("c-9"))
 	if !errors.Is(err, want) {
 		t.Fatalf("got %v, want %v", err, want)
 	}
@@ -104,7 +104,7 @@ func TestTemplatesAreRefused(t *testing.T) {
 func TestABrokenPredicateFailsTheBuild(t *testing.T) {
 	ds := invoices()
 	ds.RowLevelSecurity = []definition.RowScope{{Predicate: "customer_id = {{ .params.from"}}
-	_, err := NewBuilder(Dollar{}).WithClock(jan1).
+	_, err := NewBuilder(Postgres{}).WithClock(jan1).
 		Build(ds, map[string]any{"from": "2026-07-01"}, embedded("c-9"))
 	if !errors.Is(err, ErrBadTemplate) {
 		t.Fatalf("got %v, want ErrBadTemplate", err)
@@ -117,7 +117,7 @@ func TestExtraScopeClaimsAreInert(t *testing.T) {
 	pr := principal.Principal{Subject: "u1",
 		Scope: map[string]string{"customer_id": "c-9", "is_admin": "true", "org_id": "*"}}
 
-	plan, err := NewBuilder(Dollar{}).WithClock(jan1).
+	plan, err := NewBuilder(Postgres{}).WithClock(jan1).
 		Build(invoices(), map[string]any{"from": "2026-07-01"}, pr)
 	if err != nil {
 		t.Fatal(err)

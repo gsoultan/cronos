@@ -13,13 +13,13 @@ import (
 // reviewable: there is a single function to read in order to know that no
 // caller value has ever been concatenated into SQL.
 type Builder struct {
-	ph  Placeholder
-	now func() time.Time
+	dialect Dialect
+	now     func() time.Time
 }
 
-// NewBuilder returns a Builder writing ph's placeholders.
-func NewBuilder(ph Placeholder) Builder {
-	return Builder{ph: ph, now: time.Now}
+// NewBuilder returns a Builder compiling for d.
+func NewBuilder(d Dialect) Builder {
+	return Builder{dialect: d, now: time.Now}
 }
 
 // WithClock returns a copy that resolves relative dates against now. Tests use
@@ -57,7 +57,7 @@ func (b Builder) BuildWith(ds definition.Dataset, in map[string]any, f Filters,
 	}
 
 	bd := &binder{
-		ph:       b.ph,
+		ph:       b.dialect,
 		params:   params,
 		scope:    pr.Scope,
 		declared: declaredNames(ds),

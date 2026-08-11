@@ -30,7 +30,7 @@ func withField(ds definition.Dataset, names ...string) definition.Dataset {
 // where returns only what the wrapper added. The dataset's own query mentions
 // issued_at and defaults status to "sent", so asserting against the whole
 // statement would pass on the fixture rather than on the filter.
-func where(sql string) string {
+func whereOf(sql string) string {
 	_, after, found := strings.Cut(sql, "AS "+subqueryAlias)
 	if !found {
 		return ""
@@ -40,7 +40,7 @@ func where(sql string) string {
 
 func buildWith(t *testing.T, ds definition.Dataset, f Filters) (Plan, Coverage) {
 	t.Helper()
-	plan, cov, err := NewBuilder(Dollar{}).WithClock(jan1).BuildWith(ds,
+	plan, cov, err := NewBuilder(Postgres{}).WithClock(jan1).BuildWith(ds,
 		map[string]any{"from": "2026-07-01"}, f, embedded("c-9"))
 	if err != nil {
 		t.Fatalf("build: %v", err)
@@ -87,7 +87,7 @@ func TestTheSameFilterBindsDifferentlyPerDataset(t *testing.T) {
 	if !strings.Contains(plan.SQL(), "shipped_at >=") {
 		t.Errorf("period should narrow shipped_at here:\n%s", plan.SQL())
 	}
-	if strings.Contains(where(plan.SQL()), "issued_at") {
+	if strings.Contains(whereOf(plan.SQL()), "issued_at") {
 		t.Errorf("the invoices binding leaked into shipments:\n%s", plan.SQL())
 	}
 	// The report format's promise: the block says so rather than leaving it to
@@ -161,7 +161,7 @@ func TestABlankFilterStillCoversTheBlock(t *testing.T) {
 	if !cov.Complete() {
 		t.Errorf("both filters bind here even with no value, ignored = %v", cov.Ignored)
 	}
-	if strings.Contains(where(plan.SQL()), "issued_at") {
+	if strings.Contains(whereOf(plan.SQL()), "issued_at") {
 		t.Errorf("a blank filter should not narrow anything:\n%s", plan.SQL())
 	}
 }
@@ -193,7 +193,7 @@ func TestFiltersAreRefused(t *testing.T) {
 			if c.bind != nil {
 				def.Bind = c.bind
 			}
-			_, _, err := NewBuilder(Dollar{}).WithClock(jan1).BuildWith(ds,
+			_, _, err := NewBuilder(Postgres{}).WithClock(jan1).BuildWith(ds,
 				map[string]any{"from": "2026-07-01"},
 				Filters{Defs: []definition.Filter{def},
 					Values: map[string]FilterValue{"period": c.value}},

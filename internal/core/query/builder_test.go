@@ -48,7 +48,7 @@ func embedded(customer string) principal.Principal {
 
 func build(t *testing.T, ds definition.Dataset, in map[string]any, pr principal.Principal) Plan {
 	t.Helper()
-	plan, err := NewBuilder(Dollar{}).WithClock(jan1).Build(ds, in, pr)
+	plan, err := NewBuilder(Postgres{}).WithClock(jan1).Build(ds, in, pr)
 	if err != nil {
 		t.Fatalf("build: %v", err)
 	}
@@ -60,7 +60,7 @@ func build(t *testing.T, ds definition.Dataset, in map[string]any, pr principal.
 // else here is decoration.
 func TestValuesNeverReachTheSQL(t *testing.T) {
 	nasty := "2026-07-01' OR '1'='1"
-	_, err := NewBuilder(Dollar{}).WithClock(jan1).Build(invoices(),
+	_, err := NewBuilder(Postgres{}).WithClock(jan1).Build(invoices(),
 		map[string]any{"from": nasty, "to": "2026-07-31"}, embedded("c-9"))
 	if !errors.Is(err, ErrBadArgument) {
 		t.Fatalf("a malformed date should be refused, got %v", err)
@@ -200,8 +200,8 @@ func TestDefaultsAndTheClock(t *testing.T) {
 	}
 }
 
-func TestQuestionPlaceholders(t *testing.T) {
-	plan, err := NewBuilder(Question{}).WithClock(jan1).
+func TestPositionalPlaceholders(t *testing.T) {
+	plan, err := NewBuilder(MySQL{}).WithClock(jan1).
 		Build(invoices(), map[string]any{"from": "2026-07-01"}, embedded("c-9"))
 	if err != nil {
 		t.Fatal(err)

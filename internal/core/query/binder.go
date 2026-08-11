@@ -13,7 +13,7 @@ import (
 // per statement, not per template, and the wrapper's arguments follow the
 // inner query's in the order the text puts them.
 type binder struct {
-	ph     Placeholder
+	ph     Dialect
 	params map[string]any
 	scope  map[string]string
 	// declared is the set of parameter names the dataset actually has. A hole
