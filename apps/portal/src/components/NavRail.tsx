@@ -5,15 +5,21 @@ const NAV: { to: string; label: string; hint: string; icon: IconName }[] = [
   { to: '/', label: 'Reports', hint: 'Run and schedule reports', icon: 'reports' },
   { to: '/data', label: 'Data', hint: 'Sources and datasets', icon: 'data' },
   { to: '/schedules', label: 'Schedules', hint: 'What sends, and when', icon: 'schedules' },
+  { to: '/activity', label: 'Activity', hint: 'What ran, and who got it', icon: 'activity' },
   { to: '/settings', label: 'Settings', hint: 'People and projects', icon: 'settings' },
 ]
 
 /**
- * The four destinations.
+ * The five destinations.
  *
- * Four, not five: there is no Dashboards section because there is no Dashboard
- * artifact. A dashboard is a report whose only output is interactive — see
+ * Five, and none of them Dashboards: there is no Dashboard artifact. A
+ * dashboard is a report whose only output is interactive — see
  * docs/report-format.md.
+ *
+ * Activity sits beside Schedules rather than inside them because a run is not
+ * a property of the schedule that caused it. Somebody asking "did anything
+ * fail last night" is not asking about one schedule, and making them open each
+ * in turn to find out is the question restated as a chore.
  *
  * `collapsed` narrows the rail at md and up only. Below that the rail is a
  * drawer, and a drawer that opens to four unlabelled icons is a worse memory

@@ -28,6 +28,15 @@ type Repository struct {
 	reports   map[string]definition.Report
 	schedules map[string]definition.Schedule
 	sources   map[string]definition.DataSource
+	// raws remembers the document each definition was decoded from, keyed
+	// kind/name.
+	//
+	// Kept rather than discarded because two things need the bytes and neither
+	// can reconstruct them: the content address a run record names, and the
+	// management API answering for a definition no store holds. Re-reading the
+	// file for either would be a syscall per request and would answer nothing
+	// at all for a definition that never came from one.
+	raws map[string][]byte
 	// paths remembers where each definition was read from, keyed kind/name.
 	//
 	// A definitions directory is somebody's git repository and they organised
@@ -42,7 +51,7 @@ func (r *Repository) replace(fresh *Repository) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.datasets, r.reports, r.paths = fresh.datasets, fresh.reports, fresh.paths
-	r.schedules, r.sources = fresh.schedules, fresh.sources
+	r.schedules, r.sources, r.raws = fresh.schedules, fresh.sources, fresh.raws
 }
 
 // Path returns where a definition was read from.
@@ -72,19 +81,46 @@ func (r *Repository) Names(kind string) []string {
 // ErrNotFound means no definition of that kind has that name.
 var ErrNotFound = fmt.Errorf("file: no such definition")
 
+// empty is a repository holding nothing.
+func empty() *Repository {
+	return &Repository{
+		datasets:  map[string]definition.Dataset{},
+		reports:   map[string]definition.Report{},
+		schedules: map[string]definition.Schedule{},
+		sources:   map[string]definition.DataSource{},
+		raws:      map[string][]byte{},
+		paths:     map[string]string{},
+	}
+}
+
+// Adopt replaces everything with the given documents.
+//
+// What a deployment does when a store is authoritative: the directory was the
+// bootstrap, and from then on what runs is what the store holds — including
+// definitions no file ever had, and excluding files somebody deleted through
+// the API.
+//
+// All or nothing. A repository half-replaced by a document that failed to
+// decode would be a server running some definitions from the store and the
+// rest from a directory it was told not to trust.
+func (r *Repository) Adopt(docs [][]byte) error {
+	fresh := empty()
+	for _, raw := range docs {
+		if err := fresh.insert(raw, ""); err != nil {
+			return err
+		}
+	}
+	r.replace(fresh)
+	return nil
+}
+
 // Load reads every .yaml under dir.
 //
 // It fails on the first bad file rather than skipping it. A repository that
 // silently drops a definition it could not parse is one where a report
 // disappears and the only evidence is a line in a startup log nobody read.
 func Load(dir string) (*Repository, error) {
-	r := &Repository{
-		datasets:  map[string]definition.Dataset{},
-		reports:   map[string]definition.Report{},
-		schedules: map[string]definition.Schedule{},
-		sources:   map[string]definition.DataSource{},
-		paths:     map[string]string{},
-	}
+	r := empty()
 	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -140,18 +176,28 @@ func (r *Repository) Apply(raw []byte) error {
 	return r.insert(raw, "")
 }
 
-// Raw returns the bytes a definition was read from, when it came from a file.
+// Raw returns the document a definition was decoded from.
 //
 // What lets the management API answer for a definition the running server is
 // using but no store holds — a directory-bootstrapped deployment, where the
 // alternative is a 404 for a report that plainly renders.
 func (r *Repository) Raw(kind, name string) ([]byte, bool) {
-	path, ok := r.Path(kind, name)
-	if !ok || path == "" {
-		return nil, false
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	raw, ok := r.raws[kind+"/"+name]
+	return raw, ok
+}
+
+// Version is the content address of the definition currently loaded.
+//
+// A run record names one so it can be replayed against exactly the bytes that
+// produced it. "This report" changes; this string does not.
+func (r *Repository) Version(kind, name string) (string, bool) {
+	raw, ok := r.Raw(kind, name)
+	if !ok {
+		return "", false
 	}
-	data, err := os.ReadFile(path)
-	return data, err == nil
+	return Version(raw), true
 }
 
 // insert decodes one document into the maps. The caller holds the lock, or is
@@ -160,6 +206,11 @@ func (r *Repository) insert(data []byte, path string) error {
 	kind, err := codec.Loader{}.Kind(data)
 	if err != nil {
 		return fmt.Errorf("%s: %w", origin(path), err)
+	}
+	// Copied, because the caller owns the slice it handed us and a document
+	// that changed under a run record would defeat the point of addressing it.
+	keep := func(name string) {
+		r.raws[kind+"/"+name] = append([]byte(nil), data...)
 	}
 
 	switch kind {
@@ -170,6 +221,7 @@ func (r *Repository) insert(data []byte, path string) error {
 		}
 		r.datasets[ds.Name] = ds
 		r.paths[kind+"/"+ds.Name] = path
+		keep(ds.Name)
 	case codec.KindReport:
 		rep, err := codec.Loader{}.Report(data)
 		if err != nil {
@@ -177,6 +229,7 @@ func (r *Repository) insert(data []byte, path string) error {
 		}
 		r.reports[rep.Name] = rep
 		r.paths[kind+"/"+rep.Name] = path
+		keep(rep.Name)
 	case codec.KindSchedule:
 		sc, err := codec.Loader{}.Schedule(data)
 		if err != nil {
@@ -184,6 +237,7 @@ func (r *Repository) insert(data []byte, path string) error {
 		}
 		r.schedules[sc.Name] = sc
 		r.paths[kind+"/"+sc.Name] = path
+		keep(sc.Name)
 	case codec.KindDataSource:
 		src, err := codec.Loader{}.DataSource(data)
 		if err != nil {
@@ -191,6 +245,7 @@ func (r *Repository) insert(data []byte, path string) error {
 		}
 		r.sources[src.Name] = src
 		r.paths[kind+"/"+src.Name] = path
+		keep(src.Name)
 	}
 	return nil
 }

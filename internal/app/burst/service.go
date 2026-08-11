@@ -18,6 +18,15 @@ type Reports interface {
 	Report(ctx context.Context, name string) (definition.Report, error)
 }
 
+// Versions resolves the content address of the definition that ran.
+//
+// Separate from Reports because it answers a different question: Reports says
+// what to render, this says which bytes said so. A run record naming a report
+// by name alone is reproducible only until somebody edits it.
+type Versions interface {
+	Version(kind, name string) (string, bool)
+}
+
 // Documents renders one recipient's document from a report.
 //
 // The mapping from a report's paginated layout to a document lives behind this
@@ -52,10 +61,30 @@ type Service struct {
 	recipient Recipients
 	documents Documents
 	channels  map[string]Channel
+	versions  Versions
 	history   Recorder
 	log       *slog.Logger
 	now       func() time.Time
 	sleep     func(context.Context, time.Duration) error
+}
+
+// WithVersions records which definition each run used.
+//
+// Optional, because a deployment can render without a store that addresses
+// anything. Absent, the field is empty rather than a plausible guess: a run
+// record naming the wrong version is worse than one naming none.
+func (s *Service) WithVersions(v Versions) *Service {
+	s.versions = v
+	return s
+}
+
+// versionOf is the content address of the report, or nothing.
+func (s *Service) versionOf(report string) string {
+	if s.versions == nil {
+		return ""
+	}
+	v, _ := s.versions.Version("Report", report)
+	return v
 }
 
 // Recipients reads the rows a burst fans out over.
@@ -95,7 +124,8 @@ func (b *Service) Run(ctx context.Context, s definition.Schedule, run Run,
 	record := history.Run{
 		ID: history.NewID(b.now()), Org: pr.OrgID, Project: pr.ProjectID,
 		Schedule: s.Name, Report: s.Report, Output: s.Output,
-		PeriodStart: run["periodStart"], PeriodEnd: run["periodEnd"],
+		ReportVersion: b.versionOf(s.Report),
+		PeriodStart:   run["periodStart"], PeriodEnd: run["periodEnd"],
 		TriggeredBy: pr.Subject, StartedAt: b.now(), Status: history.Running,
 	}
 	// Written before anything runs. A burst that crashed halfway is exactly the

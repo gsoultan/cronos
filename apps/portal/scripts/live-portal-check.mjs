@@ -154,6 +154,54 @@ ok('and so is a block sort', warned.includes('layout[3].sort'))
 ok('a spec the form never writes is carried, not warned about',
   !warned.includes('spec.filters'))
 
+/* -- Activity: what ran, and who got it ----------------------------------
+   Nothing has run yet, and the page says so rather than showing an empty
+   table that could equally mean a broken query. */
+
+await page.goto(`${B}/activity`, { waitUntil: 'domcontentloaded' })
+await page.locator('text=Activity').first().waitFor({ timeout: 15000 })
+ok('an empty history says nothing has run',
+  (await page.locator('body').innerText()).includes('Nothing has run yet'))
+
+/* Then run one. A monthly schedule is otherwise untestable until the first of
+   the month, and this is the assertion that proves the whole path: the
+   scheduler renders the report, bursts it per customer, delivers each one and
+   records what happened — none of which any unit test covers together. */
+await page.goto(`${B}/schedules`, { waitUntil: 'domcontentloaded' })
+await page.locator('[data-testid=run-now]').first().waitFor({ timeout: 15000 })
+await page.locator('[data-testid=run-now]').first().click()
+await page.locator('[data-testid=run-confirm]').first().click()
+
+await page.locator('[data-testid=runs-card]').waitFor({ timeout: 30000 })
+ok('running a schedule lands on its record', page.url().endsWith('/activity'))
+
+const activity = await page.locator('body').innerText()
+ok('the record names the schedule that ran', activity.includes('monthly-statements'))
+/* The demo bursts one statement per customer, and seed.sql has three. A run
+   that says 1 of 1 would mean the burst did not burst. */
+ok('and how many of how many it delivered',
+  (await page.locator('[data-testid=run-count]').first().innerText()).includes(' of 3'))
+ok('and whether they arrived',
+  ['Delivered', 'failed'].some((s) => activity.includes(s)))
+/* Reproducibility: a run record names the exact definition it ran, because
+   "what did the customer actually receive" is answerable only against those
+   bytes. */
+ok('and the version of the report it ran', /[0-9a-f]{12}/.test(activity))
+
+await page.locator('[data-testid=run-toggle]').first().click()
+/* The list renders as soon as the query resolves, and asserting on it the
+   instant it appears reads whatever React had committed by then. Waiting for
+   the last row is waiting for the answer rather than for the element. */
+await page.locator('[data-testid=run-deliveries] li').nth(2).waitFor({ timeout: 15000 })
+const recipients = await page.locator('[data-testid=run-deliveries]').innerText()
+/* All three, not just the first. A burst that delivered one document is a
+   burst that did not burst. */
+ok('and every recipient it attempted',
+  ['c-1', 'c-2', 'c-3'].every((who) => recipients.includes(who)))
+/* The demo delivers to files, so the destination is a path — whichever channel
+   it is, a delivery record that cannot say where it went is not one. */
+ok('with where each one went', recipients.includes('statement'))
+
 console.log(fails ? `\n${fails} failed` : '\nall passed')
 await browser.close()
 process.exit(fails ? 1 : 0)

@@ -50,6 +50,26 @@ func serve(log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+
+	// The store, opened before anything reads a definition. It doubles as the
+	// run recorder when it is a database; when it is a directory there is
+	// nowhere to write history and records is nil.
+	ctx := context.Background()
+	defs, records, closeStore, err := definitionStore(ctx, cfg, repo, log)
+	if err != nil {
+		return err
+	}
+	defer closeStore()
+
+	// Before the connections are opened, because the store decides which
+	// sources exist: building engines from the directory and then adopting a
+	// different set would leave every dataset pointing at a pool nobody made.
+	if records != nil {
+		if err := reconcile(ctx, defs, repo, cfg.Org, cfg.Project, log); err != nil {
+			return err
+		}
+	}
+
 	engines, closeEngines, err := datasources(cfg, repo, log)
 	if err != nil {
 		return err
@@ -58,16 +78,11 @@ func serve(log *slog.Logger) error {
 
 	runner := run.New(repo, engines)
 
-	// One store, opened before the scheduler so a burst's first run is
-	// recorded. It doubles as the run recorder when it is a database; when it
-	// is a directory there is nowhere to write history and records is nil.
-	defs, records, closeStore, err := definitionStore(context.Background(), cfg, repo, log)
-	if err != nil {
-		return err
-	}
-	defer closeStore()
-
+	// armed answers when each schedule next fires; firing runs one now. Both
+	// are the same service, named apart so a handler is given only the verb it
+	// needs.
 	var armed api.Due
+	var firing api.Firing
 	if cfg.Scheduler {
 		sched, err := scheduler(cfg, repo, runner, records, log)
 		if err != nil {
@@ -75,7 +90,7 @@ func serve(log *slog.Logger) error {
 		}
 		// So the catalogue can say when each schedule next fires, and say
 		// nothing rather than a time nothing will honour when it cannot.
-		armed = sched
+		armed, firing = sched, sched
 		ctx, stop := context.WithCancel(context.Background())
 		defer stop()
 		go func() {
@@ -88,7 +103,7 @@ func serve(log *slog.Logger) error {
 	handler := api.RoutesWith(repo, runner, signer, cfg.Origins, log,
 		publishing(defs, repo, records), defs,
 		api.NewAdminKey(cfg.AdminKey, cfg.Org, cfg.Project), history(records), users(records),
-		repo, armed, cfg.Org, cfg.Project)
+		repo, armed, firing, cfg.Org, cfg.Project)
 
 	datasets, reports, schedules, sources := repo.Counts()
 	log.Info("cronosd listening",

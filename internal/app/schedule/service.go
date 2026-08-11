@@ -278,3 +278,60 @@ func Check(src Source) error {
 	}
 	return nil
 }
+
+// Fire runs one schedule now, as though its time had come.
+//
+// The only way to find out whether a monthly schedule works is to wait for the
+// first of the month, unless something can run it deliberately. That is not a
+// developer convenience: the recipients, the render and the delivery are the
+// parts most likely to be wrong, and discovering it at 06:00 on the 1st is
+// discovering it in front of the customer.
+//
+// It takes the same running lock as a due firing, so a manual run and a
+// scheduled one cannot overlap for the same schedule. What it does not do is
+// change when the schedule next fires: running it now is not a reason to skip
+// the first of the month.
+func (s *Service) Fire(ctx context.Context, name string) error {
+	var found definition.Schedule
+	for _, sched := range s.source.Schedules() {
+		if sched.Name == name {
+			found = sched
+			break
+		}
+	}
+	if found.Name == "" {
+		return fmt.Errorf("%w: %q", ErrNoSchedule, name)
+	}
+
+	plan, err := Parse(found)
+	if err != nil {
+		return err
+	}
+	if !s.hold(name) {
+		return fmt.Errorf("%w: %q is already running", ErrRunning, name)
+	}
+	defer s.unhold(name)
+
+	s.fire(ctx, plan, s.now())
+	return nil
+}
+
+// hold takes the running lock without touching when the schedule is next due.
+func (s *Service) hold(name string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.running[name] {
+		return false
+	}
+	if s.running == nil {
+		s.running = map[string]bool{}
+	}
+	s.running[name] = true
+	return true
+}
+
+func (s *Service) unhold(name string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.running[name] = false
+}

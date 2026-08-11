@@ -253,8 +253,11 @@ export interface Run {
   schedule: string
   report: string
   reportVersion?: string
+  output?: string
   periodStart?: string
   periodEnd?: string
+  /** The scheduler, or the person who asked for it now. */
+  triggeredBy?: string
   startedAt: string
   finishedAt?: string
   recipients: number
@@ -276,6 +279,19 @@ export interface RunDelivery {
   attempts: number
   bytes: number
   error?: string
+}
+
+/**
+ * Runs one schedule now.
+ *
+ * The only way to find out whether a monthly schedule works without waiting
+ * for the first of the month. Accepted rather than completed: a burst of five
+ * thousand documents outlives the request, and what it delivered appears in
+ * the run history rather than in this response.
+ */
+export function runSchedule(name: string) {
+  return call<{ schedule: string; status: string }>(
+    `/v1/schedules/${encodeURIComponent(name)}/run`, { method: 'POST' })
 }
 
 export function readRun(id: string) {

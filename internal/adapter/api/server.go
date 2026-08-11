@@ -16,7 +16,8 @@ import (
 // customer's business.
 func Routes(reports Reports, runner *run.Service, signer *token.Signer,
 	origins []string, log *slog.Logger) http.Handler {
-	return RoutesWith(reports, runner, signer, origins, log, nil, nil, nil, nil, nil, nil, nil, "", "")
+	return RoutesWith(reports, runner, signer, origins, log,
+		nil, nil, nil, nil, nil, nil, nil, nil, "", "")
 }
 
 // RoutesWith adds the management API when an admin key is configured.
@@ -28,7 +29,7 @@ func Routes(reports Reports, runner *run.Service, signer *token.Signer,
 func RoutesWith(reports Reports, runner *run.Service, signer *token.Signer,
 	origins []string, log *slog.Logger,
 	pub *publish.Service, store publish.Store, admin *AdminKey, runs History,
-	users Users, defs Repository, due Due, org, project string) http.Handler {
+	users Users, defs Repository, due Due, fires Firing, org, project string) http.Handler {
 
 	embed := NewEmbed(reports, runner, signer, log)
 	author := NewAuthor(signer, admin)
@@ -70,6 +71,13 @@ func RoutesWith(reports Reports, runner *run.Service, signer *token.Signer,
 		}
 		mux.Handle("/v1/definitions", handler)
 		mux.Handle("/v1/definitions/{kind}/{name}", handler)
+
+		// Only where a scheduler is armed. A deployment that renders on
+		// request has no schedules to fire, and an endpoint that exists only
+		// to say no is one somebody will spend an afternoon probing.
+		if fires != nil {
+			mux.Handle("/v1/schedules/{name}/run", NewSchedules(fires, author, log))
+		}
 
 		// Behind the admin key and never the embed token: a run record names
 		// every recipient of a burst.

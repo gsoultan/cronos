@@ -43,6 +43,12 @@ const dataRoute = createRoute({
   component: lazyRouteComponent(() => import('./routes/DataPage'), 'DataPage'),
 })
 
+const activityRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/activity',
+  component: lazyRouteComponent(() => import('./routes/ActivityPage'), 'ActivityPage'),
+})
+
 /* Editing is its own route rather than a panel, so a definition somebody is
    part-way through changing has a URL — which is what makes it linkable, and
    what makes the browser's back button mean "leave the editor". */
@@ -78,7 +84,7 @@ const schedulesRoute = createRoute({
 
 const routeTree = rootRoute.addChildren([
   indexRoute, newReportRoute, reportRoute, settingsRoute, accountRoute,
-  dataRoute, schedulesRoute,
+  dataRoute, schedulesRoute, activityRoute,
   editReportRoute, editDatasetRoute, editSourceRoute, editScheduleRoute,
 ])
 

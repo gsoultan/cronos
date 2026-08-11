@@ -7,6 +7,7 @@ import (
 
 	alertemail "github.com/gsoultan/cronos/internal/adapter/alert/email"
 	"github.com/gsoultan/cronos/internal/adapter/api"
+	codec "github.com/gsoultan/cronos/internal/adapter/codec/yaml"
 	emailchannel "github.com/gsoultan/cronos/internal/adapter/deliver/email"
 	filechannel "github.com/gsoultan/cronos/internal/adapter/deliver/file"
 	s3channel "github.com/gsoultan/cronos/internal/adapter/deliver/s3"
@@ -77,7 +78,11 @@ func scheduler(cfg config.Server, repo *file.Repository, runner *run.Service,
 
 	statements := run.NewStatements(runner, paginated.New(paginated.TypstCLI{})).
 		WithWorkbooks(spreadsheet.New())
-	bursts := burst.New(repo, recipients{runner}, statements, log, chans...)
+	bursts := burst.New(repo, recipients{runner}, statements, log, chans...).
+		// The repository, because it holds what is running rather than what was
+		// last published — and the run record must name the bytes that produced
+		// the document, not the ones somebody stored a moment later.
+		WithVersions(repo)
 	if records != nil {
 		bursts = bursts.WithHistory(records)
 	}
@@ -192,4 +197,84 @@ func publishing(store publish.Store, repo *file.Repository, records *sqlstore.St
 		svc = svc.WithLive(repo)
 	}
 	return svc
+}
+
+// reconcile settles which of the definitions directory and the store is the
+// truth, and says so at startup.
+//
+// The store, once it holds anything. A definition edited in the portal must
+// not be reverted by the next deploy, and a definition deleted through the API
+// must not come back because its file is still on disk — both of which are
+// what consulting the directory every boot would do.
+//
+// An empty store adopts the directory whole. That is how a project starts:
+// somebody's YAML in git, published once, and from then on the store is where
+// changes land. Nothing here runs for a file-backed deployment, where the
+// directory is the store and the question does not arise.
+func reconcile(ctx context.Context, store publish.Store, repo *file.Repository,
+	org, project string, log *slog.Logger) error {
+
+	// Acting as the deployment rather than as a person: this is the process
+	// adopting its own configuration, and there is no user to attribute it to.
+	pr := principal.Principal{
+		Subject: "cronosd", OrgID: org, ProjectID: project,
+		ProjectRole: principal.ProjectEditor, Member: true,
+	}
+
+	stored, err := store.List(ctx, pr)
+	if err != nil {
+		return fmt.Errorf("reading the definition store: %w", err)
+	}
+
+	if len(stored) == 0 {
+		seeded, err := adoptDirectory(ctx, store, repo, pr)
+		if err != nil {
+			return err
+		}
+		log.Info("definitions", "authority", "store", "seeded", seeded,
+			"from", "the definitions directory")
+		return nil
+	}
+
+	docs := make([][]byte, 0, len(stored))
+	for _, e := range stored {
+		raw, err := store.Get(ctx, pr, e.Kind, e.Name)
+		if err != nil {
+			return fmt.Errorf("reading %s %q: %w", e.Kind, e.Name, err)
+		}
+		docs = append(docs, raw)
+	}
+	if err := repo.Adopt(docs); err != nil {
+		return fmt.Errorf("adopting the stored definitions: %w", err)
+	}
+	// Stated rather than left to be discovered by somebody who edited a file
+	// and could not work out why nothing changed.
+	log.Info("definitions", "authority", "store", "loaded", len(docs),
+		"directory", "not consulted")
+	return nil
+}
+
+// adoptDirectory copies the directory into an empty store.
+func adoptDirectory(ctx context.Context, store publish.Store, repo *file.Repository,
+	pr principal.Principal) (int, error) {
+
+	var n int
+	// Sources before datasets before reports before schedules, so a store that
+	// fails part way through holds a prefix that resolves rather than a report
+	// pointing at a dataset nothing put there.
+	for _, kind := range []string{
+		codec.KindDataSource, codec.KindDataset, codec.KindReport, codec.KindSchedule,
+	} {
+		for _, name := range repo.Names(kind) {
+			raw, ok := repo.Raw(kind, name)
+			if !ok {
+				continue
+			}
+			if _, err := store.Put(ctx, pr, kind, name, raw); err != nil {
+				return n, fmt.Errorf("seeding %s %q: %w", kind, name, err)
+			}
+			n++
+		}
+	}
+	return n, nil
 }

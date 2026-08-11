@@ -66,6 +66,14 @@ the caller's identity, never from an argument. The file store holds one project
 and refuses a principal acting anywhere else, rather than serving it to whoever
 asks.
 
+With both configured, the store is the truth once it holds anything, and the
+directory is the bootstrap: an empty store adopts it whole, and from then on
+what runs is what the store holds. That is what makes editing in the portal
+safe — an edit is not reverted by the next deploy, and a definition deleted
+through the API does not come back because its file is still on disk. The
+startup log says which happened, so a file you changed and a server that
+ignored it is a line you can read rather than a mystery.
+
 The SQL store runs against both, and is tested against both. SQLite for the
 logic — tenancy, versioning, history — and a real Postgres in CI for what
 SQLite cannot show: `BLOB` is not a type Postgres has, a boolean column
