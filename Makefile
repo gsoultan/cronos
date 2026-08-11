@@ -2,6 +2,7 @@
 
 PORTAL := apps/portal
 EMBED  := packages/embed
+REACT  := packages/react
 GO     := go
 
 .DEFAULT_GOAL := help
@@ -29,6 +30,7 @@ build: ## Build both binaries and the portal
 	$(GO) build -o bin/cronosd-ee ./cmd/cronosd-ee
 	cd $(PORTAL) && bun run build
 	cd $(EMBED) && bun run build
+	cd $(REACT) && bun run build
 
 check: ## Everything CI runs — build, vet, test, boundary, typecheck, lint, budgets
 	$(GO) build ./...
@@ -38,6 +40,7 @@ check: ## Everything CI runs — build, vet, test, boundary, typecheck, lint, bu
 	@./scripts/check-license-boundary.sh
 	cd $(PORTAL) && bun run check
 	cd $(EMBED) && bun run check
+	cd $(REACT) && bun run check
 
 test: ## Run Go tests
 	$(GO) test ./...
@@ -49,6 +52,7 @@ pdf: ## Render a sample statement to /tmp/statement.pdf and open it
 lint: ## Lint the portal and the embed package
 	cd $(PORTAL) && bun run lint
 	cd $(EMBED) && bun run lint
+	cd $(REACT) && bun run lint
 
 fmt: ## Format Go sources
 	$(GO) fmt ./...
@@ -58,10 +62,11 @@ boundary: ## Verify no BSL artifact depends on ee/
 
 ui: ## Run every browser suite against a running portal (make dev-web first)
 	cd $(PORTAL) && bun run build && bun run verify
-	cd $(EMBED) && bun run build && bun run embed
+	cd $(EMBED) && bun run build && bun run embed && bun run vue
+	cd $(REACT) && bun run react
 
 shots: ## Drive the portal in headless Chrome and write screenshots
 	cd $(PORTAL) && bun run shots
 
 clean: ## Remove build output
-	rm -rf bin $(EMBED)/dist $(PORTAL)/dist $(PORTAL)/dev-dist $(PORTAL)/shots
+	rm -rf bin $(REACT)/dist $(EMBED)/dist $(EMBED)/harness/*.js $(REACT)/harness/*.js $(PORTAL)/dist $(PORTAL)/dev-dist $(PORTAL)/shots

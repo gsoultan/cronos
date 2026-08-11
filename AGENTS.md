@@ -111,10 +111,17 @@ Do not add a pattern that is not solving a problem named here.
 
 ### Two artifacts, non-negotiable
 
-PWA and embedding are in tension: service workers are restricted in cross-origin
-iframes, and ISV customers will not accept a Mantine-sized payload in their app.
+PWA and embedding are in tension: ISV customers will not accept a Mantine-sized
+payload in their application, and the host is a client-side SPA — React built
+with Vite, Vue, and so on — not a server-rendered framework.
 
-| | `apps/portal` | `packages/embed` |
+**There is no iframe path.** An iframe is third-party HTML in a browsing
+context: clickjacking, navigation escapes without a strict `sandbox`, storage
+partitioning that breaks auth, and `postMessage` to get wrong. Embedding is a
+custom element in a shadow root, with `@cronos/react` for the one framework
+that needs a wrapper.
+
+| | `apps/portal` | `packages/embed` (+ `packages/react`) |
 | :--- | :--- | :--- |
 | Audience | Report authors, internal users | Our customers' end users |
 | Stack | React 19.2+, Mantine 9, TanStack Router/Query/Form | Web component, framework-agnostic |

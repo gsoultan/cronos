@@ -13,8 +13,22 @@ export type {
  * otherwise throw on the second, and the failure would land in our customer's
  * console with our name on it.
  */
-const TAG = 'cronos-report'
-if (!customElements.get(TAG)) customElements.define(TAG, CronosReport)
+export const TAG = 'cronos-report'
+
+/**
+ * Registers the element. Importing this package calls it; a host that controls
+ * its own timing can call it again harmlessly.
+ *
+ * Returns silently on a server. Nothing to register there, and throwing would
+ * turn "I imported a reporting widget" into a 500 on a page that never
+ * rendered one.
+ */
+export function register(): void {
+  if (typeof customElements === 'undefined') return
+  if (!customElements.get(TAG)) customElements.define(TAG, CronosReport)
+}
+
+register()
 
 declare global {
   interface HTMLElementTagNameMap {

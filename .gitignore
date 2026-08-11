@@ -2,6 +2,7 @@ bin/
 dist/
 node_modules/
 shots/
+packages/*/harness/*.js
 
 # Local env overrides
 .env

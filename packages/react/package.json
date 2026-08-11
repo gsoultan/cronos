@@ -1,0 +1,44 @@
+{
+  "name": "@cronos/react",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./dist/cronos-react.js",
+  "module": "./dist/cronos-react.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/cronos-react.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "vite build && tsc -p tsconfig.build.json",
+    "check": "tsc --noEmit && oxlint src && bun run build && node scripts/size-check.mjs",
+    "size": "vite build && node scripts/size-check.mjs",
+    "react": "bun run build && bun run harness && node scripts/react-check.mjs",
+    "lint": "oxlint src",
+    "harness": "bun build harness/app.tsx --outfile harness/app.js"
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "react-dom": ">=18"
+  },
+  "dependencies": {
+    "@cronos/embed": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^5.1.0",
+    "oxlint": "^1.78.0",
+    "playwright": "^1.56.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "typescript": "~7.0.2",
+    "vite": "^8.2.1"
+  }
+}

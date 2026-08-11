@@ -62,7 +62,7 @@ echo
 echo "Dependencies"
 (cd "$ROOT" && go mod download) && printf '%s go modules\n' "$OK"
 (cd "$PORTAL" && bun install >/dev/null 2>&1) && printf '%s portal packages\n' "$OK"
-(cd "$ROOT/packages/embed" && bun install >/dev/null 2>&1) && printf '%s embed packages\n' "$OK"
+(cd "$ROOT" && bun install >/dev/null 2>&1) && printf '%s embed + react packages\n' "$OK"
 
 echo
 echo "Verifying"
@@ -71,6 +71,7 @@ echo "Verifying"
 (cd "$ROOT" && ./scripts/check-license-boundary.sh >/dev/null) && printf '%s license boundary\n' "$OK"
 (cd "$PORTAL" && bunx tsc --noEmit) && printf '%s portal typecheck\n' "$OK"
 (cd "$ROOT/packages/embed" && bunx tsc --noEmit) && printf '%s embed typecheck\n' "$OK"
+(cd "$ROOT/packages/react" && bunx tsc --noEmit) && printf '%s react typecheck\n' "$OK"
 
 echo
 echo "Ready. Run:  make dev"

@@ -1,0 +1,6 @@
+{
+  "name": "cronos",
+  "private": true,
+  "workspaces": ["packages/*"],
+  "//": "packages/* only. apps/portal keeps its own install: it has a different toolchain surface (Mantine, Tailwind, TanStack) and hoisting it here would couple two dependency graphs that have no reason to agree."
+}

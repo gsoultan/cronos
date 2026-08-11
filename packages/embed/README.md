@@ -60,12 +60,39 @@ means there is no escaping to get right, rather than escaping that is currently
 right. `embed-check.mjs` renders an `onerror` payload as a customer name and
 asserts it stayed text.
 
-## Shadow DOM, not an iframe
+## Shadow DOM, and no iframe anywhere
 
-An iframe is the easy isolation, and it cannot size itself to its content,
-cannot inherit a host's theme, and makes every report a scrollbar inside a
-page. A shadow root gives the same style isolation with none of that: the
-host's `.panel { display: none }` cannot reach in, and nothing here leaks out.
+There is no iframe path, and there will not be one. An iframe is third-party
+HTML in a browsing context — a program, not a document — and it brings
+clickjacking, top-level navigation escapes without a strict `sandbox`, storage
+partitioning that quietly breaks auth, and `postMessage` as a surface to get
+wrong. It also cannot size itself to its content, cannot inherit a host's
+theme, and makes every report a scrollbar inside a page.
+
+A shadow root gives the style isolation with none of that: the host's
+`.panel { display: none }` cannot reach in, and nothing here leaks out. The
+browser check loads the component into a host page that sets exactly that and
+asserts we survive it.
+
+## Framework support
+
+The element is the API. It is a standard custom element, so it works wherever
+custom elements do:
+
+| Host | What is needed | Checked by |
+| :--- | :--- | :--- |
+| **React** | `@cronos/react` — a wrapper for properties, custom events and types | `packages/react`, in a real client SPA |
+| **Vue 3** | Nothing. Add `isCustomElement` if you use templates rather than `h()` | `bun run vue` |
+| **Angular** | `CUSTOM_ELEMENTS_SCHEMA` on the module | — |
+| **Svelte** | Nothing | — |
+| **Plain HTML** | Nothing | `bun run embed` |
+
+React is the one that needs a wrapper, and only for three things: `filters` is
+a property rather than an attribute, custom events have no React equivalent in
+any version, and JSX needs to be told the tag exists. Vue's runtime already
+sets a property when the element has one — `vue-check.mjs` asserts it arrives
+structured rather than as `[object Object]`, because that is the difference
+between "should work" and "does work".
 
 ## Theming
 

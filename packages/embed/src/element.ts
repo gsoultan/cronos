@@ -7,9 +7,30 @@ import { barBlock } from './blocks/bar'
 import { tableBlock } from './blocks/table'
 import type { Block, FilterDef, FilterValues, ReportPayload } from './types'
 
+/*
+ * Nothing here runs at import time.
+ *
+ * A React host is usually a React *framework* host — Next.js, Remix — and the
+ * module graph is evaluated on a server where there is no HTMLElement and no
+ * CSSStyleSheet. `class X extends undefined` throws while the page is being
+ * rendered, so importing this package would break a route that had not even
+ * mounted the component yet. The stand-in below is never instantiated;
+ * registration is guarded separately.
+ */
+const Base: typeof HTMLElement =
+  typeof HTMLElement === 'undefined'
+    ? (class {} as unknown as typeof HTMLElement)
+    : HTMLElement
+
 /** Constructed once and adopted by every instance, rather than parsed per element. */
-const sheet = new CSSStyleSheet()
-sheet.replaceSync(css)
+let sheet: CSSStyleSheet | undefined
+function styles(): CSSStyleSheet {
+  if (!sheet) {
+    sheet = new CSSStyleSheet()
+    sheet.replaceSync(css)
+  }
+  return sheet
+}
 
 /**
  * `<cronos-report endpoint token report>`.
@@ -19,18 +40,19 @@ sheet.replaceSync(css)
  * it makes every report a scrollbar inside a page. A shadow root gives the
  * same style isolation with none of that.
  */
-export class CronosReport extends HTMLElement {
+export class CronosReport extends Base {
   static observedAttributes = ['endpoint', 'token', 'report']
 
   #root = this.attachShadow({ mode: 'open' })
   #body = el('div', { class: 'grid', part: 'grid' })
   #filters: FilterValues = {}
+  #filterKey = '{}'
   #inflight: AbortController | null = null
   /** Connected is tracked so an attribute set before insertion does not fetch. */
   #live = false
 
   connectedCallback() {
-    this.#root.adoptedStyleSheets = [sheet]
+    this.#root.adoptedStyleSheets = [styles()]
     fill(this.#root, this.#body)
     this.#live = true
     void this.load()
@@ -59,6 +81,14 @@ export class CronosReport extends HTMLElement {
   }
 
   set filters(next: FilterValues) {
+    /* Compared by value, not identity. Every framework re-creates an inline
+       object on each render — `filters={{ status: … }}` in React,
+       `:filters="{ … }"` in Vue — so an identity check here would refetch on
+       every keystroke elsewhere on the host's page, forever. Use load() to
+       force a refresh. */
+    const key = JSON.stringify(next ?? {})
+    if (key === this.#filterKey) return
+    this.#filterKey = key
     this.#filters = next ?? {}
     if (this.#live) void this.load()
   }
