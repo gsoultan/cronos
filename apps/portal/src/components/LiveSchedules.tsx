@@ -1,3 +1,4 @@
+import { Link } from '@tanstack/react-router'
 import { Tag } from './StatusPill'
 import { EmptyState } from './EmptyState'
 import type { ScheduleSummary } from '../lib/api'
@@ -26,7 +27,7 @@ export function LiveSchedules({ schedules }: { schedules: ScheduleSummary[] }) {
         {schedules.map((s) => (
           <li key={s.name} className={ROW}>
             <span className="grid min-w-[220px] flex-1 gap-0.5">
-              <span className="font-semibold text-ink">{s.name}</span>
+              <span className="font-semibold text-ink">{s.title || s.name}</span>
               <span className="text-small text-ink-secondary">
                 {s.description ?? `${s.report} · ${s.output}`}
               </span>
@@ -49,6 +50,11 @@ export function LiveSchedules({ schedules }: { schedules: ScheduleSummary[] }) {
                 dateStyle: 'medium', timeStyle: 'short',
               })}` : 'not scheduled here'}
             </span>
+
+            <Link to="/schedules/$name/edit" params={{ name: s.name }}
+              className="ml-auto shrink-0 text-small text-ink-muted underline hover:text-ink">
+              Edit
+            </Link>
           </li>
         ))}
       </ul>

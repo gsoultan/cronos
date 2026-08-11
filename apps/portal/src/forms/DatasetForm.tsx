@@ -9,6 +9,10 @@ import { SqlView } from '../components/query/SqlView'
 import { FieldsEditor } from './FieldsEditor'
 import { DataTable } from '../components/DataTable'
 import { emptyQuery, fieldsFromQuery, toSql, type QueryModel } from '../lib/queryModel'
+import { dataset, withCarry, type DatasetInput, type Loaded } from '../lib/definitions'
+import { usePublish } from '../lib/usePublish'
+import { PublishError } from '../components/form/PublishError'
+import { UnmodelledWarning } from '../components/form/UnmodelledWarning'
 import { sampleRows } from '../lib/sampleRows'
 import type { Field as FieldDef } from '../lib/types'
 import { required, slug, toSlug } from '../lib/validators'
@@ -16,6 +20,8 @@ import { required, slug, toSlug } from '../lib/validators'
 interface Props {
   onDone: () => void
   onCancel: () => void
+  /** An existing dataset to edit. Absent means a new one. */
+  initial?: Loaded<DatasetInput>
 }
 
 type Tab = 'query' | 'fields' | 'security'
@@ -37,22 +43,38 @@ const SOURCES = [
  * security — so that everything downstream inherits it instead of restating it.
  * See docs/report-format.md.
  */
-export function DatasetForm({ onDone, onCancel }: Props) {
+export function DatasetForm({ onDone, onCancel, initial }: Props) {
+  const stored = initial?.input
   /* Once someone edits the API name, typing in Name must stop
      overwriting it — silently discarding a deliberate edit. */
   const [slugEdited, setSlugEdited] = useState(false)
   const [tab, setTab] = useState<Tab>('query')
-  const [mode, setMode] = useState<Mode>('visual')
+  /* Editing opens in SQL, because the visual model cannot be recovered from
+     arbitrary SQL and a builder showing an empty canvas over a real query
+     would be lying about what the dataset does. */
+  const [mode, setMode] = useState<Mode>(stored ? 'sql' : 'visual')
   const [query, setQuery] = useState<QueryModel>(emptyQuery)
-  const [rawSql, setRawSql] = useState('')
+  const [rawSql, setRawSql] = useState(stored?.query ?? '')
   /* Author edits, kept separately so regenerating the query does not wipe the
      labels somebody has already fixed. */
   const [overrides, setOverrides] = useState<Record<string, Partial<FieldDef>>>({})
-  const [rls, setRls] = useState('')
+  const [rls, setRls] = useState(stored?.predicate ?? '')
+
+  const { publish, error: publishError, busy } = usePublish()
 
   const form = useForm({
-    defaultValues: { name: '', slug: '', description: '', source: 'warehouse' },
-    onSubmit: async () => { onDone() },
+    defaultValues: {
+      name: stored?.name ?? '', slug: stored?.slug ?? '',
+      description: stored?.description ?? '', source: stored?.source ?? 'warehouse',
+    },
+    onSubmit: async ({ value }) => {
+      const saved = await publish(withCarry(dataset({
+        name: value.name, slug: value.slug, description: value.description,
+        source: value.source, query: mode === 'sql' ? rawSql : generated,
+        fields, predicate: rls,
+      }), initial))
+      if (saved) onDone()
+    },
   })
   const values = useStore(form.store, (s) => s.values)
 
@@ -61,13 +83,17 @@ export function DatasetForm({ onDone, onCancel }: Props) {
   /* Derived from the query, then layered with whatever the author has renamed
      or reclassified — regenerating the query must not discard those edits. */
   const fields: FieldDef[] = useMemo(() => {
-    const derived = fieldsFromQuery(query)
+    // A loaded dataset has no visual model, so its fields come from the file
+    // it was read from — and stay editable, because overrides layer over both.
+    const derived = stored && query.columns.length === 0
+      ? stored.fields.map((f) => ({ ...f }))
+      : fieldsFromQuery(query)
     for (const f of derived) {
       const edit = overrides[f.name]
       if (edit) Object.assign(f, edit)
     }
     return derived
-  }, [query, overrides])
+  }, [query, overrides, stored])
 
   const preview = useMemo(() => sampleRows(fields.slice(0, 7)), [fields])
 
@@ -123,6 +149,7 @@ export function DatasetForm({ onDone, onCancel }: Props) {
                   <IdentifierField value={f.state.value} onBlur={f.handleBlur}
                       error={fieldError(f.state.meta)} 
                       usedFor="Reports point at this name when they say which dataset they read."
+                      fixed={!!stored}
                       onChange={(v) => { setSlugEdited(true); f.handleChange(v) }} />
                 )}
               </form.Field>
@@ -277,10 +304,13 @@ export function DatasetForm({ onDone, onCancel }: Props) {
         </section>
       </div>
 
+      <UnmodelledWarning paths={initial?.drops} />
+      <PublishError message={publishError} />
+
       <form.Subscribe selector={(s) => [s.isSubmitting] as const}>
         {([isSubmitting]) => (
-          <FormActions canSubmit={ready} isSubmitting={isSubmitting}
-            submitLabel="Create dataset" onCancel={onCancel}
+          <FormActions canSubmit={ready} isSubmitting={isSubmitting || busy}
+            submitLabel={stored ? 'Save dataset' : 'Create dataset'} onCancel={onCancel}
             hint={ready
               ? `${fields.filter((f) => !f.hidden).length} fields will be available to reports.`
               : 'Name the dataset and return at least one column to continue.'} />

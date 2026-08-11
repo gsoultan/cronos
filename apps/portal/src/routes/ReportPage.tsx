@@ -168,7 +168,20 @@ function ServerReport({ name, query }: { name: string; query: ReturnType<typeof 
   return (
     <>
       <PageHeader eyebrow={name} title={query.data.title}
-        description={query.data.description} />
+        description={query.data.description}
+        /* Here and not in the sample branch: editing loads the stored
+           definition, and a sample report has none — an Edit button there
+           would open a form claiming to change something that exists only in
+           this browser tab.
+
+           renderRoot rather than `component={Link}`: the polymorphic prop
+           erases the router's path types, and `params` stops being checked
+           against the route it belongs to. */
+        actions={
+          <Button variant="default" renderRoot={(props) => (
+            <Link to="/reports/$name/edit" params={{ name }} {...props} />
+          )}>Edit</Button>
+        } />
       <LiveReport view={query.data} />
     </>
   )

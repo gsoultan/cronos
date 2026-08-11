@@ -6,7 +6,11 @@ package definition
 // obligation: somebody's invoices go out on the first of the month because
 // this file says so.
 type Schedule struct {
-	Name        string `json:"name" yaml:"name"`
+	Name string `json:"name" yaml:"name"`
+	// Title is what a person calls it. The name is an identifier — stable,
+	// referenced by other definitions, awkward to change once anything points
+	// at it — and those are two different jobs for one string to hold.
+	Title       string `json:"title,omitempty" yaml:"title,omitempty"`
 	Description string `json:"description,omitempty" yaml:"description,omitempty"`
 	// Report and Output name what to render.
 	Report string `json:"report" yaml:"report"`
@@ -25,3 +29,11 @@ type Schedule struct {
 
 // Bursts reports whether this schedule fans out per row.
 func (s Schedule) Bursts() bool { return s.Burst != nil && s.Burst.Over.Dataset != "" }
+
+// Heading is what a catalog puts in the list.
+func (s Schedule) Heading() string {
+	if s.Title != "" {
+		return s.Title
+	}
+	return s.Name
+}

@@ -12,6 +12,12 @@ interface Props {
   prefix?: string
   /** One line: who points at this. */
   usedFor: string
+  /**
+   * Editing an existing definition, where the name is not a field but the
+   * choice of what gets overwritten. Changing it would publish a second
+   * definition and leave the first, which is never what "rename" meant.
+   */
+  fixed?: boolean
 }
 
 /**
@@ -26,8 +32,20 @@ interface Props {
  * actually appear, and the consequence of changing it is stated at the moment
  * of changing it rather than in help text nobody reads beforehand.
  */
-export function IdentifierField({ value, onChange, onBlur, error, prefix, usedFor }: Props) {
+export function IdentifierField(
+  { value, onChange, onBlur, error, prefix, usedFor, fixed }: Props,
+) {
   const [open, setOpen] = useState(false)
+
+  if (fixed) {
+    return (
+      <div className="flex items-baseline gap-2 text-caption">
+        <span className="shrink-0 text-ink-muted">API name</span>
+        <code className="min-w-0 truncate font-mono text-ink-secondary" title={value}>{value}</code>
+        <span className="ml-auto shrink-0 text-ink-muted">fixed</span>
+      </div>
+    )
+  }
 
   // A validation error must never be hidden behind a disclosure.
   if (!open && !error) {

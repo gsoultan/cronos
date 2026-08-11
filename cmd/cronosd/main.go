@@ -16,7 +16,6 @@ import (
 
 	"github.com/gsoultan/cronos/internal/adapter/api"
 	"github.com/gsoultan/cronos/internal/adapter/store/file"
-	"github.com/gsoultan/cronos/internal/app/publish"
 	"github.com/gsoultan/cronos/internal/app/run"
 	"github.com/gsoultan/cronos/internal/extension"
 	"github.com/gsoultan/cronos/internal/platform/config"
@@ -87,9 +86,9 @@ func serve(log *slog.Logger) error {
 	}
 
 	handler := api.RoutesWith(repo, runner, signer, cfg.Origins, log,
-		publish.New(defs, repo).WithReports(repo), defs,
+		publishing(defs, repo, records), defs,
 		api.NewAdminKey(cfg.AdminKey, cfg.Org, cfg.Project), history(records), users(records),
-		repo, armed)
+		repo, armed, cfg.Org, cfg.Project)
 
 	datasets, reports, schedules, sources := repo.Counts()
 	log.Info("cronosd listening",

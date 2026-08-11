@@ -7,7 +7,11 @@ package definition
 // the governance: row scope, parameter types and field semantics are declared
 // once here rather than re-argued in every report.
 type Dataset struct {
-	Name        string `json:"name" yaml:"name"`
+	Name string `json:"name" yaml:"name"`
+	// Title is what a person calls it. The name is an identifier — stable,
+	// referenced by other definitions, awkward to change once anything points
+	// at it — and those are two different jobs for one string to hold.
+	Title       string `json:"title,omitempty" yaml:"title,omitempty"`
 	Description string `json:"description,omitempty" yaml:"description,omitempty"`
 	// Sources are the datasources the query may reference, and what it calls
 	// them.
@@ -39,4 +43,12 @@ func (d Dataset) Field(name string) (Field, bool) {
 		}
 	}
 	return Field{}, false
+}
+
+// Heading is what a catalog puts in the list.
+func (d Dataset) Heading() string {
+	if d.Title != "" {
+		return d.Title
+	}
+	return d.Name
 }

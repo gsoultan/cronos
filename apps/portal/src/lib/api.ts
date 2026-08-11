@@ -286,6 +286,8 @@ export function readRun(id: string) {
 
 export interface SourceSummary {
   name: string
+  /** What a person calls it. The name is the identifier. */
+  title?: string
   description?: string
   driver: string
   detail?: string
@@ -297,6 +299,8 @@ export interface SourceSummary {
 
 export interface DatasetSummary {
   name: string
+  /** What a person calls it. The name is the identifier. */
+  title?: string
   description?: string
   sources: string[]
   fields: number
@@ -317,6 +321,8 @@ export interface ReportSummary {
 
 export interface ScheduleSummary {
   name: string
+  /** What a person calls it. The name is the identifier. */
+  title?: string
   description?: string
   report: string
   output: string

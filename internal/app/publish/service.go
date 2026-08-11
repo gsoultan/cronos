@@ -24,16 +24,34 @@ type Reports interface {
 	Report(ctx context.Context, name string) (definition.Report, error)
 }
 
+// Live is the running view of the definitions, when storing is not enough to
+// change it.
+//
+// A file-backed store rewrites the file and reloads the directory it was read
+// from, so it needs nothing here. A database-backed one has no file to
+// rewrite: without this, a published definition would be in the store and in
+// the catalogue while every run kept using what the process read at startup.
+type Live interface {
+	Apply(raw []byte) error
+}
+
 // Service validates and stores definitions.
 type Service struct {
 	store    Store
 	datasets Datasets
 	reports  Reports
+	live     Live
 }
 
 // New wires a Service. The repository satisfies both lookups, so callers pass
 // it once.
 func New(s Store, d Datasets) *Service { return &Service{store: s, datasets: d} }
+
+// WithLive makes a publish take effect without a restart.
+func (s *Service) WithLive(l Live) *Service {
+	s.live = l
+	return s
+}
 
 // WithReports lets schedules be checked against the reports they run.
 func (s *Service) WithReports(r Reports) *Service {
@@ -60,6 +78,17 @@ func (s *Service) Publish(ctx context.Context, raw []byte, pr principal.Principa
 	version, err := s.store.Put(ctx, pr, kind, name, raw)
 	if err != nil {
 		return Result{}, err
+	}
+
+	// After the store, not before: a document that failed to store must not be
+	// the one the next request runs. It has already been decoded twice by now,
+	// so a failure here is not a bad document — it is the running view being
+	// unable to hold a document the store accepted, and reporting success
+	// would leave the two disagreeing with nobody told.
+	if s.live != nil {
+		if err := s.live.Apply(raw); err != nil {
+			return Result{}, fmt.Errorf("publish: stored, but not live: %w", err)
+		}
 	}
 	return Result{Kind: kind, Name: name, Version: version}, nil
 }

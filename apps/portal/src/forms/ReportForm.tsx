@@ -1,4 +1,8 @@
 import { useState } from 'react'
+import { report, withCarry, type Loaded, type ReportInput } from '../lib/definitions'
+import { usePublish } from '../lib/usePublish'
+import { PublishError } from '../components/form/PublishError'
+import { UnmodelledWarning } from '../components/form/UnmodelledWarning'
 import { useForm, useStore } from '@tanstack/react-form'
 import { Button, Select, Textarea, TextInput } from '@mantine/core'
 import { Field, fieldError } from '../components/form/Field'
@@ -16,10 +20,39 @@ import { useFocusMode } from '../lib/useSidebar'
 interface Props {
   onDone: () => void
   onCancel: () => void
+  /** An existing report to edit. Absent means a new one. */
+  initial?: Loaded<ReportInput>
 }
 
 let seq = 0
 const nextId = () => `b${++seq}`
+
+const KINDS = new Set<string>(['stat', 'bar', 'line', 'table'])
+
+/**
+ * A loaded report's blocks, as tiles the canvas can draw.
+ *
+ * Span is not in the file format — layout is the renderer's business, and a
+ * report that pinned column counts would render badly in every width it was
+ * not authored at. So a reopened block takes the span its kind is created
+ * with, the same as a new one.
+ */
+function tiles(blocks: ReportInput['blocks']): Tile[] {
+  return blocks.map((b) => {
+    const kind = (KINDS.has(b.kind) ? b.kind : 'bar') as TileKind
+    return {
+      id: nextId(),
+      kind,
+      title: b.title ?? '',
+      span: kind === 'stat' ? 3 : kind === 'table' ? 12 : 6,
+      dataset: b.dataset,
+      field: b.field,
+      groupBy: b.groupBy,
+      aggregate: b.aggregate as Tile['aggregate'],
+      columns: b.columns,
+    }
+  })
+}
 
 /**
  * The report editor: palette, canvas, inspector.
@@ -32,7 +65,8 @@ const nextId = () => `b${++seq}`
  * with nothing selected the panel is the report, with a block selected it is
  * the block. One panel, never two, and the canvas keeps the rest.
  */
-export function ReportForm({ onDone, onCancel }: Props) {
+export function ReportForm({ onDone, onCancel, initial }: Props) {
+  const stored = initial?.input
   /* Once someone edits the API name, typing in Name must stop
      overwriting it — silently discarding a deliberate edit. */
   const [slugEdited, setSlugEdited] = useState(false)
@@ -40,13 +74,32 @@ export function ReportForm({ onDone, onCancel }: Props) {
      184px more than the navigation does. The preference itself is untouched. */
   useFocusMode()
 
-  const [blocks, setBlocks] = useState<Tile[]>([])
+  const [blocks, setBlocks] = useState<Tile[]>(() => tiles(stored?.blocks ?? []))
   const [outputs, setOutputs] = useState<string[]>(['interactive'])
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
+  const { publish, error: publishError, busy } = usePublish()
+
   const form = useForm({
-    defaultValues: { name: '', slug: '', description: '', folder: 'Finance', dataset: '' },
-    onSubmit: async () => { onDone() },
+    defaultValues: {
+      name: stored?.name ?? '', slug: stored?.slug ?? '',
+      description: stored?.description ?? '', folder: stored?.folder ?? 'Finance',
+      dataset: stored?.dataset ?? '',
+    },
+    onSubmit: async ({ value }) => {
+      const saved = await publish(withCarry(report({
+        name: value.name, slug: value.slug, description: value.description,
+        folder: value.folder, dataset: value.dataset, output: stored?.output,
+        // The builder's own vocabulary, translated in one place — see
+        // definitions.ts. A block that is a "bar" here is a chart there.
+        blocks: blocks.map((b) => ({
+          kind: b.kind, title: b.title, dataset: b.dataset,
+          field: b.field, groupBy: b.groupBy, aggregate: b.aggregate,
+          columns: b.columns,
+        })),
+      }), initial))
+      if (saved) onDone()
+    },
   })
 
   /* Subscribe, do not read. `form.state` is a snapshot: reading it in the
@@ -131,7 +184,9 @@ export function ReportForm({ onDone, onCancel }: Props) {
               : 'Name it, pick a dataset, add a block'}
           </span>
           <Button variant="default" onClick={onCancel}>Cancel</Button>
-          <Button type="submit" disabled={!ready}>Create report</Button>
+          <Button type="submit" disabled={!ready} loading={busy}>
+            {stored ? 'Save report' : 'Create report'}
+          </Button>
         </div>
       </div>
 
@@ -198,6 +253,7 @@ export function ReportForm({ onDone, onCancel }: Props) {
                     <IdentifierField value={f.state.value} onBlur={f.handleBlur}
                       error={fieldError(f.state.meta)} prefix="…/reports/" 
                       usedFor="Reports are addressed by this in the API and in embed URLs."
+                      fixed={!!stored}
                       onChange={(v) => { setSlugEdited(true); f.handleChange(v) }} />
                   )}
                 </form.Field>
@@ -218,6 +274,9 @@ export function ReportForm({ onDone, onCancel }: Props) {
           )}
         </aside>
       </div>
+
+      <UnmodelledWarning paths={initial?.drops} />
+      <PublishError message={publishError} />
     </form>
   )
 }

@@ -16,7 +16,7 @@ import (
 // customer's business.
 func Routes(reports Reports, runner *run.Service, signer *token.Signer,
 	origins []string, log *slog.Logger) http.Handler {
-	return RoutesWith(reports, runner, signer, origins, log, nil, nil, nil, nil, nil, nil, nil)
+	return RoutesWith(reports, runner, signer, origins, log, nil, nil, nil, nil, nil, nil, nil, "", "")
 }
 
 // RoutesWith adds the management API when an admin key is configured.
@@ -28,7 +28,7 @@ func Routes(reports Reports, runner *run.Service, signer *token.Signer,
 func RoutesWith(reports Reports, runner *run.Service, signer *token.Signer,
 	origins []string, log *slog.Logger,
 	pub *publish.Service, store publish.Store, admin *AdminKey, runs History,
-	users Users, defs Repository, due Due) http.Handler {
+	users Users, defs Repository, due Due, org, project string) http.Handler {
 
 	embed := NewEmbed(reports, runner, signer, log)
 	author := NewAuthor(signer, admin)
@@ -61,9 +61,15 @@ func RoutesWith(reports Reports, runner *run.Service, signer *token.Signer,
 	// Management is open to an author with a portal token or to a pipeline
 	// with the shared key. Mounted when either can exist.
 	if pub != nil && (author.Enabled() || (admin != nil && admin.Enabled())) {
-		defs := NewDefinitions(pub, store, author, log)
-		mux.Handle("/v1/definitions", defs)
-		mux.Handle("/v1/definitions/{kind}/{name}", defs)
+		handler := NewDefinitions(pub, store, author, log)
+		// A read falls back to what the process booted with, for the
+		// definitions no store has a copy of — a directory-bootstrapped
+		// deployment answering for a report that plainly renders.
+		if loaded, ok := defs.(Loaded); ok {
+			handler = handler.WithLoaded(loaded, org, project)
+		}
+		mux.Handle("/v1/definitions", handler)
+		mux.Handle("/v1/definitions/{kind}/{name}", handler)
 
 		// Behind the admin key and never the embed token: a run record names
 		// every recipient of a burst.

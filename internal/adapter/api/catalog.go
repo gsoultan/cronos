@@ -30,6 +30,7 @@ type Catalog struct {
 // incident report.
 type SourceSummary struct {
 	Name        string `json:"name"`
+	Title       string `json:"title,omitempty"`
 	Description string `json:"description,omitempty"`
 	Driver      string `json:"driver"`
 	// Detail is what a person recognises the connection by — a host, a bucket
@@ -43,6 +44,7 @@ type SourceSummary struct {
 
 type DatasetSummary struct {
 	Name        string   `json:"name"`
+	Title       string   `json:"title,omitempty"`
 	Description string   `json:"description,omitempty"`
 	Sources     []string `json:"sources"`
 	Fields      int      `json:"fields"`
@@ -66,6 +68,7 @@ type ReportSummary struct {
 
 type ScheduleSummary struct {
 	Name        string   `json:"name"`
+	Title       string   `json:"title,omitempty"`
 	Description string   `json:"description,omitempty"`
 	Report      string   `json:"report"`
 	Output      string   `json:"output"`
@@ -144,7 +147,7 @@ func (c *CatalogHandler) build(_ principal.Principal) Catalog {
 			}
 		}
 		out.Datasets = append(out.Datasets, DatasetSummary{
-			Name: ds.Name, Description: ds.Description, Sources: names,
+			Name: ds.Name, Title: ds.Title, Description: ds.Description, Sources: names,
 			Fields: len(ds.Fields), Measures: measures, Params: len(ds.Params),
 			RowScoped: len(ds.RowLevelSecurity) > 0,
 		})
@@ -152,7 +155,7 @@ func (c *CatalogHandler) build(_ principal.Principal) Catalog {
 
 	for _, src := range c.defs.DataSources() {
 		out.Sources = append(out.Sources, SourceSummary{
-			Name: src.Name, Description: src.Description, Driver: src.Driver,
+			Name: src.Name, Title: src.Title, Description: src.Description, Driver: src.Driver,
 			Detail: detail(src), Datasets: readers[src.Name], Federated: src.Federated(),
 			MaxRows: src.Limits.Rows(), Timeout: src.Limits.Timeout().String(),
 		})
@@ -176,7 +179,7 @@ func (c *CatalogHandler) build(_ principal.Principal) Catalog {
 	}
 	for _, s := range c.defs.Schedules() {
 		summary := ScheduleSummary{
-			Name: s.Name, Description: s.Description, Report: s.Report,
+			Name: s.Name, Title: s.Title, Description: s.Description, Report: s.Report,
 			Output: s.Output, Cron: s.Cron, Timezone: s.Timezone,
 			Bursts: s.Bursts(), Channels: channels(s),
 		}

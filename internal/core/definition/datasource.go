@@ -6,7 +6,11 @@ package definition
 // names a source, and only the source knows the DSN. Rotating a password is
 // then one edit rather than one per query.
 type DataSource struct {
-	Name        string            `json:"name" yaml:"name"`
+	Name string `json:"name" yaml:"name"`
+	// Title is what a person calls it. The name is an identifier — stable,
+	// referenced by other definitions, awkward to change once anything points
+	// at it — and those are two different jobs for one string to hold.
+	Title       string            `json:"title,omitempty" yaml:"title,omitempty"`
 	Description string            `json:"description,omitempty" yaml:"description,omitempty"`
 	Labels      map[string]string `json:"labels,omitempty" yaml:"labels,omitempty"`
 
@@ -29,3 +33,11 @@ type DataSource struct {
 // Federated reports whether reading this source means attaching it to a query
 // engine rather than connecting to it directly.
 func (d DataSource) Federated() bool { return d.Driver == "object-store" }
+
+// Heading is what a catalog puts in the list.
+func (d DataSource) Heading() string {
+	if d.Title != "" {
+		return d.Title
+	}
+	return d.Name
+}

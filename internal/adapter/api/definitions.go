@@ -25,16 +25,41 @@ type Principals interface {
 	Principal(r *http.Request) (principal.Principal, bool)
 }
 
+// Loaded is whatever the server is actually running, for the definitions no
+// store has a copy of.
+type Loaded interface {
+	Raw(kind, name string) ([]byte, bool)
+}
+
 type Definitions struct {
 	svc   *publish.Service
 	store publish.Store
 	auth  Principals
 	log   *slog.Logger
+	// loaded is what the process booted with, and org and project are the one
+	// tenant it holds. A directory is not multi-tenant, so serving it to any
+	// principal that asked would be a cross-project read through the one path
+	// that does not go via a store — which is where such a hole would live.
+	loaded  Loaded
+	org     string
+	project string
 }
 
 // NewDefinitions wires the handler.
 func NewDefinitions(s *publish.Service, st publish.Store, a Principals, log *slog.Logger) *Definitions {
 	return &Definitions{svc: s, store: st, auth: a, log: log}
+}
+
+// WithLoaded lets a read fall back to what the server booted with.
+//
+// A deployment whose definitions came from a directory and whose store is a
+// database has both: the store holds what anybody published, and the directory
+// holds everything else. Without the fallback, a report that plainly renders
+// answers 404 when asked what it says, which is a contradiction an author
+// cannot act on.
+func (d *Definitions) WithLoaded(l Loaded, org, project string) *Definitions {
+	d.loaded, d.org, d.project = l, org, project
+	return d
 }
 
 // ServeHTTP handles /v1/definitions and /v1/definitions/{kind}/{name}.
@@ -100,12 +125,27 @@ func (d *Definitions) list(w http.ResponseWriter, r *http.Request, pr principal.
 func (d *Definitions) get(w http.ResponseWriter, r *http.Request, pr principal.Principal, kind, name string) {
 	raw, err := d.store.Get(r.Context(), pr, canonicalKind(kind), name)
 	if err != nil {
-		fail(w, http.StatusNotFound, "No such definition.")
-		return
+		// The store first, so a published edit wins over the file it was read
+		// from — the fallback answers for what nobody has changed yet.
+		fallback, ok := d.fromLoaded(pr, canonicalKind(kind), name)
+		if !ok {
+			fail(w, http.StatusNotFound, "No such definition.")
+			return
+		}
+		raw = fallback
 	}
 	w.Header().Set("Content-Type", "application/yaml; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	_, _ = w.Write(raw)
+}
+
+// fromLoaded answers from the running view, which is scoped to the one
+// project this process serves — so a principal from another may not read it.
+func (d *Definitions) fromLoaded(pr principal.Principal, kind, name string) ([]byte, bool) {
+	if d.loaded == nil || pr.OrgID != d.org || pr.ProjectID != d.project {
+		return nil, false
+	}
+	return d.loaded.Raw(kind, name)
 }
 
 func (d *Definitions) delete(w http.ResponseWriter, r *http.Request, pr principal.Principal, kind, name string) {

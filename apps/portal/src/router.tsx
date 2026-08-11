@@ -43,6 +43,33 @@ const dataRoute = createRoute({
   component: lazyRouteComponent(() => import('./routes/DataPage'), 'DataPage'),
 })
 
+/* Editing is its own route rather than a panel, so a definition somebody is
+   part-way through changing has a URL — which is what makes it linkable, and
+   what makes the browser's back button mean "leave the editor". */
+const editReportRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/reports/$name/edit',
+  component: lazyRouteComponent(() => import('./routes/EditPages'), 'EditReportPage'),
+})
+
+const editDatasetRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/data/datasets/$name/edit',
+  component: lazyRouteComponent(() => import('./routes/EditPages'), 'EditDatasetPage'),
+})
+
+const editSourceRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/data/sources/$name/edit',
+  component: lazyRouteComponent(() => import('./routes/EditPages'), 'EditDataSourcePage'),
+})
+
+const editScheduleRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/schedules/$name/edit',
+  component: lazyRouteComponent(() => import('./routes/EditPages'), 'EditSchedulePage'),
+})
+
 const schedulesRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/schedules',
@@ -52,6 +79,7 @@ const schedulesRoute = createRoute({
 const routeTree = rootRoute.addChildren([
   indexRoute, newReportRoute, reportRoute, settingsRoute, accountRoute,
   dataRoute, schedulesRoute,
+  editReportRoute, editDatasetRoute, editSourceRoute, editScheduleRoute,
 ])
 
 /* defaultPreload 'intent' fetches the route chunk on hover, so the split is

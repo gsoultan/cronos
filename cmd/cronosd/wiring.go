@@ -15,6 +15,7 @@ import (
 	"github.com/gsoultan/cronos/internal/adapter/store/file"
 	sqlstore "github.com/gsoultan/cronos/internal/adapter/store/sql"
 	"github.com/gsoultan/cronos/internal/app/burst"
+	"github.com/gsoultan/cronos/internal/app/publish"
 	"github.com/gsoultan/cronos/internal/app/run"
 	"github.com/gsoultan/cronos/internal/app/schedule"
 	"github.com/gsoultan/cronos/internal/core/definition"
@@ -175,4 +176,20 @@ func users(records *sqlstore.Store) api.Users {
 		return nil
 	}
 	return records
+}
+
+// publishing wires the publish service to the running repository when storing
+// alone would not change what runs.
+//
+// A file-backed store rewrites the file and reloads the directory it was read
+// from, so it already has this property. A database-backed one has no file to
+// rewrite: without the live view, a definition published through the API would
+// sit in the store and in the catalogue while every render kept using what the
+// process read at startup — until somebody restarted it.
+func publishing(store publish.Store, repo *file.Repository, records *sqlstore.Store) *publish.Service {
+	svc := publish.New(store, repo).WithReports(repo)
+	if records != nil {
+		svc = svc.WithLive(repo)
+	}
+	return svc
 }

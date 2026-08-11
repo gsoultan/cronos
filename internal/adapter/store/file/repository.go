@@ -120,37 +120,74 @@ func (r *Repository) add(path string) error {
 	if err != nil {
 		return err
 	}
+	return r.insert(data, path)
+}
+
+// Apply makes a document live without going through a file.
+//
+// A file-backed store rewrites the file and reloads the directory, so it needs
+// none of this. A database-backed one has no file to rewrite, and without this
+// a definition published through the API would sit in the store while every
+// request kept being answered from what the process read at startup — visible
+// in the catalogue, absent from every run, until somebody restarted the server.
+//
+// The origin is left empty: the document no longer comes from anywhere on
+// disk, and claiming it does would make the next publish overwrite a file
+// whose contents this one never had.
+func (r *Repository) Apply(raw []byte) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.insert(raw, "")
+}
+
+// Raw returns the bytes a definition was read from, when it came from a file.
+//
+// What lets the management API answer for a definition the running server is
+// using but no store holds — a directory-bootstrapped deployment, where the
+// alternative is a 404 for a report that plainly renders.
+func (r *Repository) Raw(kind, name string) ([]byte, bool) {
+	path, ok := r.Path(kind, name)
+	if !ok || path == "" {
+		return nil, false
+	}
+	data, err := os.ReadFile(path)
+	return data, err == nil
+}
+
+// insert decodes one document into the maps. The caller holds the lock, or is
+// building a repository nothing else can see yet.
+func (r *Repository) insert(data []byte, path string) error {
 	kind, err := codec.Loader{}.Kind(data)
 	if err != nil {
-		return fmt.Errorf("%s: %w", path, err)
+		return fmt.Errorf("%s: %w", origin(path), err)
 	}
 
 	switch kind {
 	case codec.KindDataset:
 		ds, err := codec.Loader{}.Dataset(data)
 		if err != nil {
-			return fmt.Errorf("%s: %w", path, err)
+			return fmt.Errorf("%s: %w", origin(path), err)
 		}
 		r.datasets[ds.Name] = ds
 		r.paths[kind+"/"+ds.Name] = path
 	case codec.KindReport:
 		rep, err := codec.Loader{}.Report(data)
 		if err != nil {
-			return fmt.Errorf("%s: %w", path, err)
+			return fmt.Errorf("%s: %w", origin(path), err)
 		}
 		r.reports[rep.Name] = rep
 		r.paths[kind+"/"+rep.Name] = path
 	case codec.KindSchedule:
 		sc, err := codec.Loader{}.Schedule(data)
 		if err != nil {
-			return fmt.Errorf("%s: %w", path, err)
+			return fmt.Errorf("%s: %w", origin(path), err)
 		}
 		r.schedules[sc.Name] = sc
 		r.paths[kind+"/"+sc.Name] = path
 	case codec.KindDataSource:
 		src, err := codec.Loader{}.DataSource(data)
 		if err != nil {
-			return fmt.Errorf("%s: %w", path, err)
+			return fmt.Errorf("%s: %w", origin(path), err)
 		}
 		r.sources[src.Name] = src
 		r.paths[kind+"/"+src.Name] = path
@@ -268,4 +305,13 @@ func (r *Repository) Counts() (datasets, reports, schedules, sources int) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return len(r.datasets), len(r.reports), len(r.schedules), len(r.sources)
+}
+
+// origin names a document in an error: the file it came from, or the fact that
+// it did not come from one.
+func origin(path string) string {
+	if path == "" {
+		return "published document"
+	}
+	return path
 }

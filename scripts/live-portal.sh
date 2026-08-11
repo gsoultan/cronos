@@ -61,7 +61,10 @@ for _ in $(seq 1 60); do
   sleep 0.5
 done
 
-BASE="http://localhost:${WEB_PORT}" node apps/portal/scripts/live-portal-check.mjs
+# API and token too: the edit check reads back what the form published, and
+# asking the server directly is the only way to see the stored bytes.
+BASE="http://localhost:${WEB_PORT}" API="http://localhost:${PORT}" TOKEN="$TOKEN" \
+  node apps/portal/scripts/live-portal-check.mjs
 
 # And again with no token baked in, so the portal has to sign somebody in.
 #

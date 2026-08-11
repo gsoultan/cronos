@@ -1,4 +1,8 @@
 import { useState } from 'react'
+import { dataSource, withCarry, type Loaded, type SourceInput } from '../lib/definitions'
+import { usePublish } from '../lib/usePublish'
+import { PublishError } from '../components/form/PublishError'
+import { UnmodelledWarning } from '../components/form/UnmodelledWarning'
 import { useForm, useStore } from '@tanstack/react-form'
 import { NumberInput, PasswordInput, TextInput, Textarea } from '@mantine/core'
 import { Field, fieldError } from '../components/form/Field'
@@ -20,6 +24,8 @@ type TestState = { status: 'idle' | 'running' | 'ok' | 'failed'; message?: strin
 interface Props {
   onDone: () => void
   onCancel: () => void
+  /** An existing source to edit. Absent means a new one. */
+  initial?: Loaded<SourceInput>
 }
 
 /**
@@ -33,26 +39,56 @@ interface Props {
  * broken report at 6am on the first of the month, with no clue that a password
  * was the cause.
  */
-export function DataSourceForm({ onDone, onCancel }: Props) {
+export function DataSourceForm({ onDone, onCancel, initial }: Props) {
+  const stored = initial?.input
   /* Once someone edits the API name, typing in Name must stop
      overwriting it — silently discarding a deliberate edit. */
   const [slugEdited, setSlugEdited] = useState(false)
-  const [step, setStep] = useState(0)
-  const [completed, setCompleted] = useState(0)
-  const [kind, setKind] = useState<SourceKind | null>(null)
+  /* Editing starts on the connection step with every step behind it already
+     reachable: the kind was chosen when the source was created, and asking for
+     it again would imply changing it is what this screen is for. */
+  const [step, setStep] = useState(stored ? 1 : 0)
+  const [completed, setCompleted] = useState(stored ? STEPS.length - 1 : 0)
+  const [kind, setKind] = useState<SourceKind | null>((stored?.kind as SourceKind) ?? null)
   const [test, setTest] = useState<TestState>({ status: 'idle' })
+
+  const { publish, error: publishError, busy } = usePublish()
 
   const form = useForm({
     defaultValues: {
-      host: '', port: 5432, database: '', user: '', password: '',
-      uri: '', endpoint: '', authHeader: '', filePath: '',
-      name: '', slug: '',
+      host: stored?.host ?? '', port: stored?.port ?? 5432,
+      database: stored?.database ?? '', user: stored?.user ?? '',
+      // Never loaded, because it was never stored: the definition holds a
+      // ${secret:…} reference and the server does not return the value behind
+      // it. Left blank, an edit publishes the same reference again.
+      password: '',
+      uri: stored?.uri ?? '', endpoint: '', authHeader: '',
+      filePath: stored?.filePath ?? '',
+      name: stored?.name ?? '', slug: stored?.slug ?? '',
     },
-    onSubmit: async () => { onDone() },
+    onSubmit: async ({ value }) => {
+      const saved = await publish(withCarry(dataSource({
+        name: value.name, slug: value.slug, kind: kind ?? 'postgres',
+        host: value.host, port: value.port, database: value.database,
+        user: value.user, uri: value.uri || value.endpoint, filePath: value.filePath,
+        /* The stored connection string, kept while nothing about the
+           connection was touched. Not every DSN decomposes into these fields —
+           a SQLite one has no host at all — so rebuilding one that was only
+           ever displayed would replace a working connection with a guess. */
+        dsn: untouched(value) ? stored?.dsn : undefined,
+      }), initial))
+      if (saved) onDone()
+    },
   })
 
   const values = useStore(form.store, (s) => s.values)
   const spec = kind ? SOURCE_KINDS.find((k) => k.id === kind)! : null
+
+  /** Whether every connection field still holds what was loaded. */
+  function untouched(v: { host: string; port: number; database: string; user: string; password: string }) {
+    return !!stored && v.host === (stored.host ?? '') && v.port === (stored.port ?? 5432) &&
+      v.database === (stored.database ?? '') && v.user === (stored.user ?? '') && v.password === ''
+  }
 
   function advance() {
     if (step === STEPS.length - 1) return void form.handleSubmit()
@@ -84,7 +120,7 @@ export function DataSourceForm({ onDone, onCancel }: Props) {
       <Wizard
         steps={STEPS} current={step} completed={completed}
         onStep={setStep} onBack={() => setStep((s) => s - 1)} onNext={advance}
-        canAdvance={canAdvance} busy={test.status === 'running'}
+        canAdvance={canAdvance} busy={busy || test.status === 'running'}
         nextLabel={step === 2 ? 'Continue' : step === 3 ? 'Save source' : 'Continue'}
       >
         {step === 0 && (
@@ -279,12 +315,16 @@ export function DataSourceForm({ onDone, onCancel }: Props) {
                 <IdentifierField value={f.state.value} onBlur={f.handleBlur}
                       error={fieldError(f.state.meta)} 
                       usedFor="Datasets point at this name when they say which source they query."
+                      fixed={!!stored}
                       onChange={(v) => { setSlugEdited(true); f.handleChange(v) }} />
               )}
             </form.Field>
           </FormSection>
         )}
       </Wizard>
+
+      <UnmodelledWarning paths={initial?.drops} />
+      <PublishError message={publishError} />
 
       <button type="button" onClick={onCancel}
         className="mt-4 cursor-pointer p-0 text-small text-ink-muted underline">Cancel</button>

@@ -1,4 +1,9 @@
 import { useState } from 'react'
+import { toSlug } from '../lib/validators'
+import { schedule, withCarry, type Loaded, type ScheduleInput } from '../lib/definitions'
+import { usePublish } from '../lib/usePublish'
+import { PublishError } from '../components/form/PublishError'
+import { UnmodelledWarning } from '../components/form/UnmodelledWarning'
 import { useForm, useStore } from '@tanstack/react-form'
 import { NumberInput, Select, Switch, TextInput } from '@mantine/core'
 import { Field, fieldError } from '../components/form/Field'
@@ -10,6 +15,8 @@ import { all, cron as cronRule, email, required } from '../lib/validators'
 interface Props {
   onDone: () => void
   onCancel: () => void
+  /** An existing schedule to edit. Absent means a new one. */
+  initial?: Loaded<ScheduleInput>
 }
 
 const TIMEZONES = ['Europe/Berlin', 'Europe/London', 'America/New_York', 'Asia/Jakarta', 'UTC']
@@ -22,17 +29,39 @@ const TIMEZONES = ['Europe/Berlin', 'Europe/London', 'America/New_York', 'Asia/J
  * ("one document each, 812 in total") rather than by its name, which means
  * nothing to anyone outside this category.
  */
-export function ScheduleForm({ onDone, onCancel }: Props) {
-  const [burst, setBurst] = useState(false)
-  const [channelId, setChannelId] = useState<'email' | 'telegram'>('email')
+export function ScheduleForm({ onDone, onCancel, initial }: Props) {
+  const stored = initial?.input
+  const [burst, setBurst] = useState(!!stored?.burstDataset)
+  const [channelId, setChannelId] = useState<'email' | 'telegram'>(
+    stored?.channel === 'telegram' ? 'telegram' : 'email')
+
+  const { publish, error: publishError, busy } = usePublish()
 
   const form = useForm({
     defaultValues: {
-      report: '', output: 'pdf', cron: '0 6 1 * *', timezone: 'Europe/Berlin',
-      burstDataset: '', recipientField: '', to: '', subject: '',
-      concurrency: 8, retries: 3, alert: '',
+      report: stored?.report ?? '', output: stored?.output ?? 'pdf',
+      cron: stored?.cron ?? '0 6 1 * *', timezone: stored?.timezone ?? 'Europe/Berlin',
+      burstDataset: stored?.burstDataset ?? '', recipientField: stored?.recipientField ?? '',
+      to: stored?.to ?? '', subject: stored?.subject ?? '',
+      concurrency: stored?.concurrency ?? 8, retries: stored?.retries ?? 3,
+      alert: stored?.alert ?? '',
     },
-    onSubmit: async () => { onDone() },
+    onSubmit: async ({ value }) => {
+      const saved = await publish(withCarry(schedule({
+        // The stored name is kept: it is what selects the schedule this
+        // overwrites, and deriving a new one from an edited report would
+        // publish a second schedule beside the one being edited.
+        name: stored?.name ?? value.report,
+        slug: stored?.slug ?? toSlug(`${value.report}-${value.output}`),
+        report: value.report, output: value.output,
+        cron: value.cron, timezone: value.timezone,
+        burstDataset: burst ? value.burstDataset : undefined,
+        recipientField: burst ? value.recipientField : undefined,
+        to: value.to, subject: value.subject, filename: stored?.filename,
+        concurrency: value.concurrency, retries: value.retries, alert: value.alert,
+      }), initial))
+      if (saved) onDone()
+    },
   })
 
   const v = useStore(form.store, (s) => s.values)
@@ -197,11 +226,14 @@ export function ScheduleForm({ onDone, onCancel }: Props) {
         </form.Field>
       </FormSection>
 
+      <UnmodelledWarning paths={initial?.drops} />
+      <PublishError message={publishError} />
+
       <form.Subscribe selector={(s) => [s.isSubmitting] as const}>
         {([isSubmitting]) => (
           <FormActions
-            canSubmit={ready} isSubmitting={isSubmitting}
-            submitLabel="Create schedule" onCancel={onCancel}
+            canSubmit={ready} isSubmitting={isSubmitting || busy}
+            submitLabel={stored ? 'Save schedule' : 'Create schedule'} onCancel={onCancel}
             hint={ready
               ? `${cronToText(v.cron)} · ${recipients.toLocaleString('en')} ${recipients === 1 ? 'recipient' : 'recipients'}`
               : 'Choose a report and who receives it to continue.'}
