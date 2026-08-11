@@ -122,7 +122,9 @@ at by an author trying to be helpful. Pushdown will be a deliberate feature
 with the same `FALSE` semantics, not a side effect of where someone typed.
 
 The consequence is a modelling rule, and it is easy to get wrong: **a dataset
-read by a schedule must not carry a `.scope` predicate.** Scheduled runs and
+read by a schedule must not carry a `.scope` predicate.** Publishing a schedule
+now refuses one that does, and says what would have happened — the rule is
+enforced rather than documented. Scheduled runs and
 bursts execute as the schedule's owner, a project member with no embed token, so
 a scope predicate matches nothing and the burst silently delivers zero
 documents. Internal datasets — burst targets, admin reports — rely on project

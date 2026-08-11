@@ -39,12 +39,16 @@ func Load() (Server, error) {
 		Addr:        env("CRONOS_ADDR", ":8787"),
 		Definitions: env("CRONOS_DEFINITIONS", "examples"),
 		Driver:      env("CRONOS_DRIVER", "sqlite"),
-		DSN:         env("CRONOS_DSN", ":memory:"),
-		SigningKey:  []byte(os.Getenv("CRONOS_SIGNING_KEY")),
-		Seed:        os.Getenv("CRONOS_SEED"),
-		AdminKey:    []byte(os.Getenv("CRONOS_ADMIN_KEY")),
-		Org:         env("CRONOS_ORG", "default"),
-		Project:     env("CRONOS_PROJECT", "default"),
+		// Shared cache rather than a bare :memory:. Each pooled connection to
+		// a plain in-memory SQLite gets its own empty database, so the seed
+		// lands on one connection and every concurrent request afterwards
+		// finds no tables.
+		DSN:        env("CRONOS_DSN", "file:cronos?mode=memory&cache=shared"),
+		SigningKey: []byte(os.Getenv("CRONOS_SIGNING_KEY")),
+		Seed:       os.Getenv("CRONOS_SEED"),
+		AdminKey:   []byte(os.Getenv("CRONOS_ADMIN_KEY")),
+		Org:        env("CRONOS_ORG", "default"),
+		Project:    env("CRONOS_PROJECT", "default"),
 	}
 	if origins := os.Getenv("CRONOS_ORIGINS"); origins != "" {
 		s.Origins = strings.Split(origins, ",")

@@ -69,12 +69,15 @@ cmd/cronosd            BSL binary. Must never reach ee/.
 cmd/cronosd-ee         EE binary. Blank-imports ee/.
 internal/
   core/                Domain entities, value objects, domain errors. Zero external deps.
-    definition/          Report · Dataset + validation          ✓
+    definition/          Report · Dataset · Schedule            ✓
+    document/            What a paginated document *is*         ✓
     query/               Compilation: binding, row scope, filters, blocks  ✓
     principal/           Identity, tenancy                      ✓
   app/                 Use cases. Declares the ports it needs, as consumer-side interfaces.
     run/                 Report → SQL → rows → view             ✓
-    publish/  burst/  schedule/
+    publish/             Validate, version, store                ✓
+    burst/               One document per recipient, bounded     ✓
+    schedule/            Cron loop
   adapter/             Port implementations.
     codec/yaml/          The file format authors write          ✓
     api/                 The embed endpoint, CORS               ✓
@@ -82,7 +85,8 @@ internal/
     store/postgres/      Content-addressed versions
     driver/sql/          Anything database/sql speaks           ✓
     render/paginated/    Typst PDF                              ✓
-    render/              interactive · spreadsheet
+    render/              spreadsheet
+    deliver/file/        Documents to a directory                ✓
     deliver/             email · s3 · sftp · webhook
   platform/
     token/               Embed tokens — not JWT, see its doc.go ✓

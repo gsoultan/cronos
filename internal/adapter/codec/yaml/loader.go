@@ -80,6 +80,24 @@ func (l Loader) Report(data []byte) (definition.Report, error) {
 	return r, r.Validate()
 }
 
+// Schedule decodes a Schedule document and validates it.
+func (l Loader) Schedule(data []byte) (definition.Schedule, error) {
+	e, err := l.open(data, KindSchedule)
+	if err != nil {
+		return definition.Schedule{}, err
+	}
+
+	var s definition.Schedule
+	if err := strict(&e.Spec, &s); err != nil {
+		return definition.Schedule{}, fmt.Errorf("%w: schedule %q spec: %v",
+			ErrDecode, e.Metadata.Name, err)
+	}
+	s.Name = e.Metadata.Name
+	s.Description = e.Metadata.Description
+
+	return s, s.Validate()
+}
+
 func (Loader) open(data []byte, want string) (envelope, error) {
 	var e envelope
 	if err := yaml.Unmarshal(data, &e); err != nil {

@@ -107,7 +107,7 @@ func (d datasets) Dataset(_ context.Context, name string) (definition.Dataset, e
 func setup(t *testing.T) (*run.Service, definition.Report) {
 	t.Helper()
 
-	db, err := sql.Open("sqlite", ":memory:")
+	db, err := sql.Open("sqlite", "file:run?mode=memory&cache=shared")
 	if err != nil {
 		t.Fatal(err)
 	}

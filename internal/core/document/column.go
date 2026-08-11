@@ -1,4 +1,4 @@
-package paginated
+package document
 
 // Column is one column of the group tables.
 //

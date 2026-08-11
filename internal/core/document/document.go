@@ -1,4 +1,4 @@
-package paginated
+package document
 
 import "fmt"
 
@@ -27,10 +27,10 @@ type Document struct {
 // wrong. Nothing downstream can detect that; it has to be caught here.
 func (d Document) Validate() error {
 	if len(d.Columns) == 0 {
-		return fmt.Errorf("%w: no columns", ErrInvalidDocument)
+		return fmt.Errorf("%w: no columns", ErrInvalid)
 	}
 	if len(d.Groups) == 0 {
-		return fmt.Errorf("%w: no groups", ErrInvalidDocument)
+		return fmt.Errorf("%w: no groups", ErrInvalid)
 	}
 	if err := d.Page.validate(); err != nil {
 		return err
@@ -42,18 +42,18 @@ func (d Document) validateRows() error {
 	want := len(d.Columns)
 	for gi, g := range d.Groups {
 		if g.Label == "" {
-			return fmt.Errorf("%w: group %d has no label", ErrInvalidDocument, gi)
+			return fmt.Errorf("%w: group %d has no label", ErrInvalid, gi)
 		}
 		for ri, row := range g.Rows {
 			if len(row) != want {
 				return fmt.Errorf("%w: group %q row %d has %d cells, want %d",
-					ErrInvalidDocument, g.Label, ri, len(row), want)
+					ErrInvalid, g.Label, ri, len(row), want)
 			}
 		}
 		for field := range g.Subtotal {
 			if !d.hasColumn(field) {
 				return fmt.Errorf("%w: group %q subtotals unknown column %q",
-					ErrInvalidDocument, g.Label, field)
+					ErrInvalid, g.Label, field)
 			}
 		}
 	}

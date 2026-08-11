@@ -19,14 +19,27 @@ type Datasets interface {
 	Dataset(ctx context.Context, name string) (definition.Dataset, error)
 }
 
+// Reports resolves a report a schedule names.
+type Reports interface {
+	Report(ctx context.Context, name string) (definition.Report, error)
+}
+
 // Service validates and stores definitions.
 type Service struct {
 	store    Store
 	datasets Datasets
+	reports  Reports
 }
 
-// New wires a Service.
+// New wires a Service. The repository satisfies both lookups, so callers pass
+// it once.
 func New(s Store, d Datasets) *Service { return &Service{store: s, datasets: d} }
+
+// WithReports lets schedules be checked against the reports they run.
+func (s *Service) WithReports(r Reports) *Service {
+	s.reports = r
+	return s
+}
 
 // Publish validates raw and stores it.
 func (s *Service) Publish(ctx context.Context, raw []byte, pr principal.Principal) (Result, error) {
@@ -75,8 +88,64 @@ func (s *Service) check(ctx context.Context, kind string, raw []byte) (string, e
 			return "", err
 		}
 		return rep.Name, s.checkReport(ctx, rep)
+
+	case codec.KindSchedule:
+		sc, err := codec.Loader{}.Schedule(raw)
+		if err != nil {
+			return "", err
+		}
+		return sc.Name, s.checkSchedule(ctx, sc)
 	}
 	return "", fmt.Errorf("%w: %s", ErrUnsupported, kind)
+}
+
+// checkSchedule proves the schedule can run before it is allowed to.
+//
+// The check that earns its place is row scope. docs/tenancy.md sets out the
+// rule and then says it is easy to get wrong, which is exactly what this
+// turns from a paragraph into an error: a burst executes as the schedule's
+// owner — a project member with no embed token — so a dataset carrying a
+// .scope predicate matches nothing, and the burst delivers five thousand empty
+// documents while reporting complete success. Nothing downstream can tell that
+// apart from a month in which nobody was billed.
+func (s *Service) checkSchedule(ctx context.Context, sc definition.Schedule) error {
+	rep, err := s.reportNamed(ctx, sc.Report)
+	if err != nil {
+		return fmt.Errorf("%w: schedule %q runs report %q: %v",
+			ErrNotFound, sc.Name, sc.Report, err)
+	}
+	if _, ok := rep.Output(sc.Output); !ok {
+		return fmt.Errorf("%w: schedule %q renders output %q, which report %q does not have",
+			ErrNotFound, sc.Name, sc.Output, sc.Report)
+	}
+
+	names := rep.Datasets()
+	if sc.Bursts() {
+		names = append(names, sc.Burst.Over.Dataset)
+	}
+	for _, name := range names {
+		ds, err := s.datasets.Dataset(ctx, name)
+		if err != nil {
+			return fmt.Errorf("%w: schedule %q reads dataset %q: %v", ErrNotFound, sc.Name, name, err)
+		}
+		if len(ds.RowLevelSecurity) > 0 {
+			return fmt.Errorf(
+				"%w: schedule %q reads dataset %q, which has row-level security. "+
+					"A burst runs as the schedule's owner and has no embed token, so the "+
+					"predicate matches nothing and every document comes out empty. "+
+					"Scope it with a parameter the schedule binds instead — docs/tenancy.md",
+				ErrScopedBySchedule, sc.Name, name)
+		}
+	}
+	return nil
+}
+
+// reportNamed resolves a report, if the service was given somewhere to look.
+func (s *Service) reportNamed(ctx context.Context, name string) (definition.Report, error) {
+	if s.reports == nil {
+		return definition.Report{}, fmt.Errorf("no report repository configured")
+	}
+	return s.reports.Report(ctx, name)
 }
 
 // checkReport resolves everything the report reads and checks it against them.

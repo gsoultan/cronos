@@ -1,4 +1,4 @@
-package paginated
+package document
 
 // Entry is a labelled fact in a group's corner block — account number, terms,
 // an invoice count.

@@ -11,18 +11,20 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/gsoultan/cronos/internal/core/document"
 )
 
 // A statement per customer, with one long enough to spill onto a second and
 // third page. The spill is the point: single-page groups never exercise the
 // running header, the repeated column headings, or the page counter.
-func fixture(counts ...int) Document {
-	doc := Document{
+func fixture(counts ...int) document.Document {
+	doc := document.Document{
 		Title:  "Monthly invoice statement",
 		Period: "1–31 July 2026",
-		Org:    Org{Name: "Acme Logistics"},
-		Page:   Page{Size: "a4", MarginMM: 18},
-		Columns: []Column{
+		Org:    document.Org{Name: "Acme Logistics"},
+		Page:   document.Page{Size: "a4", MarginMM: 18},
+		Columns: []document.Column{
 			{Field: "number", Label: "Invoice", Align: "left"},
 			{Field: "issued_at", Label: "Issued", Align: "left"},
 			{Field: "status", Label: "Status", Align: "left"},
@@ -30,10 +32,10 @@ func fixture(counts ...int) Document {
 		},
 	}
 	for i, n := range counts {
-		g := Group{
+		g := document.Group{
 			Label:    fmt.Sprintf("Customer %02d", i),
 			Address:  []string{"12 Harbour Road", "Rotterdam", "Netherlands"},
-			Meta:     []Entry{{Key: "Account", Value: fmt.Sprintf("AC-%d", 4000+i)}},
+			Meta:     []document.Entry{{Key: "Account", Value: fmt.Sprintf("AC-%d", 4000+i)}},
 			Subtotal: map[string]string{"total": "€123,456.78"},
 		}
 		for k := range n {
@@ -151,7 +153,7 @@ type span struct{ start, pages int }
 // ended. Typst's own introspection, not PDF text extraction: the assertion is
 // then about the layout the template produced rather than about font
 // subsetting and glyph encodings.
-func statementSpans(t *testing.T, doc Document) []span {
+func statementSpans(t *testing.T, doc document.Document) []span {
 	t.Helper()
 	dir := t.TempDir()
 	if err := New(TypstCLI{}).stage(dir, doc); err != nil {

@@ -1,4 +1,4 @@
-package paginated
+package document
 
 // Group is one section of the document — in a burst, one recipient.
 //

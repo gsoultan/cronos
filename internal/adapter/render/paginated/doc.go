@@ -1,4 +1,4 @@
-// Package paginated renders a Document to PDF with Typst.
+// Package paginated typesets a document.Document to PDF with Typst.
 //
 // # Why a typesetter
 //

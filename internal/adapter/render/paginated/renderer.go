@@ -8,6 +8,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+
+	"github.com/gsoultan/cronos/internal/core/document"
 )
 
 //go:embed template.typ
@@ -34,7 +36,7 @@ func New(c Compiler) *Renderer {
 }
 
 // Render typesets doc and writes the PDF to out.
-func (r *Renderer) Render(ctx context.Context, doc Document, out io.Writer) error {
+func (r *Renderer) Render(ctx context.Context, doc document.Document, out io.Writer) error {
 	if err := doc.Validate(); err != nil {
 		return err
 	}
@@ -58,7 +60,7 @@ func (r *Renderer) Render(ctx context.Context, doc Document, out io.Writer) erro
 
 // stage writes the two files a render consists of. They are the only things in
 // the root, so they are the only things the typesetter can read.
-func (r *Renderer) stage(root string, doc Document) error {
+func (r *Renderer) stage(root string, doc document.Document) error {
 	data, err := json.Marshal(doc)
 	if err != nil {
 		return fmt.Errorf("paginated: encode document: %w", err)

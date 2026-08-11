@@ -71,13 +71,13 @@ func serve(log *slog.Logger) error {
 
 	writer := file.NewWriter(cfg.Definitions, repo)
 	handler := api.RoutesWith(repo, runner, signer, cfg.Origins, log,
-		publish.New(writer, repo), writer,
+		publish.New(writer, repo).WithReports(repo), writer,
 		api.NewAdminKey(cfg.AdminKey, cfg.Org, cfg.Project))
 
-	datasets, reports := repo.Counts()
+	datasets, reports, schedules := repo.Counts()
 	log.Info("cronosd listening",
 		"addr", cfg.Addr, "driver", cfg.Driver,
-		"datasets", datasets, "reports", reports,
+		"datasets", datasets, "reports", reports, "schedules", schedules,
 		"origins", cfg.Origins, "management", len(cfg.AdminKey) > 0,
 		"auth", extension.Auth().Name(), "audit", extension.Audit().Name())
 

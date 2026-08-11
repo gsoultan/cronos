@@ -9,4 +9,7 @@ var (
 	ErrUnsupported = errors.New("publish: unsupported kind")
 	// ErrNotFound means there is no such definition to read or remove.
 	ErrNotFound = errors.New("publish: no such definition")
+	// ErrScopedBySchedule means a schedule reads a dataset with row-level
+	// security, which would deliver empty documents to everybody.
+	ErrScopedBySchedule = errors.New("publish: schedule reads a row-scoped dataset")
 )

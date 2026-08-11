@@ -1,4 +1,4 @@
-package paginated
+package document
 
 // Org is the sender's identity, printed in the running header.
 //

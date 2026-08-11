@@ -1,4 +1,4 @@
-package paginated
+package document
 
 import "fmt"
 
@@ -35,17 +35,17 @@ const maxMarginMM = 74
 
 func (p Page) validate() error {
 	if p.Size != "" && !PaperSizes[p.Size] {
-		return fmt.Errorf("%w: unknown paper size %q", ErrInvalidDocument, p.Size)
+		return fmt.Errorf("%w: unknown paper size %q", ErrInvalid, p.Size)
 	}
 	switch p.Orientation {
 	case "", "portrait", "landscape":
 	default:
 		return fmt.Errorf("%w: orientation %q is not portrait or landscape",
-			ErrInvalidDocument, p.Orientation)
+			ErrInvalid, p.Orientation)
 	}
 	if p.MarginMM < 0 || p.MarginMM > maxMarginMM {
 		return fmt.Errorf("%w: margin %gmm is outside 0–%dmm",
-			ErrInvalidDocument, p.MarginMM, maxMarginMM)
+			ErrInvalid, p.MarginMM, maxMarginMM)
 	}
 	return nil
 }

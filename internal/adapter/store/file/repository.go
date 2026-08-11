@@ -23,9 +23,10 @@ type Repository struct {
 	// mu guards a swap after a publish. Reads are far more common than writes,
 	// and a request that started before a publish should finish against a
 	// consistent view rather than half of each.
-	mu       sync.RWMutex
-	datasets map[string]definition.Dataset
-	reports  map[string]definition.Report
+	mu        sync.RWMutex
+	datasets  map[string]definition.Dataset
+	reports   map[string]definition.Report
+	schedules map[string]definition.Schedule
 	// paths remembers where each definition was read from, keyed kind/name.
 	//
 	// A definitions directory is somebody's git repository and they organised
@@ -40,6 +41,7 @@ func (r *Repository) replace(fresh *Repository) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.datasets, r.reports, r.paths = fresh.datasets, fresh.reports, fresh.paths
+	r.schedules = fresh.schedules
 }
 
 // Path returns where a definition was read from.
@@ -76,9 +78,10 @@ var ErrNotFound = fmt.Errorf("file: no such definition")
 // disappears and the only evidence is a line in a startup log nobody read.
 func Load(dir string) (*Repository, error) {
 	r := &Repository{
-		datasets: map[string]definition.Dataset{},
-		reports:  map[string]definition.Report{},
-		paths:    map[string]string{},
+		datasets:  map[string]definition.Dataset{},
+		reports:   map[string]definition.Report{},
+		schedules: map[string]definition.Schedule{},
+		paths:     map[string]string{},
 	}
 	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -135,10 +138,17 @@ func (r *Repository) add(path string) error {
 		}
 		r.reports[rep.Name] = rep
 		r.paths[kind+"/"+rep.Name] = path
+	case codec.KindSchedule:
+		sc, err := codec.Loader{}.Schedule(data)
+		if err != nil {
+			return fmt.Errorf("%s: %w", path, err)
+		}
+		r.schedules[sc.Name] = sc
+		r.paths[kind+"/"+sc.Name] = path
 	}
-	// DataSource and Schedule are read by other parts of the system; ignoring
-	// them here is not the same as dropping them silently, because Kind
-	// already proved the document is one of the four.
+	// A DataSource is read by the driver registry rather than here. Ignoring it
+	// is not the same as dropping it silently: Kind already proved the document
+	// is one of the four.
 	return nil
 }
 
@@ -171,9 +181,34 @@ func (r *Repository) Report(_ context.Context, name string) (definition.Report, 
 	return rep, nil
 }
 
-// Counts reports what was loaded, for a startup line an operator can read.
-func (r *Repository) Counts() (datasets, reports int) {
+// Schedule returns the named schedule.
+func (r *Repository) Schedule(_ context.Context, name string) (definition.Schedule, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	return len(r.datasets), len(r.reports)
+
+	sc, ok := r.schedules[name]
+	if !ok {
+		return definition.Schedule{}, fmt.Errorf("%w: schedule %q", ErrNotFound, name)
+	}
+	return sc, nil
+}
+
+// Schedules returns every loaded schedule, for a scheduler to arm.
+func (r *Repository) Schedules() []definition.Schedule {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	out := make([]definition.Schedule, 0, len(r.schedules))
+	for _, s := range r.schedules {
+		out = append(out, s)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
+}
+
+// Counts reports what was loaded, for a startup line an operator can read.
+func (r *Repository) Counts() (datasets, reports, schedules int) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return len(r.datasets), len(r.reports), len(r.schedules)
 }

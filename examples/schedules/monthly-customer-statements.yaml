@@ -26,9 +26,11 @@ spec:
         template: templates/statement-email.md
       attach:
         filename: "statement-{{ .row.id }}-{{ .run.periodLabel }}.pdf"
+    # One destination field for every channel, each reading it in its own
+    # terms. The alternative — bucket and key here, host and path for sftp —
+    # grows this format a field per channel cronos ever adds.
     - via: s3
-      bucket: acme-statements
-      key: "{{ .row.id }}/{{ .run.periodLabel }}.pdf"
+      to: "s3://acme-statements/{{ .row.id }}/{{ .run.periodLabel }}.pdf"
 
   onFailure:
     retries: 3

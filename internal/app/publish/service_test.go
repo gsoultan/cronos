@@ -168,9 +168,10 @@ func TestPublishRefuses(t *testing.T) {
 				"{field: profit, aggregate: sum}\n        - kind: chart", 1),
 			query.ErrBadTemplate, `"profit" is not a field`},
 
+		// Datasources are read by the driver registry, not stored here.
 		{"a kind this build does not store",
-			strings.Replace(dataset, "kind: Dataset", "kind: Schedule", 1),
-			publish.ErrUnsupported, "Schedule"},
+			strings.Replace(dataset, "kind: Dataset", "kind: DataSource", 1),
+			publish.ErrUnsupported, "DataSource"},
 	}
 
 	for _, c := range cases {
@@ -211,5 +212,67 @@ func TestOnlyEditorsMayPublish(t *testing.T) {
 
 	if _, err := s.Publish(context.Background(), []byte(dataset), viewer); !errors.Is(err, publish.ErrForbidden) {
 		t.Fatalf("got %v, want ErrForbidden", err)
+	}
+}
+
+const schedule = `
+apiVersion: cronos.dev/v1
+kind: Schedule
+metadata: {name: monthly}
+spec:
+  report: billing
+  output: interactive
+  cron: "0 6 1 * *"
+  timezone: Europe/Berlin
+  burst:
+    over: {dataset: invoices}
+    bind: {from: "{{ .row.issued_at }}"}
+  deliver:
+    - via: file
+      to: "{{ .row.id }}"
+`
+
+// docs/tenancy.md sets out this rule and then says it is easy to get wrong.
+// This is the sentence turned into an error: a burst runs as the schedule's
+// owner, who has no embed token, so a scoped dataset matches nothing and the
+// run delivers five thousand empty documents while reporting success.
+func TestASchedulesDatasetsMayNotBeRowScoped(t *testing.T) {
+	s, repo, _ := setup(t)
+	s = s.WithReports(repo)
+	mustPublish(t, s, dataset) // this one carries row-level security
+	mustPublish(t, s, report)
+
+	_, err := s.Publish(context.Background(), []byte(schedule), admin())
+	if !errors.Is(err, publish.ErrScopedBySchedule) {
+		t.Fatalf("got %v, want ErrScopedBySchedule", err)
+	}
+	if !strings.Contains(err.Error(), "every document comes out empty") {
+		t.Errorf("the message should say what would happen: %v", err)
+	}
+}
+
+func TestASchedulePublishesOnceItsDatasetIsParameterScoped(t *testing.T) {
+	s, repo, _ := setup(t)
+	s = s.WithReports(repo)
+
+	// The same dataset, scoped by a parameter the schedule binds.
+	unscoped := strings.Replace(dataset,
+		"  rowLevelSecurity:\n    - predicate: customer_id = {{ .scope.customer_id }}\n", "", 1)
+	mustPublish(t, s, unscoped)
+	mustPublish(t, s, report)
+
+	if _, err := s.Publish(context.Background(), []byte(schedule), admin()); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+}
+
+func TestAScheduleRunningAReportNobodyHasIsRefused(t *testing.T) {
+	s, repo, _ := setup(t)
+	s = s.WithReports(repo)
+
+	_, err := s.Publish(context.Background(),
+		[]byte(strings.Replace(schedule, "report: billing", "report: ghost", 1)), admin())
+	if !errors.Is(err, publish.ErrNotFound) {
+		t.Fatalf("got %v, want ErrNotFound", err)
 	}
 }
