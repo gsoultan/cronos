@@ -79,6 +79,18 @@ export interface Tile {
   series?: string
   aggregate?: 'sum' | 'count' | 'avg' | 'min' | 'max'
   columns?: string[]
+  /**
+   * Narrows this block alone — "of which, overdue".
+   *
+   * A predicate as the author wrote it, not a built expression. The format
+   * takes SQL here and the server compiles it against the dataset, so a
+   * builder that offered a field-operator-value row would refuse every
+   * predicate that is not one comparison — which is most of the interesting
+   * ones.
+   */
+  filter?: string
+  /** A table's ordering, in the order the keys are applied. */
+  sort?: { field: string; dir?: 'asc' | 'desc' }[]
 }
 
 export interface Report {

@@ -11,6 +11,7 @@ import (
 	emailchannel "github.com/gsoultan/cronos/internal/adapter/deliver/email"
 	filechannel "github.com/gsoultan/cronos/internal/adapter/deliver/file"
 	s3channel "github.com/gsoultan/cronos/internal/adapter/deliver/s3"
+	"github.com/gsoultan/cronos/internal/adapter/driver/registry"
 	"github.com/gsoultan/cronos/internal/adapter/render/paginated"
 	"github.com/gsoultan/cronos/internal/adapter/render/spreadsheet"
 	"github.com/gsoultan/cronos/internal/adapter/store/file"
@@ -194,7 +195,9 @@ func users(records *sqlstore.Store) api.Users {
 // sit in the store and in the catalogue while every render kept using what the
 // process read at startup — until somebody restarted it.
 func publishing(store publish.Store, repo *file.Repository, records *sqlstore.Store) *publish.Service {
-	svc := publish.New(store, repo).WithReports(repo)
+	svc := publish.New(store, repo).WithReports(repo).
+		// So a delete can say what would break rather than breaking it.
+		WithCatalog(repo)
 	if records != nil {
 		svc = svc.WithLive(repo)
 	}
@@ -291,4 +294,15 @@ func sharing(records *sqlstore.Store, signer *token.Signer, repo *file.Repositor
 		return nil
 	}
 	return share.New(records, signer, repo)
+}
+
+// probing exposes the connection test, where there are named sources to test.
+//
+// A deployment reading one configured database has nothing to name, so the
+// endpoint is not mounted rather than mounted and answering "which one?".
+func probing(engines run.Engines) api.Probes {
+	if reg, ok := engines.(*registry.Registry); ok {
+		return reg
+	}
+	return nil
 }

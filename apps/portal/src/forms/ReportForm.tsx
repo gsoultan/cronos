@@ -50,6 +50,8 @@ function tiles(blocks: ReportInput['blocks']): Tile[] {
       groupBy: b.groupBy,
       aggregate: b.aggregate as Tile['aggregate'],
       columns: b.columns,
+      filter: b.filter,
+      sort: b.sort?.map((k) => ({ field: k.field, dir: k.dir as 'asc' | 'desc' | undefined })),
     }
   })
 }
@@ -95,7 +97,7 @@ export function ReportForm({ onDone, onCancel, initial }: Props) {
         blocks: blocks.map((b) => ({
           kind: b.kind, title: b.title, dataset: b.dataset,
           field: b.field, groupBy: b.groupBy, aggregate: b.aggregate,
-          columns: b.columns,
+          columns: b.columns, filter: b.filter, sort: b.sort,
         })),
       }), initial))
       if (saved) onDone()

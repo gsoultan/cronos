@@ -29,7 +29,11 @@ func (c *CORS) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// cache that misses this serves one customer's headers to another.
 		w.Header().Add("Vary", "Origin")
 		w.Header().Set("Access-Control-Allow-Headers", "authorization, content-type")
-		w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+		// Every method the API answers, not only the one it started with. A
+		// preflight that omits DELETE is a browser refusing the request before
+		// it is sent, which reaches the caller as a network failure — the same
+		// error as an unreachable server, for a server that answered fine.
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Max-Age", "600")
 	}
 

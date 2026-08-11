@@ -148,12 +148,17 @@ func (d *Definitions) fromLoaded(pr principal.Principal, kind, name string) ([]b
 	return d.loaded.Raw(kind, name)
 }
 
+// delete removes a definition, through the service rather than the store.
+//
+// The store checks the tenant and nothing else. Going straight to it meant a
+// viewer's token could remove whatever it named, and that whatever it removed
+// might be the dataset a report reads.
 func (d *Definitions) delete(w http.ResponseWriter, r *http.Request, pr principal.Principal, kind, name string) {
-	if err := d.store.Delete(r.Context(), pr, canonicalKind(kind), name); err != nil {
-		fail(w, http.StatusNotFound, "No such definition.")
+	if err := d.svc.Delete(r.Context(), pr, canonicalKind(kind), name); err != nil {
+		d.refuse(w, err)
 		return
 	}
-	d.log.Info("deleted", "kind", kind, "name", name)
+	d.log.Info("deleted", "kind", kind, "name", name, "by", pr.Subject)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -168,7 +173,13 @@ func (d *Definitions) refuse(w http.ResponseWriter, err error) {
 		fail(w, http.StatusForbidden, "Not permitted to change definitions.")
 	case errors.Is(err, publish.ErrUnsupported):
 		fail(w, http.StatusBadRequest, err.Error())
-	case errors.Is(err, publish.ErrNotFound),
+	// Conflict, not a bad request: nothing about what was asked is malformed,
+	// and the sentence names what would break so somebody can go and fix it.
+	case errors.Is(err, publish.ErrInUse):
+		fail(w, http.StatusConflict, err.Error())
+	case errors.Is(err, publish.ErrNotFound):
+		fail(w, http.StatusNotFound, err.Error())
+	case
 		errors.Is(err, codec.ErrDecode),
 		errors.Is(err, definition.ErrInvalid),
 		errors.Is(err, query.ErrBadTemplate):

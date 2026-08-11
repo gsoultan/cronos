@@ -180,6 +180,9 @@ export interface ReportBlockInput {
   chart?: string
   columns?: string[]
   pageSize?: number
+  /** Narrows this block alone, as SQL the server compiles. */
+  filter?: string
+  sort?: { field: string; dir?: string }[]
 }
 
 /**
@@ -211,28 +214,37 @@ const CHARTS: Record<string, string> = { bar: 'bar', line: 'line', area: 'area' 
 
 function block(b: ReportBlockInput): Yaml {
   const reads = b.dataset || undefined
+  // Every kind takes them, so they are folded in once rather than repeated in
+  // each branch — and a kind that gains support for one later gets it here.
+  const narrowed = (v: Record<string, Yaml>): Yaml => ({
+    ...v,
+    filter: b.filter?.trim() || undefined,
+    sort: b.sort && b.sort.length > 0
+      ? b.sort.map((k) => ({ field: k.field, dir: k.dir || undefined }))
+      : undefined,
+  })
 
   if (b.kind === 'stat') {
-    return {
+    return narrowed({
       kind: 'stat', dataset: reads, label: b.title,
       value: { field: b.field, aggregate: b.aggregate ?? 'sum' },
-    }
+    })
   }
   if (b.kind === 'table') {
-    return {
+    return narrowed({
       kind: 'table', dataset: reads, title: b.title,
       columns: b.columns ?? [], pageSize: b.pageSize || undefined,
-    }
+    })
   }
   if (CHARTS[b.kind] || b.kind === 'chart') {
-    return {
+    return narrowed({
       kind: 'chart', dataset: reads, title: b.title,
       chart: CHARTS[b.kind] ?? b.chart ?? 'bar',
       x: { field: b.groupBy, grain: b.grain || undefined },
       y: { field: b.field, aggregate: b.aggregate ?? 'sum' },
-    }
+    })
   }
-  return { kind: b.kind, dataset: reads, title: b.title, text: b.title }
+  return narrowed({ kind: b.kind, dataset: reads, title: b.title, text: b.title })
 }
 
 export interface ScheduleInput {
@@ -449,15 +461,24 @@ export function readReport(text: string): Loaded<ReportInput> {
 function readBlock(v: Yaml): ReportBlockInput {
   const b = asMap(v)
   const kind = str(b.kind)
+  const narrowing = {
+    filter: str(b.filter) || undefined,
+    sort: asList(b.sort).map((k) => {
+      const key = asMap(k)
+      return { field: str(key.field), dir: str(key.dir) || undefined }
+    }),
+  }
   if (kind === 'stat') {
     const value = asMap(b.value)
     return {
+      ...narrowing,
       kind, title: str(b.label) || str(b.title), dataset: str(b.dataset) || undefined,
       field: str(value.field), aggregate: str(value.aggregate) || undefined,
     }
   }
   if (kind === 'table') {
     return {
+      ...narrowing,
       kind, title: str(b.title), dataset: str(b.dataset) || undefined,
       columns: asList(b.columns).map(str), pageSize: num(b.pageSize),
     }
@@ -468,13 +489,14 @@ function readBlock(v: Yaml): ReportBlockInput {
     // The builder's palette has one entry per chart type, so a chart comes
     // back as the entry that would have drawn it rather than as `chart`.
     return {
+      ...narrowing,
       kind: str(b.chart) || 'bar', chart: str(b.chart) || 'bar',
       title: str(b.title), dataset: str(b.dataset) || undefined,
       groupBy: str(x.field), grain: str(x.grain) || undefined,
       field: str(y.field), aggregate: str(y.aggregate) || undefined,
     }
   }
-  return { kind, title: str(b.title) || str(b.text), dataset: str(b.dataset) || undefined }
+  return { ...narrowing, kind, title: str(b.title) || str(b.text), dataset: str(b.dataset) || undefined }
 }
 
 /** A schedule. */

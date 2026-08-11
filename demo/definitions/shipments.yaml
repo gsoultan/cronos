@@ -1,0 +1,19 @@
+apiVersion: cronos.dev/v1
+kind: Dataset
+metadata:
+  name: shipments
+  title: Shipments
+  description: What went out, where to, and whether it arrived.
+spec:
+  sources:
+    - ref: warehouse
+  query: |
+    SELECT id, customer_id, dispatched_at, region, weight_kg, status
+    FROM shipments
+  fields:
+    - {name: id,            type: string, role: dimension, hidden: true}
+    - {name: customer_id,   type: string, role: dimension, label: Customer}
+    - {name: dispatched_at, type: date,   role: dimension, label: Dispatched}
+    - {name: region,        type: string, role: dimension, label: Region}
+    - {name: weight_kg,     type: number, role: measure, aggregate: sum, label: Weight}
+    - {name: status,        type: string, role: dimension, label: Status}

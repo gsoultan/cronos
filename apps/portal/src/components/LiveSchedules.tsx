@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
+import { DeleteAction } from './DeleteAction'
 import { Tag } from './StatusPill'
 import { ApiError, runSchedule } from '../lib/api'
 import { EmptyState } from './EmptyState'
@@ -60,6 +61,7 @@ export function LiveSchedules({ schedules }: { schedules: ScheduleSummary[] }) {
                 className="text-small text-ink-muted underline hover:text-ink">
                 Edit
               </Link>
+              <DeleteAction kind="Schedule" name={s.name} label={s.title || s.name} />
             </span>
           </li>
         ))}

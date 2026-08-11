@@ -317,6 +317,25 @@ export function createShare(report: string, days: number) {
   })
 }
 
+export interface ProbeResult {
+  source: string
+  ok: boolean
+  /** How long it took to answer. A slow source is not a healthy one. */
+  ms: number
+  error?: string
+}
+
+/**
+ * Asks a datasource whether it is there.
+ *
+ * Two hundred either way: the probe ran, and this is what it found. A failure
+ * carries the driver's own sentence, which is the only thing that says whether
+ * it was a wrong password, a closed port or a database that does not exist.
+ */
+export function testDataSource(name: string) {
+  return call<ProbeResult>(`/v1/datasources/${encodeURIComponent(name)}/test`, { method: 'POST' })
+}
+
 export function listShares() {
   return call<{ shares: Share[] }>('/v1/shares')
 }

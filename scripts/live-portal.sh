@@ -63,7 +63,10 @@ done
 
 # API and token too: the edit check reads back what the form published, and
 # asking the server directly is the only way to see the stored bytes.
-BASE="http://localhost:${WEB_PORT}" API="http://localhost:${PORT}" TOKEN="$TOKEN" \
+# A viewer too, because "who may delete" is a rule with two answers and a
+# check that only ever holds the permitted one proves half of it.
+VIEWER="$(./bin/cronos-token -audience portal -role viewer -org acme -project finance -subject sam)"
+BASE="http://localhost:${WEB_PORT}" API="http://localhost:${PORT}" TOKEN="$TOKEN" VIEWER="$VIEWER" \
   node apps/portal/scripts/live-portal-check.mjs
 
 # And again with no token baked in, so the portal has to sign somebody in.

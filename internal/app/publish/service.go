@@ -41,6 +41,7 @@ type Service struct {
 	datasets Datasets
 	reports  Reports
 	live     Live
+	catalog  Catalog
 }
 
 // New wires a Service. The repository satisfies both lookups, so callers pass
@@ -191,7 +192,23 @@ func (s *Service) checkReport(ctx context.Context, rep definition.Report) error 
 		}
 		sets[name] = ds
 	}
-	if err := query.CheckFilters(rep.Filters, sets); err != nil {
+	// Filters are checked against every dataset that exists, not only the ones
+	// this report reads. A filter may bind a dataset no block here uses — the
+	// viewer announces such a filter as not applying, which is deliberate and
+	// is what lets one filter definition serve a report that later gains a
+	// block reading it. What is not deliberate is a dataset name nobody has,
+	// and that stays an error.
+	known := sets
+	if s.catalog != nil {
+		known = map[string]definition.Dataset{}
+		for _, ds := range s.catalog.Datasets() {
+			known[ds.Name] = ds
+		}
+		for name, ds := range sets {
+			known[name] = ds
+		}
+	}
+	if err := query.CheckFilters(rep.Filters, known); err != nil {
 		return err
 	}
 	return s.checkBlocks(rep, sets)

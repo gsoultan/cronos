@@ -1,4 +1,6 @@
 import { Link } from '@tanstack/react-router'
+import { DeleteAction } from './DeleteAction'
+import { TestConnection } from './TestConnection'
 import { Tag } from './StatusPill'
 import { Pagination, paginate } from './Pagination'
 import type { DatasetSummary, SourceSummary } from '../lib/api'
@@ -53,9 +55,12 @@ export function LiveSources({ sources, page, size, onPage }: {
                   {s.timeout} · {s.maxRows.toLocaleString('en')} rows
                 </span>
                 <Tag>{s.driver}</Tag>
-                <Link to="/data/sources/$name/edit" params={{ name: s.name }} className={EDIT}>
-                  Edit
-                </Link>
+                <span className={`${EDIT} flex items-center gap-3 no-underline`}>
+                  <TestConnection name={s.name} />
+                  <Link to="/data/sources/$name/edit" params={{ name: s.name }}
+                    className="underline hover:text-ink">Edit</Link>
+                  <DeleteAction kind="DataSource" name={s.name} label={s.title || s.name} />
+                </span>
               </li>
             ))}
           </ul>
@@ -103,9 +108,11 @@ export function LiveDatasets({ datasets, page, size, onPage }: {
                   {d.rowScoped && <Tag>row scoped</Tag>}
                 </span>
                 <span className="text-small text-ink-secondary">{d.sources.join(', ')}</span>
-                <Link to="/data/datasets/$name/edit" params={{ name: d.name }} className={EDIT}>
-                  Edit
-                </Link>
+                <span className={`${EDIT} flex items-center gap-3 no-underline`}>
+                  <Link to="/data/datasets/$name/edit" params={{ name: d.name }}
+                    className="underline hover:text-ink">Edit</Link>
+                  <DeleteAction kind="Dataset" name={d.name} label={d.title || d.name} />
+                </span>
               </li>
             ))}
           </ul>

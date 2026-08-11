@@ -185,3 +185,41 @@ func (r *Registry) Close() error {
 	}
 	return first
 }
+
+// Probe opens a connection to the named source and asks it a question.
+//
+// Ping and a statement, not ping alone. Ping borrows a connection from the
+// pool and may find one already open, which proves the pool remembers a
+// database that has since gone away; a trivial select is a round trip the
+// database has to be alive to complete.
+//
+// The duration is part of the answer. A source that responds in four seconds
+// is one whose reports will time out under load, and "connected" alone would
+// present that as healthy.
+func (r *Registry) Probe(ctx context.Context, name string) (time.Duration, error) {
+	db, ok := r.DB(name)
+	if !ok {
+		return 0, fmt.Errorf("%w: %q", ErrUnknownSource, name)
+	}
+
+	// Bounded here rather than left to the caller's context. A database that
+	// accepts a connection and never answers would otherwise hold the request
+	// open for as long as the browser waited.
+	ctx, cancel := context.WithTimeout(ctx, probeTimeout)
+	defer cancel()
+
+	started := time.Now()
+	if err := db.PingContext(ctx); err != nil {
+		return time.Since(started), err
+	}
+	var one int
+	if err := db.QueryRowContext(ctx, "SELECT 1").Scan(&one); err != nil {
+		return time.Since(started), err
+	}
+	return time.Since(started), nil
+}
+
+// probeTimeout is how long a source has to prove it is there. Five seconds is
+// long enough for a cold connection across a region and short enough that
+// somebody waiting on the answer does not conclude the page is broken.
+const probeTimeout = 5 * time.Second

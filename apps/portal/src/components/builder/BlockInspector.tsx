@@ -131,6 +131,48 @@ export function BlockInspector({
         </Field>
       )}
 
+      {block.kind === 'table' && (
+        <Field label="Sorted by" required={false}
+          help="The first key decides the order; the rest break ties.">
+          <div className="grid gap-2">
+            {(block.sort ?? []).map((key, i) => (
+              <div key={`${key.field}-${i}`} className="flex items-center gap-2">
+                <Select data={opts(visible)} value={key.field} allowDeselect={false}
+                  className="min-w-0 flex-1" aria-label={`Sort key ${i + 1}`}
+                  onChange={(v) => onChange({ sort: replace(block.sort, i, { ...key, field: v ?? key.field }) })} />
+                <Select data={DIRECTIONS} value={key.dir ?? 'asc'} allowDeselect={false} w={130}
+                  aria-label={`Sort direction ${i + 1}`}
+                  onChange={(v) => onChange({ sort: replace(block.sort, i, { ...key, dir: (v ?? 'asc') as 'asc' | 'desc' }) })} />
+                <button type="button" aria-label={`Remove sort key ${i + 1}`}
+                  onClick={() => onChange({ sort: without(block.sort, i) })}
+                  className="shrink-0 cursor-pointer text-small text-ink-muted underline">Remove</button>
+              </div>
+            ))}
+            <button type="button" data-testid="add-sort"
+              disabled={visible.length === 0}
+              onClick={() => onChange({
+                sort: [...(block.sort ?? []), { field: visible[0]?.name ?? '', dir: 'desc' as const }],
+              })}
+              className="cursor-pointer justify-self-start text-small text-ink-muted underline
+                         hover:text-ink disabled:cursor-default disabled:opacity-50">
+              Add a sort key
+            </button>
+          </div>
+        </Field>
+      )}
+
+      {/* SQL, because the format takes SQL and the server compiles it against
+          the dataset — which is what returns a sentence naming the field when
+          it is wrong. A field-operator-value row here would refuse every
+          predicate that is not one comparison, which is most of the ones worth
+          writing. */}
+      <Field label="Only rows where" required={false}
+        help="Narrows this block alone. Checked against the dataset when you save.">
+        <TextInput value={block.filter ?? ''} placeholder="status = 'overdue'"
+          classNames={{ input: 'font-mono text-caption' }} data-testid="block-filter"
+          onChange={(e) => onChange({ filter: e.currentTarget.value || undefined })} />
+      </Field>
+
       <p className="rounded-r-md border-l-2 border-line bg-sunken px-3 py-2 text-caption
                     text-ink-muted">
         Drag to reorder, or <kbd className="font-mono">⌥↑</kbd> /{' '}
@@ -139,4 +181,18 @@ export function BlockInspector({
       </p>
     </div>
   )
+}
+
+const DIRECTIONS = [
+  { value: 'asc', label: 'Ascending' },
+  { value: 'desc', label: 'Descending' },
+]
+
+/** One key changed, the rest untouched. */
+function replace(keys: Tile['sort'], at: number, key: NonNullable<Tile['sort']>[number]) {
+  return (keys ?? []).map((k, i) => (i === at ? key : k))
+}
+
+function without(keys: Tile['sort'], at: number) {
+  return (keys ?? []).filter((_, i) => i !== at)
 }

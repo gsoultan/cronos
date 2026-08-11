@@ -227,3 +227,37 @@ test('what a save cannot keep is named, and what it can is kept', () => {
   // Carried rather than merely warned about: the saved document still has it.
   expect(withCarry(report(back.input), back)).toContain('name: region')
 })
+
+/* The last two things a stored report could hold that the builder could not
+   show. Both live inside outputs[].layout[], which the builder rewrites
+   wholesale — so carry-over cannot reach them and they had to be read back. */
+
+test('a block filter and a sort survive the round trip', () => {
+  const input = {
+    name: 'Billing', slug: 'billing', dataset: 'invoices',
+    blocks: [
+      { kind: 'stat', title: 'Outstanding', field: 'total', aggregate: 'sum',
+        filter: "status = 'overdue'" },
+      { kind: 'table', title: 'Detail', columns: ['id', 'total'],
+        sort: [{ field: 'issued_at', dir: 'desc' }, { field: 'total' }] },
+    ],
+  }
+  const back = readReport(report(input))
+
+  expect(back.input.blocks[0]?.filter).toBe("status = 'overdue'")
+  expect(back.input.blocks[1]?.sort).toEqual([
+    { field: 'issued_at', dir: 'desc' },
+    // Ascending is the absence of a direction, in the file and back.
+    { field: 'total', dir: undefined },
+  ])
+  expect(back.drops).toEqual([])
+})
+
+test('a block with neither writes neither', () => {
+  const emitted = report({
+    name: 'Plain', slug: 'plain', dataset: 'invoices',
+    blocks: [{ kind: 'stat', title: 'Billed', field: 'total' }],
+  })
+  expect(emitted).not.toContain('filter')
+  expect(emitted).not.toContain('sort')
+})

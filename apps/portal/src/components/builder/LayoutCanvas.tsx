@@ -121,7 +121,7 @@ export function LayoutCanvas({
       {blocks.map((b, i) => {
         const selected = b.id === selectedId
         return (
-          <div key={b.id}
+          <div key={b.id} data-testid="canvas-block"
             style={{ gridColumn: `span ${b.span}` }}
             draggable
             onDragStart={() => setDragging(b.id)}

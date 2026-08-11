@@ -140,19 +140,38 @@ await page.locator('[data-testid=live-report]').waitFor({ timeout: 20000 })
 ok('and the report that reads it still runs',
   (await page.locator('[data-testid=live-report]').innerText()).includes('154,651.50'))
 
-/* -- What the form cannot show, it says so about --------------------------
-   billing-summary has a block filter and a block sort, neither of which the
-   builder draws. Saving would drop them, and the author is told which. */
+/* -- The builder shows the whole report ----------------------------------
+   billing-summary has a block filter and a block sort, which the builder used
+   to be unable to draw — so opening it warned that saving would drop them.
+   Both are editable now, and the warning has nothing left to say. */
 await page.goto(`${B}/reports/billing-summary/edit`, { waitUntil: 'domcontentloaded' })
-await page.locator('[data-testid=unmodelled-warning]').waitFor({ timeout: 15000 })
-const warned = await page.locator('[data-testid=unmodelled-warning]').innerText()
-ok('an unmodelled block filter is named rather than dropped in silence',
-  warned.includes('layout[1].filter'))
-ok('and so is a block sort', warned.includes('layout[3].sort'))
-/* The shared filter is not in that list: it is a spec key the form never
-   writes, so a save folds it back untouched. */
-ok('a spec the form never writes is carried, not warned about',
-  !warned.includes('spec.filters'))
+await page.locator('[data-testid=canvas-block]').first().waitFor({ timeout: 20000 })
+ok('nothing in this report is beyond the editor',
+  await page.locator('[data-testid=unmodelled-warning]').count() === 0)
+
+/* The inspector is the block when a block is selected, so the predicate is
+   read from the block that carries it. billing-summary's second stat is the
+   one filtered to overdue. */
+const blocks = page.locator('[data-testid=canvas-block]')
+let found = ''
+for (let i = 0; i < await blocks.count(); i++) {
+  await blocks.nth(i).click()
+  await page.locator('[data-testid=block-filter]').waitFor({ timeout: 10000 })
+  const value = await page.locator('[data-testid=block-filter]').inputValue()
+  if (value) found = value
+}
+ok('and the block filter is there to read and change', found.includes("status = 'overdue'"))
+
+/* Saving it back keeps both. The warning being silent is only worth anything
+   if it is telling the truth. */
+await page.locator('button:has-text("Save report")').click()
+await page.waitForURL(/\/$/, { timeout: 15000 })
+const saved = await fetch(`${process.env.API}/v1/definitions/Report/billing-summary`, {
+  headers: { authorization: `Bearer ${process.env.TOKEN}` },
+}).then((r) => r.text())
+ok('and a save keeps the filter', saved.includes("status = 'overdue'"))
+ok('and the sort', saved.includes('issued_at'))
+ok('and the shared filter the form never writes', saved.includes('name: region'))
 
 /* -- Activity: what ran, and who got it ----------------------------------
    Nothing has run yet, and the page says so rather than showing an empty
@@ -271,6 +290,64 @@ await guest.locator('text=does not open').waitFor({ timeout: 15000 })
 ok('revoking stops it on the next request',
   (await guest.locator('body').innerText()).includes('This link does not open'))
 await stranger.close()
+
+/* -- Deleting, and what stops it -----------------------------------------
+   The store checks the tenant and nothing else, so both rules live above it:
+   who may remove a definition, and whether anything still reads it. */
+
+await page.goto(`${B}/data`, { waitUntil: 'domcontentloaded' })
+await page.locator('[data-testid=datasets-card] [data-testid=delete-action]').first()
+  .waitFor({ timeout: 15000 })
+
+/* invoices is read by billing-summary. Removing it would leave that report to
+   fail on the next open — or at 06:00 on the first, naming a dataset that no
+   longer exists to explain itself. */
+const invoices = page.locator('[data-testid=datasets-card] li')
+  .filter({ hasText: 'invoices' }).first()
+await invoices.locator('[data-testid=delete-action]').click()
+await invoices.locator('[data-testid=delete-confirm]').click()
+await invoices.locator('[data-testid=delete-refused]').waitFor({ timeout: 15000 })
+const stopped = await invoices.locator('[data-testid=delete-refused]').innerText()
+ok('a dataset a report reads is not deleted', stopped.includes('still read by'))
+ok('and the refusal names the report', stopped.includes('billing-summary'))
+
+/* The report still runs, which is the claim the refusal was protecting. */
+await page.goto(`${B}/reports/billing-summary`, { waitUntil: 'domcontentloaded' })
+await page.locator('[data-testid=live-report]').waitFor({ timeout: 20000 })
+ok('and it still runs', (await page.locator('[data-testid=live-report]').innerText())
+  .includes('154,651.50'))
+
+/* A viewer's token reached the store directly before this. It no longer does. */
+const asViewer = await fetch(`${process.env.API}/v1/definitions/Dataset/customer-list`, {
+  method: 'DELETE', headers: { authorization: `Bearer ${process.env.VIEWER}` },
+})
+ok('a viewer may not delete anything', asViewer.status === 403)
+
+/* -- The connection test -------------------------------------------------
+   It used to wait nine hundred milliseconds and report twenty-four tables
+   whatever had been typed. A test that cannot fail is worse than no test. */
+
+await page.goto(`${B}/data`, { waitUntil: 'domcontentloaded' })
+await page.locator('[data-testid=test-connection]').first().waitFor({ timeout: 15000 })
+await page.locator('[data-testid=test-connection]').first().click()
+await page.locator('[data-testid=probe-result]').first().waitFor({ timeout: 15000 })
+const probe = await page.locator('[data-testid=probe-result]').first().innerText()
+ok('a source that is there answers, and says how fast', /Answered in \d+ ms/.test(probe))
+
+/* And one that is not says so in the driver's words. The demo has one real
+   source, so this asks the API directly for a name nothing opened. */
+const missing = await fetch(`${process.env.API}/v1/datasources/not-a-source/test`, {
+  method: 'POST', headers: { authorization: `Bearer ${process.env.TOKEN}` },
+}).then((r) => r.json())
+ok('a source that is not there does not answer ok', missing.ok === false)
+ok('and the failure says which one', String(missing.error).includes('not-a-source'))
+
+/* Testing a connection opens one to somebody's warehouse. Not a reader's
+   business, and neither is which sources exist. */
+const asReader = await fetch(`${process.env.API}/v1/datasources/warehouse/test`, {
+  method: 'POST', headers: { authorization: `Bearer ${process.env.VIEWER}` },
+})
+ok('a viewer may not test connections', asReader.status === 403)
 
 console.log(fails ? `\n${fails} failed` : '\nall passed')
 await browser.close()

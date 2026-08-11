@@ -17,7 +17,7 @@ import (
 func Routes(reports Reports, runner *run.Service, signer *token.Signer,
 	origins []string, log *slog.Logger) http.Handler {
 	return RoutesWith(reports, runner, signer, origins, log,
-		nil, nil, nil, nil, nil, nil, nil, nil, nil, "", "")
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "", "")
 }
 
 // RoutesWith adds the management API when an admin key is configured.
@@ -29,7 +29,7 @@ func Routes(reports Reports, runner *run.Service, signer *token.Signer,
 func RoutesWith(reports Reports, runner *run.Service, signer *token.Signer,
 	origins []string, log *slog.Logger,
 	pub *publish.Service, store publish.Store, admin *AdminKey, runs History,
-	users Users, defs Repository, due Due, fires Firing, shares Sharing,
+	users Users, defs Repository, due Due, fires Firing, shares Sharing, probes Probes,
 	org, project string) http.Handler {
 
 	embed := NewEmbed(reports, runner, signer, log)
@@ -85,6 +85,12 @@ func RoutesWith(reports Reports, runner *run.Service, signer *token.Signer,
 		}
 		mux.Handle("/v1/definitions", handler)
 		mux.Handle("/v1/definitions/{kind}/{name}", handler)
+
+		// Only where sources are named. A deployment reading one configured
+		// database has nothing to put in the URL.
+		if probes != nil {
+			mux.Handle("/v1/datasources/{name}/test", NewDataSources(probes, author, log))
+		}
 
 		// Only where a scheduler is armed. A deployment that renders on
 		// request has no schedules to fire, and an endpoint that exists only

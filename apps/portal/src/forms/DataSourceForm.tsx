@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { dataSource, withCarry, type Loaded, type SourceInput } from '../lib/definitions'
+import { ApiError, testDataSource } from '../lib/api'
 import { usePublish } from '../lib/usePublish'
 import { PublishError } from '../components/form/PublishError'
 import { UnmodelledWarning } from '../components/form/UnmodelledWarning'
@@ -19,7 +20,7 @@ const STEPS: Step[] = [
   { id: 'name', label: 'Name it', hint: 'How your team will find it' },
 ]
 
-type TestState = { status: 'idle' | 'running' | 'ok' | 'failed'; message?: string; tables?: number }
+type TestState = { status: 'idle' | 'running' | 'ok' | 'failed'; message?: string }
 
 interface Props {
   onDone: () => void
@@ -97,11 +98,44 @@ export function DataSourceForm({ onDone, onCancel, initial }: Props) {
     setCompleted((c) => Math.max(c, next))
   }
 
+  /*
+   * A source can only be tested once it exists.
+   *
+   * The connection is opened by the server, from a definition it holds and a
+   * password it resolves — the form never sends one, because a definition is a
+   * file somebody commits and a secret in one is a secret in their git history
+   * for ever. So there is nothing here for a probe to connect with until the
+   * source has been saved.
+   *
+   * It used to wait nine hundred milliseconds and report twenty-four tables,
+   * whatever had been typed. A test that cannot fail is worse than no test:
+   * the step exists to catch a wrong password now rather than at 6am, and one
+   * that always passes teaches somebody to trust it.
+   */
   async function runTest() {
+    if (!stored) {
+      setTest({
+        status: 'failed',
+        message: 'This source has not been saved yet, so there is nothing to connect to. '
+          + 'Save it, then test it from the Data page — the server opens the connection, '
+          + 'using a password it resolves rather than one this form sends.',
+      })
+      setCompleted((c) => Math.max(c, 3))
+      return
+    }
+
     setTest({ status: 'running' })
-    await new Promise((r) => setTimeout(r, 900))
-    // Stands in for a real probe until the engine exists.
-    setTest({ status: 'ok', message: 'Connected', tables: 24 })
+    try {
+      const probe = await testDataSource(stored.slug)
+      setTest(probe.ok
+        ? { status: 'ok', message: `Answered in ${probe.ms} ms.` }
+        : { status: 'failed', message: probe.error ?? 'No answer.' })
+    } catch (err) {
+      setTest({
+        status: 'failed',
+        message: err instanceof ApiError ? err.message : 'Could not reach the server.',
+      })
+    }
     setCompleted((c) => Math.max(c, 3))
   }
 
@@ -109,7 +143,9 @@ export function DataSourceForm({ onDone, onCancel, initial }: Props) {
     switch (step) {
       case 0: return kind !== null
       case 1: return connectionComplete(spec, values)
-      case 2: return test.status === 'ok'
+      /* Not gated on a passing test. A new source cannot be tested until it
+         exists, and refusing to advance would make the wizard unfinishable. */
+      case 2: return test.status !== 'running'
       case 3: return values.name.trim().length > 1
       default: return false
     }
@@ -263,7 +299,11 @@ export function DataSourceForm({ onDone, onCancel, initial }: Props) {
                 : 'border-dashed border-line bg-sunken'}`}>
               {test.status === 'idle' && (
                 <>
-                  <p className="text-small text-ink-secondary">Nothing has been contacted yet.</p>
+                  <p className="text-small text-ink-secondary">
+                    {stored
+                      ? 'Nothing has been contacted yet.'
+                      : 'A source is contacted by the server, which cannot do it until this one is saved.'}
+                  </p>
                   <button type="button" className="cursor-pointer rounded-md border border-line bg-surface px-4 py-2 text-small text-ink hover:border-accent" onClick={runTest}>
                     Test connection
                   </button>
@@ -272,15 +312,17 @@ export function DataSourceForm({ onDone, onCancel, initial }: Props) {
               {test.status === 'running' && <p className="text-small text-ink-secondary">Connecting…</p>}
               {test.status === 'ok' && (
                 <>
-                  <p className="text-small text-ink-secondary">
-                    <strong>Connected.</strong> Found {test.tables} tables cronos can read.
+                  <p className="text-small text-ink-secondary" data-testid="probe-ok">
+                    <strong>Connected.</strong> {test.message}
                   </p>
                   <button type="button" className="cursor-pointer rounded-md border border-line bg-surface px-4 py-2 text-small text-ink hover:border-accent" onClick={runTest}>Test again</button>
                 </>
               )}
               {test.status === 'failed' && (
                 <>
-                  <p className="text-small text-ink-secondary">{test.message}</p>
+                  <p className="text-small text-ink-secondary" data-testid="probe-failed">
+                    {test.message}
+                  </p>
                   <button type="button" className="cursor-pointer rounded-md border border-line bg-surface px-4 py-2 text-small text-ink hover:border-accent" onClick={runTest}>Try again</button>
                 </>
               )}
