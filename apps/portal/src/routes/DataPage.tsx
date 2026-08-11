@@ -11,6 +11,8 @@ import { connectedSources, listedDatasets } from '../lib/dataSources'
 import { relativeTime } from '../lib/format'
 import { useWorkspace } from '../lib/WorkspaceContext'
 import { canEdit } from '../lib/workspace'
+import { useCatalog } from '../lib/useCatalog'
+import { LiveDatasets, LiveSources } from '../components/LiveCatalog'
 
 type Panel = 'none' | 'source' | 'dataset'
 
@@ -28,8 +30,16 @@ const ROW = 'flex flex-wrap items-center gap-4 border-b border-line px-4 py-3 la
  * for a thing, not for a category, and making them guess which of two boxes to
  * type into is a question the interface should answer for them.
  */
+/**
+ * Sources and datasets, from the server when there is one.
+ *
+ * A dispatcher, like the report page: the two branches read from entirely
+ * different places and share only the shape they draw.
+ */
 export function DataPage() {
+  const catalog = useCatalog()
   const [panel, setPanel] = useState<Panel>('none')
+  const [livePage, setLivePage] = useState({ sources: 0, datasets: 0 })
   const [query, setQuery] = useState('')
   const [sourcePage, setSourcePage] = useState(0)
   const [datasetPage, setDatasetPage] = useState(0)
@@ -45,6 +55,28 @@ export function DataPage() {
     setQuery(next)
     setSourcePage(0)
     setDatasetPage(0)
+  }
+
+  if (catalog.live && panel === 'none') {
+    if (catalog.isPending) {
+      return <p className="p-8 text-center text-ink-muted">Loading…</p>
+    }
+    if (catalog.error) {
+      return (
+        <EmptyState title="Could not read this project"
+          description={catalog.error instanceof Error ? catalog.error.message : 'Unknown error.'} />
+      )
+    }
+    return (
+      <>
+        <PageHeader title="Data"
+          description="Sources are connections. Datasets are governed queries against them — reports bind to datasets, never to a source directly." />
+        <LiveSources sources={catalog.data?.sources ?? []} page={livePage.sources}
+          size={PAGE_SIZE} onPage={(n) => setLivePage((p) => ({ ...p, sources: n }))} />
+        <LiveDatasets datasets={catalog.data?.datasets ?? []} page={livePage.datasets}
+          size={PAGE_SIZE} onPage={(n) => setLivePage((p) => ({ ...p, datasets: n }))} />
+      </>
+    )
   }
 
   const term = query.trim().toLowerCase()

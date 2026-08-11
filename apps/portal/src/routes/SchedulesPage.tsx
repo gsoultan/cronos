@@ -7,6 +7,8 @@ import { cronToText } from '../lib/cronText'
 import { relativeTime } from '../lib/format'
 import { useWorkspace } from '../lib/WorkspaceContext'
 import { canEdit } from '../lib/workspace'
+import { useCatalog } from '../lib/useCatalog'
+import { LiveSchedules } from '../components/LiveSchedules'
 
 const SCHEDULES = [
   {
@@ -22,9 +24,23 @@ const SCHEDULES = [
 ]
 
 export function SchedulesPage() {
+  const catalog = useCatalog()
   const [adding, setAdding] = useState(false)
   const { org, project } = useWorkspace()
   const editable = canEdit(org, project)
+
+  if (catalog.live && !adding) {
+    if (catalog.isPending) {
+      return <p className="p-8 text-center text-ink-muted">Loading…</p>
+    }
+    return (
+      <>
+        <PageHeader title="Schedules"
+          description="What goes out, when, and to whom." />
+        <LiveSchedules schedules={catalog.data?.schedules ?? []} />
+      </>
+    )
+  }
 
   if (adding) {
     return (

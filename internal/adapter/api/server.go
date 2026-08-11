@@ -16,7 +16,7 @@ import (
 // customer's business.
 func Routes(reports Reports, runner *run.Service, signer *token.Signer,
 	origins []string, log *slog.Logger) http.Handler {
-	return RoutesWith(reports, runner, signer, origins, log, nil, nil, nil, nil, nil)
+	return RoutesWith(reports, runner, signer, origins, log, nil, nil, nil, nil, nil, nil, nil)
 }
 
 // RoutesWith adds the management API when an admin key is configured.
@@ -28,7 +28,7 @@ func Routes(reports Reports, runner *run.Service, signer *token.Signer,
 func RoutesWith(reports Reports, runner *run.Service, signer *token.Signer,
 	origins []string, log *slog.Logger,
 	pub *publish.Service, store publish.Store, admin *AdminKey, runs History,
-	users Users) http.Handler {
+	users Users, defs Repository, due Due) http.Handler {
 
 	embed := NewEmbed(reports, runner, signer, log)
 	author := NewAuthor(signer, admin)
@@ -40,6 +40,13 @@ func RoutesWith(reports Reports, runner *run.Service, signer *token.Signer,
 	// check should be the first thing a handler does rather than a branch
 	// inside it.
 	mux.Handle("/v1/reports/{name}", NewPortalReports(embed, author, log))
+
+	// What the project contains, in one request. A browsing interface asking
+	// for the names and then once per name is a page that loads in a hundred
+	// round trips.
+	if defs != nil {
+		mux.Handle("/v1/catalog", NewCatalog(defs, due, author, log))
+	}
 	mux.HandleFunc("/v1/health", func(w http.ResponseWriter, _ *http.Request) {
 		send(w, http.StatusOK, map[string]string{"status": "ok"})
 	})

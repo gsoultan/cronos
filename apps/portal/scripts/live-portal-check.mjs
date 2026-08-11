@@ -53,6 +53,31 @@ ok('a block says the filter that misses it does not apply',
 ok('no sample-data banner when connected',
   await page.locator('[data-testid=sample-banner]').count() === 0)
 
+/* -- The catalogue: what the project contains ----------------------------- */
+await page.goto(`${B}/data`, { waitUntil: 'domcontentloaded' })
+await page.locator('[data-testid=datasets-card]').waitFor({ timeout: 15000 })
+const data = await page.locator('body').innerText()
+
+ok('the data page lists the datasets the server has',
+  data.includes('invoices') && data.includes('active-customers') && data.includes('statement-lines'))
+ok('and the source they read', data.includes('warehouse'))
+/* The limits are what nobody opens the file for: what one query may spend, and
+   how much it may hand back. */
+ok('a source shows its limits', data.includes('30s') && data.includes('100,000'))
+/* Whether an embedded end customer sees only their own rows. */
+ok('a row-scoped dataset says so', data.includes('row scoped'))
+/* And the sample fixture is nowhere near it. */
+ok('the sample sources are gone', !data.includes('Northwind'))
+
+await page.goto(`${B}/schedules`, { waitUntil: 'domcontentloaded' })
+await page.locator('[data-testid=schedules-card]').waitFor({ timeout: 15000 })
+const schedules = await page.locator('body').innerText()
+ok('the schedules page lists the real schedule', schedules.includes('monthly-statements'))
+/* Computed from the cron expression in its own timezone, by the loop that will
+   honour it — which is the one column a fixture cannot have. */
+ok('and when it next fires',
+  (await page.locator('[data-testid=next-run]').first().innerText()).startsWith('next '))
+
 /* -- A report nobody has says so in the server's words -------------------- */
 await page.goto(`${B}/reports/not-a-report`, { waitUntil: 'domcontentloaded' })
 await page.locator('text=could not be run').waitFor({ timeout: 15000 })

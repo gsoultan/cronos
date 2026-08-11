@@ -67,11 +67,15 @@ func serve(log *slog.Logger) error {
 	}
 	defer closeStore()
 
+	var armed api.Due
 	if cfg.Scheduler {
 		sched, err := scheduler(cfg, repo, runner, records, log)
 		if err != nil {
 			return err
 		}
+		// So the catalogue can say when each schedule next fires, and say
+		// nothing rather than a time nothing will honour when it cannot.
+		armed = sched
 		ctx, stop := context.WithCancel(context.Background())
 		defer stop()
 		go func() {
@@ -83,7 +87,8 @@ func serve(log *slog.Logger) error {
 
 	handler := api.RoutesWith(repo, runner, signer, cfg.Origins, log,
 		publish.New(defs, repo).WithReports(repo), defs,
-		api.NewAdminKey(cfg.AdminKey, cfg.Org, cfg.Project), history(records), users(records))
+		api.NewAdminKey(cfg.AdminKey, cfg.Org, cfg.Project), history(records), users(records),
+		repo, armed)
 
 	datasets, reports, schedules, sources := repo.Counts()
 	log.Info("cronosd listening",

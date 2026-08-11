@@ -224,6 +224,32 @@ func (r *Repository) DataSource(_ context.Context, name string) (definition.Data
 	return src, nil
 }
 
+// Datasets returns everything loaded, for a catalogue to summarise.
+func (r *Repository) Datasets() []definition.Dataset {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	out := make([]definition.Dataset, 0, len(r.datasets))
+	for _, d := range r.datasets {
+		out = append(out, d)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
+}
+
+// Reports returns everything loaded.
+func (r *Repository) Reports() []definition.Report {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	out := make([]definition.Report, 0, len(r.reports))
+	for _, rep := range r.reports {
+		out = append(out, rep)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
+}
+
 // DataSources returns everything loaded, for a registry to open at startup.
 func (r *Repository) DataSources() []definition.DataSource {
 	r.mu.RLock()

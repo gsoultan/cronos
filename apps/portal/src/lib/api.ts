@@ -281,3 +281,61 @@ export interface RunDelivery {
 export function readRun(id: string) {
   return call<{ run: Run; deliveries: RunDelivery[] }>(`/v1/runs/${encodeURIComponent(id)}`)
 }
+
+/* -- The catalogue: what the project contains ----------------------------- */
+
+export interface SourceSummary {
+  name: string
+  description?: string
+  driver: string
+  detail?: string
+  datasets: number
+  federated?: boolean
+  maxRows: number
+  timeout: string
+}
+
+export interface DatasetSummary {
+  name: string
+  description?: string
+  sources: string[]
+  fields: number
+  measures: number
+  params: number
+  rowScoped: boolean
+}
+
+export interface ReportSummary {
+  name: string
+  title?: string
+  description?: string
+  folder?: string
+  datasets: string[]
+  outputs: string[]
+  blocks: number
+}
+
+export interface ScheduleSummary {
+  name: string
+  description?: string
+  report: string
+  output: string
+  cron: string
+  timezone: string
+  bursts: boolean
+  over?: string
+  channels: string[]
+  /** Absent when no scheduler is armed here — see the schedules page. */
+  next?: string
+}
+
+export interface CatalogView {
+  sources: SourceSummary[]
+  datasets: DatasetSummary[]
+  reports: ReportSummary[]
+  schedules: ScheduleSummary[]
+}
+
+export function readCatalog() {
+  return call<CatalogView>('/v1/catalog')
+}

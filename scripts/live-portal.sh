@@ -12,6 +12,9 @@ export CRONOS_DEFINITIONS=demo/definitions
 export CRONOS_SEED=demo/seed.sql
 export CRONOS_ADDR="${CRONOS_ADDR:-:8794}"
 export CRONOS_ORG=acme CRONOS_PROJECT=finance
+# Armed, so the catalogue can say when each schedule next fires.
+export CRONOS_SCHEDULER=1
+export CRONOS_DELIVERIES="${TMPDIR:-/tmp}/cronos-live-deliveries"
 # Users live in the definition store, so sign-in needs one.
 export CRONOS_STORE_DRIVER=sqlite
 export CRONOS_STORE_DSN="file:${TMPDIR:-/tmp}/cronos-live-users.db"
