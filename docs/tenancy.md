@@ -106,6 +106,21 @@ is never dropped, and never treated as "no constraint". The alternative — an
 absent scope meaning unrestricted — turns one missing token claim into a full
 table disclosure.
 
+"Matches nothing" is the literal `FALSE`, replacing the whole predicate — not a
+comparison against a null. `customer_id = NULL` happens to return no rows, but
+that is a property of the comparison the *author* chose: wrap the same hole in
+`COALESCE`, or write `NOT IN`, and the null stops being safe. Replacing the
+predicate cannot be written around.
+
+**`.scope` may only appear in `rowLevelSecurity`.** A `{{ .scope.x }}` in the
+dataset's own `query:` is rejected on save and at compile. It reads as a
+sensible optimisation — push the predicate down so the source can index it —
+but the fail-closed rule works a predicate at a time, and it can only replace
+text it knows is a predicate. A scope hole in the query body would bind an
+empty string and run: the exact disclosure the rule exists to prevent, arrived
+at by an author trying to be helpful. Pushdown will be a deliberate feature
+with the same `FALSE` semantics, not a side effect of where someone typed.
+
 The consequence is a modelling rule, and it is easy to get wrong: **a dataset
 read by a schedule must not carry a `.scope` predicate.** Scheduled runs and
 bursts execute as the schedule's owner, a project member with no embed token, so
