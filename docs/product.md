@@ -183,10 +183,10 @@ assumption is tested first.
 
 | Release | Theme | Scope | Validates |
 | :--- | :--- | :--- | :--- |
-| **v0.1** | Engine | YAML definitions, DuckDB federation (Postgres + Parquet/CSV), param binding, RLS, table + chart output, CSV/XLSX. CLI only | Can a governed query run fast over three source types? |
+| **v0.1** | Engine | YAML definitions, param binding, RLS, table + chart output. *Done, over `database/sql`; DuckDB federation and CSV/XLSX outstanding* | Can a governed query run fast over three source types? |
 | **v0.2** | Documents | Typst paginated PDF: grouping, page breaks, subtotals, headers/footers | The moat. Hardest technical risk, taken early |
 | **v0.3** | Delivery | Scheduler, bursting, email + S3, retries, run history | Marek's job |
-| **v0.4** | Embed | Repository API, JWT embed, tenancy, embed web component | **Priya's job. First sellable release.** |
+| **v0.4** | Embed | Repository API, embed tokens, tenancy, embed web component. *Endpoint, token and component done; the repository API is still file-backed* | **Priya's job. First sellable release.** |
 | **v0.5** | Author | Portal PWA, dataset browser, report builder, live preview | Dewi's job — self-service |
 | **v1.0** | Migrate | `.jrxml` importer, HA scheduler, SSO + audit (EE), documentation | Marek's switching cost |
 

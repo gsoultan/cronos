@@ -69,17 +69,28 @@ cmd/cronosd            BSL binary. Must never reach ee/.
 cmd/cronosd-ee         EE binary. Blank-imports ee/.
 internal/
   core/                Domain entities, value objects, domain errors. Zero external deps.
-    definition/          Report · Dataset · DataSource · Schedule + validation
-    principal/           Identity, tenancy
+    definition/          Report · Dataset + validation          ✓
+    query/               Compilation: binding, row scope, filters, blocks  ✓
+    principal/           Identity, tenancy                      ✓
   app/                 Use cases. Declares the ports it needs, as consumer-side interfaces.
-    publish/  run/  burst/  schedule/
-  adapter/             Port implementations. Self-registering.
-    store/postgres/      Definition repository, content-addressed versions
-    driver/              postgres · mysql · clickhouse · objectstore
-    render/              interactive · paginated (Typst) · spreadsheet
+    run/                 Report → SQL → rows → view             ✓
+    publish/  burst/  schedule/
+  adapter/             Port implementations.
+    codec/yaml/          The file format authors write          ✓
+    api/                 The embed endpoint, CORS               ✓
+    store/file/          Definitions from a directory           ✓
+    store/postgres/      Content-addressed versions
+    driver/sql/          Anything database/sql speaks           ✓
+    render/paginated/    Typst PDF                              ✓
+    render/              interactive · spreadsheet
     deliver/             email · s3 · sftp · webhook
-  platform/            Config, logging, telemetry, secrets
-  extension/           License seams. See ee/doc.go.
+  platform/
+    token/               Embed tokens — not JWT, see its doc.go ✓
+    config/              Environment                            ✓
+  extension/           License seams. See ee/doc.go.            ✓
+
+✓ = built and under test. The rest is named so the shape is agreed before
+something lands in the wrong package, not because it exists.
 ee/                    Commercially licensed. Own LICENSE. May import core; core may not import it.
 ```
 
