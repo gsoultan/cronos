@@ -12,6 +12,7 @@ bun run test     # unit tests (SQL generation, filter compilation)
 bun run shell    # assert the header, sidebar collapse and canvas sizing
 bun run builder  # assert the report editor: canvas size, WYSIWYG, inspector
 bun run identifier # assert the API-name field: collapsed, follows, stops following
+bun run people   # assert user management: roles, grants, last-owner rule
 bun run acl      # assert the org/project access rules in a real browser
 ```
 
@@ -157,6 +158,30 @@ Steps are ordered the way a person thinks — what am I looking at, what else
 comes with it, which columns, which rows — which is deliberately not the order
 SQL is written in. Joins are offered from the schema's foreign keys, so a join
 is a click rather than a formula.
+
+## User management
+
+Person-centric, not project-centric: the question an administrator arrives with
+is "what can Dewi see?", and answering it by opening each project in turn is the
+wrong shape. Each row expands to that person's project grants; the Projects tab
+covers the other direction.
+
+Three rules are enforced in the interface rather than after the fact, because a
+control that offers a choice and then refuses it has already misled someone:
+
+- **An organisation keeps at least one owner.** The last owner's role select and
+  Remove button are disabled, with the reason on the control.
+- **You cannot change or remove yourself.** Same treatment.
+- **Org admins and owners reach every project.** Their row says "All projects ·
+  via admin" rather than listing explicit grants — showing only grants would
+  render them as having no access at all.
+
+Removal confirms in place and states what is lost. A modal would hide the row
+being decided about, which is the thing you want to look at.
+
+`people.ts` and `workspace.ts` must agree on your own role in each organisation
+— they are the same fact stored twice, and the first version disagreed, which
+surfaced as the admin screen rendering read-only.
 
 ## The API name field
 

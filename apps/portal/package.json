@@ -10,6 +10,7 @@
     "dev": "vite",
     "identifier": "node scripts/identifier-check.mjs",
     "lint": "oxlint src plugins",
+    "people": "node scripts/people-check.mjs",
     "preview": "vite preview",
     "shell": "node scripts/shell-check.mjs",
     "shots": "node scripts/shoot.mjs",
