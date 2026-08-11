@@ -1,0 +1,36 @@
+apiVersion: cronos.dev/v1
+kind: Schedule
+metadata:
+  name: monthly-customer-statements
+  description: 06:00 on the 1st — one PDF per active customer, mailed and archived.
+spec:
+  report: monthly-invoice-statement
+  output: pdf
+  cron: "0 6 1 * *"
+  timezone: Europe/Berlin
+
+  burst:
+    over:
+      dataset: active-customers
+    bind:
+      customer_id: "{{ .row.id }}"
+      from: "{{ .run.periodStart }}"
+      to: "{{ .run.periodEnd }}"
+    concurrency: 8
+
+  deliver:
+    - via: email
+      to: "{{ .row.billing_email }}"
+      subject: "Your {{ .run.periodLabel }} statement"
+      body:
+        template: templates/statement-email.md
+      attach:
+        filename: "statement-{{ .row.id }}-{{ .run.periodLabel }}.pdf"
+    - via: s3
+      bucket: acme-statements
+      key: "{{ .row.id }}/{{ .run.periodLabel }}.pdf"
+
+  onFailure:
+    retries: 3
+    backoff: exponential
+    alert: ops@acme.com

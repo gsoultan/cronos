@@ -1,0 +1,65 @@
+apiVersion: cronos.dev/v1
+kind: Report
+metadata:
+  name: monthly-invoice-statement
+  folder: /finance/statements
+  description: One statement per customer — embedded interactively and mailed as PDF.
+spec:
+  dataset: invoices
+
+  # Narrow the dataset's parameters for this report. Callers may still override
+  # anything not pinned.
+  params:
+    status:
+      default: [sent, overdue]
+
+  outputs:
+    - name: interactive
+      renderer: interactive
+      layout:
+        - kind: stat
+          label: Total billed
+          value: {field: total, aggregate: sum}
+        - kind: stat
+          label: Outstanding
+          value: {field: total, aggregate: sum}
+          filter: "status = 'overdue'"
+        - kind: chart
+          chart: bar
+          title: Billed by month
+          x: {field: issued_at, grain: month}
+          y: {field: total, aggregate: sum}
+          series: {field: status}
+        - kind: table
+          columns: [customer_name, issued_at, status, total]
+          sort:
+            - {field: issued_at, dir: desc}
+          pageSize: 50
+
+    - name: pdf
+      renderer: paginated
+      page:
+        size: A4
+        orientation: portrait
+        margins: 20mm
+      header:
+        template: templates/letterhead.typ
+      footer:
+        text: "Page {{ .page }} of {{ .pages }}"
+      layout:
+        - kind: text
+          style: h1
+          text: "Statement — {{ .run.periodLabel }}"
+        - kind: table
+          columns: [issued_at, status, total]
+          groupBy: customer_name
+          pageBreak: perGroup
+          subtotals: [total]
+
+    - name: xlsx
+      renderer: spreadsheet
+      sheets:
+        - name: Invoices
+          columns: [customer_name, issued_at, status, total]
+          freezeHeader: true
+          autoFilter: true

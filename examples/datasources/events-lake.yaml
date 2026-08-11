@@ -1,0 +1,15 @@
+apiVersion: cronos.dev/v1
+kind: DataSource
+metadata:
+  name: events-lake
+  labels:
+    env: prod
+spec:
+  driver: object-store
+  uri: s3://acme-lake/events/
+  format: parquet
+  region: eu-central-1
+  credentials: ${secret:lake_creds}
+  limits:
+    statementTimeout: 120s
+    maxRows: 5000000

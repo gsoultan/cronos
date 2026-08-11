@@ -1,0 +1,24 @@
+apiVersion: cronos.dev/v1
+kind: Dataset
+metadata:
+  name: active-customers
+  description: Burst target — one row per customer that should receive a statement.
+spec:
+  sources:
+    - ref: warehouse
+
+  query: |
+    SELECT c.id, c.name, c.billing_email
+    FROM warehouse.customers c
+    WHERE c.status = 'active'
+      AND c.billing_email IS NOT NULL
+
+  fields:
+    - {name: id,            type: string, role: dimension}
+    - {name: name,          type: string, role: dimension, label: Customer}
+    - {name: billing_email, type: string, role: dimension, label: Billing email}
+
+  # No row-level security: this is an internal burst target, read by the
+  # schedule owner rather than by an embedded customer. A {{ .scope.* }}
+  # predicate here would match nothing — see docs/tenancy.md on fail-closed
+  # scope — and the burst would quietly send zero statements.

@@ -1,0 +1,15 @@
+apiVersion: cronos.dev/v1
+kind: DataSource
+metadata:
+  name: warehouse
+  labels:
+    env: prod
+spec:
+  driver: postgres
+  dsn: ${secret:warehouse_dsn}
+  pool:
+    maxOpen: 20
+    maxIdleTime: 5m
+  limits:
+    statementTimeout: 30s
+    maxRows: 1000000
