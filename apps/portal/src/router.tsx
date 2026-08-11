@@ -25,6 +25,12 @@ const newReportRoute = createRoute({
   component: lazyRouteComponent(() => import('./routes/NewReportPage'), 'NewReportPage'),
 })
 
+const accountRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/account',
+  component: lazyRouteComponent(() => import('./routes/AccountPage'), 'AccountPage'),
+})
+
 const settingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/settings',
@@ -44,7 +50,7 @@ const schedulesRoute = createRoute({
 })
 
 const routeTree = rootRoute.addChildren([
-  indexRoute, newReportRoute, reportRoute, settingsRoute,
+  indexRoute, newReportRoute, reportRoute, settingsRoute, accountRoute,
   dataRoute, schedulesRoute,
 ])
 

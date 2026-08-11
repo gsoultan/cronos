@@ -72,6 +72,14 @@ export function PersonRow({
           {lastSeen(person.lastActive)}
         </span>
 
+        {/* Coverage, not a control: an admin cannot enrol someone else's
+            device, only see who has not. */}
+        <span className={`w-[64px] text-caption ${
+          person.twoFactor ? 'text-delta-good' : 'text-ink-muted'}`}
+          title={person.twoFactor ? 'Has a second factor' : 'No second factor'}>
+          {person.twoFactor ? '2FA on' : '2FA off'}
+        </span>
+
         {canAdmin ? (
           <RoleSelect value={person.orgRole} options={ORG_ROLES} label={`Role for ${person.name}`}
             onChange={onChangeOrgRole} lockedReason={lockedReason} />

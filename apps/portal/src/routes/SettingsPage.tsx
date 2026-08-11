@@ -13,8 +13,9 @@ import {
   type Invitation, type Person,
 } from '../lib/people'
 import { relativeTime } from '../lib/format'
+import { SecurityPolicy } from '../components/settings/SecurityPolicy'
 
-type Tab = 'people' | 'projects'
+type Tab = 'people' | 'projects' | 'security'
 type Panel = 'none' | 'invite' | 'new-project'
 
 const CARD = 'mb-4 overflow-hidden rounded-lg border border-line bg-surface shadow-card'
@@ -70,16 +71,18 @@ export function SettingsPage() {
       <PageHeader title="Settings" description="Who can reach what, at both levels." />
 
       <div className="mb-4 flex gap-1 border-b border-line" role="tablist">
-        {([['people', 'People'], ['projects', 'Projects']] as const).map(([id, label]) => (
+        {([['people', 'People'], ['projects', 'Projects'], ['security', 'Security']] as const).map(([id, label]) => (
           <button key={id} type="button" role="tab" aria-selected={tab === id}
             onClick={() => setTab(id)}
             className={`cursor-pointer border-b-2 px-3 py-2.5 text-small font-medium ${
               tab === id ? 'border-accent text-ink'
                 : 'border-transparent text-ink-secondary hover:text-ink'}`}>
             {label}
-            <span className="ml-1.5 text-caption text-ink-muted">
-              {id === 'people' ? members.length : projects.filter((p) => p.orgId === org.id).length}
-            </span>
+            {id !== 'security' && (
+              <span className="ml-1.5 text-caption text-ink-muted">
+                {id === 'people' ? members.length : projects.filter((p) => p.orgId === org.id).length}
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -165,6 +168,11 @@ export function SettingsPage() {
             </section>
           )}
         </>
+      )}
+
+      {tab === 'security' && (
+        <SecurityPolicy orgName={org.name} members={members} canAdmin={canAdminOrg}
+          twoFactorOn={(p) => !!p.twoFactor} />
       )}
 
       {tab === 'projects' && (

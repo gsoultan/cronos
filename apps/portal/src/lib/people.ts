@@ -12,6 +12,8 @@ export interface Person {
   /** The signed-in person, so their own row can be marked and protected. */
   isYou?: boolean
   lastActive?: string
+  /** Whether they have any second factor. Coverage an admin can act on. */
+  twoFactor?: boolean
 }
 
 export interface Invitation {
@@ -50,23 +52,23 @@ export const people: Person[] = [
   // Acme Logistics — you are a member here.
   {
     id: 'u1', name: 'Nadia Haq', email: 'nadia@acme.com', orgId: 'o1', orgRole: 'owner',
-    projectRoles: {}, lastActive: '2026-08-11T06:02:00Z',
+    twoFactor: true, projectRoles: {}, lastActive: '2026-08-11T06:02:00Z',
   },
   {
     id: 'u2', name: 'Marek Nowak', email: 'marek@acme.com', orgId: 'o1', orgRole: 'admin',
-    projectRoles: {}, lastActive: '2026-08-10T16:05:00Z',
+    twoFactor: true, projectRoles: {}, lastActive: '2026-08-10T16:05:00Z',
   },
   {
     id: 'u3', name: 'Dewi Rahayu', email: 'dewi@acme.com', orgId: 'o1', orgRole: 'member',
-    projectRoles: { p1: 'editor', p2: 'viewer' }, isYou: true, lastActive: '2026-08-11T05:20:00Z',
+    twoFactor: false, projectRoles: { p1: 'editor', p2: 'viewer' }, isYou: true, lastActive: '2026-08-11T05:20:00Z',
   },
   {
     id: 'u4', name: 'Priya Anand', email: 'priya@acme.com', orgId: 'o1', orgRole: 'member',
-    projectRoles: { p1: 'viewer' }, lastActive: '2026-08-11T04:41:00Z',
+    twoFactor: false, projectRoles: { p1: 'viewer' }, lastActive: '2026-08-11T04:41:00Z',
   },
   {
     id: 'u5', name: 'Tomas Berg', email: 'tomas@acme.com', orgId: 'o1', orgRole: 'member',
-    projectRoles: { p2: 'viewer', p3: 'viewer' }, lastActive: '2026-07-29T11:12:00Z',
+    twoFactor: false, projectRoles: { p2: 'viewer', p3: 'viewer' }, lastActive: '2026-07-29T11:12:00Z',
   },
   {
     id: 'u6', name: 'Aisha Karim', email: 'aisha@acme.com', orgId: 'o1', orgRole: 'member',
@@ -76,19 +78,19 @@ export const people: Person[] = [
   // Northwind Trading — you are an admin here, so the management path is live.
   {
     id: 'u7', name: 'Dewi Rahayu', email: 'dewi@acme.com', orgId: 'o2', orgRole: 'admin',
-    projectRoles: {}, isYou: true, lastActive: '2026-08-11T05:20:00Z',
+    twoFactor: false, projectRoles: {}, isYou: true, lastActive: '2026-08-11T05:20:00Z',
   },
   {
     id: 'u8', name: 'Ravi Menon', email: 'ravi@northwind.example', orgId: 'o2', orgRole: 'owner',
-    projectRoles: {}, lastActive: '2026-08-08T14:30:00Z',
+    twoFactor: true, projectRoles: {}, lastActive: '2026-08-08T14:30:00Z',
   },
   {
     id: 'u9', name: 'Lena Fischer', email: 'lena@northwind.example', orgId: 'o2', orgRole: 'member',
-    projectRoles: { p4: 'editor' }, lastActive: '2026-08-11T03:15:00Z',
+    twoFactor: true, projectRoles: { p4: 'editor' }, lastActive: '2026-08-11T03:15:00Z',
   },
   {
     id: 'u10', name: 'Owen Pratt', email: 'owen@northwind.example', orgId: 'o2', orgRole: 'member',
-    projectRoles: {},
+    twoFactor: false, projectRoles: {},
   },
 ]
 

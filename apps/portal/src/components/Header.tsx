@@ -15,6 +15,7 @@ const TITLES: Record<string, string> = {
   '/data': 'Data',
   '/schedules': 'Schedules',
   '/settings': 'Settings',
+  '/account': 'Your account',
   '/reports/new': 'New report',
 }
 
@@ -76,12 +77,13 @@ export function Header({ collapsed, onToggleSidebar, theme, onToggleTheme }: Pro
           <Icon name={theme === 'light' ? 'moon' : 'sun'} />
         </button>
 
-        <button type="button" aria-label="Account"
-          className="grid size-8 cursor-pointer place-items-center rounded-full border
-                     border-line bg-sunken text-small font-semibold text-ink-secondary
+        <Link to="/account" aria-label="Your account" title="Your account"
+          data-testid="account-link"
+          className="grid size-8 place-items-center rounded-full border border-line
+                     bg-sunken text-small font-semibold text-ink-secondary no-underline
                      hover:border-accent">
           DR
-        </button>
+        </Link>
       </div>
     </header>
   )

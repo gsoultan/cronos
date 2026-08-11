@@ -13,6 +13,7 @@ bun run shell    # assert the header, sidebar collapse and canvas sizing
 bun run builder  # assert the report editor: canvas size, WYSIWYG, inspector
 bun run identifier # assert the API-name field: collapsed, follows, stops following
 bun run people   # assert user management: roles, grants, last-owner rule
+bun run security # assert 2FA enrolment order, recovery codes, org policy
 bun run acl      # assert the org/project access rules in a real browser
 ```
 
@@ -182,6 +183,25 @@ being decided about, which is the thing you want to look at.
 `people.ts` and `workspace.ts` must agree on your own role in each organisation
 — they are the same fact stored twice, and the first version disagreed, which
 surfaced as the admin screen rendering read-only.
+
+## Two-factor authentication
+
+Three product decisions, encoded rather than left to a settings page:
+
+- **No SMS.** SIM-swap makes it the weakest widely-offered second factor, and
+  it drags in a telephony vendor and a per-message cost to deliver it. Offering
+  it lets people believe they are protected when they are not.
+- **2FA is in the core, SSO is commercial.** Baseline account security behind a
+  paid tier is the SSO tax with worse consequences. SSO is an enterprise
+  integration; a second factor is a floor.
+- **Enrolment cannot complete without verifying a code**, and recovery codes
+  come last behind an explicit acknowledgement. Anything else enrols people into
+  a lockout, or fills a support queue with account recovery.
+
+The org requirement shows coverage *before* the switch — how many are protected,
+and who by name would be signed out. An admin without their own second factor
+cannot enable it at all: they would be the first person locked out, and then
+nobody could turn it off.
 
 ## The API name field
 
