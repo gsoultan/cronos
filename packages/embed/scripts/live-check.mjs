@@ -46,9 +46,23 @@ const page = createServer((req, res) => {
   }
   res.writeHead(200, { 'content-type': 'text/html' }).end(HOST)
 })
-await new Promise((r) => page.listen(PORT, r))
+
+/* A fixed port, because cronosd's CORS allow-list has to name this origin
+   before either process starts. That makes "something is already listening"
+   a real condition, and listen's callback simply never fires on EADDRINUSE —
+   so the run hangs instead of saying why. */
+await new Promise((resolve, reject) => {
+  page.once('error', (err) => reject(err.code === 'EADDRINUSE'
+    ? new Error(`port ${PORT} is in use — a previous run left its page server behind`)
+    : err))
+  page.listen(PORT, resolve)
+})
 
 const browser = await chromium.launch({ channel: 'chrome', args: ['--no-sandbox'] })
+/* Closed whatever happens below. A thrown assertion used to leave this server
+   listening, and the next run met a port that answered with a stale page. */
+process.on('exit', () => { page.close(); browser.close() })
+
 const tab = await browser.newPage()
 let fails = 0
 const ok = (name, cond) => { console.log(`  ${cond ? 'ok  ' : 'FAIL'} ${name}`); if (!cond) fails++ }
@@ -97,5 +111,4 @@ ok("a refused token says so in the server's own words",
 
 console.log(fails ? `\n${fails} failed` : '\nall passed')
 await browser.close()
-page.close()
 process.exit(fails ? 1 : 0)

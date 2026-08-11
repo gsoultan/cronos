@@ -15,6 +15,16 @@ export CRONOS_ADDR="${CRONOS_ADDR:-:8788}"
 PORT="${CRONOS_ADDR#:}"
 export CRONOS_ORIGINS="http://localhost:${LIVE_PORT:-5199}"
 
+# Free the page port first. A previous run that failed an assertion used to
+# leave its server listening, and the next one then hung against a stale page
+# rather than saying what was wrong.
+PAGE_PORT="${LIVE_PORT:-5199}"
+if lsof -ti "tcp:${PAGE_PORT}" >/dev/null 2>&1; then
+  echo "freeing port ${PAGE_PORT}"
+  lsof -ti "tcp:${PAGE_PORT}" | xargs kill 2>/dev/null || true
+  sleep 1
+fi
+
 go build -o bin/cronosd ./cmd/cronosd
 go build -o bin/cronos-token ./cmd/cronos-token
 
