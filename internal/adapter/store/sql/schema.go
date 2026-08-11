@@ -1,6 +1,8 @@
 package sql
 
-// Schema creates the tables, if they are not there.
+import "strings"
+
+// schema creates the tables, if they are not there.
 //
 // Shipped rather than left to a migration tool, because the first thing anyone
 // does with a definition store is store a definition, and a product that
@@ -9,14 +11,14 @@ package sql
 //
 // Both tables carry the tenant in their primary key. Two projects may each
 // have a `monthly-statement` and they are unrelated — see docs/tenancy.md.
-const Schema = `
+const schema = `
 CREATE TABLE IF NOT EXISTS cronos_definitions (
   org        TEXT NOT NULL,
   project    TEXT NOT NULL,
   kind       TEXT NOT NULL,
   name       TEXT NOT NULL,
   version    TEXT NOT NULL,
-  body       BLOB NOT NULL,
+  body       {{bytes}} NOT NULL,
   updated_at TEXT NOT NULL,
   updated_by TEXT NOT NULL,
   PRIMARY KEY (org, project, kind, name)
@@ -28,7 +30,7 @@ CREATE TABLE IF NOT EXISTS cronos_definition_versions (
   kind       TEXT NOT NULL,
   name       TEXT NOT NULL,
   version    TEXT NOT NULL,
-  body       BLOB NOT NULL,
+  body       {{bytes}} NOT NULL,
   created_at TEXT NOT NULL,
   created_by TEXT NOT NULL,
   PRIMARY KEY (org, project, kind, name, version)
@@ -90,6 +92,21 @@ CREATE TABLE IF NOT EXISTS cronos_users (
   role       TEXT NOT NULL,
   created_at TEXT NOT NULL,
   last_seen  TEXT,
-  disabled   INTEGER NOT NULL DEFAULT 0
+  disabled   BOOLEAN NOT NULL DEFAULT FALSE
 );
 `
+
+// Schema is the DDL for a driver.
+//
+// Almost identical, and the almost is the point. SQLite has BLOB and Postgres
+// has BYTEA, and neither knows the other's name — a schema written for one
+// does not create tables on the other, it fails on the first statement. That
+// is the class of thing testing against a single database cannot show, and it
+// was true here until a Postgres ran the same code.
+func Schema(driver string) string {
+	bytes := "BLOB"
+	if driver == "postgres" || driver == "pgx" {
+		bytes = "BYTEA"
+	}
+	return strings.ReplaceAll(schema, "{{bytes}}", bytes)
+}

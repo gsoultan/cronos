@@ -25,6 +25,21 @@ jobs:
   go:
     name: go
     runs-on: ubuntu-latest
+
+    # A real Postgres, because SQLite cannot show a type Postgres does not
+    # have. The store's DDL was wrong for months and every test passed.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: cronos
+          POSTGRES_PASSWORD: cronos
+          POSTGRES_DB: cronos
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U cronos"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -55,7 +70,11 @@ jobs:
           if [ -n "$unformatted" ]; then
             echo "these files need gofmt:"; echo "$unformatted"; exit 1
           fi
-      - run: CRONOS_XLSX_PYTHON=/tmp/xlsxvenv/bin/python go test -race ./...
+      - name: test
+        env:
+          CRONOS_XLSX_PYTHON: /tmp/xlsxvenv/bin/python
+          CRONOS_POSTGRES_DSN: postgres://cronos:cronos@localhost:5432/cronos?sslmode=disable
+        run: go test -race ./...
       - name: licence boundary
         run: ./scripts/check-license-boundary.sh
 

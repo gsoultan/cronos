@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/gsoultan/cronos/internal/app/publish"
@@ -15,6 +16,9 @@ import (
 // Store keeps definitions in a database.
 type Store struct {
 	db *sql.DB
+	// driver decides the DDL. The statements are portable; the types they
+	// declare are not.
+	driver string
 	// mark writes the placeholder the driver expects. Postgres numbers them
 	// and SQLite does not, and this is the only difference between the two
 	// that reaches these statements.
@@ -28,7 +32,13 @@ type Store struct {
 // which database this is in order to open it, and guessing here would be a
 // second place for that decision to be made differently.
 func New(db *sql.DB, mark func(n int) string) *Store {
-	return &Store{db: db, mark: mark, now: time.Now}
+	return &Store{db: db, mark: mark, now: time.Now, driver: "sqlite"}
+}
+
+// ForDriver names the database, so Migrate declares types it has.
+func (s *Store) ForDriver(driver string) *Store {
+	s.driver = driver
+	return s
 }
 
 // Dollar and Question are the two placeholder styles.
@@ -39,9 +49,33 @@ func Question(int) string { return "?" }
 func (s *Store) WithClock(now func() time.Time) *Store { s.now = now; return s }
 
 // Migrate creates the tables if they are absent.
+//
+// Statement by statement. Postgres refuses multiple commands in one prepared
+// exec, and the driver prepares anything with parameters — so a schema that
+// arrives as one string works on SQLite and fails on Postgres, which is the
+// same asymmetry the types had.
 func (s *Store) Migrate(ctx context.Context) error {
-	_, err := s.db.ExecContext(ctx, Schema)
-	return err
+	for _, stmt := range strings.Split(Schema(s.driver), ";") {
+		if strings.TrimSpace(stripComments(stmt)) == "" {
+			continue
+		}
+		if _, err := s.db.ExecContext(ctx, stmt); err != nil {
+			return fmt.Errorf("sql: migrating: %w", err)
+		}
+	}
+	return nil
+}
+
+// stripComments removes the SQL comments, so a statement that is only a
+// comment is not sent as an empty query.
+func stripComments(stmt string) string {
+	var kept []string
+	for _, line := range strings.Split(stmt, "\n") {
+		if !strings.HasPrefix(strings.TrimSpace(line), "--") {
+			kept = append(kept, line)
+		}
+	}
+	return strings.Join(kept, "\n")
 }
 
 // Version is the content address of a document.

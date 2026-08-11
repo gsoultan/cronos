@@ -30,7 +30,13 @@ func definitionStore(ctx context.Context, cfg config.Server, repo *file.Reposito
 			nil, func() error { return nil }, nil
 	}
 
-	db, err := sql.Open(cfg.StoreDriver, cfg.StoreDSN)
+	// pgx registers itself as "pgx". An operator writing "postgres" means the
+	// same thing and should not have to know which package was imported.
+	driver := cfg.StoreDriver
+	if driver == "postgres" {
+		driver = "pgx"
+	}
+	db, err := sql.Open(driver, cfg.StoreDSN)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -45,7 +51,7 @@ func definitionStore(ctx context.Context, cfg config.Server, repo *file.Reposito
 		return nil, nil, nil, err
 	}
 
-	store := sqlstore.New(db, mark)
+	store := sqlstore.New(db, mark).ForDriver(cfg.StoreDriver)
 	if err := store.Migrate(ctx); err != nil {
 		db.Close()
 		return nil, nil, nil, fmt.Errorf("definition store: %w", err)

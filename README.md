@@ -66,11 +66,18 @@ the caller's identity, never from an argument. The file store holds one project
 and refuses a principal acting anywhere else, rather than serving it to whoever
 asks.
 
-The SQL store is tested against SQLite — its statements use nothing outside
-`ON CONFLICT` and ordinary predicates, so the tenancy and versioning logic
-under test is the logic Postgres runs. Postgres-specific behaviour around types
-and concurrency is **not** covered yet; that wants a container this repository
-does not have.
+The SQL store runs against both, and is tested against both. SQLite for the
+logic — tenancy, versioning, history — and a real Postgres in CI for what
+SQLite cannot show: `BLOB` is not a type Postgres has, a boolean column
+declared `INTEGER` does not scan into a Go `bool`, and neither of those is
+visible until a Postgres runs the same code.
+
+```bash
+CRONOS_POSTGRES_DSN=postgres://…  go test ./internal/adapter/store/sql/
+```
+
+Without the variable those tests skip, loudly. A skip that reads like a pass is
+how the gap survived.
 
 ## Datasources
 

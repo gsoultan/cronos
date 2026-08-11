@@ -22,6 +22,7 @@ import (
 	"github.com/gsoultan/cronos/internal/core/identity"
 	"golang.org/x/term"
 
+	_ "github.com/jackc/pgx/v5/stdlib"
 	_ "modernc.org/sqlite"
 )
 
@@ -60,7 +61,11 @@ func create(driver, dsn string, u identity.User) error {
 		return err
 	}
 
-	db, err := sql.Open(driver, dsn)
+	open := driver
+	if open == "postgres" {
+		open = "pgx"
+	}
+	db, err := sql.Open(open, dsn)
 	if err != nil {
 		return err
 	}
@@ -70,7 +75,7 @@ func create(driver, dsn string, u identity.User) error {
 	if driver == "postgres" || driver == "pgx" {
 		mark = sqlstore.Dollar
 	}
-	store := sqlstore.New(db, mark)
+	store := sqlstore.New(db, mark).ForDriver(driver)
 
 	ctx := context.Background()
 	if err := store.Migrate(ctx); err != nil {
