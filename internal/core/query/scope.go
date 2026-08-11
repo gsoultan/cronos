@@ -21,27 +21,40 @@ const subqueryAlias = "cronos_rows"
 // changes what it means.
 const noRows = "FALSE"
 
-// wrap applies the dataset's row scope to an already-rendered query.
-//
-// A wrapper rather than an appended AND: the dataset's query is arbitrary SQL
-// and may already have a WHERE, a GROUP BY, a UNION or a CTE. Only a subquery
-// composes with all of them, and the predicate then reads against the fields
-// the dataset publishes rather than against whatever tables happen to be
-// underneath.
-func (b *binder) wrap(inner string, scopes []definition.RowScope) (string, error) {
-	if len(scopes) == 0 {
-		return inner, nil
-	}
+// scopePredicates renders the dataset's row scope, one predicate per entry.
+func (b *binder) scopePredicates(scopes []definition.RowScope) ([]string, error) {
 	preds := make([]string, 0, len(scopes))
 	for _, s := range scopes {
 		p, err := b.predicate(s)
 		if err != nil {
-			return "", err
+			return nil, err
 		}
-		preds = append(preds, "("+p+")")
+		preds = append(preds, p)
+	}
+	return preds, nil
+}
+
+// wrap narrows an already-rendered query by preds.
+//
+// A wrapper rather than an appended AND: the dataset's query is arbitrary SQL
+// and may already have a WHERE, a GROUP BY, a UNION or a CTE. Only a subquery
+// composes with all of them, and the predicates then read against the fields
+// the dataset publishes rather than against whatever tables happen to be
+// underneath.
+//
+// preds must be passed in the order they were rendered. Each rendering
+// appended its arguments, so the text order and the placeholder order are the
+// same list read twice.
+func (b *binder) wrap(inner string, preds []string) string {
+	if len(preds) == 0 {
+		return inner
+	}
+	wrapped := make([]string, len(preds))
+	for i, p := range preds {
+		wrapped[i] = "(" + p + ")"
 	}
 	return "SELECT * FROM (\n" + trimStatement(inner) + "\n) AS " + subqueryAlias +
-		"\nWHERE " + strings.Join(preds, " AND "), nil
+		"\nWHERE " + strings.Join(wrapped, " AND ")
 }
 
 // predicate renders one row-scope predicate, or FALSE if the scope it reads

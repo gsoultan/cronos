@@ -169,6 +169,22 @@ the interface says so on the block rather than leaving it to be discovered. A
 filter that quietly applies to some blocks and not others is worse than one that
 admits it.
 
+That promise is kept by compilation, not by the interface remembering: building
+a block's query returns a coverage alongside it, naming the filters that reached
+this dataset and the filters that did not. Nothing downstream can reconstruct
+which happened, so it is reported rather than inferred.
+
+A declared filter that is currently blank still *covers* a block — it is simply
+not narrowing anything yet. Only a missing binding makes a block unaffected, and
+only that is what the interface should announce.
+
+Values are compared through a fixed set of operators — `eq` `ne` `lt` `lte` `gt`
+`gte` `in` `between` `contains` `isNull` `notNull` — because the operator arrives
+with the request. A caller chooses among comparisons; a caller never supplies
+one. The bound field comes from `bind:` and is the only part of a filter
+predicate that reaches SQL as text rather than as an argument, so it is checked
+against the dataset's published fields on save and again at compile.
+
 ### Definitions belong to a project
 
 A definition's project is its location, not a field in the file — see

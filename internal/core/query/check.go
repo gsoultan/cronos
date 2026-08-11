@@ -57,3 +57,29 @@ func checkPredicates(ds definition.Dataset, declared map[string]bool) error {
 	}
 	return nil
 }
+
+// CheckFilters reports whether a report's shared filters can bind.
+//
+// Every binding must name a field the dataset publishes. The field reaches SQL
+// as text rather than as an argument — it is the only part of a filter
+// predicate that does — so a typo here is a broken query at run time and a
+// wrong column at best. Datasets are keyed by name.
+func CheckFilters(filters []definition.Filter, datasets map[string]definition.Dataset) error {
+	for _, f := range filters {
+		if err := f.Validate(); err != nil {
+			return err
+		}
+		for name, field := range f.Bind {
+			ds, known := datasets[name]
+			if !known {
+				return fmt.Errorf("%w: filter %q binds to dataset %q, which this report does not read",
+					ErrBadTemplate, f.Name, name)
+			}
+			if _, ok := ds.Field(field); !ok {
+				return fmt.Errorf("%w: filter %q binds %s to %q, which is not a field of it",
+					ErrBadTemplate, f.Name, name, field)
+			}
+		}
+	}
+	return nil
+}
