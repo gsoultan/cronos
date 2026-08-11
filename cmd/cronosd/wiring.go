@@ -5,12 +5,13 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/gsoultan/cronos/internal/adapter/api"
 	emailchannel "github.com/gsoultan/cronos/internal/adapter/deliver/email"
 	filechannel "github.com/gsoultan/cronos/internal/adapter/deliver/file"
 	s3channel "github.com/gsoultan/cronos/internal/adapter/deliver/s3"
-	sqldriver "github.com/gsoultan/cronos/internal/adapter/driver/sql"
 	"github.com/gsoultan/cronos/internal/adapter/render/paginated"
 	"github.com/gsoultan/cronos/internal/adapter/store/file"
+	sqlstore "github.com/gsoultan/cronos/internal/adapter/store/sql"
 	"github.com/gsoultan/cronos/internal/app/burst"
 	"github.com/gsoultan/cronos/internal/app/run"
 	"github.com/gsoultan/cronos/internal/app/schedule"
@@ -64,7 +65,7 @@ func channels(cfg config.Server, log *slog.Logger) ([]burst.Channel, error) {
 
 // scheduler wires the burst pipeline behind a cron loop.
 func scheduler(cfg config.Server, repo *file.Repository, runner *run.Service,
-	exec *sqldriver.Executor, log *slog.Logger) (*schedule.Service, error) {
+	records *sqlstore.Store, log *slog.Logger) (*schedule.Service, error) {
 
 	chans, err := channels(cfg, log)
 	if err != nil {
@@ -73,6 +74,9 @@ func scheduler(cfg config.Server, repo *file.Repository, runner *run.Service,
 
 	statements := run.NewStatements(runner, paginated.New(paginated.TypstCLI{}))
 	bursts := burst.New(repo, recipients{runner}, statements, log, chans...)
+	if records != nil {
+		bursts = bursts.WithHistory(records)
+	}
 
 	// Every schedule is parsed before the listener opens. A timezone the host
 	// does not have should stop a deployment, not surprise somebody at six on
@@ -116,4 +120,15 @@ func (r recipients) Rows(ctx context.Context, dataset string, params map[string]
 		out = append(out, burst.Row(row))
 	}
 	return out, nil
+}
+
+// history adapts a possibly-absent store to the API's port.
+//
+// A typed nil would satisfy the interface and panic on first use, which is the
+// oldest trap in Go's book: the check has to be on the concrete value.
+func history(records *sqlstore.Store) api.History {
+	if records == nil {
+		return nil
+	}
+	return records
 }

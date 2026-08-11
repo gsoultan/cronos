@@ -70,8 +70,17 @@ func serve(log *slog.Logger) error {
 	exec := sqldriver.NewExecutor(db)
 	runner := run.New(repo, exec, query.NewBuilder(dialect))
 
+	// One store, opened before the scheduler so a burst's first run is
+	// recorded. It doubles as the run recorder when it is a database; when it
+	// is a directory there is nowhere to write history and records is nil.
+	defs, records, closeStore, err := definitionStore(context.Background(), cfg, repo, log)
+	if err != nil {
+		return err
+	}
+	defer closeStore()
+
 	if cfg.Scheduler {
-		sched, err := scheduler(cfg, repo, runner, exec, log)
+		sched, err := scheduler(cfg, repo, runner, records, log)
 		if err != nil {
 			return err
 		}
@@ -84,15 +93,9 @@ func serve(log *slog.Logger) error {
 		}()
 	}
 
-	defs, closeStore, err := definitionStore(context.Background(), cfg, repo, log)
-	if err != nil {
-		return err
-	}
-	defer closeStore()
-
 	handler := api.RoutesWith(repo, runner, signer, cfg.Origins, log,
 		publish.New(defs, repo).WithReports(repo), defs,
-		api.NewAdminKey(cfg.AdminKey, cfg.Org, cfg.Project))
+		api.NewAdminKey(cfg.AdminKey, cfg.Org, cfg.Project), history(records))
 
 	datasets, reports, schedules := repo.Counts()
 	log.Info("cronosd listening",

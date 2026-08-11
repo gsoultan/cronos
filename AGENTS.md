@@ -71,6 +71,7 @@ internal/
   core/                Domain entities, value objects, domain errors. Zero external deps.
     definition/          Report · Dataset · Schedule            ✓
     document/            What a paginated document *is*         ✓
+    history/             What a run actually delivered          ✓
     query/               Compilation: binding, row scope, filters, blocks  ✓
     principal/           Identity, tenancy                      ✓
   app/                 Use cases. Declares the ports it needs, as consumer-side interfaces.

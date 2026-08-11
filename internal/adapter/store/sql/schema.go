@@ -33,4 +33,47 @@ CREATE TABLE IF NOT EXISTS cronos_definition_versions (
   created_by TEXT NOT NULL,
   PRIMARY KEY (org, project, kind, name, version)
 );
+
+CREATE TABLE IF NOT EXISTS cronos_runs (
+  id             TEXT PRIMARY KEY,
+  org            TEXT NOT NULL,
+  project        TEXT NOT NULL,
+  schedule       TEXT NOT NULL,
+  report         TEXT NOT NULL,
+  report_version TEXT NOT NULL DEFAULT '',
+  output         TEXT NOT NULL DEFAULT '',
+  period_start   TEXT NOT NULL DEFAULT '',
+  period_end     TEXT NOT NULL DEFAULT '',
+  triggered_by   TEXT NOT NULL DEFAULT '',
+  started_at     TEXT NOT NULL,
+  finished_at    TEXT,
+  recipients     INTEGER NOT NULL DEFAULT 0,
+  delivered      INTEGER NOT NULL DEFAULT 0,
+  status         TEXT NOT NULL,
+  error          TEXT NOT NULL DEFAULT ''
+);
+
+-- Listing a project's runs newest-first is the only query anyone makes of
+-- this table by hand, and it is the one a support conversation starts with.
+CREATE INDEX IF NOT EXISTS cronos_runs_by_project
+  ON cronos_runs (org, project, started_at DESC);
+
+CREATE TABLE IF NOT EXISTS cronos_deliveries (
+  run_id      TEXT NOT NULL,
+  recipient   TEXT NOT NULL,
+  channel     TEXT NOT NULL,
+  destination TEXT NOT NULL DEFAULT '',
+  filename    TEXT NOT NULL DEFAULT '',
+  status      TEXT NOT NULL,
+  attempts    INTEGER NOT NULL DEFAULT 0,
+  bytes       INTEGER NOT NULL DEFAULT 0,
+  error       TEXT NOT NULL DEFAULT '',
+  at          TEXT NOT NULL,
+  PRIMARY KEY (run_id, recipient, channel)
+);
+
+-- "What did this customer receive?" is the question the table exists for, and
+-- without this it is a scan of every delivery ever made.
+CREATE INDEX IF NOT EXISTS cronos_deliveries_by_recipient
+  ON cronos_deliveries (recipient, at DESC);
 `

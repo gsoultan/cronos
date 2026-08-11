@@ -72,6 +72,29 @@ under test is the logic Postgres runs. Postgres-specific behaviour around types
 and concurrency is **not** covered yet; that wants a container this repository
 does not have.
 
+## Run history
+
+Set `CRONOS_STORE_DSN` and every burst is recorded: which definition version
+ran, what period it covered, and where each document went.
+
+```bash
+curl -H "Authorization: Bearer $CRONOS_ADMIN_KEY" localhost:8787/v1/runs/run_1786458499_322e1a57
+#   c-1 | file | c-1 | delivered | attempts 1 | 25063 bytes
+```
+
+That is the auditor's question — what did this customer receive, at which
+address, after how many attempts — and it is why the version is recorded
+alongside: a run naming one can be replayed against exactly the document that
+produced it.
+
+A run is written when it *starts*. A burst that crashed halfway is precisely
+the one somebody needs to look at, and a history that only contains finished
+runs is a log of successes. Recording never fails a delivery: a document that
+reached a customer has reached them whatever the audit table thinks.
+
+The endpoint is behind the admin key and never the embed token — a run record
+names every recipient of a burst.
+
 ## Schedules
 
 `CRONOS_SCHEDULER=1` arms them. Off by default, because two instances both
@@ -94,6 +117,11 @@ The period comes from the cadence rather than being declared. The span between
 the previous firing and this one *is* the period, whatever the cron expression
 happens to be, which is what `{{ .run.periodStart }}` and `{{ .run.periodEnd }}`
 resolve to.
+
+`onFailure.retries` retries transient failures with exponential backoff.
+Permanent ones are not retried: a relay that is down and an address that does
+not exist both fail, and retrying the second is three more rejections and a
+burst that takes an hour longer to reach the same answer.
 
 Delivery channels register only when configured — `CRONOS_SMTP_HOST` and
 `CRONOS_SMTP_FROM` for email, `CRONOS_S3_ACCESS_KEY` and `CRONOS_S3_SECRET_KEY`

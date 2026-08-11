@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/gsoultan/cronos/internal/core/definition"
+	"github.com/gsoultan/cronos/internal/core/history"
 	"github.com/gsoultan/cronos/internal/core/principal"
 )
 
@@ -37,6 +39,8 @@ type StatementResult struct {
 
 // Result is what a burst reports when it finishes.
 type Result struct {
+	// ID is the run record, so a caller can look up what went where.
+	ID         string   `json:"id,omitempty"`
 	Recipients int      `json:"recipients"`
 	Delivered  int      `json:"delivered"`
 	Failed     []string `json:"failed,omitempty"`
@@ -48,7 +52,10 @@ type Service struct {
 	recipient Recipients
 	documents Documents
 	channels  map[string]Channel
+	history   Recorder
 	log       *slog.Logger
+	now       func() time.Time
+	sleep     func(context.Context, time.Duration) error
 }
 
 // Recipients reads the rows a burst fans out over.
@@ -64,32 +71,101 @@ func New(r Reports, rec Recipients, d Documents, log *slog.Logger, channels ...C
 	for _, c := range channels {
 		byName[c.Name()] = c
 	}
-	return &Service{reports: r, recipient: rec, documents: d, channels: byName, log: log}
+	return &Service{
+		reports: r, recipient: rec, documents: d, channels: byName,
+		history: discard{}, log: log, now: time.Now, sleep: pause,
+	}
+}
+
+// WithHistory records what each run delivered.
+func (b *Service) WithHistory(r Recorder) *Service { b.history = r; return b }
+
+// WithClock and WithSleep make retry behaviour testable without waiting out a
+// backoff ladder in real time.
+func (b *Service) WithClock(now func() time.Time) *Service { b.now = now; return b }
+func (b *Service) WithSleep(f func(context.Context, time.Duration) error) *Service {
+	b.sleep = f
+	return b
 }
 
 // Run executes s as pr, for the given run context.
 func (b *Service) Run(ctx context.Context, s definition.Schedule, run Run,
 	pr principal.Principal) (Result, error) {
 
+	record := history.Run{
+		ID: history.NewID(b.now()), Org: pr.OrgID, Project: pr.ProjectID,
+		Schedule: s.Name, Report: s.Report, Output: s.Output,
+		PeriodStart: run["periodStart"], PeriodEnd: run["periodEnd"],
+		TriggeredBy: pr.Subject, StartedAt: b.now(), Status: history.Running,
+	}
+	// Written before anything runs. A burst that crashed halfway is exactly the
+	// run somebody needs to look at, and one recorded only on success is a log
+	// of successes.
+	b.record(ctx, record)
+
 	report, err := b.reports.Report(ctx, s.Report)
 	if err != nil {
-		return Result{}, err
+		return Result{}, b.abandon(ctx, record, err)
 	}
 	if !s.Bursts() {
 		// One document for everybody. Still a burst of one, so the same
 		// rendering and delivery path runs — a second code path here is a
 		// second place for delivery to be subtly different.
-		return b.fan(ctx, s, report, []Row{{}}, run, pr), nil
+		return b.finish(ctx, record, b.fan(ctx, s, report, []Row{{}}, run, record.ID, pr)), nil
 	}
 
 	rows, err := b.recipient.Rows(ctx, s.Burst.Over.Dataset, s.Params, pr)
 	if err != nil {
-		return Result{}, err
+		return Result{}, b.abandon(ctx, record, err)
 	}
 	if len(rows) == 0 {
-		return Result{}, fmt.Errorf("%w: %q returned no rows", ErrNoRecipients, s.Burst.Over.Dataset)
+		return Result{}, b.abandon(ctx, record,
+			fmt.Errorf("%w: %q returned no rows", ErrNoRecipients, s.Burst.Over.Dataset))
 	}
-	return b.fan(ctx, s, report, rows, run, pr), nil
+	return b.finish(ctx, record, b.fan(ctx, s, report, rows, run, record.ID, pr)), nil
+}
+
+// record writes a run, and never fails a burst for it.
+//
+// A document that reached a customer has reached them whatever the audit table
+// thinks. Unwinding that because a write failed would be the worse outcome.
+func (b *Service) record(ctx context.Context, r history.Run) {
+	if err := b.history.Begin(ctx, r); err != nil {
+		b.log.Error("run not recorded", "run", r.ID, "schedule", r.Schedule, "err", err)
+	}
+}
+
+// abandon closes a run that never got as far as delivering.
+func (b *Service) abandon(ctx context.Context, r history.Run, cause error) error {
+	at := b.now()
+	r.FinishedAt, r.Status, r.Error = &at, history.Failed, cause.Error()
+	if err := b.history.Finish(ctx, r.ID, r); err != nil {
+		b.log.Error("run not recorded", "run", r.ID, "err", err)
+	}
+	return cause
+}
+
+// finish closes a run with what it managed.
+func (b *Service) finish(ctx context.Context, r history.Run, result Result) Result {
+	at := b.now()
+	r.FinishedAt = &at
+	r.Recipients, r.Delivered = result.Recipients, result.Delivered
+
+	switch {
+	case len(result.Failed) == 0:
+		r.Status = history.Delivered
+	case result.Delivered == 0:
+		r.Status = history.Failed
+	default:
+		// Its own status, not a success with a footnote: 4,997 of 5,000 has
+		// three customers without an invoice and something has to find them.
+		r.Status = history.Partial
+	}
+	if err := b.history.Finish(ctx, r.ID, r); err != nil {
+		b.log.Error("run not recorded", "run", r.ID, "err", err)
+	}
+	result.ID = r.ID
+	return result
 }
 
 // fan renders and delivers every row, bounded.
@@ -98,7 +174,7 @@ func (b *Service) Run(ctx context.Context, s definition.Schedule, run Run,
 // farm: five thousand recipients eight at a time is a steady process, and five
 // thousand at once is a machine that stops.
 func (b *Service) fan(ctx context.Context, s definition.Schedule, report definition.Report,
-	rows []Row, run Run, pr principal.Principal) Result {
+	rows []Row, run Run, runID string, pr principal.Principal) Result {
 
 	workers := definition.DefaultConcurrency
 	if s.Burst != nil {
@@ -119,7 +195,7 @@ func (b *Service) fan(ctx context.Context, s definition.Schedule, report definit
 			defer wg.Done()
 			defer func() { <-sem }()
 
-			err := b.one(ctx, s, report, row, run, pr)
+			err := b.one(ctx, s, report, row, run, runID, pr)
 
 			mu.Lock()
 			defer mu.Unlock()
@@ -141,7 +217,7 @@ func (b *Service) fan(ctx context.Context, s definition.Schedule, report definit
 
 // one renders and delivers a single recipient.
 func (b *Service) one(ctx context.Context, s definition.Schedule, report definition.Report,
-	row Row, run Run, pr principal.Principal) error {
+	row Row, run Run, runID string, pr principal.Principal) error {
 
 	params, err := b.bind(s, row, run)
 	if err != nil {
@@ -154,7 +230,7 @@ func (b *Service) one(ctx context.Context, s definition.Schedule, report definit
 	}
 
 	for _, spec := range s.Deliver {
-		if err := b.deliver(ctx, spec, rendered.Document, row, run); err != nil {
+		if err := b.deliver(ctx, s, spec, rendered.Document, row, run, runID); err != nil {
 			return err
 		}
 	}
@@ -180,12 +256,14 @@ func (b *Service) bind(s definition.Schedule, row Row, run Run) (map[string]any,
 	return params, nil
 }
 
-func (b *Service) deliver(ctx context.Context, spec definition.DeliverSpec,
-	doc []byte, row Row, run Run) error {
+func (b *Service) deliver(ctx context.Context, s definition.Schedule, spec definition.DeliverSpec,
+	doc []byte, row Row, run Run, runID string) error {
 
 	channel, ok := b.channels[spec.Via]
 	if !ok {
-		return fmt.Errorf("no channel named %q", spec.Via)
+		// Not retried: a channel nobody registered will not appear during the
+		// backoff.
+		return Fatal(fmt.Errorf("no channel named %q", spec.Via))
 	}
 
 	fields, err := resolveAll(map[string]string{
@@ -195,14 +273,43 @@ func (b *Service) deliver(ctx context.Context, spec definition.DeliverSpec,
 		"body":     spec.Body.Text,
 	}, row, run)
 	if err != nil {
-		return err
+		return Fatal(err)
 	}
 
-	return channel.Deliver(ctx, Delivery{
+	d := Delivery{
 		To: fields["to"], Subject: fields["subject"],
 		Filename: fields["filename"], Body: fields["body"],
 		Document: bytes.Clone(doc), Options: spec.Options,
+	}
+
+	attempts, err := attempt(ctx, s.OnFailure, b.sleep, func() error {
+		return channel.Deliver(ctx, d)
 	})
+
+	b.recordDelivery(ctx, runID, spec.Via, d, attempts, err)
+	return err
+}
+
+// recordDelivery writes one row per recipient per channel.
+//
+// Both outcomes, not just failures: "we emailed them" is not an answer to an
+// auditor and the address is, so the successful ones are the record and the
+// failures are the exception within it.
+func (b *Service) recordDelivery(ctx context.Context, runID, channel string,
+	d Delivery, attempts int, cause error) {
+
+	record := history.Delivery{
+		RunID: runID, Recipient: d.To, Channel: channel,
+		Destination: d.To, Filename: d.Filename,
+		Attempts: attempts, Bytes: len(d.Document),
+		Status: history.Delivered, At: b.now(),
+	}
+	if cause != nil {
+		record.Status, record.Error = history.Failed, cause.Error()
+	}
+	if err := b.history.Delivered(ctx, record); err != nil {
+		b.log.Error("delivery not recorded", "run", runID, "to", d.To, "err", err)
+	}
 }
 
 func resolveAll(in map[string]string, row Row, run Run) (map[string]string, error) {
