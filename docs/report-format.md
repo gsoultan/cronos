@@ -295,6 +295,37 @@ spec:
 A burst runs as the principal that owns the schedule, and each row's run still
 applies the dataset's RLS. A schedule cannot be used to widen access.
 
+## Sharing
+
+Sharing is an action and a record, not a kind. A one-off send is logged; a link
+is a row with an audience and an expiry. Neither is a definition, so neither
+gets a YAML file.
+
+The security model is the design. A shared report has to render as *somebody*,
+and there are only two honest answers:
+
+| | Renders as | Recipient sees |
+| :--- | :--- | :--- |
+| **Send** (email, Telegram) | You, now | A snapshot of **your** rows, frozen |
+| **Link — people in the project** | Them, live | Their own rows, after signing in — possibly fewer |
+| **Link — anyone with the link** | You, at creation | A snapshot of **your** rows, frozen, until it expires |
+
+What is deliberately absent is a *live* link that runs as the sender for anyone
+holding the URL. That combination looks like a convenience and behaves like an
+unauthenticated export of someone else's data, and it is the one shape that
+turns row-level security into decoration.
+
+Every option states what the recipient will actually see, next to the control.
+"Share" is the word under which data leaves a system.
+
+### Channels
+
+`email` needs nothing configured. `telegram` needs a bot registered per project
+and added to each destination chat — the Bot API refuses to message anyone who
+has not added the bot first, which is an anti-spam rule with no way around it,
+so the interface says so rather than presenting an empty recipient box. Telegram
+rejects files over 50 MB; email over 25 MB.
+
 ## Storage and versioning
 
 Files are canonical, but the repository is the runtime store. On publish, a

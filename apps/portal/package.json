@@ -13,6 +13,7 @@
     "people": "node scripts/people-check.mjs",
     "preview": "vite preview",
     "security": "node scripts/security-check.mjs",
+    "share": "node scripts/share-check.mjs",
     "shell": "node scripts/shell-check.mjs",
     "shots": "node scripts/shoot.mjs",
     "size": "vite build && node scripts/check-bundle-size.mjs",

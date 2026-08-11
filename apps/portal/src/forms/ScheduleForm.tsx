@@ -24,6 +24,7 @@ const TIMEZONES = ['Europe/Berlin', 'Europe/London', 'America/New_York', 'Asia/J
  */
 export function ScheduleForm({ onDone, onCancel }: Props) {
   const [burst, setBurst] = useState(false)
+  const [channelId, setChannelId] = useState<'email' | 'telegram'>('email')
 
   const form = useForm({
     defaultValues: {
@@ -113,6 +114,13 @@ export function ScheduleForm({ onDone, onCancel }: Props) {
           label="Send a personalised copy to each recipient"
           description="One run produces one document per row — each filtered to that recipient's own data."
           mb={16} />
+
+        <Field label="Send it where" required={false}
+          help="Telegram needs the bot to already be in the chat — see Settings → Channels.">
+          <Select allowDeselect={false} value={channelId} w={220}
+            data={[{ value: 'email', label: 'Email' }, { value: 'telegram', label: 'Telegram' }]}
+            onChange={(next) => setChannelId((next ?? 'email') as 'email' | 'telegram')} />
+        </Field>
 
         {burst ? (
           <>

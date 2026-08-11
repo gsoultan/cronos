@@ -14,6 +14,7 @@ bun run builder  # assert the report editor: canvas size, WYSIWYG, inspector
 bun run identifier # assert the API-name field: collapsed, follows, stops following
 bun run people   # assert user management: roles, grants, last-owner rule
 bun run security # assert 2FA enrolment order, recovery codes, org policy
+bun run share    # assert sharing: channels, validation, disclosure copy
 bun run acl      # assert the org/project access rules in a real browser
 ```
 
@@ -183,6 +184,25 @@ being decided about, which is the thing you want to look at.
 `people.ts` and `workspace.ts` must agree on your own role in each organisation
 — they are the same fact stored twice, and the first version disagreed, which
 surfaced as the admin screen rendering read-only.
+
+## Sharing
+
+A shared report has to render as *somebody*, and the whole design follows from
+that. Sending produces a snapshot rendered as you; a project link sends people
+through sign-in so the dataset's row-level security applies to *them*; a public
+link is a frozen snapshot with an expiry.
+
+Absent by design: a live link that runs as the sender for anyone with the URL.
+That looks like a convenience and behaves like an unauthenticated export of
+someone else's data — the one shape that turns row-level security into
+decoration.
+
+Every option states what the recipient will actually see, next to the control,
+because "share" is the word under which data leaves.
+
+Telegram needs its bot added to each chat first. That is an anti-spam rule in
+the Bot API with no way around it, so `ChannelsPanel` explains it rather than
+showing an empty recipient box.
 
 ## Two-factor authentication
 

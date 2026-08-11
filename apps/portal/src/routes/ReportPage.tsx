@@ -9,6 +9,7 @@ import { DataTable } from '../components/DataTable'
 import { Panel } from '../components/Panel'
 import { FilterPanel } from '../components/FilterPanel'
 import { EmptyState } from '../components/EmptyState'
+import { SharePanel } from '../components/share/SharePanel'
 import type { Group } from '../lib/types'
 import {
   billedByMonth, collectionsTrend, datasets, invoiceRows, outstandingTrend,
@@ -24,6 +25,7 @@ export function ReportPage() {
   const report = reports.find((r) => r.name === name)
   const dataset = datasets.find((d) => d.name === report?.dataset)
   const [filter, setFilter] = useState<Group>(EMPTY)
+  const [sharing, setSharing] = useState(false)
 
   const rows = useMemo(
     () => (dataset ? applyFilter(invoiceRows, filter, dataset.fields) : []),
@@ -58,10 +60,19 @@ export function ReportPage() {
                 <Menu.Item>CSV — raw data</Menu.Item>
               </Menu.Dropdown>
             </Menu>
+            <Button variant="default" onClick={() => setSharing((v) => !v)}
+              data-testid="share-button">Share</Button>
             <Button>Schedule</Button>
           </>
         }
       />
+
+      {sharing && (
+        <div className="mb-6">
+          <SharePanel reportLabel={report.label} projectName={report.folder}
+            outputs={report.outputs} onClose={() => setSharing(false)} />
+        </div>
+      )}
 
       <FilterPanel fields={dataset.fields} value={filter} onChange={setFilter} onApply={() => {}} />
 

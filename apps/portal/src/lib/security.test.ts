@@ -42,8 +42,9 @@ describe('makeSecret', () => {
   })
 })
 
+const on = (p: Person) => !!p.twoFactor
+
 describe('readiness', () => {
-  const on = (p: Person) => !!p.twoFactor
 
   test('counts coverage and names who would lose access', () => {
     const members = [person('a', true), person('b', false), person('c', false)]
