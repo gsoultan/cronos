@@ -17,14 +17,18 @@ import (
 // decision rather than a typesetting one: which block becomes the table, which
 // columns it carries, what the group is called. The renderer only draws.
 type Statements struct {
-	svc      *Service
-	renderer burst.Renderer
+	svc       *Service
+	renderer  burst.Renderer
+	workbooks Workbooks
 }
 
 // NewStatements wires the bridge.
 func NewStatements(s *Service, r burst.Renderer) *Statements {
 	return &Statements{svc: s, renderer: r}
 }
+
+// WithWorkbooks adds spreadsheet output.
+func (s *Statements) WithWorkbooks(w Workbooks) *Statements { s.workbooks = w; return s }
 
 // Statement renders one recipient's document.
 //
@@ -78,7 +82,7 @@ func toDocument(r definition.Report, out definition.Output, view View) (document
 		Period:  view.Description,
 		Org:     document.Org{Name: r.Folder},
 		Page:    page(out.Page),
-		Columns: columns(table),
+		Columns: printedColumns(table),
 		Groups: []document.Group{{
 			Label:    view.Title,
 			Rows:     table.Rows,
@@ -97,7 +101,7 @@ func firstTable(view View) (Block, bool) {
 	return Block{}, false
 }
 
-func columns(table Block) []document.Column {
+func printedColumns(table Block) []document.Column {
 	cols := make([]document.Column, 0, len(table.Columns))
 	for _, c := range table.Columns {
 		align := c.Align

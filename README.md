@@ -149,6 +149,7 @@ make ui             # every browser suite, plus the embed against a real server
 make live           # just the embed against a real cronosd
 make pdf            # render a sample statement and open it
 make duckdb         # build and test federation (cgo, several hundred MB)
+make xlsx-oracle    # install openpyxl, so the spreadsheet tests run rather than skip
 ```
 
 Federation is behind a build tag on purpose. DuckDB is a C++ library, so it

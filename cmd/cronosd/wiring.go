@@ -10,6 +10,7 @@ import (
 	filechannel "github.com/gsoultan/cronos/internal/adapter/deliver/file"
 	s3channel "github.com/gsoultan/cronos/internal/adapter/deliver/s3"
 	"github.com/gsoultan/cronos/internal/adapter/render/paginated"
+	"github.com/gsoultan/cronos/internal/adapter/render/spreadsheet"
 	"github.com/gsoultan/cronos/internal/adapter/store/file"
 	sqlstore "github.com/gsoultan/cronos/internal/adapter/store/sql"
 	"github.com/gsoultan/cronos/internal/app/burst"
@@ -72,7 +73,8 @@ func scheduler(cfg config.Server, repo *file.Repository, runner *run.Service,
 		return nil, err
 	}
 
-	statements := run.NewStatements(runner, paginated.New(paginated.TypstCLI{}))
+	statements := run.NewStatements(runner, paginated.New(paginated.TypstCLI{})).
+		WithWorkbooks(spreadsheet.New())
 	bursts := burst.New(repo, recipients{runner}, statements, log, chans...)
 	if records != nil {
 		bursts = bursts.WithHistory(records)

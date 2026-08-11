@@ -87,7 +87,7 @@ internal/
     driver/sql/          Anything database/sql speaks           ✓
     driver/duckdb/       Federation. cgo, `-tags duckdb`        ✓
     render/paginated/    Typst PDF                              ✓
-    render/              spreadsheet
+    render/spreadsheet/  XLSX, written by hand, read by openpyxl ✓
     deliver/file/        Documents to a directory                ✓
     deliver/email/       SMTP with a MIME attachment             ✓
     deliver/s3/          Object storage, S3 API                  ✓

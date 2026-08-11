@@ -6,7 +6,7 @@ REACT  := packages/react
 GO     := go
 
 .DEFAULT_GOAL := help
-.PHONY: help setup dev dev-web dev-api build check test duckdb pdf lint fmt boundary live ui shots clean
+.PHONY: help setup dev dev-web dev-api build check test xlsx-oracle duckdb pdf lint fmt boundary live ui shots clean
 
 help: ## Show this help
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage: make <target>\n\n"} \
@@ -32,18 +32,24 @@ build: ## Build both binaries and the portal
 	cd $(EMBED) && bun run build
 	cd $(REACT) && bun run build
 
+XLSX_PY := $(shell command -v /tmp/xlsxvenv/bin/python 2>/dev/null)
+
 check: ## Everything CI runs — build, vet, test, boundary, typecheck, lint, budgets
 	$(GO) build ./...
 	$(GO) vet ./...
 	@gofmt -l . | grep . && { echo "gofmt: files above need formatting"; exit 1; } || true
-	$(GO) test ./...
+	CRONOS_XLSX_PYTHON=$(XLSX_PY) $(GO) test ./...
 	@./scripts/check-license-boundary.sh
 	cd $(PORTAL) && bun run check
 	cd $(EMBED) && bun run check
 	cd $(REACT) && bun run check
 
 test: ## Run Go tests
-	$(GO) test ./...
+	CRONOS_XLSX_PYTHON=$(XLSX_PY) $(GO) test ./...
+
+xlsx-oracle: ## Install the reader the spreadsheet tests check against
+	python3 -m venv /tmp/xlsxvenv && /tmp/xlsxvenv/bin/pip install --quiet openpyxl
+	@echo "ok  spreadsheet tests will now run rather than skip"
 
 duckdb: ## Build and test the federation adapter (cgo, several hundred MB)
 	$(GO) build -tags duckdb ./...

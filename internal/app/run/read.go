@@ -96,8 +96,8 @@ func readTable(blk definition.Block, ds definition.Dataset, rows Rows) ([]Column
 // headings labels the columns from the dataset, so a table says "Customer"
 // rather than "customer_name". The field name is the contract reports bind to;
 // the label is what people read.
-func headings(blk definition.Block, ds definition.Dataset, names []string) []Column {
-	cols := make([]Column, 0, len(names))
+func headings(blk definition.Block, ds definition.Dataset, names []string) headers {
+	cols := make(headers, 0, len(names))
 	for i, name := range names {
 		if i < len(blk.Columns) {
 			name = blk.Columns[i]
@@ -114,4 +114,16 @@ func headings(blk definition.Block, ds definition.Dataset, names []string) []Col
 		cols = append(cols, col)
 	}
 	return cols
+}
+
+// headers is a list of headings, so a caller wanting only the labels does not
+// have to loop at the call site.
+type headers []Column
+
+func (c headers) labels() []string {
+	out := make([]string, len(c))
+	for i, col := range c {
+		out[i] = col.Label
+	}
+	return out
 }
