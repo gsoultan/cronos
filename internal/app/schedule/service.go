@@ -46,6 +46,8 @@ type Service struct {
 	mu      sync.Mutex
 	running map[string]bool
 	due     map[string]time.Time
+	alerter Alerter
+	alerts  *alerts
 }
 
 // Tick is how often the loop looks for work.
@@ -61,8 +63,15 @@ func New(src Source, r Runner, o Owner, log *slog.Logger) *Service {
 		now: time.Now, tick: Tick,
 		running: map[string]bool{},
 		due:     map[string]time.Time{},
+		alerts:  newAlerts(),
 	}
 }
+
+// WithAlerts tells somebody when a run does not work.
+//
+// Optional, and absent means the failure reaches a log and no human — which is
+// the state this replaces, and worth being able to see in a startup line.
+func (s *Service) WithAlerts(a Alerter) *Service { s.alerter = a; return s }
 
 // WithClock and WithTick make the loop testable without waiting for a minute
 // of real time to pass.
@@ -196,6 +205,7 @@ func (s *Service) fire(ctx context.Context, p Plan, at time.Time) {
 	if err != nil {
 		s.log.Error("schedule failed", "schedule", p.Schedule.Name,
 			"period", run["periodLabel"], "took", took, "err", err)
+		s.alert(ctx, p.Schedule, run["periodLabel"], Alert{Err: err.Error()}, true)
 		return
 	}
 	// Partial success is logged as a failure, because it is one: a burst that
@@ -205,10 +215,42 @@ func (s *Service) fire(ctx context.Context, p Plan, at time.Time) {
 		s.log.Error("schedule partially delivered", "schedule", p.Schedule.Name,
 			"period", run["periodLabel"], "delivered", result.Delivered,
 			"recipients", result.Recipients, "failed", len(result.Failed), "took", took)
+		s.alert(ctx, p.Schedule, run["periodLabel"], Alert{
+			Recipients: result.Recipients, Delivered: result.Delivered,
+			Failures: result.Failed,
+		}, true)
 		return
 	}
 	s.log.Info("schedule delivered", "schedule", p.Schedule.Name,
 		"period", run["periodLabel"], "recipients", result.Recipients, "took", took)
+	s.alert(ctx, p.Schedule, run["periodLabel"], Alert{
+		Recipients: result.Recipients, Delivered: result.Delivered,
+	}, false)
+}
+
+// alert tells somebody, if there is somebody to tell and anything new to say.
+func (s *Service) alert(ctx context.Context, sched definition.Schedule,
+	period string, a Alert, failing bool) {
+
+	if s.alerter == nil || sched.OnFailure.Alert == "" {
+		return
+	}
+
+	s.mu.Lock()
+	send, recovered := s.alerts.should(sched.Name, failing, s.now())
+	s.mu.Unlock()
+
+	if !send {
+		return
+	}
+	a.To, a.Schedule, a.Period, a.Recovered = sched.OnFailure.Alert, sched.Name, period, recovered
+
+	if err := s.alerter.Alert(ctx, a); err != nil {
+		// Logged and swallowed. A burst that delivered is not undone because
+		// the alert about it could not be sent, and an alerter that can fail a
+		// run is a second thing that can take the run down.
+		s.log.Error("alert not sent", "schedule", sched.Name, "to", a.To, "err", err)
+	}
 }
 
 // Due reports when each armed schedule next fires, for an operator asking why

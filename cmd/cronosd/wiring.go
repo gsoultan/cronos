@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	alertemail "github.com/gsoultan/cronos/internal/adapter/alert/email"
 	"github.com/gsoultan/cronos/internal/adapter/api"
 	emailchannel "github.com/gsoultan/cronos/internal/adapter/deliver/email"
 	filechannel "github.com/gsoultan/cronos/internal/adapter/deliver/file"
@@ -80,13 +81,37 @@ func scheduler(cfg config.Server, repo *file.Repository, runner *run.Service,
 		bursts = bursts.WithHistory(records)
 	}
 
+	sched := schedule.New(repo, bursts, owner{cfg}, log)
+	if mail := mailer(chans); mail != nil {
+		sched = sched.WithAlerts(alertemail.New(mail))
+	} else {
+		// Said out loud. A schedule naming onFailure.alert with no mail relay
+		// configured reaches a log and no human, which is the state this whole
+		// feature exists to replace.
+		log.Warn("no mail relay — schedule failures will not alert anybody")
+	}
+
 	// Every schedule is parsed before the listener opens. A timezone the host
 	// does not have should stop a deployment, not surprise somebody at six on
 	// the first of the month.
 	if err := schedule.Check(repo); err != nil {
 		return nil, err
 	}
-	return schedule.New(repo, bursts, owner{cfg}, log), nil
+	return sched, nil
+}
+
+// mailer finds the email channel among those registered, if it is there.
+//
+// An alert is a delivery with no attachment, so it goes out through the same
+// relay a statement does rather than a second SMTP client to configure and
+// keep patched.
+func mailer(chans []burst.Channel) alertemail.Sender {
+	for _, c := range chans {
+		if c.Name() == "email" {
+			return c
+		}
+	}
+	return nil
 }
 
 // owner resolves who a schedule runs as.
