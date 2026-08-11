@@ -49,6 +49,12 @@ require go 1.26 \
 require bun 1.3 \
 	"$(bun --version 2>/dev/null)" \
 	"https://bun.sh"
+# The paginated renderer shells out to typst. Required rather than optional:
+# without it the PDF tests do not fail, they skip, and a renderer nobody
+# exercised is a renderer nobody trusts.
+require typst 0.15 \
+	"$(typst --version 2>/dev/null | awk '{print $2}')" \
+	"brew install typst — or https://github.com/typst/typst/releases"
 
 [ "$missing" = 1 ] && { echo; echo "Install the missing tools above, then re-run."; exit 1; }
 
@@ -60,6 +66,7 @@ echo "Dependencies"
 echo
 echo "Verifying"
 (cd "$ROOT" && go build ./... ) && printf '%s go build\n' "$OK"
+(cd "$ROOT" && go test ./internal/... >/dev/null) && printf '%s go tests\n' "$OK"
 (cd "$ROOT" && ./scripts/check-license-boundary.sh >/dev/null) && printf '%s license boundary\n' "$OK"
 (cd "$PORTAL" && bunx tsc --noEmit) && printf '%s portal typecheck\n' "$OK"
 

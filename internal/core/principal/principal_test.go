@@ -4,9 +4,9 @@ import "testing"
 
 func TestEffectiveRole(t *testing.T) {
 	tests := []struct {
-		name                              string
-		p                                 Principal
-		read, edit, adminProj, adminOrg   bool
+		name                            string
+		p                               Principal
+		read, edit, adminProj, adminOrg bool
 	}{
 		{
 			name: "org owner reaches any project without a membership",

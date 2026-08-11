@@ -4,7 +4,7 @@ PORTAL := apps/portal
 GO     := go
 
 .DEFAULT_GOAL := help
-.PHONY: help setup dev dev-web dev-api build check test lint fmt boundary ui shots clean
+.PHONY: help setup dev dev-web dev-api build check test pdf lint fmt boundary ui shots clean
 
 help: ## Show this help
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage: make <target>\n\n"} \
@@ -28,14 +28,20 @@ build: ## Build both binaries and the portal
 	$(GO) build -o bin/cronosd-ee ./cmd/cronosd-ee
 	cd $(PORTAL) && bun run build
 
-check: ## Everything CI runs — build, vet, boundary, typecheck, lint, budgets
+check: ## Everything CI runs — build, vet, test, boundary, typecheck, lint, budgets
 	$(GO) build ./...
 	$(GO) vet ./...
+	@gofmt -l . | grep . && { echo "gofmt: files above need formatting"; exit 1; } || true
+	$(GO) test ./...
 	@./scripts/check-license-boundary.sh
 	cd $(PORTAL) && bun run check
 
 test: ## Run Go tests
 	$(GO) test ./...
+
+pdf: ## Render a sample statement to /tmp/statement.pdf and open it
+	CRONOS_PDF_OUT=/tmp/statement.pdf $(GO) test ./internal/adapter/render/paginated/ -run TestRenderProducesAPDF -v
+	@open /tmp/statement.pdf 2>/dev/null || echo "wrote /tmp/statement.pdf"
 
 lint: ## Lint the portal
 	cd $(PORTAL) && bun run lint

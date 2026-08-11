@@ -233,7 +233,7 @@ cronos in the path of a recurring business obligation, and that is very hard to 
 
 | Risk | Impact | Mitigation | Owner |
 | :--- | :--- | :--- | :--- |
-| Typst layout cannot express real statement layouts | Kills the differentiator | Prototype the hardest real layout in v0.2, before building around it | eng |
+| ~~Typst layout cannot express real statement layouts~~ **retired** | Kills the differentiator | Prototyped and under test: grouping, page breaks, repeated headings, per-group subtotals and per-recipient page numbering all hold — `docs/rendering.md` | eng |
 | BSL suppresses OSS adoption | Loses the distribution channel | Community tier is genuinely complete; measure installs, not stars | product |
 | Builder UI is where similar projects die | No self-service, no Dewi, no renewal | Ship the file format and API first; the builder writes YAML it cannot corrupt | product |
 | Jasper migration is harder than it looks | v1.0 slips, Marek does not switch | Scope `.jrxml` import to the common 80% and say so plainly | eng |
