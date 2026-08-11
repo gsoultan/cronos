@@ -45,6 +45,21 @@ type Principal struct {
 	// It only ever narrows: values here are conjoined with the dataset's own
 	// row-level security, never substituted for it.
 	Scope map[string]string
+
+	// Member marks somebody acting inside the project rather than an end
+	// customer of it — an author in the portal, a schedule's owner.
+	//
+	// Row scope does not apply to them. docs/tenancy.md sets this out: row
+	// scope isolates an ISV's end customers from each other, and a project
+	// member is protected by membership and project ownership, "which is
+	// sufficient — project isolation is already structural". Without this an
+	// author cannot preview a row-scoped report at all: they have no embed
+	// token, so the predicate matches nothing and every figure is blank.
+	//
+	// False by default, and that direction matters. A principal nobody marked
+	// is treated as an end customer and gets the fail-closed predicate, so the
+	// cost of forgetting is no rows rather than everybody's.
+	Member bool
 }
 
 // CanRead reports whether the principal may run reports in the active project.

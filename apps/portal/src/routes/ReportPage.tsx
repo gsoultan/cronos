@@ -17,11 +17,29 @@ import {
 } from '../lib/mock'
 import { currency } from '../lib/format'
 import { useRowWorker } from '../lib/useRowWorker'
+import { useReport } from '../lib/useReport'
+import { LiveReport } from '../components/LiveReport'
 
 const EMPTY: Group = { id: 'root', kind: 'group', join: 'and', children: [] }
 
+/**
+ * A report, from wherever the numbers actually come from.
+ *
+ * A dispatcher and nothing else. The two branches have entirely different
+ * hooks — one runs a filter worker over four thousand fixture rows, the other
+ * runs a query — and putting both in one component would mount the worker for
+ * a page that never shows it. React would also have to keep the hook order
+ * stable across a branch that changes what a report *is*.
+ */
 export function ReportPage() {
   const { name } = useParams({ from: '/reports/$name' })
+  const live = useReport(name)
+
+  if (live.live) return <ServerReport name={name} query={live} />
+  return <SampleReport name={name} />
+}
+
+function SampleReport({ name }: { name: string }) {
   const report = reports.find((r) => r.name === name)
   const dataset = datasets.find((d) => d.name === report?.dataset)
   const [filter, setFilter] = useState<Group>(EMPTY)
@@ -127,6 +145,31 @@ export function ReportPage() {
           </Panel>
         </>
       )}
+    </>
+  )
+}
+
+/** A report as the server computed it, with the states a request can be in. */
+function ServerReport({ name, query }: { name: string; query: ReturnType<typeof useReport> }) {
+  if (query.isPending) {
+    return <p data-testid="report-loading" className="p-8 text-center text-ink-muted">Loading…</p>
+  }
+  if (query.error) {
+    /* The server's own sentence. It is the only party that knows whether this
+       was an expired token or a report that does not exist. */
+    return (
+      <EmptyState title="This report could not be run"
+        description={query.error instanceof Error ? query.error.message : 'Unknown error.'}
+        action={<Button component={Link} to="/">Back to reports</Button>} />
+    )
+  }
+  if (!query.data) return null
+
+  return (
+    <>
+      <PageHeader eyebrow={name} title={query.data.title}
+        description={query.data.description} />
+      <LiveReport view={query.data} />
     </>
   )
 }

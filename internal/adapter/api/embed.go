@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/gsoultan/cronos/internal/app/run"
+	"github.com/gsoultan/cronos/internal/core/principal"
 	"github.com/gsoultan/cronos/internal/platform/token"
 )
 
@@ -36,7 +37,9 @@ func (e *Embed) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	name := r.PathValue("name")
 
-	claims, err := e.signer.Verify(bearer(r))
+	// The embed audience only. A portal token belongs to an author and must
+	// not be usable as an end customer, whichever direction somebody tries it.
+	claims, err := e.signer.Verify(bearer(r), token.Embed)
 	if err != nil {
 		// One message for every token failure. Distinguishing expired from
 		// forged tells an attacker which half of their attempt worked.
@@ -53,6 +56,22 @@ func (e *Embed) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	e.renderWith(w, r, claims.Principal(), name, claims.Params)
+}
+
+// render runs a report for an already-authenticated caller.
+//
+// Exported to the portal handler, which differs from this one only in how it
+// decided who is asking. The compiling, the row scope and the shape of the
+// answer are identical, and having two copies of them is how they stop being.
+func (e *Embed) render(w http.ResponseWriter, r *http.Request,
+	pr principal.Principal, name string) {
+	e.renderWith(w, r, pr, name, nil)
+}
+
+func (e *Embed) renderWith(w http.ResponseWriter, r *http.Request,
+	pr principal.Principal, name string, pinned map[string]any) {
+
 	req, err := decode(r)
 	if err != nil {
 		fail(w, http.StatusBadRequest, "The request could not be read.")
@@ -61,15 +80,16 @@ func (e *Embed) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	report, err := e.reports.Report(r.Context(), name)
 	if err != nil {
-		e.log.Info("embed report not found", "report", name, "err", err)
+		e.log.Info("report not found", "report", name, "err", err)
 		fail(w, http.StatusNotFound, "No such report.")
 		return
 	}
 
 	view, err := e.runner.Render(r.Context(), report, run.Request{
-		Params:  merge(claims.Params, req.Params),
+		Output:  req.Output,
+		Params:  merge(pinned, req.Params),
 		Filters: req.Filters,
-	}, claims.Principal())
+	}, pr)
 	if err != nil {
 		e.report(w, name, err)
 		return

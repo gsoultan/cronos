@@ -23,6 +23,8 @@ func main() {
 		project  = flag.String("project", "finance", "project id")
 		subject  = flag.String("subject", "demo-user", "who this is, in the host's own model")
 		report   = flag.String("report", "", "pin the token to one report")
+		audience = flag.String("audience", token.Embed, "embed (an end customer) or portal (an author)")
+		role     = flag.String("role", "editor", "project role, for a portal token")
 		scope    = flag.String("scope", "", "row scope, as key=value,key=value")
 		params   = flag.String("params", "", "pinned dataset params, as key=value,key=value")
 		lifetime = flag.Duration("for", time.Hour, "how long it lives")
@@ -41,6 +43,7 @@ func main() {
 	}
 
 	tok, err := signer.Mint(token.Claims{
+		Audience: *audience, Role: *role,
 		Org: *org, Project: *project, Subject: *subject, Report: *report,
 		Scope: pairs(*scope), Params: anyPairs(*params),
 	}, *lifetime)
@@ -50,7 +53,7 @@ func main() {
 	}
 
 	if flag.Arg(0) == "-v" {
-		claims, _ := signer.Verify(tok)
+		claims, _ := signer.Verify(tok, *audience)
 		b, _ := json.MarshalIndent(claims, "", "  ")
 		fmt.Fprintln(os.Stderr, string(b))
 	}

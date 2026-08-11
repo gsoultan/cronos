@@ -19,15 +19,21 @@ import (
 const maxDefinition = 256 << 10
 
 // Definitions serves the management API.
+// Principals is whatever decides who a management request acts as: the shared
+// key a pipeline holds, or a portal token an author signed in with.
+type Principals interface {
+	Principal(r *http.Request) (principal.Principal, bool)
+}
+
 type Definitions struct {
 	svc   *publish.Service
 	store publish.Store
-	auth  *AdminKey
+	auth  Principals
 	log   *slog.Logger
 }
 
 // NewDefinitions wires the handler.
-func NewDefinitions(s *publish.Service, st publish.Store, a *AdminKey, log *slog.Logger) *Definitions {
+func NewDefinitions(s *publish.Service, st publish.Store, a Principals, log *slog.Logger) *Definitions {
 	return &Definitions{svc: s, store: st, auth: a, log: log}
 }
 

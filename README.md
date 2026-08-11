@@ -72,6 +72,31 @@ under test is the logic Postgres runs. Postgres-specific behaviour around types
 and concurrency is **not** covered yet; that wants a container this repository
 does not have.
 
+## The portal, on real data
+
+With no `VITE_CRONOS_API` the portal runs on **sample data** — which is what
+makes the interface workable before a server exists, and what every browser
+suite exercises. Connected, it shows real numbers.
+
+```bash
+TOKEN=$(go run ./cmd/cronos-token -audience portal -role editor \
+  -org acme -project finance -subject dewi)
+
+cd apps/portal && VITE_CRONOS_API=http://localhost:8787 VITE_CRONOS_TOKEN=$TOKEN bun run dev
+```
+
+The mode is announced in the shell rather than inferred. A reporting tool
+showing invented figures that look real is the worst thing this product could
+do, so "these are samples" is a statement the interface makes.
+
+The portal never holds the admin key. That is a shared secret a deployment
+pipeline has, and a browser is the one place it must not be — anything in a
+browser is in a devtools console, a screenshot and a support ticket. It uses a
+**portal token**, and the server refuses to accept one for the embed endpoints
+or an embed token for the portal's. Real sign-in is not built yet; the
+mechanism it will issue against is, and it is enforced now so nothing is open
+in the meantime.
+
 ## Run history
 
 Set `CRONOS_STORE_DSN` and every burst is recorded: which definition version

@@ -6,6 +6,17 @@ package token
 // enough to read in a log, short enough not to be the reason a request is
 // rejected for header size.
 type Claims struct {
+	// Audience is what the token may be used for.
+	//
+	// The one field that is checked before anything else is trusted. An embed
+	// token belongs to an end customer of our customer and a portal token
+	// belongs to an author; without this they are the same signed blob and the
+	// first is usable for the second's endpoints.
+	Audience string `json:"aud"`
+	// Role is the project role a portal token carries. Ignored for embed
+	// tokens, which are always viewers whatever they claim.
+	Role string `json:"rol,omitempty"`
+
 	Org     string `json:"org"`
 	Project string `json:"prj"`
 	// Subject identifies the end user in the *host's* model, not ours. Cronos

@@ -29,21 +29,31 @@ func RoutesWith(reports Reports, runner *run.Service, signer *token.Signer,
 	origins []string, log *slog.Logger,
 	pub *publish.Service, store publish.Store, admin *AdminKey, runs History) http.Handler {
 
+	embed := NewEmbed(reports, runner, signer, log)
+	author := NewAuthor(signer, admin)
+
 	mux := http.NewServeMux()
-	mux.Handle("/v1/embed/reports/{name}", NewEmbed(reports, runner, signer, log))
+	mux.Handle("/v1/embed/reports/{name}", embed)
+	// The portal's own read. A separate path from the embed one because the
+	// two have different callers and different audiences, and the audience
+	// check should be the first thing a handler does rather than a branch
+	// inside it.
+	mux.Handle("/v1/reports/{name}", NewPortalReports(embed, author, log))
 	mux.HandleFunc("/v1/health", func(w http.ResponseWriter, _ *http.Request) {
 		send(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 
-	if admin != nil && admin.Enabled() && pub != nil {
-		defs := NewDefinitions(pub, store, admin, log)
+	// Management is open to an author with a portal token or to a pipeline
+	// with the shared key. Mounted when either can exist.
+	if pub != nil && (author.Enabled() || (admin != nil && admin.Enabled())) {
+		defs := NewDefinitions(pub, store, author, log)
 		mux.Handle("/v1/definitions", defs)
 		mux.Handle("/v1/definitions/{kind}/{name}", defs)
 
 		// Behind the admin key and never the embed token: a run record names
 		// every recipient of a burst.
 		if runs != nil {
-			h := NewRuns(runs, admin, log)
+			h := NewRuns(runs, author, log)
 			mux.Handle("/v1/runs", h)
 			mux.Handle("/v1/runs/{id}", h)
 		}

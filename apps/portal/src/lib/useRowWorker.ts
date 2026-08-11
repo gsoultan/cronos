@@ -72,7 +72,14 @@ export function useRowWorker({ rows, fields, filter, sum, count }: Options): Row
     w.postMessage({ type: 'load', rows, fields })
 
     return () => { w.terminate(); worker.current = null }
-  }, [rows, fields])
+    /* Keyed on the shape of the fields rather than the array's identity. A
+       caller writing `fields={dataset?.fields ?? []}` hands over a new array on
+       every render, and depending on identity turns that into: effect, state,
+       render, new array, effect. It looked like a hook bug and it was a
+       dependency bug — and it only bit when the dataset was missing, which is
+       the path nobody clicks until a report has been renamed. */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, JSON.stringify(fields.map((f) => f.name))])
 
   useEffect(() => {
     const w = worker.current
@@ -96,7 +103,8 @@ export function useRowWorker({ rows, fields, filter, sum, count }: Options): Row
     setState((s) => ({ ...s, pending: true }))
     w.postMessage({ type: 'filter', id, filter, sum, count })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filter, rows, fields, JSON.stringify(sum), JSON.stringify(count)])
+  }, [filter, rows, JSON.stringify(fields.map((f) => f.name)),
+    JSON.stringify(sum), JSON.stringify(count)])
 
   return state
 }

@@ -61,6 +61,7 @@ func (b Builder) BuildWith(ds definition.Dataset, in map[string]any, f Filters,
 		params:   params,
 		scope:    pr.Scope,
 		declared: declaredNames(ds),
+		member:   pr.Member,
 	}
 
 	inner, err := bd.render(ds.Query, false)

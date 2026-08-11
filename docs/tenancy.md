@@ -100,8 +100,23 @@ A filter narrows. It never widens.
 
 ## Scope fails closed
 
-A dataset whose row-level security references `{{ .scope.x }}` **cannot be read
-without that scope**. If the value is absent the predicate matches nothing; it
+Row scope applies to **end customers**, which is to say holders of an embed
+token. A project member reading in the app, or a schedule running as its owner,
+is exempt: they are protected by membership and by the project owning its
+resources, which this document already calls sufficient. Applying it to them
+would mean an author cannot preview their own report — every figure on the page
+an em dash.
+
+The exemption comes from a signed audience and never from an absent claim, and
+that distinction is the whole of it. "This token says it belongs to a project
+member" is a statement somebody made and signed; "this token has no scope" is a
+statement nobody made, and reading the second as permission is how one missing
+claim becomes a full-table disclosure. A principal nobody marked is treated as
+an end customer, so forgetting costs a blank report rather than everybody's
+data.
+
+For an end customer, a dataset whose row-level security references
+`{{ .scope.x }}` **cannot be read without that scope**. If the value is absent the predicate matches nothing; it
 is never dropped, and never treated as "no constraint". The alternative — an
 absent scope meaning unrestricted — turns one missing token claim into a full
 table disclosure.

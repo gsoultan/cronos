@@ -231,3 +231,43 @@ func contains(args []any, want string) bool {
 	}
 	return false
 }
+
+// Row scope isolates an ISV's end customers from one another. A project member
+// is protected by membership and project ownership, and applying it to them
+// means an author cannot preview their own report — every figure blank.
+func TestAProjectMemberIsNotRowScoped(t *testing.T) {
+	author := principal.Principal{Subject: "dewi", OrgID: "o1", ProjectID: "p1",
+		ProjectRole: principal.ProjectEditor, Member: true}
+
+	plan := build(t, invoices(), map[string]any{"from": "2026-07-01"}, author)
+
+	if strings.Contains(plan.SQL(), noRows) {
+		t.Errorf("an author got the fail-closed predicate:\n%s", plan.SQL())
+	}
+	if strings.Contains(plan.SQL(), subqueryAlias) {
+		t.Errorf("nothing should have been wrapped:\n%s", plan.SQL())
+	}
+}
+
+// The exemption comes from a signed claim, never from an absent one. A
+// principal nobody marked is an end customer and gets no rows, so the cost of
+// forgetting the flag is a blank report rather than everybody's data.
+func TestForgettingTheFlagFailsClosed(t *testing.T) {
+	unmarked := principal.Principal{Subject: "u", OrgID: "o1", ProjectID: "p1",
+		ProjectRole: principal.ProjectEditor} // Member not set
+
+	plan := build(t, invoices(), map[string]any{"from": "2026-07-01"}, unmarked)
+
+	if !strings.Contains(plan.SQL(), noRows) {
+		t.Errorf("an unmarked principal was exempted:\n%s", plan.SQL())
+	}
+}
+
+// And a member's exemption must not reach an end customer who happens to have
+// a scope: the two are decided independently.
+func TestAnEndCustomerIsStillScopedEvenWithARole(t *testing.T) {
+	plan := build(t, invoices(), map[string]any{"from": "2026-07-01"}, embedded("c-9"))
+	if !strings.Contains(plan.SQL(), "customer_id = $") {
+		t.Errorf("an embed principal lost its row scope:\n%s", plan.SQL())
+	}
+}

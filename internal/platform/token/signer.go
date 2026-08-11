@@ -13,6 +13,15 @@ import (
 	"github.com/gsoultan/cronos/internal/core/principal"
 )
 
+// Audiences a token may be minted for.
+const (
+	// Embed is an end customer of our customer: one report, row-scoped, viewer
+	// for ever.
+	Embed = "embed"
+	// Portal is somebody who authors reports. Carries a project role.
+	Portal = "portal"
+)
+
 const (
 	// version prefixes every token and is covered by the signature. Without
 	// that, a future v2 with different rules could be downgraded to v1 by
@@ -66,6 +75,8 @@ func (s *Signer) Mint(c Claims, lifetime time.Duration) (string, error) {
 		// A token with no tenancy would authenticate into whatever the caller
 		// asked for. Refusing at mint is the cheapest place to catch it.
 		return "", fmt.Errorf("token: org and project are required")
+	case c.Audience != Embed && c.Audience != Portal:
+		return "", fmt.Errorf("token: audience must be %q or %q", Embed, Portal)
 	}
 
 	issued := s.now()
@@ -80,12 +91,16 @@ func (s *Signer) Mint(c Claims, lifetime time.Duration) (string, error) {
 	return body + "." + enc.EncodeToString(s.sign(body)), nil
 }
 
-// Verify checks a token and returns what it asserts.
+// Verify checks a token minted for the given audience.
+//
+// The audience is a parameter rather than a field the caller reads afterwards,
+// because a check somebody has to remember is a check somebody forgets — and
+// the thing forgotten would be an embed token opening the management API.
 //
 // The signature is checked before anything in the payload is read. Parsing
 // attacker-controlled JSON and then deciding whether to trust it gets the
-// order backwards — every parser bug becomes reachable by anyone.
-func (s *Signer) Verify(raw string) (Claims, error) {
+// order backwards: every parser bug becomes reachable by anyone.
+func (s *Signer) Verify(raw, audience string) (Claims, error) {
 	prefix, rest, ok := strings.Cut(raw, ".")
 	if !ok || prefix != version {
 		return Claims{}, fmt.Errorf("%w: not a %s token", ErrInvalid, version)
@@ -112,6 +127,9 @@ func (s *Signer) Verify(raw string) (Claims, error) {
 	var c Claims
 	if err := json.Unmarshal(payload, &c); err != nil {
 		return Claims{}, fmt.Errorf("%w: payload", ErrInvalid)
+	}
+	if c.Audience != audience {
+		return Claims{}, fmt.Errorf("%w: audience", ErrInvalid)
 	}
 	return c, s.check(c)
 }
@@ -142,16 +160,26 @@ func (s *Signer) sign(body string) []byte {
 
 // Principal turns verified claims into the identity a request runs as.
 //
-// The role is fixed at viewer and is not taken from the token. An embed token
-// is issued to an end customer of our customer: they read one report and they
-// never edit anything, so there is no claim that could raise it and nothing to
-// forge.
+// An embed token is always a viewer, whatever it claims. It is issued to an
+// end customer of our customer: they read one report and never edit anything,
+// so there is no claim that could raise it and nothing to forge. A portal
+// token carries a role, because an author genuinely has one.
 func (c Claims) Principal() principal.Principal {
+	role := principal.ProjectViewer
+	if c.Audience == Portal {
+		switch principal.Role(c.Role) {
+		case principal.ProjectAdmin, principal.ProjectEditor:
+			role = principal.Role(c.Role)
+		}
+	}
 	return principal.Principal{
 		Subject:     c.Subject,
 		OrgID:       c.Org,
 		ProjectID:   c.Project,
-		ProjectRole: principal.ProjectViewer,
+		ProjectRole: role,
 		Scope:       c.Scope,
+		// Only a portal token. An embed token belongs to an end customer, and
+		// the exemption is the one thing it must never be able to claim.
+		Member: c.Audience == Portal,
 	}
 }

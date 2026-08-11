@@ -21,8 +21,12 @@ if (!existsSync('dist/manifest.webmanifest')) {
   process.exit(1)
 }
 
+/* The sample-mode suites only. Anything named live-* drives the portal against
+   a real cronosd on its own ports and is started by scripts/live-portal.sh —
+   running it here would fail for want of a server rather than for want of a
+   working interface. */
 const suites = readdirSync('scripts')
-  .filter((f) => f.endsWith('-check.mjs'))
+  .filter((f) => f.endsWith('-check.mjs') && !f.startsWith('live-'))
   .sort()
 
 const failed = []

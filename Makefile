@@ -70,14 +70,16 @@ fmt: ## Format Go sources
 boundary: ## Verify no BSL artifact depends on ee/
 	@./scripts/check-license-boundary.sh
 
-live: ## Drive the embed component against a real cronosd
+live: ## Drive the embed component and the portal against a real cronosd
 	@./scripts/live-embed.sh
+	@./scripts/live-portal.sh
 
 ui: ## Run every browser suite against a running portal (make dev-web first)
 	cd $(PORTAL) && bun run build && bun run verify
 	cd $(EMBED) && bun run build && bun run embed && bun run vue
 	cd $(REACT) && bun run react
 	@./scripts/live-embed.sh
+	@./scripts/live-portal.sh
 
 shots: ## Drive the portal in headless Chrome and write screenshots
 	cd $(PORTAL) && bun run shots

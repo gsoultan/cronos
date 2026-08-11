@@ -128,6 +128,9 @@ func (o owner) Owner(s definition.Schedule) principal.Principal {
 		OrgID:       o.cfg.Org,
 		ProjectID:   o.cfg.Project,
 		ProjectRole: principal.ProjectEditor,
+		// A schedule runs as a project member. docs/tenancy.md is explicit
+		// that burst targets rely on membership alone.
+		Member: true,
 	}
 }
 

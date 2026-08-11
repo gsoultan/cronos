@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Outlet, useRouterState } from '@tanstack/react-router'
 import { Header } from './Header'
+import { SampleBanner } from './SampleBanner'
 import { NavRail } from './NavRail'
 import { WorkspaceSwitcher } from './WorkspaceSwitcher'
 import { useWorkspace } from '../lib/WorkspaceContext'
@@ -49,6 +50,8 @@ export function Shell() {
       <Header collapsed={collapsed} onToggleSidebar={toggle}
         drawerOpen={drawer} onToggleDrawer={() => setDrawer((d) => !d)} theme={theme}
         onToggleTheme={() => setTheme((t) => (t === 'light' ? 'dark' : 'light'))} />
+
+      <SampleBanner />
 
       {/* minmax(0,…) on every column. A bare `1fr` is `minmax(auto,1fr)`, which
           refuses to shrink below its content — so a wide child pushed the whole

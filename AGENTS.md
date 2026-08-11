@@ -81,7 +81,7 @@ internal/
     schedule/            Cron loop, no catch-up, no overlap        ✓
   adapter/             Port implementations.
     codec/yaml/          The file format authors write          ✓
-    api/                 The embed endpoint, CORS               ✓
+    api/                 Embed + portal + management, CORS      ✓
     store/file/          Definitions from a directory           ✓
     store/sql/           Multi-tenant, content-addressed        ✓
     driver/sql/          Anything database/sql speaks           ✓

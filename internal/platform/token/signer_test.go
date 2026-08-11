@@ -27,7 +27,8 @@ func signer(t *testing.T) *Signer {
 
 func claims() Claims {
 	return Claims{
-		Org: "o1", Project: "p1", Subject: "acme-user-42",
+		Audience: Embed,
+		Org:      "o1", Project: "p1", Subject: "acme-user-42",
 		Report: "monthly-invoice-statement",
 		Scope:  map[string]string{"customer_id": "c-9"},
 	}
@@ -39,7 +40,7 @@ func TestARoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := s.Verify(tok)
+	got, err := s.Verify(tok, Embed)
 	if err != nil {
 		t.Fatalf("a token we just minted does not verify: %v", err)
 	}
@@ -97,7 +98,7 @@ func TestForgeriesAreRefused(t *testing.T) {
 
 	for name, tok := range cases {
 		t.Run(name, func(t *testing.T) {
-			if _, err := s.Verify(tok); !errors.Is(err, ErrInvalid) {
+			if _, err := s.Verify(tok, Embed); !errors.Is(err, ErrInvalid) {
 				t.Errorf("accepted %s: %v", name, err)
 			}
 		})
@@ -114,7 +115,7 @@ func TestAnotherKeyDoesNotVerify(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := other.WithClock(at("2026-08-11T12:00:00Z")).Verify(tok); !errors.Is(err, ErrInvalid) {
+	if _, err := other.WithClock(at("2026-08-11T12:00:00Z")).Verify(tok, Embed); !errors.Is(err, ErrInvalid) {
 		t.Errorf("a token signed elsewhere verified: %v", err)
 	}
 }
@@ -126,14 +127,14 @@ func TestExpiry(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := s.WithClock(at("2026-08-11T12:59:00Z")).Verify(tok); err != nil {
+	if _, err := s.WithClock(at("2026-08-11T12:59:00Z")).Verify(tok, Embed); err != nil {
 		t.Errorf("still valid at 59 minutes: %v", err)
 	}
-	if _, err := s.WithClock(at("2026-08-11T13:05:00Z")).Verify(tok); !errors.Is(err, ErrInvalid) {
+	if _, err := s.WithClock(at("2026-08-11T13:05:00Z")).Verify(tok, Embed); !errors.Is(err, ErrInvalid) {
 		t.Error("an expired token verified")
 	}
 	// Clocks disagree; a token must not die the instant one of them ticks.
-	if _, err := s.WithClock(at("2026-08-11T13:00:20Z")).Verify(tok); err != nil {
+	if _, err := s.WithClock(at("2026-08-11T13:00:20Z")).Verify(tok, Embed); err != nil {
 		t.Errorf("20 seconds of skew should be tolerated: %v", err)
 	}
 }
@@ -147,7 +148,7 @@ func TestATokenWithNoExpiryIsRefused(t *testing.T) {
 	body := "v1." + base64.RawURLEncoding.EncodeToString(b)
 	tok := body + "." + base64.RawURLEncoding.EncodeToString(s.sign(body))
 
-	if _, err := s.Verify(tok); !errors.Is(err, ErrInvalid) {
+	if _, err := s.Verify(tok, Embed); !errors.Is(err, ErrInvalid) {
 		t.Error("a correctly signed token with no expiry was accepted")
 	}
 }
@@ -158,7 +159,7 @@ func TestFailuresAreIndistinguishable(t *testing.T) {
 	s := signer(t)
 	var seen []string
 	for _, tok := range []string{"", "v1.aaa.bbb", "v9.aaa.bbb", "garbage"} {
-		if _, err := s.Verify(tok); err != nil {
+		if _, err := s.Verify(tok, Embed); err != nil {
 			seen = append(seen, errors.Unwrap(err).Error())
 		}
 	}
@@ -210,4 +211,75 @@ func flip(s string) string {
 		b[0] = 'A'
 	}
 	return string(b)
+}
+
+// The check the whole field exists for. Without it an embed token and a portal
+// token are the same signed blob, and the first opens the second's endpoints.
+func TestATokenIsUselessOutsideItsAudience(t *testing.T) {
+	s := signer(t)
+
+	embed, err := s.Mint(claims(), time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Verify(embed, Portal); !errors.Is(err, ErrInvalid) {
+		t.Error("an embed token opened the portal audience")
+	}
+
+	author := claims()
+	author.Audience, author.Role = Portal, string(principal.ProjectEditor)
+	portal, err := s.Mint(author, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Verify(portal, Embed); !errors.Is(err, ErrInvalid) {
+		t.Error("a portal token was accepted as an end customer")
+	}
+}
+
+// A role on an embed token is a claim an end customer wrote, and it must mean
+// nothing.
+func TestOnlyAPortalTokenCarriesARole(t *testing.T) {
+	pretender := claims()
+	pretender.Role = string(principal.ProjectAdmin)
+	if pr := pretender.Principal(); pr.CanEdit() {
+		t.Error("an embed token claiming admin was believed")
+	}
+
+	author := claims()
+	author.Audience, author.Role = Portal, string(principal.ProjectEditor)
+	if pr := author.Principal(); !pr.CanEdit() {
+		t.Error("a portal editor cannot edit")
+	}
+
+	// A role nobody recognises falls back to viewer rather than to nothing.
+	nonsense := claims()
+	nonsense.Audience, nonsense.Role = Portal, "superuser"
+	if pr := nonsense.Principal(); pr.CanEdit() || !pr.CanRead() {
+		t.Errorf("an unknown role became %q", pr.ProjectRole)
+	}
+}
+
+// A token with no audience predates the field, and a missing claim must not
+// read as "any".
+func TestATokenWithNoAudienceIsRefused(t *testing.T) {
+	s := signer(t)
+	c := claims()
+	c.Audience = ""
+	if _, err := s.Mint(c, time.Hour); err == nil {
+		t.Error("minted a token with no audience")
+	}
+}
+
+// The exemption from row scope is the one thing an end customer must never be
+// able to claim, so it comes from the audience rather than from a field.
+func TestOnlyAPortalTokenIsAProjectMember(t *testing.T) {
+	if claims().Principal().Member {
+		t.Error("an embed token claimed to be a project member")
+	}
+	author := claims()
+	author.Audience = Portal
+	if !author.Principal().Member {
+		t.Error("a portal token is not a project member")
+	}
 }

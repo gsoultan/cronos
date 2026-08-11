@@ -22,7 +22,22 @@ const subqueryAlias = "cronos_rows"
 const noRows = "FALSE"
 
 // scopePredicates renders the dataset's row scope, one predicate per entry.
+//
+// A project member is exempt. Row scope exists to isolate an ISV's end
+// customers from one another; a member of the project is protected by
+// membership and by the project owning its resources, and applying it to them
+// means an author cannot preview their own report — see
+// principal.Principal.Member and docs/tenancy.md.
+//
+// Exemption comes from a signed audience rather than from an absent claim,
+// which is the whole difference. "This token says it belongs to a project
+// member" is a statement somebody made; "this token has no scope" is a
+// statement nobody made, and reading the second as permission is how one
+// missing claim becomes a full-table disclosure.
 func (b *binder) scopePredicates(scopes []definition.RowScope) ([]string, error) {
+	if b.member {
+		return nil, nil
+	}
 	preds := make([]string, 0, len(scopes))
 	for _, s := range scopes {
 		p, err := b.predicate(s)

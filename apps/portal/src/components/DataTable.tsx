@@ -88,6 +88,10 @@ function renderCell(field: Field, value: unknown) {
   if (value === null || value === undefined || value === '') {
     return <span className="text-ink-muted">—</span>
   }
+  /* Formatted already, by the engine that knew the currency and the locale.
+     Reformatting a value that arrived as "19,800" means Number("19,800"),
+     which is NaN — the column reads as broken rather than as data. */
+  if (field.format === 'preformatted') return String(value)
   if (field.name === 'status') return <StatusPill value={String(value)} />
   if (field.type === 'date') return shortDate(String(value))
   if (field.format === 'currency') return currency(Number(value))

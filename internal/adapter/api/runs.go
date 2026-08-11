@@ -29,12 +29,12 @@ type History interface {
 // readable by an end customer holding a token for one of them.
 type Runs struct {
 	history History
-	auth    *AdminKey
+	auth    Principals
 	log     *slog.Logger
 }
 
 // NewRuns wires the handler.
-func NewRuns(h History, a *AdminKey, log *slog.Logger) *Runs {
+func NewRuns(h History, a Principals, log *slog.Logger) *Runs {
 	return &Runs{history: h, auth: a, log: log}
 }
 

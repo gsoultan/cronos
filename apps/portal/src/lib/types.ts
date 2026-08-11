@@ -11,7 +11,15 @@ export interface Field {
   role: FieldRole
   /** enum only */
   values?: string[]
-  format?: 'currency' | 'percent' | 'number'
+  /**
+   * How to render the value.
+   *
+   * `preformatted` means the engine already did it — the one that knew the
+   * currency, the locale and the rounding rule — so nothing downstream should
+   * touch it. Without it a value arriving as "19,800" meets Number("19,800")
+   * and the column reads NaN.
+   */
+  format?: 'currency' | 'percent' | 'number' | 'preformatted'
   hidden?: boolean
 }
 

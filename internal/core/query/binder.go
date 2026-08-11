@@ -20,7 +20,9 @@ type binder struct {
 	// naming anything else would otherwise bind nil and quietly return the
 	// wrong rows.
 	declared map[string]bool
-	args     []any
+	// member exempts a project member from row scope. See scopePredicates.
+	member bool
+	args   []any
 }
 
 // render emits tmpl with each hole replaced by a placeholder.
