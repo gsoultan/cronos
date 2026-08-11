@@ -186,6 +186,39 @@ being decided about, which is the thing you want to look at.
 — they are the same fact stored twice, and the first version disagreed, which
 surfaced as the admin screen rendering read-only.
 
+## The cronos mark
+
+`Brand.tsx`. An open ring with a centre pin: a lower-case **c** at size, a dial
+at 16px. The name is Chronos by way of cron, and the product's distinguishing
+act is delivering the same definition again and again on a schedule.
+
+Drawn to three constraints, in order: **one colour** (it prints in black on a
+statement), **16px** (the collapsed rail and the favicon are the real sizes),
+and **currentColor** (light, dark and print are one asset).
+
+Two alternates were killed by rendering them rather than by argument — a hand
+pointing into the gap closed against the terminal and read as **e**; a hand to
+twelve floated free and read as **¢**. The dot is r=2.2 for the same reason:
+1.6 disappears at 16px, 2.8 crowds the aperture at 64.
+
+**Lower case, always**, including at the start of a sentence — it is a wordmark,
+not a word. The module path, the binary `cronosd` and every command anyone types
+already spell it that way; capitalising the interface would split the brand for
+no gain.
+
+## Where each logo goes
+
+| | Shown |
+| :--- | :--- |
+| cronos mark | Header and favicon |
+| Organisation **mark** | Workspace switcher — the collapsed rail badge, and beside the org name |
+| Organisation **wordmark** | PDF letterhead, scheduled emails, embedded views — none built yet |
+
+The header carries the product, not the customer. cronos is multi-organisation,
+and a header that changed identity on switch would confuse which product you
+are in. The exception is an **embedded** view, where the customer's wordmark
+replaces cronos entirely — that is white-label, and the licence gates it.
+
 ## Organisation branding
 
 A logo here is not decoration: it lands on the paginated statement that gets

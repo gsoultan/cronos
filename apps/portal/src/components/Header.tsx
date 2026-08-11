@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useRouterState } from '@tanstack/react-router'
 import { Icon } from './Icon'
+import { Brand } from './Brand'
 import { useWorkspace } from '../lib/WorkspaceContext'
 
 interface Props {
@@ -46,10 +47,13 @@ export function Header({ collapsed, onToggleSidebar, theme, onToggleTheme }: Pro
         <Icon name="sidebar" />
       </button>
 
-      <Link to="/" className="flex items-center gap-2 text-lead font-semibold tracking-tight
-                              text-ink no-underline">
-        <span className="size-[18px] rounded-sm bg-accent" aria-hidden />
-        cronos
+      {/* The product's own identity. Organisation branding lives in the
+          workspace switcher, not here: cronos is multi-organisation, and a
+          header that changed identity on switch would confuse which product
+          you are in. In an embedded view the customer's wordmark replaces
+          this entirely — that is white-label, and it is licensed. */}
+      <Link to="/" aria-label="cronos home" className="no-underline">
+        <Brand />
       </Link>
 
       {/* Where you are. The switcher in the rail is how you change it; this is
