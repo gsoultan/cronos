@@ -1,0 +1,122 @@
+/*
+ * Dark mode, and the few base rules Tailwind's preflight does not cover.
+ *
+ * Dark is a *selected* palette, not an inversion: these are steps chosen and
+ * validated against the dark surface. Because they redefine the same theme
+ * variables, every `bg-surface` and `text-ink` in the app switches with no
+ * `dark:` classes anywhere — components never spell the theme twice.
+ *
+ * Adding a colour means adding it in both places. There is no automatic flip.
+ */
+
+:root {
+  color-scheme: light;
+
+  /* Bridge: Mantine controls read our tokens, so a Select and a hand-built
+     chart cannot drift apart. */
+  --mantine-color-body: var(--color-surface);
+  --mantine-color-text: var(--color-ink);
+  --mantine-color-dimmed: var(--color-ink-muted);
+  --mantine-color-placeholder: var(--color-ink-muted);
+  --mantine-color-default: var(--color-surface);
+  --mantine-color-default-hover: var(--color-hover);
+  --mantine-color-default-color: var(--color-ink);
+  --mantine-color-default-border: var(--color-line);
+  --mantine-color-anchor: var(--color-accent);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme='light'])) {
+    color-scheme: dark;
+    --color-plane: #0d0d0d;
+    --color-surface: #1a1a19;
+    --color-sunken: #131312;
+    --color-hover: #232322;
+    --color-ink: #ffffff;
+    --color-ink-secondary: #c3c2b7;
+    --color-ink-muted: #898781;
+    --color-line: rgba(255, 255, 255, 0.1);
+    --color-grid: #2c2c2a;
+    --color-baseline: #383835;
+    --color-accent: #3987e5;
+    --color-accent-hover: #5598e7;
+    --color-accent-wash: #184f95;
+    --color-series-1: #3987e5;
+    --color-series-2: #d95926;
+    --color-series-3: #199e70;
+    --color-series-4: #c98500;
+    --color-series-5: #d55181;
+    --color-series-6: #008300;
+    --color-series-7: #9085e9;
+    --color-series-8: #e66767;
+    --color-series-muted: #52514e;
+    --color-delta-good: #0ca30c;
+    --color-delta-bad: #e66767;
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-pop: 0 4px 16px rgba(0, 0, 0, 0.5);
+  }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --color-plane: #0d0d0d;
+  --color-surface: #1a1a19;
+  --color-sunken: #131312;
+  --color-hover: #232322;
+  --color-ink: #ffffff;
+  --color-ink-secondary: #c3c2b7;
+  --color-ink-muted: #898781;
+  --color-line: rgba(255, 255, 255, 0.1);
+  --color-grid: #2c2c2a;
+  --color-baseline: #383835;
+  --color-accent: #3987e5;
+  --color-accent-hover: #5598e7;
+  --color-accent-wash: #184f95;
+  --color-series-1: #3987e5;
+  --color-series-2: #d95926;
+  --color-series-3: #199e70;
+  --color-series-4: #c98500;
+  --color-series-5: #d55181;
+  --color-series-6: #008300;
+  --color-series-7: #9085e9;
+  --color-series-8: #e66767;
+  --color-series-muted: #52514e;
+  --color-delta-good: #0ca30c;
+  --color-delta-bad: #e66767;
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-pop: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    font-size: var(--text-body);
+    line-height: 1.5;
+    color: var(--color-ink);
+    background: var(--color-plane);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* One focus style, everywhere, always visible. */
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+  }
+
+  /* Anyone who prefers less motion gets none of it. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}

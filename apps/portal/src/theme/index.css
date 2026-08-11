@@ -1,0 +1,103 @@
+/*
+ * Style entry point.
+ *
+ * Layer order is the whole game here. Tailwind's own import declares
+ * `theme, base, components, utilities`; we expand it by hand to slot Mantine
+ * between base and components, so a utility class can override a Mantine
+ * component style without `!important`. Mantine ships `.layer.css` variants of
+ * every stylesheet for exactly this — the unlayered ones would sit outside the
+ * cascade layers entirely and beat every utility.
+ */
+@layer theme, base, mantine, components, utilities;
+
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/preflight.css' layer(base);
+@import 'tailwindcss/utilities.css' layer(utilities);
+
+@import './tokens.css';
+@import './mantine.css';
+@import './components.css';
+
+/* Tailwind's dark: variant follows the OS by default. Ours follows the theme
+   toggle, which must win over the OS setting in both directions. */
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+/*
+ * Design tokens, as Tailwind theme variables.
+ *
+ * Naming them into Tailwind's namespaces (--color-*, --text-*, --radius-*)
+ * generates the utilities: `--color-surface` gives `bg-surface`, `text-surface`,
+ * `border-surface`. Values are the validated data-viz palette.
+ *
+ * Spacing is deliberately not redefined: Tailwind's default 0.25rem step is
+ * already our 4px scale, so p-1 … p-16 are the scale we were writing by hand.
+ */
+@theme {
+  /* Surfaces */
+  --color-plane: #f9f9f7;
+  --color-surface: #fcfcfb;
+  --color-sunken: #f2f2ee;
+  --color-hover: #f0efec;
+
+  /* Ink */
+  --color-ink: #0b0b0b;
+  --color-ink-secondary: #52514e;
+  --color-ink-muted: #898781;
+
+  /* Lines */
+  --color-line: rgba(11, 11, 11, 0.1);
+  --color-grid: #e1e0d9;
+  --color-baseline: #c3c2b7;
+
+  /* Accent — the one interactive hue, and categorical slot 1 */
+  --color-accent: #2a78d6;
+  --color-accent-hover: #256abf;
+  --color-accent-wash: #cde2fb;
+
+  /* Categorical series — fixed order, indexed, never cycled */
+  --color-series-1: #2a78d6;
+  --color-series-2: #eb6834;
+  --color-series-3: #1baf7a;
+  --color-series-4: #eda100;
+  --color-series-5: #e87ba4;
+  --color-series-6: #008300;
+  --color-series-7: #4a3aa7;
+  --color-series-8: #e34948;
+  --color-series-muted: #c3c2b7;
+
+  /* Status — reserved, never reused as a series colour */
+  --color-good: #0ca30c;
+  --color-warning: #fab219;
+  --color-serious: #ec835a;
+  --color-critical: #d03b3b;
+  --color-delta-good: #006300;
+  --color-delta-bad: #c1312f;
+
+  /* Sequential ramp (magnitude) */
+  --color-seq-100: #cde2fb;
+  --color-seq-250: #86b6ef;
+  --color-seq-400: #3987e5;
+  --color-seq-550: #1c5cab;
+  --color-seq-700: #0d366b;
+
+  /* Type ramp — eight sizes, no others */
+  --text-micro: 11px;
+  --text-caption: 12px;
+  --text-small: 13px;
+  --text-body: 14px;
+  --text-lead: 16px;
+  --text-title: 20px;
+  --text-display: 28px;
+  --text-hero: 48px;
+
+  --font-sans: system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+
+  --shadow-card: 0 1px 2px rgba(11, 11, 11, 0.04);
+  --shadow-pop: 0 4px 16px rgba(11, 11, 11, 0.1);
+
+  --ease-out-quick: cubic-bezier(0.2, 0, 0.2, 1);
+}

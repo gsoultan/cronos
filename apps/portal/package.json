@@ -1,0 +1,44 @@
+{
+  "name": "@cronos/portal",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "acl": "node scripts/acl-check.mjs",
+    "build": "tsc --noEmit && vite build",
+    "builder": "node scripts/builder-check.mjs",
+    "check": "tsc --noEmit && oxlint src plugins && bun test && vite build && node scripts/check-bundle-size.mjs",
+    "dev": "vite",
+    "lint": "oxlint src plugins",
+    "preview": "vite preview",
+    "shell": "node scripts/shell-check.mjs",
+    "shots": "node scripts/shoot.mjs",
+    "size": "vite build && node scripts/check-bundle-size.mjs",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@mantine/core": "^9.5.1",
+    "@mantine/dates": "^9.5.1",
+    "@mantine/hooks": "^9.5.1",
+    "@tanstack/react-form": "^1.33.4",
+    "@tanstack/react-query": "^5.101.4",
+    "@tanstack/react-router": "^1.170.25",
+    "@tanstack/react-virtual": "^3.14.9",
+    "dayjs": "^1.11.21",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/bun": "^1.3.14",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitejs/plugin-react": "^6.0.5",
+    "oxlint": "^1.78.0",
+    "playwright": "^1.50.0",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.1",
+    "vite-plugin-pwa": "^1.3.0"
+  }
+}

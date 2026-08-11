@@ -1,0 +1,41 @@
+/*
+ * Only the Mantine component styles this app actually renders.
+ *
+ * `@mantine/core/styles.css` is every component in the library — ~231 KB of CSS
+ * for the dozen we use, on the first paint.
+ *
+ * Mantine's base layer (reset, `--mantine-scale`, colour-scheme variables) is
+ * a hard prerequisite for these files and is supplied by the
+ * `virtual:mantine-base.css` module, imported from main.tsx — a CSS @import
+ * cannot reach a Vite virtual module. See plugins/mantine-base.ts. Without it
+ * every `calc(… * var(--mantine-scale))` is invalid and the controls render
+ * unstyled.
+ *
+ * These are the `.layer.css` variants: they wrap themselves in `@layer mantine`,
+ * which theme/index.css orders below Tailwind's utilities. The unlayered files
+ * would sit outside the cascade layers entirely and beat every utility class.
+ *
+ * Adding a Mantine component means adding its file here (and its own
+ * dependencies). `bun run size` fails the build if this list drifts into
+ * importing everything again.
+ */
+
+/* Primitives the rest depend on */
+@import '@mantine/core/styles/UnstyledButton.layer.css';
+@import '@mantine/core/styles/Input.layer.css';
+@import '@mantine/core/styles/Popover.layer.css';
+@import '@mantine/core/styles/ScrollArea.layer.css';
+@import '@mantine/core/styles/CloseButton.layer.css';
+@import '@mantine/core/styles/Combobox.layer.css';
+@import '@mantine/core/styles/Pill.layer.css';
+@import '@mantine/core/styles/PillsInput.layer.css';
+@import '@mantine/core/styles/FloatingIndicator.layer.css';
+
+/* Components used directly */
+@import '@mantine/core/styles/Button.layer.css';
+@import '@mantine/core/styles/ActionIcon.layer.css';
+@import '@mantine/core/styles/Group.layer.css';
+@import '@mantine/core/styles/Menu.layer.css';
+@import '@mantine/core/styles/Tooltip.layer.css';
+@import '@mantine/core/styles/SegmentedControl.layer.css';
+@import '@mantine/core/styles/NumberInput.layer.css';

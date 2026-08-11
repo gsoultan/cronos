@@ -1,0 +1,39 @@
+/*
+ * The few rules that are not utilities.
+ *
+ * Everything expressible as a utility class lives in the JSX. What survives
+ * here is either SVG internals (utilities do not reach `fill`/`stroke` on
+ * generated chart marks) or a state that Tailwind cannot select on cleanly.
+ * Adding a component class here should feel like a small defeat.
+ */
+
+@layer components {
+  /* Chart text and marks. These are set on SVG elements the chart generates,
+     where a className per node would be noise. */
+  .chart-axis-text {
+    font-size: var(--text-caption);
+    fill: var(--color-ink-muted);
+  }
+
+  .chart-value-label {
+    font-size: var(--text-caption);
+    font-weight: 600;
+    fill: var(--color-ink);
+  }
+
+  /* Mantine renders the input element itself, so the invalid ring has to be
+     reached through the wrapper rather than set on the control. */
+  .field-invalid :is(input, textarea) {
+    border-color: var(--color-delta-bad);
+  }
+
+  /* Skip link: off-screen until focused. */
+  .skip-link {
+    position: absolute;
+    left: -9999px;
+  }
+  .skip-link:focus {
+    left: var(--spacing);
+    top: var(--spacing);
+  }
+}
