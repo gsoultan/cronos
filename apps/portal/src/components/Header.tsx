@@ -7,9 +7,15 @@ import { useWorkspace } from '../lib/WorkspaceContext'
 interface Props {
   collapsed: boolean
   onToggleSidebar: () => void
+  /** Mobile only: the rail is an overlay below md, not a column. */
+  drawerOpen: boolean
+  onToggleDrawer: () => void
   theme: 'light' | 'dark'
   onToggleTheme: () => void
 }
+
+const TOGGLE = `grid size-8 cursor-pointer place-items-center rounded-md text-ink-secondary
+                hover:bg-hover hover:text-ink`
 
 const TITLES: Record<string, string> = {
   '/': 'Reports',
@@ -28,7 +34,8 @@ const TITLES: Record<string, string> = {
  * the brand and the collapse control stay put when the rail narrows — a
  * collapse toggle that moves as you collapse is a small cruelty.
  */
-export function Header({ collapsed, onToggleSidebar, theme, onToggleTheme }: Props) {
+export function Header({ collapsed, onToggleSidebar, drawerOpen, onToggleDrawer,
+  theme, onToggleTheme }: Props) {
   const path = useRouterState({ select: (s) => s.location.pathname })
   const { org, project } = useWorkspace()
 
@@ -37,14 +44,27 @@ export function Header({ collapsed, onToggleSidebar, theme, onToggleTheme }: Pro
   return (
     <header className="sticky top-0 z-50 flex h-14 items-center gap-3 border-b border-line
                        bg-surface px-3">
+      {/* Two controls, not one with a responsive label. Below md the rail is an
+          overlay you open; at md and up it is a column you narrow. Those are
+          different promises, and an accessible name cannot branch on a media
+          query — so each size gets the button whose name is true. */}
       <button type="button" onClick={onToggleSidebar}
         data-testid="sidebar-toggle"
         aria-label={`${collapsed ? 'Expand' : 'Collapse'} sidebar`}
         aria-expanded={!collapsed}
         title={`${collapsed ? 'Expand' : 'Collapse'} sidebar  [`}
-        className="grid size-8 cursor-pointer place-items-center rounded-md text-ink-secondary
-                   hover:bg-hover hover:text-ink">
+        className={`${TOGGLE} max-md:hidden`}>
         <Icon name="sidebar" />
+      </button>
+      <button type="button" onClick={onToggleDrawer}
+        data-testid="drawer-toggle"
+        aria-label={`${drawerOpen ? 'Close' : 'Open'} navigation`}
+        aria-expanded={drawerOpen} aria-controls="nav-rail"
+        className={`${TOGGLE} md:hidden`}>
+        {/* A hamburger, not the panel-split glyph the desktop control uses.
+            Same job, but on a phone that glyph reads as "split the view" and
+            this one is the one symbol everybody already knows. */}
+        <Icon name="menu" />
       </button>
 
       {/* The product's own identity. Organisation branding lives in the

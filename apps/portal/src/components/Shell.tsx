@@ -1,33 +1,26 @@
 import { useEffect, useState } from 'react'
-import { Link, Outlet, useRouterState } from '@tanstack/react-router'
+import { Outlet, useRouterState } from '@tanstack/react-router'
 import { Header } from './Header'
-import { Icon, type IconName } from './Icon'
+import { NavRail } from './NavRail'
 import { WorkspaceSwitcher } from './WorkspaceSwitcher'
 import { useWorkspace } from '../lib/WorkspaceContext'
 import { useSidebar } from '../lib/useSidebar'
 
-const NAV: { to: string; label: string; hint: string; icon: IconName }[] = [
-  { to: '/', label: 'Reports', hint: 'Run and schedule reports', icon: 'reports' },
-  { to: '/data', label: 'Data', hint: 'Sources and datasets', icon: 'data' },
-  { to: '/schedules', label: 'Schedules', hint: 'What sends, and when', icon: 'schedules' },
-  { to: '/settings', label: 'Settings', hint: 'People and projects', icon: 'settings' },
-]
-
 /**
- * Header across the top, collapsible rail beneath it, content beside.
+ * Header across the top, navigation beneath it, content beside — or in front of
+ * it, on a phone.
  *
- * Four destinations, not five: there is no Dashboards section because there is
- * no Dashboard artifact. A dashboard is a report whose only output is
- * interactive — see docs/report-format.md.
- *
- * Collapsed, the rail keeps its icons and gains tooltips rather than
- * disappearing — an icon-only rail is still navigable, a hidden one is a
- * memory test.
+ * The rail is two different things at two sizes and pretending otherwise is
+ * what makes responsive shells bad. On a desktop it is a persistent column you
+ * narrow to buy width. On a 390px screen a persistent column is 45% of the
+ * viewport spent before the first word of content, so there it is an overlay
+ * you open, and it closes itself the moment you have chosen a destination.
  */
 export function Shell() {
   const path = useRouterState({ select: (s) => s.location.pathname })
   const { org, project, setContext, branding } = useWorkspace()
   const { collapsed, toggle } = useSidebar()
+  const [drawer, setDrawer] = useState(false)
   const [theme, setTheme] = useState<'light' | 'dark'>('light')
 
   /* Mantine keys its own dark steps off `data-mantine-color-scheme`; our tokens
@@ -38,11 +31,23 @@ export function Shell() {
     root.dataset.mantineColorScheme = theme
   }, [theme])
 
+  /* Navigating closes the drawer. It sits on top of the page it just took you
+     to, so leaving it open hides the result of the tap that opened it. */
+  useEffect(() => { setDrawer(false) }, [path])
+
+  useEffect(() => {
+    if (!drawer) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setDrawer(false) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [drawer])
+
   return (
     <div className="min-h-full">
       <a href="#main" className="skip-link z-100 bg-surface px-4 py-2">Skip to content</a>
 
-      <Header collapsed={collapsed} onToggleSidebar={toggle} theme={theme}
+      <Header collapsed={collapsed} onToggleSidebar={toggle}
+        drawerOpen={drawer} onToggleDrawer={() => setDrawer((d) => !d)} theme={theme}
         onToggleTheme={() => setTheme((t) => (t === 'light' ? 'dark' : 'light'))} />
 
       {/* minmax(0,…) on every column. A bare `1fr` is `minmax(auto,1fr)`, which
@@ -50,55 +55,30 @@ export function Shell() {
           grid past the viewport and the page scrolled sideways on mobile. */}
       <div className={`grid grid-cols-[minmax(0,1fr)] ${
         collapsed ? 'md:grid-cols-[64px_minmax(0,1fr)]' : 'md:grid-cols-[248px_minmax(0,1fr)]'}`}>
-        <aside data-testid="sidebar" data-collapsed={collapsed}
-          className={`flex min-w-0 flex-col gap-3 border-line bg-surface p-3 max-md:border-b
+        {/* Closed, the drawer is `invisible` and not merely translated away:
+            an offscreen rail still takes tab stops and still reads to a screen
+            reader, so it becomes four links that focus nothing you can see. */}
+        <aside id="nav-rail" data-testid="sidebar" data-collapsed={collapsed}
+          data-drawer={drawer ? 'open' : 'closed'}
+          className={`flex min-w-0 flex-col gap-3 border-line bg-surface p-3
+                      max-md:fixed max-md:inset-y-0 max-md:top-14 max-md:left-0 max-md:z-40
+                      max-md:w-[min(300px,82vw)] max-md:overflow-y-auto max-md:border-r
+                      max-md:shadow-pop max-md:transition-transform max-md:duration-200
                       md:sticky md:top-14 md:h-[calc(100vh-3.5rem)] md:gap-4 md:border-r
+                      ${drawer ? 'max-md:translate-x-0' : 'max-md:invisible max-md:-translate-x-full'}
                       ${collapsed ? 'md:items-center' : ''}`}>
           <WorkspaceSwitcher org={org} project={project} onChange={setContext}
-            collapsed={collapsed} mark={branding.mark?.url} />
-
-          {/* The strip scrolls, not the page. Without a min-w-0 scroller the
-              nav simply widened its parent and took the document with it. */}
-          <nav aria-label="Main" className="min-w-0 max-md:-mx-1 max-md:overflow-x-auto max-md:px-1">
-            <ul className="grid gap-1 max-md:w-max max-md:auto-cols-max max-md:grid-flow-col">
-              {NAV.map((item) => {
-                /* Reports owns '/' and every '/reports/*' route, so opening or
-                   building a report keeps its own section lit. */
-                const active = item.to === '/'
-                  ? path === '/' || path.startsWith('/reports')
-                  : path.startsWith(item.to)
-                /* Native `title`, not a Mantine Tooltip: this is the app shell,
-                   so anything imported here lands in the eager bundle — the
-                   library tooltip alone costs ~30 KB there, and a nav rail hint
-                   is precisely what the attribute is for. */
-                const link = (
-                  <Link to={item.to} aria-current={active ? 'page' : undefined}
-                    aria-label={collapsed ? item.label : undefined}
-                    title={collapsed ? item.label : undefined}
-                    className={`flex shrink-0 items-center gap-3 rounded-md no-underline
-                      transition-colors duration-150 ease-out-quick hover:bg-hover
-                      ${collapsed ? 'size-10 justify-center' : 'px-3 py-2'}
-                      ${active ? 'bg-accent-wash text-ink' : 'text-ink'}`}>
-                    <Icon name={item.icon} className={`size-[18px] ${
-                      active ? 'text-accent' : 'text-ink-muted'}`} />
-                    {!collapsed && (
-                      <span className="min-w-0">
-                        <span className="block text-body font-medium">{item.label}</span>
-                        <span className={`block text-caption max-md:hidden ${
-                          active ? 'text-ink-secondary' : 'text-ink-muted'}`}>
-                          {item.hint}
-                        </span>
-                      </span>
-                    )}
-                  </Link>
-                )
-                return <li key={item.to}>{link}</li>
-              })}
-            </ul>
-          </nav>
+            collapsed={collapsed && !drawer} mark={branding.mark?.url} />
+          <NavRail collapsed={collapsed && !drawer} />
         </aside>
 
-        <main id="main" className="min-w-0 w-full max-w-[1600px] p-4 md:px-8 md:py-8">
+        {drawer && (
+          <button type="button" aria-label="Close navigation" data-testid="drawer-scrim"
+            onClick={() => setDrawer(false)}
+            className="fixed inset-0 top-14 z-30 bg-ink/25 md:hidden" />
+        )}
+
+        <main id="main" className="w-full min-w-0 max-w-[1600px] p-4 md:px-8 md:py-8">
           <Outlet />
         </main>
       </div>

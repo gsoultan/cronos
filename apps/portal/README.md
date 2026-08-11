@@ -19,7 +19,7 @@ bun run security # assert 2FA enrolment order, recovery codes, org policy
 bun run share    # assert sharing: channels, validation, disclosure copy
 bun run branding # assert logo upload: previews, print check, per-org isolation
 bun run data     # assert search and paging on sources and datasets
-bun run platform # assert PWA installability, the row worker and mobile fit
+bun run platform # assert PWA installability, the row worker, drawer nav and mobile fit
 bun run icons    # regenerate PWA icons from the mark (by hand, when it changes)
 bun run acl      # assert the org/project access rules in a real browser
 ```

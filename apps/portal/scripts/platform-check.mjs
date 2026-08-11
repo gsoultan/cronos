@@ -52,12 +52,42 @@ for (const [path, name] of [['/', 'reports'], ['/data', 'data'], ['/settings', '
   const w = await phone.evaluate(() => document.documentElement.scrollWidth)
   ok(`${name} fits a 390px screen (${w}px)`, w <= 390)
 }
+/* The rail is a drawer below md: content starts under the header, not under
+   400px of navigation. */
 await phone.goto(B + '/', { waitUntil: 'domcontentloaded' })
-ok('the nav strip scrolls rather than the page',
-  await phone.evaluate(() => {
-    const nav = document.querySelector('nav[aria-label=Main]')
-    return !!nav && nav.scrollWidth > nav.clientWidth
-  }))
+await phone.waitForSelector('[data-testid=drawer-toggle]')
+const drawer = () => phone.getAttribute('[data-testid=sidebar]', 'data-drawer')
+ok('the rail starts closed on a phone', await drawer() === 'closed')
+ok('a closed drawer is not reachable by keyboard or screen reader',
+  !(await phone.locator('[data-testid=sidebar]').isVisible()))
+
+const top = await phone.locator('h1').first().boundingBox()
+ok(`content starts near the top (${Math.round(top.y)}px, was ~640)`, top.y < 260)
+
+await phone.click('[data-testid=drawer-toggle]')
+await phone.waitForTimeout(350)
+ok('the toggle opens the drawer', await drawer() === 'open')
+ok('the open drawer shows labels, not bare icons',
+  await phone.locator('[data-testid=sidebar] a:has-text("Schedules")').isVisible())
+
+/* Beside the drawer, not at the scrim's centre — the scrim spans the viewport
+   and the drawer sits on top of its left third, so the centre is a nav link. */
+await phone.mouse.click(370, 500)
+await phone.waitForTimeout(350)
+ok('tapping outside closes it', await drawer() === 'closed')
+
+await phone.click('[data-testid=drawer-toggle]')
+await phone.waitForTimeout(300)
+await phone.keyboard.press('Escape')
+await phone.waitForTimeout(300)
+ok('Escape closes it', await drawer() === 'closed')
+
+await phone.click('[data-testid=drawer-toggle]')
+await phone.waitForTimeout(300)
+await phone.click('[data-testid=sidebar] a:has-text("Data")')
+await phone.waitForTimeout(500)
+ok('choosing a destination closes it', await drawer() === 'closed')
+ok('and the destination is what you see', phone.url().endsWith('/data'))
 
 console.log(errs.length ? '\nERRORS:\n' + errs.join('\n') : '\nno page errors')
 console.log(f ? `${f} failed` : 'all passed')
