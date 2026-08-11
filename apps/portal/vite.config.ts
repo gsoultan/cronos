@@ -5,6 +5,17 @@ import { VitePWA } from 'vite-plugin-pwa'
 import { mantineBase } from './plugins/mantine-base.ts'
 
 export default defineConfig({
+  server: {
+    watch: {
+      /* `make ui` builds into dist/ while this server is running, and thirty
+         files landing under the watcher triggers a reload in every connected
+         page — including the ten headless browsers running assertions against
+         it. Two suites failed together that way and passed on their own,
+         which is exactly the flake that gets a gate ignored. */
+      ignored: ['**/dist/**', '**/dev-dist/**', '**/shots/**'],
+    },
+  },
+
   plugins: [
     react(),
     tailwindcss(),

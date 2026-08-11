@@ -1,4 +1,5 @@
 import { chromium } from 'playwright'
+import { until } from './until.mjs'
 const B = process.env.BASE ?? 'http://localhost:5173'
 const b = await chromium.launch({ channel: 'chrome', args: ['--no-sandbox'] })
 const p = await (await b.newContext({ viewport:{width:1600,height:1050}, deviceScaleFactor:2 })).newPage()
@@ -19,18 +20,16 @@ ok('no Dashboards nav item',
 ok('the empty canvas offers starting templates',
   await p.locator('[data-testid=template-dashboard]').isVisible())
 await p.click('[data-testid=template-dashboard]')
-await p.waitForTimeout(500)
 ok('the Dashboard template lays out blocks',
-  await p.locator('[data-testid=layout-canvas] > div').count() === 6)
+  await until(() => p.locator('[data-testid=layout-canvas] > div').count(), 6))
 
 // A block may read a different dataset — what replaces a Dashboard kind.
 await p.click('[data-testid=layout-canvas] > div >> nth=4')
 await p.waitForTimeout(250)
 await p.click('[data-testid=inspector] input[value*="report default"]')
 await p.locator('[role="option"]:visible', { hasText: 'Shipments' }).first().click()
-await p.waitForTimeout(500)
 ok('a block can read a different dataset',
-  await p.locator('[data-testid=layout-canvas] >> text=Shipments').count() > 0)
+  await until(async () => (await p.locator('[data-testid=layout-canvas] >> text=Shipments').count()) > 0, true))
 ok('switching dataset re-seeds the fields rather than blanking them',
   await p.locator('[data-testid=inspector] input[value="Weight (kg)"], [data-testid=inspector] input[value="Cost"]').count() > 0)
 
@@ -45,9 +44,8 @@ ok('inspector shows report settings with nothing selected',
   await p.locator('[data-testid=inspector] h2:has-text("Report")').isVisible())
 
 await p.click('button[aria-label="Add Number"]')
-await p.waitForTimeout(300)
 ok('adding a block selects it',
-  await p.locator('[data-testid=inspector] h2:has-text("Block")').isVisible())
+  await until(() => p.locator('[data-testid=inspector] h2:has-text("Block")').isVisible(), true))
 
 for (const b2 of ['Add Bar chart', 'Add Table']) {
   await p.click(`button[aria-label="${b2}"]`); await p.waitForTimeout(200)
@@ -64,19 +62,19 @@ ok('canvas renders a real table header',
 
 // Width control changes the rendered width.
 await p.click('[data-testid=layout-canvas] > div >> nth=1')
-await p.waitForTimeout(200)
-const w1 = (await p.locator('[data-testid=layout-canvas] > div').nth(1).boundingBox()).width
+const widthOf = async () =>
+  Math.round((await p.locator('[data-testid=layout-canvas] > div').nth(1).boundingBox()).width)
+const w1 = await widthOf()
 await p.click('[role=radio][title="Full"]')
-await p.waitForTimeout(300)
-const w2 = (await p.locator('[data-testid=layout-canvas] > div').nth(1).boundingBox()).width
+await until(async () => (await widthOf()) !== w1, true)
+const w2 = await widthOf()
 ok(`width control resizes the block (${Math.round(w1)} → ${Math.round(w2)})`, w2 > w1 * 1.5)
 
 // Delete removes the selection.
 const n1 = await p.locator('[data-testid=layout-canvas] > div').count()
 await p.keyboard.press('Delete')
-await p.waitForTimeout(300)
 ok('Delete removes the selected block',
-  await p.locator('[data-testid=layout-canvas] > div').count() === n1 - 1)
+  await until(() => p.locator('[data-testid=layout-canvas] > div').count(), n1 - 1))
 ok('deselecting returns the inspector to report settings',
   await p.locator('[data-testid=inspector] h2:has-text("Report")').isVisible())
 

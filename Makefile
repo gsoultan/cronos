@@ -1,6 +1,7 @@
 # cronos — see AGENTS.md for the rules these targets enforce.
 
 PORTAL := apps/portal
+EMBED  := packages/embed
 GO     := go
 
 .DEFAULT_GOAL := help
@@ -27,6 +28,7 @@ build: ## Build both binaries and the portal
 	$(GO) build -o bin/cronosd ./cmd/cronosd
 	$(GO) build -o bin/cronosd-ee ./cmd/cronosd-ee
 	cd $(PORTAL) && bun run build
+	cd $(EMBED) && bun run build
 
 check: ## Everything CI runs — build, vet, test, boundary, typecheck, lint, budgets
 	$(GO) build ./...
@@ -35,6 +37,7 @@ check: ## Everything CI runs — build, vet, test, boundary, typecheck, lint, bu
 	$(GO) test ./...
 	@./scripts/check-license-boundary.sh
 	cd $(PORTAL) && bun run check
+	cd $(EMBED) && bun run check
 
 test: ## Run Go tests
 	$(GO) test ./...
@@ -43,8 +46,9 @@ pdf: ## Render a sample statement to /tmp/statement.pdf and open it
 	CRONOS_PDF_OUT=/tmp/statement.pdf $(GO) test ./internal/adapter/render/paginated/ -run TestRenderProducesAPDF -v
 	@open /tmp/statement.pdf 2>/dev/null || echo "wrote /tmp/statement.pdf"
 
-lint: ## Lint the portal
+lint: ## Lint the portal and the embed package
 	cd $(PORTAL) && bun run lint
+	cd $(EMBED) && bun run lint
 
 fmt: ## Format Go sources
 	$(GO) fmt ./...
@@ -54,9 +58,10 @@ boundary: ## Verify no BSL artifact depends on ee/
 
 ui: ## Run every browser suite against a running portal (make dev-web first)
 	cd $(PORTAL) && bun run build && bun run verify
+	cd $(EMBED) && bun run build && bun run embed
 
 shots: ## Drive the portal in headless Chrome and write screenshots
 	cd $(PORTAL) && bun run shots
 
 clean: ## Remove build output
-	rm -rf bin $(PORTAL)/dist $(PORTAL)/dev-dist $(PORTAL)/shots
+	rm -rf bin $(EMBED)/dist $(PORTAL)/dist $(PORTAL)/dev-dist $(PORTAL)/shots

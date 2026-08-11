@@ -10,6 +10,7 @@ bun run check    # typecheck + lint + build + bundle budgets
 bun run shots    # drive it in headless Chrome, write shots/
 bun run test     # unit tests (SQL generation, filter compilation)
 bun run verify   # every browser suite below, in one pass, against a running dev server
+                 # (scripts/until.mjs: assertions wait for the condition, never a duration)
 
 bun run shell    # assert the header, sidebar collapse and canvas sizing
 bun run builder  # assert the report editor: canvas size, WYSIWYG, inspector

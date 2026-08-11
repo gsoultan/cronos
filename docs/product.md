@@ -164,7 +164,7 @@ cross-dataset joins in a report, mobile native apps.
 
 - A signed token carries tenant, principal and parameter constraints
 - Constraints in the token cannot be overridden by the client
-- The embed bundle is ≤40 KB gzipped and carries no builder code
+- The embed bundle is ≤40 KB gzipped and carries no builder code — `packages/embed`, 3.0 KB, enforced in CI
 - Theming via CSS custom properties; no cronos branding in the commercial tier
 
 **E7 — reproducibility** *(Job 4 — the enterprise wedge)*

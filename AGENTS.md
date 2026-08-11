@@ -120,7 +120,7 @@ iframes, and ISV customers will not accept a Mantine-sized payload in their app.
 | Stack | React 19.2+, Mantine 9, TanStack Router/Query/Form | Web component, framework-agnostic |
 | PWA / service worker | Yes | No |
 | Builder UI | Yes | **Never** |
-| Budget | See below | ≲40 KB gzip |
+| Budget | See below | ≲40 KB gzip (**3.0 KB** today, gated by `bun run size`) |
 
 ### Toolchain
 
