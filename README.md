@@ -33,6 +33,31 @@ Change `-scope customer_id=c-2` and the same report returns a different
 customer's invoices. Drop `-scope` and it returns none — see
 [docs/tenancy.md](docs/tenancy.md).
 
+## Publishing definitions
+
+Set `CRONOS_ADMIN_KEY` and the management API is mounted. Without it the server
+is read-only and the endpoints do not exist — an endpoint that only ever says
+no is one somebody will spend an afternoon probing.
+
+```bash
+curl -X POST localhost:8787/v1/definitions \
+  -H "Authorization: Bearer $CRONOS_ADMIN_KEY" --data-binary @report.yaml
+# {"kind":"Report","name":"billing-summary","version":"sha256:85574a696982"}
+```
+
+Publishing validates before it stores, and it goes as far as compiling every
+block: a field the dataset does not publish, a filter bound to a column nobody
+has, a report reading a dataset that does not exist. Each of those otherwise
+fails identically at 6am in the middle of a burst.
+
+The version is the document's content hash, so republishing unchanged bytes
+returns the same one and a run record naming a version can be replayed against
+exactly what produced it. Previous versions are kept under `.versions/`, and
+deleting a definition does not remove them — a run that used it must still be
+reproducible.
+
+Changes are live immediately; there is no restart.
+
 ## What is here
 
 | | |

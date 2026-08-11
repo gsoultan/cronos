@@ -17,6 +17,7 @@ import (
 	"github.com/gsoultan/cronos/internal/adapter/api"
 	sqldriver "github.com/gsoultan/cronos/internal/adapter/driver/sql"
 	"github.com/gsoultan/cronos/internal/adapter/store/file"
+	"github.com/gsoultan/cronos/internal/app/publish"
 	"github.com/gsoultan/cronos/internal/app/run"
 	"github.com/gsoultan/cronos/internal/core/query"
 	"github.com/gsoultan/cronos/internal/extension"
@@ -67,13 +68,17 @@ func serve(log *slog.Logger) error {
 	}
 
 	runner := run.New(repo, sqldriver.NewExecutor(db), query.NewBuilder(dialect))
-	handler := api.Routes(repo, runner, signer, cfg.Origins, log)
+
+	writer := file.NewWriter(cfg.Definitions, repo)
+	handler := api.RoutesWith(repo, runner, signer, cfg.Origins, log,
+		publish.New(writer, repo), writer,
+		api.NewAdminKey(cfg.AdminKey, cfg.Org, cfg.Project))
 
 	datasets, reports := repo.Counts()
 	log.Info("cronosd listening",
 		"addr", cfg.Addr, "driver", cfg.Driver,
 		"datasets", datasets, "reports", reports,
-		"origins", cfg.Origins,
+		"origins", cfg.Origins, "management", len(cfg.AdminKey) > 0,
 		"auth", extension.Auth().Name(), "audit", extension.Audit().Name())
 
 	return listen(cfg.Addr, handler, log)

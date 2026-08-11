@@ -83,3 +83,23 @@ func CheckFilters(filters []definition.Filter, datasets map[string]definition.Da
 	}
 	return nil
 }
+
+// ScopeKeys returns the .scope names a predicate reads.
+//
+// Exported so publish can compile a block against a principal that satisfies
+// the dataset's row scope. Checking with an empty scope would exercise the
+// FALSE substitution instead of the predicate, and a predicate that will not
+// compile would pass review.
+func ScopeKeys(predicate string) []string {
+	refs, err := templateRefs(predicate)
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, r := range refs {
+		if r.source == fromScope {
+			out = append(out, r.name)
+		}
+	}
+	return out
+}

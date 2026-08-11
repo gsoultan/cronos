@@ -20,6 +20,13 @@ type Server struct {
 	SigningKey []byte
 	// Origins are the host pages allowed to embed. No wildcard; see api.CORS.
 	Origins []string
+	// AdminKey enables the management API. Absent means the server is
+	// read-only, and its endpoints are not mounted at all.
+	AdminKey []byte
+	// Org and Project are who the admin key acts as. One project, because the
+	// file store holds one — see api.AdminKey.
+	Org     string
+	Project string
 	// Seed is a .sql file applied at startup. Development only: it exists so
 	// an in-memory database has something in it, and a deployment that points
 	// this at a real DSN is running DDL on every restart.
@@ -35,6 +42,9 @@ func Load() (Server, error) {
 		DSN:         env("CRONOS_DSN", ":memory:"),
 		SigningKey:  []byte(os.Getenv("CRONOS_SIGNING_KEY")),
 		Seed:        os.Getenv("CRONOS_SEED"),
+		AdminKey:    []byte(os.Getenv("CRONOS_ADMIN_KEY")),
+		Org:         env("CRONOS_ORG", "default"),
+		Project:     env("CRONOS_PROJECT", "default"),
 	}
 	if origins := os.Getenv("CRONOS_ORIGINS"); origins != "" {
 		s.Origins = strings.Split(origins, ",")
