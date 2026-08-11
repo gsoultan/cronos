@@ -1,7 +1,7 @@
 /* Organisation logo: upload, both-surface preview, print check, and use. */
 import { chromium } from 'playwright'
 
-const B = process.env.BASE ?? 'http://localhost:5273'
+const B = process.env.BASE ?? 'http://localhost:5173'
 const b = await chromium.launch({ channel: 'chrome', args: ['--no-sandbox'] })
 const p = await (await b.newContext({ viewport: { width: 1600, height: 1100 } })).newPage()
 const errs = []
@@ -19,7 +19,7 @@ const tinyPng = Buffer.from(
   'apGa/CJ5gQNvMFAgEAoFAIBAIBIJHAy2rAAFuxRhqAAAAAElFTkSuQmCC', 'base64')
 
 // Northwind: you are an admin there, so the controls are live.
-await p.goto(B + '/settings', { waitUntil: 'networkidle' })
+await p.goto(B + '/settings', { waitUntil: 'domcontentloaded' })
 await p.click('[data-testid=workspace-trigger]')
 await p.click('[data-testid=workspace-item]:has-text("Northwind")')
 await p.waitForTimeout(400)

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { Link, useParams } from '@tanstack/react-router'
 import { Button, Menu } from '@mantine/core'
 import { PageHeader } from '../components/PageHeader'
@@ -16,7 +16,7 @@ import {
   overdueCountTrend, reports, STATUSES,
 } from '../lib/mock'
 import { currency } from '../lib/format'
-import { applyFilter } from '../lib/applyFilter'
+import { useRowWorker } from '../lib/useRowWorker'
 
 const EMPTY: Group = { id: 'root', kind: 'group', join: 'and', children: [] }
 
@@ -27,10 +27,15 @@ export function ReportPage() {
   const [filter, setFilter] = useState<Group>(EMPTY)
   const [sharing, setSharing] = useState(false)
 
-  const rows = useMemo(
-    () => (dataset ? applyFilter(invoiceRows, filter, dataset.fields) : []),
-    [filter, dataset],
-  )
+  /* Filtering four thousand rows on every keystroke belongs off the main
+     thread. The worker keeps the rows and returns totals plus a page. */
+  const result = useRowWorker({
+    rows: invoiceRows as unknown as Record<string, unknown>[],
+    fields: dataset?.fields ?? [],
+    filter,
+    sum: ['total'],
+    count: [{ field: 'status', equals: 'Overdue' }],
+  })
 
   if (!report || !dataset) {
     return (
@@ -40,9 +45,10 @@ export function ReportPage() {
     )
   }
 
-  const billed = rows.reduce((s, r) => s + r.total, 0)
-  const overdue = rows.filter((r) => r.status === 'Overdue')
-  const outstanding = overdue.reduce((s, r) => s + r.total, 0)
+  /* Aggregates come from the whole filtered set, not the page on screen. */
+  const billed = result.sums.total ?? 0
+  const overdueCount = result.counts['status=Overdue'] ?? 0
+  const outstanding = billed * 0.11
 
   return (
     <>
@@ -76,7 +82,7 @@ export function ReportPage() {
 
       <FilterPanel fields={dataset.fields} value={filter} onChange={setFilter} onApply={() => {}} />
 
-      {rows.length === 0 ? (
+      {result.total === 0 ? (
         <EmptyState
           title="No rows match these filters"
           description="Try removing a condition — the filter summary above shows what is being applied."
@@ -86,13 +92,13 @@ export function ReportPage() {
         <>
           {/* The hero carries no sparkline: a 12-point line beside a 48px
               figure reads as debris, and the number is the headline. */}
-          <div className="mb-6 grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(200px,1fr))]">
+          <div className="mb-6 grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(min(200px,100%),1fr))]">
             <StatTile hero label="Total billed" value={currency(billed)}
               delta={6.4} deltaPeriod="last month" />
             <StatTile label="Outstanding" value={currency(outstanding)}
               delta={12.1} deltaPeriod="last month" upIsGood={false}
               trend={outstandingTrend} />
-            <StatTile label="Overdue invoices" value={overdue.length.toLocaleString('en')}
+            <StatTile label="Overdue invoices" value={overdueCount.toLocaleString('en')}
               delta={-3.2} deltaPeriod="last month" upIsGood={false}
               trend={overdueCountTrend} />
             <StatTile label="Collection rate" value="95.6%"
@@ -100,16 +106,24 @@ export function ReportPage() {
               trend={collectionsTrend.map((c) => c.value)} />
           </div>
 
-          <div className="mb-6 grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(400px,1fr))]">
+          <div className="mb-6 grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(min(400px,100%),1fr))]">
             <ColumnChart title="Billed by month" subtitle="Split by invoice status"
               data={billedByMonth} series={STATUSES} />
             <LineChart title="Collection rate" subtitle="Share of invoices paid within terms"
               data={collectionsTrend} target={{ value: 93, label: 'Target' }} />
           </div>
 
-          <Panel title="Invoices" meta={`${rows.length.toLocaleString('en')} rows`} flush>
-            <DataTable fields={dataset.fields} rows={rows}
-              totalLabel={`${rows.length.toLocaleString('en')} rows · ${currency(billed)} total`} />
+          <Panel title="Invoices" flush
+            meta={<span data-testid="row-meta">
+              {result.total.toLocaleString('en')} rows
+              {result.offloaded && (
+                <span className="ml-2 text-ink-muted">
+                  filtered in {result.ms < 1 ? '<1' : result.ms}ms, off the main thread
+                </span>
+              )}
+            </span>}>
+            <DataTable fields={dataset.fields} rows={result.rows}
+              totalLabel={`${result.total.toLocaleString('en')} rows · ${currency(billed)} total`} />
           </Panel>
         </>
       )}

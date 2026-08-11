@@ -1,10 +1,11 @@
 import { chromium } from 'playwright'
+const B = process.env.BASE ?? 'http://localhost:5173'
 const b = await chromium.launch({ channel: 'chrome', args: ['--no-sandbox'] })
 const p = await (await b.newContext({ viewport: { width: 1440, height: 900 } })).newPage()
 let fails = 0
 const check = (name, ok) => { console.log(`  ${ok ? 'ok  ' : 'FAIL'} ${name}`); if (!ok) fails++ }
 
-await p.goto('http://localhost:5273/', { waitUntil: 'networkidle' })
+await p.goto(`${B}/`, { waitUntil: 'domcontentloaded' })
 
 await p.click('[data-testid=workspace-trigger]')
 const acme = await p.locator('[data-testid=workspace-item]').allTextContents()

@@ -34,7 +34,10 @@ export function DataTable({ fields, rows, totalLabel, height = 460 }: Props) {
   const template = cols.map((f) => (f.role === 'measure' ? '140px' : 'minmax(140px, 1fr)')).join(' ')
 
   return (
-    <div className="flex flex-col">
+    /* The column template is fixed-width by design, so on a narrow screen the
+       table scrolls sideways inside its own box. Letting it widen the document
+       instead makes every other page element unreachable. */
+    <div className="flex max-w-full flex-col overflow-x-auto">
       <div className="sticky top-0 z-2 grid border-b border-line bg-sunken"
         style={{ gridTemplateColumns: template }}>
         {cols.map((f) => (

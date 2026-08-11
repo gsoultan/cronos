@@ -65,11 +65,11 @@ export function SharePanel({ reportLabel, projectName, outputs, onClose }: Props
         <Button variant="subtle" color="gray" size="xs" onClick={onClose}>Close</Button>
       </div>
 
-      <div className="flex gap-1 border-b border-line px-3" role="tablist">
+      <div className="flex gap-1 overflow-x-auto border-b border-line px-3" role="tablist">
         {([['send', 'Send now'], ['link', 'Get a link']] as const).map(([id, label]) => (
           <button key={id} type="button" role="tab" aria-selected={tab === id}
             onClick={() => setTab(id)}
-            className={`cursor-pointer border-b-2 px-3 py-2.5 text-small font-medium ${
+            className={`shrink-0 cursor-pointer border-b-2 px-3 py-2.5 text-small font-medium ${
               tab === id ? 'border-accent text-ink'
                 : 'border-transparent text-ink-secondary hover:text-ink'}`}>
             {label}

@@ -1,6 +1,6 @@
 /* Two-factor: enrolment order, recovery codes, and the org requirement. */
 import { chromium } from 'playwright'
-const B = process.env.BASE ?? 'http://localhost:5273'
+const B = process.env.BASE ?? 'http://localhost:5173'
 const b = await chromium.launch({ channel: 'chrome', args: ['--no-sandbox'] })
 const p = await (await b.newContext({ viewport: { width: 1600, height: 1050 } })).newPage()
 const errs = []
@@ -10,7 +10,7 @@ let f = 0
 const ok = (n, c) => { console.log(`  ${c ? 'ok  ' : 'FAIL'} ${n}`); if (!c) f++ }
 
 // Reachable from the avatar, not buried.
-await p.goto(B + '/', { waitUntil: 'networkidle' })
+await p.goto(B + '/', { waitUntil: 'domcontentloaded' })
 await p.click('[data-testid=account-link]')
 await p.waitForSelector('[data-testid=two-factor]')
 ok('the account page is one click from the header', p.url().endsWith('/account'))
@@ -59,7 +59,7 @@ ok('removing the last factor says it turns 2FA off',
   await p.locator('button:has-text("turns 2FA off")').isVisible())
 
 // Org policy: readiness before the switch, and self-lockout prevented.
-await p.goto(B + '/settings', { waitUntil: 'networkidle' })
+await p.goto(B + '/settings', { waitUntil: 'domcontentloaded' })
 await p.click('[data-testid=workspace-trigger]')
 await p.click('[data-testid=workspace-item]:has-text("Northwind")')
 await p.waitForTimeout(400)

@@ -4,7 +4,7 @@
 import { chromium } from 'playwright'
 import { mkdirSync } from 'node:fs'
 
-const BASE = process.env.BASE ?? 'http://localhost:5273'
+const BASE = process.env.BASE ?? 'http://localhost:5173'
 const OUT = 'shots'
 mkdirSync(OUT, { recursive: true })
 
@@ -23,7 +23,7 @@ async function shot(name) {
   console.log(`  captured ${name}`)
 }
 
-await page.goto(BASE, { waitUntil: 'networkidle' })
+await page.goto(BASE, { waitUntil: 'domcontentloaded' })
 await page.waitForSelector('text=Reports')
 await shot('01-reports-list')
 
@@ -48,7 +48,7 @@ await page.click('[data-testid=workspace-item]:has-text("Acme Logistics")')
 await page.waitForTimeout(250)
 
 await page.click('text=Monthly invoice statement')
-await page.waitForSelector('text=Total billed')
+await page.waitForSelector('text=Total billed', { timeout: 20000 })
 await page.waitForTimeout(400)   // let the ResizeObserver settle chart widths
 await shot('02-report')
 
@@ -64,7 +64,7 @@ await page.waitForTimeout(300)
 await shot('04-report-dark')
 
 // New screens: forms first, then the layout builder.
-await page.goto(`${BASE}/data`, { waitUntil: 'networkidle' })
+await page.goto(`${BASE}/data`, { waitUntil: 'domcontentloaded' })
 await page.waitForSelector('text=Connect a source')
 await shot('08-data-sources')
 await page.click('button:has-text("Connect a source")')
@@ -75,7 +75,7 @@ await page.click('button:has-text("Continue")')
 await page.waitForTimeout(300)
 await shot('10-source-wizard-connect')
 
-await page.goto(`${BASE}/schedules`, { waitUntil: 'networkidle' })
+await page.goto(`${BASE}/schedules`, { waitUntil: 'domcontentloaded' })
 await page.click('button:has-text("New schedule")')
 await page.waitForSelector('text=When?')
 await page.click('button:has-text("First of the month")')
@@ -83,7 +83,7 @@ await page.click('input[type="checkbox"]')
 await page.waitForTimeout(300)
 await shot('11-schedule-form')
 
-await page.goto(`${BASE}/reports/new`, { waitUntil: 'networkidle' })
+await page.goto(`${BASE}/reports/new`, { waitUntil: 'domcontentloaded' })
 await page.fill('input[aria-label="Report name"]', 'Monthly invoice statement')
 await page.click('input[placeholder="Choose a dataset"]')
 await page.locator('[role="option"]:visible').first().click()
@@ -96,7 +96,7 @@ await page.click('[data-testid=layout-canvas] > div >> nth=2')   // select the b
 await page.waitForTimeout(600)
 await shot('12-report-editor')
 
-await page.goto(`${BASE}/settings`, { waitUntil: 'networkidle' })
+await page.goto(`${BASE}/settings`, { waitUntil: 'domcontentloaded' })
 await page.waitForSelector('text=Settings')
 await shot('13-settings')
 

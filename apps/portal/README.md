@@ -9,6 +9,8 @@ bun run dev      # http://localhost:5173
 bun run check    # typecheck + lint + build + bundle budgets
 bun run shots    # drive it in headless Chrome, write shots/
 bun run test     # unit tests (SQL generation, filter compilation)
+bun run verify   # every browser suite below, in one pass, against a running dev server
+
 bun run shell    # assert the header, sidebar collapse and canvas sizing
 bun run builder  # assert the report editor: canvas size, WYSIWYG, inspector
 bun run identifier # assert the API-name field: collapsed, follows, stops following
@@ -17,6 +19,8 @@ bun run security # assert 2FA enrolment order, recovery codes, org policy
 bun run share    # assert sharing: channels, validation, disclosure copy
 bun run branding # assert logo upload: previews, print check, per-org isolation
 bun run data     # assert search and paging on sources and datasets
+bun run platform # assert PWA installability, the row worker and mobile fit
+bun run icons    # regenerate PWA icons from the mark (by hand, when it changes)
 bun run acl      # assert the org/project access rules in a real browser
 ```
 
@@ -186,6 +190,33 @@ being decided about, which is the thing you want to look at.
 `people.ts` and `workspace.ts` must agree on your own role in each organisation
 — they are the same fact stored twice, and the first version disagreed, which
 surfaced as the admin screen rendering read-only.
+
+## Worker, PWA, mobile
+
+**The row worker** (`workers/rows.worker.ts`) filters and aggregates. Rows are
+sent **once** and kept there — posting them with every filter would swap a
+main-thread cost for a structured clone of the same size, which is the usual way
+a worker makes things slower. Only the filter crosses afterwards, and only a
+page of rows comes back. Replies are dropped by sequence number, because a
+slower earlier filter landing after a faster later one shows the wrong rows
+with nothing to indicate it. There is a main-thread fallback using the *same*
+function, so a worker that cannot construct degrades instead of rendering
+nothing.
+
+**PWA.** The manifest previously had `icons: []`, which is not an incomplete
+manifest but an uninstallable one. `bun run icons` renders 192, 512 and a
+maskable 512 from the mark and commits them, so CI never needs a browser for a
+favicon. Updates **prompt** rather than auto-reload: a silent reload while
+someone is mid-layout throws their work away. Definitions are cached; results
+never are — they are principal-scoped, and a cache that ignores who asked is a
+data leak.
+
+**Mobile.** Every page fits 390px, asserted. The bug that caused all of it was
+one line: a bare `1fr` grid column is `minmax(auto,1fr)` and refuses to shrink
+below its content, so a wide child pushed the whole document sideways and took
+the nav off-screen with it. Columns are `minmax(0,1fr)`; the nav strip and tab
+rows scroll themselves; wide tables scroll inside their own box; header actions
+wrap to their own line rather than shrinking.
 
 ## Search and paging
 

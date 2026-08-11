@@ -1,6 +1,6 @@
 /* User management: listing, role changes, project grants, and the rules. */
 import { chromium } from 'playwright'
-const B = process.env.BASE ?? 'http://localhost:5273'
+const B = process.env.BASE ?? 'http://localhost:5173'
 const b = await chromium.launch({ channel: 'chrome', args: ['--no-sandbox'] })
 const p = await (await b.newContext({ viewport: { width: 1600, height: 1050 } })).newPage()
 const errs = []
@@ -9,7 +9,7 @@ p.on('console', m => m.type() === 'error' && errs.push(m.text()))
 let f = 0
 const ok = (n, c) => { console.log(`  ${c ? 'ok  ' : 'FAIL'} ${n}`); if (!c) f++ }
 
-await p.goto(B + '/settings', { waitUntil: 'networkidle' })
+await p.goto(B + '/settings', { waitUntil: 'domcontentloaded' })
 // Settings opens on Organization; People is a tab away.
 await p.click('[role=tab]:has-text("People")')
 await p.waitForSelector('[data-testid=people-list]')

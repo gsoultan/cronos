@@ -1,5 +1,5 @@
 import { chromium } from 'playwright'
-const B = process.env.BASE ?? 'http://localhost:5273'
+const B = process.env.BASE ?? 'http://localhost:5173'
 const b = await chromium.launch({ channel: 'chrome', args: ['--no-sandbox'] })
 const p = await (await b.newContext({ viewport:{width:1600,height:1050}, deviceScaleFactor:2 })).newPage()
 const errs = []
@@ -8,7 +8,7 @@ p.on('console', m => m.type() === 'error' && errs.push(m.text()))
 let fails = 0
 const ok = (n, c) => { console.log(`  ${c ? 'ok  ' : 'FAIL'} ${n}`); if (!c) fails++ }
 
-await p.goto(B + '/reports/new', { waitUntil: 'networkidle' })
+await p.goto(B + '/reports/new', { waitUntil: 'domcontentloaded' })
 await p.click('input[placeholder="Choose a dataset"]')
 await p.locator('[role="option"]:visible').first().click()
 await p.waitForSelector('[data-testid=block-palette]')
@@ -35,7 +35,7 @@ ok('switching dataset re-seeds the fields rather than blanking them',
   await p.locator('[data-testid=inspector] input[value="Weight (kg)"], [data-testid=inspector] input[value="Cost"]').count() > 0)
 
 // Back to a clean slate for the sizing assertions below.
-await p.reload({ waitUntil: 'networkidle' })
+await p.reload({ waitUntil: 'domcontentloaded' })
 await p.click('input[placeholder="Choose a dataset"]')
 await p.locator('[role="option"]:visible').first().click()
 await p.waitForSelector('[data-testid=block-palette]')

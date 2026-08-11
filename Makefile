@@ -4,7 +4,7 @@ PORTAL := apps/portal
 GO     := go
 
 .DEFAULT_GOAL := help
-.PHONY: help setup dev dev-web dev-api build check test lint fmt boundary shots clean
+.PHONY: help setup dev dev-web dev-api build check test lint fmt boundary ui shots clean
 
 help: ## Show this help
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage: make <target>\n\n"} \
@@ -45,6 +45,9 @@ fmt: ## Format Go sources
 
 boundary: ## Verify no BSL artifact depends on ee/
 	@./scripts/check-license-boundary.sh
+
+ui: ## Run every browser suite against a running portal (make dev-web first)
+	cd $(PORTAL) && bun run build && bun run verify
 
 shots: ## Drive the portal in headless Chrome and write screenshots
 	cd $(PORTAL) && bun run shots

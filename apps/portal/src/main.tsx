@@ -12,6 +12,7 @@ import 'virtual:mantine-base.css'
 import { theme } from './theme/theme'
 import { router } from './router'
 import { WorkspaceProvider } from './lib/WorkspaceContext'
+import { UpdatePrompt } from './components/UpdatePrompt'
 
 /* Cache keys will carry tenant + definition version once the API exists — a
    cache that ignores who asked is a data leak. */
@@ -25,6 +26,7 @@ createRoot(document.getElementById('root')!).render(
       <QueryClientProvider client={queryClient}>
         <WorkspaceProvider>
           <RouterProvider router={router} />
+          <UpdatePrompt />
         </WorkspaceProvider>
       </QueryClientProvider>
     </MantineProvider>

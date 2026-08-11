@@ -1,6 +1,6 @@
 /* The API name: collapsed by default, follows the name until edited, then stops. */
 import { chromium } from 'playwright'
-const B = process.env.BASE ?? 'http://localhost:5273'
+const B = process.env.BASE ?? 'http://localhost:5173'
 const b = await chromium.launch({ channel: 'chrome', args: ['--no-sandbox'] })
 const p = await (await b.newContext({ viewport: { width: 1600, height: 1050 } })).newPage()
 const errs = []
@@ -8,7 +8,7 @@ p.on('pageerror', e => errs.push(String(e)))
 let f = 0
 const ok = (n, c) => { console.log(`  ${c ? 'ok  ' : 'FAIL'} ${n}`); if (!c) f++ }
 
-await p.goto(B + '/reports/new', { waitUntil: 'networkidle' })
+await p.goto(B + '/reports/new', { waitUntil: 'domcontentloaded' })
 ok('no "Identifier" label anywhere', await p.locator('text=Identifier').count() === 0)
 ok('collapsed by default — no input on screen',
   await p.locator('[data-testid=inspector] input[value*="untitled"]').count() === 0)

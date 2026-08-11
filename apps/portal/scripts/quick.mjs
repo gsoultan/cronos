@@ -1,6 +1,6 @@
 /* One-screen smoke shot, for checking a styling change quickly. */
 import { chromium } from 'playwright'
-const BASE = process.env.BASE ?? 'http://localhost:5273'
+const BASE = process.env.BASE ?? 'http://localhost:5173'
 const PATH = process.argv[2] ?? '/'
 const OUT = process.argv[3] ?? 'shots/quick.png'
 const COLLAPSE = process.argv[4] === 'collapse'
@@ -13,7 +13,7 @@ const errors = []
 page.on('pageerror', (e) => errors.push(String(e)))
 page.on('console', (m) => m.type() === 'error' && errors.push(m.text()))
 
-await page.goto(BASE + PATH, { waitUntil: 'networkidle' })
+await page.goto(BASE + PATH, { waitUntil: 'domcontentloaded' })
 if (PATH === '/reports/new') {
   await page.click('input[placeholder="Choose a dataset"]')
   await page.locator('[role="option"]:visible').first().click()

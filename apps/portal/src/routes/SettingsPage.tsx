@@ -72,11 +72,11 @@ export function SettingsPage() {
     <>
       <PageHeader title="Settings" description="Who can reach what, at both levels." />
 
-      <div className="mb-4 flex gap-1 border-b border-line" role="tablist">
+      <div className="mb-4 flex gap-1 overflow-x-auto border-b border-line" role="tablist">
         {([['organization', 'Organization'], ['people', 'People'], ['projects', 'Projects'], ['security', 'Security'], ['channels', 'Channels']] as const).map(([id, label]) => (
           <button key={id} type="button" role="tab" aria-selected={tab === id}
             onClick={() => setTab(id)}
-            className={`cursor-pointer border-b-2 px-3 py-2.5 text-small font-medium ${
+            className={`shrink-0 cursor-pointer border-b-2 px-3 py-2.5 text-small font-medium ${
               tab === id ? 'border-accent text-ink'
                 : 'border-transparent text-ink-secondary hover:text-ink'}`}>
             {label}

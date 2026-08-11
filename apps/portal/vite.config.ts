@@ -10,22 +10,41 @@ export default defineConfig({
     tailwindcss(),
     mantineBase(),
     VitePWA({
-      registerType: 'autoUpdate',
+      /* Prompt, not autoUpdate. A silent reload while somebody is halfway
+         through building a report throws their work away; the banner lets them
+         finish the thought and then reload. */
+      registerType: 'prompt',
+      includeAssets: ['apple-touch-icon.png'],
       manifest: {
-        name: 'cronos',
+        name: 'cronos — reports',
         short_name: 'cronos',
-        description: 'Reports and dashboards',
+        description: 'Build, schedule and share reports.',
         theme_color: '#fcfcfb',
         background_color: '#f9f9f7',
         display: 'standalone',
-        icons: [],
+        start_url: '/',
+        scope: '/',
+        orientation: 'any',
+        /* An empty icons array is not an incomplete manifest — it is an
+           uninstallable one. Chrome needs 192 and 512, and a maskable variant
+           so Android does not crop the mark into a circle. */
+        icons: [
+          { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+          { src: '/icon-512.png', sizes: '512x512', type: 'image/png' },
+          { src: '/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+        ],
       },
       workbox: {
         // Definitions are safe to cache; results never are — they are
         // principal-scoped and must not survive a session.
+        navigateFallbackDenylist: [/^\/v1\//],
         runtimeCaching: [
           {
-            urlPattern: /\/v1\/(reports|dashboards|datasets)(\?|$)/,
+            /* Definitions are safe to cache: they are the same for everyone in
+               a project and change rarely. Results are not, and never appear
+               here — they are principal-scoped, and a cache that ignores who
+               asked is a data leak. */
+            urlPattern: /\/v1\/(reports|datasets|datasources)(\?|$)/,
             handler: 'StaleWhileRevalidate',
             options: { cacheName: 'cronos-definitions' },
           },

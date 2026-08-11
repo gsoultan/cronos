@@ -1,6 +1,6 @@
 /* Search and paging on the Data page. */
 import { chromium } from 'playwright'
-const B = process.env.BASE ?? 'http://localhost:5273'
+const B = process.env.BASE ?? 'http://localhost:5173'
 const b = await chromium.launch({ channel: 'chrome', args: ['--no-sandbox'] })
 const p = await (await b.newContext({ viewport: { width: 1600, height: 1100 } })).newPage()
 const errs = []
@@ -12,7 +12,7 @@ const ok = (n, c) => { console.log(`  ${c ? 'ok  ' : 'FAIL'} ${n}`); if (!c) f++
 const rows = (card) => p.locator(`[data-testid=${card}-card] li`)
 const search = p.locator('input[aria-label="Search sources and datasets"]')
 
-await p.goto(B + '/data', { waitUntil: 'networkidle' })
+await p.goto(B + '/data', { waitUntil: 'domcontentloaded' })
 await p.waitForSelector('[data-testid=sources-card]')
 
 ok('a page holds six sources', await rows('sources').count() === 6)

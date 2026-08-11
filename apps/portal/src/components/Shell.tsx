@@ -45,16 +45,22 @@ export function Shell() {
       <Header collapsed={collapsed} onToggleSidebar={toggle} theme={theme}
         onToggleTheme={() => setTheme((t) => (t === 'light' ? 'dark' : 'light'))} />
 
-      <div className={`grid ${collapsed ? 'md:grid-cols-[64px_1fr]' : 'md:grid-cols-[248px_1fr]'}`}>
+      {/* minmax(0,…) on every column. A bare `1fr` is `minmax(auto,1fr)`, which
+          refuses to shrink below its content — so a wide child pushed the whole
+          grid past the viewport and the page scrolled sideways on mobile. */}
+      <div className={`grid grid-cols-[minmax(0,1fr)] ${
+        collapsed ? 'md:grid-cols-[64px_minmax(0,1fr)]' : 'md:grid-cols-[248px_minmax(0,1fr)]'}`}>
         <aside data-testid="sidebar" data-collapsed={collapsed}
-          className={`flex flex-col gap-4 border-line bg-surface p-3 max-md:border-b
-                      md:sticky md:top-14 md:h-[calc(100vh-3.5rem)] md:border-r
+          className={`flex min-w-0 flex-col gap-3 border-line bg-surface p-3 max-md:border-b
+                      md:sticky md:top-14 md:h-[calc(100vh-3.5rem)] md:gap-4 md:border-r
                       ${collapsed ? 'md:items-center' : ''}`}>
           <WorkspaceSwitcher org={org} project={project} onChange={setContext}
             collapsed={collapsed} mark={branding.mark?.url} />
 
-          <nav aria-label="Main">
-            <ul className="grid gap-1 max-md:auto-cols-max max-md:grid-flow-col max-md:overflow-x-auto">
+          {/* The strip scrolls, not the page. Without a min-w-0 scroller the
+              nav simply widened its parent and took the document with it. */}
+          <nav aria-label="Main" className="min-w-0 max-md:-mx-1 max-md:overflow-x-auto max-md:px-1">
+            <ul className="grid gap-1 max-md:w-max max-md:auto-cols-max max-md:grid-flow-col">
               {NAV.map((item) => {
                 /* Reports owns '/' and every '/reports/*' route, so opening or
                    building a report keeps its own section lit. */
@@ -69,8 +75,8 @@ export function Shell() {
                   <Link to={item.to} aria-current={active ? 'page' : undefined}
                     aria-label={collapsed ? item.label : undefined}
                     title={collapsed ? item.label : undefined}
-                    className={`flex items-center gap-3 rounded-md no-underline transition-colors
-                      duration-150 ease-out-quick hover:bg-hover
+                    className={`flex shrink-0 items-center gap-3 rounded-md no-underline
+                      transition-colors duration-150 ease-out-quick hover:bg-hover
                       ${collapsed ? 'size-10 justify-center' : 'px-3 py-2'}
                       ${active ? 'bg-accent-wash text-ink' : 'text-ink'}`}>
                     <Icon name={item.icon} className={`size-[18px] ${
@@ -92,7 +98,7 @@ export function Shell() {
           </nav>
         </aside>
 
-        <main id="main" className="w-full max-w-[1600px] p-6 md:px-8 md:py-8">
+        <main id="main" className="min-w-0 w-full max-w-[1600px] p-4 md:px-8 md:py-8">
           <Outlet />
         </main>
       </div>

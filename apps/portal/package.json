@@ -10,16 +10,19 @@
     "check": "tsc --noEmit && oxlint src plugins && bun test && vite build && node scripts/check-bundle-size.mjs",
     "data": "node scripts/data-check.mjs",
     "dev": "vite",
+    "icons": "node scripts/make-icons.mjs",
     "identifier": "node scripts/identifier-check.mjs",
     "lint": "oxlint src plugins",
     "people": "node scripts/people-check.mjs",
+    "platform": "vite build && node scripts/platform-check.mjs",
     "preview": "vite preview",
     "security": "node scripts/security-check.mjs",
     "share": "node scripts/share-check.mjs",
     "shell": "node scripts/shell-check.mjs",
     "shots": "node scripts/shoot.mjs",
     "size": "vite build && node scripts/check-bundle-size.mjs",
-    "test": "bun test"
+    "test": "bun test",
+    "verify": "node scripts/verify.mjs"
   },
   "dependencies": {
     "@mantine/core": "^9.5.1",

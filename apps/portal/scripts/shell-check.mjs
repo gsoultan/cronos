@@ -4,7 +4,7 @@
  */
 import { chromium } from 'playwright'
 
-const B = process.env.BASE ?? 'http://localhost:5273'
+const B = process.env.BASE ?? 'http://localhost:5173'
 const browser = await chromium.launch({ channel: 'chrome', args: ['--no-sandbox'] })
 const page = await (await browser.newContext({ viewport: { width: 1600, height: 1000 } })).newPage()
 
@@ -13,7 +13,7 @@ const ok = (name, cond) => { console.log(`  ${cond ? 'ok  ' : 'FAIL'} ${name}`);
 const collapsed = () => page.getAttribute('[data-testid=sidebar]', 'data-collapsed')
 const mainWidth = async () => (await page.locator('#main').boundingBox()).width
 
-await page.goto(`${B}/data`, { waitUntil: 'networkidle' })
+await page.goto(`${B}/data`, { waitUntil: 'domcontentloaded' })
 await page.waitForSelector('[data-testid=sidebar]')
 ok('sidebar starts expanded', await collapsed() === 'false')
 ok('header renders the breadcrumb', await page.locator('nav[aria-label=Breadcrumb]').isVisible())
@@ -42,17 +42,17 @@ ok('the bracket reached the input',
 // Collapse persists across a reload.
 await page.click('[data-testid=sidebar-toggle]')
 await page.waitForTimeout(200)
-await page.reload({ waitUntil: 'networkidle' })
+await page.reload({ waitUntil: 'domcontentloaded' })
 ok('collapse survives a reload', await collapsed() === 'true')
 
 // Focus mode: the editor collapses the rail without writing the preference.
 await page.click('[data-testid=sidebar-toggle]')
 await page.waitForTimeout(300)
 ok('expanded again before entering the editor', await collapsed() === 'false')
-await page.goto(`${B}/reports/new`, { waitUntil: 'networkidle' })
+await page.goto(`${B}/reports/new`, { waitUntil: 'domcontentloaded' })
 await page.waitForTimeout(400)
 ok('the editor collapses the rail', await collapsed() === 'true')
-await page.goto(`${B}/data`, { waitUntil: 'networkidle' })
+await page.goto(`${B}/data`, { waitUntil: 'domcontentloaded' })
 await page.waitForTimeout(400)
 ok('leaving the editor restores the preference', await collapsed() === 'false')
 

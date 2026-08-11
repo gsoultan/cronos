@@ -1,6 +1,6 @@
 /* Sharing: channels, recipient validation, and what each option discloses. */
 import { chromium } from 'playwright'
-const B = process.env.BASE ?? 'http://localhost:5273'
+const B = process.env.BASE ?? 'http://localhost:5173'
 const b = await chromium.launch({ channel: 'chrome', args: ['--no-sandbox'] })
 const p = await (await b.newContext({ viewport: { width: 1600, height: 1100 } })).newPage()
 const errs = []
@@ -9,7 +9,8 @@ p.on('console', m => m.type() === 'error' && errs.push(m.text()))
 let f = 0
 const ok = (n, c) => { console.log(`  ${c ? 'ok  ' : 'FAIL'} ${n}`); if (!c) f++ }
 
-await p.goto(B + '/reports/monthly-invoice-statement', { waitUntil: 'networkidle' })
+await p.goto(B + '/reports/monthly-invoice-statement', { waitUntil: 'domcontentloaded' })
+await p.waitForSelector('[data-testid=share-button]')
 await p.click('[data-testid=share-button]')
 await p.waitForSelector('[data-testid=share-panel]')
 ok('share opens from the report', await p.locator('[data-testid=share-panel]').isVisible())
@@ -60,7 +61,7 @@ ok('a never-expiring public link is called out',
   await p.locator('text=password that never rotates').isVisible())
 
 // Channels are configurable, not assumed.
-await p.goto(B + '/settings', { waitUntil: 'networkidle' })
+await p.goto(B + '/settings', { waitUntil: 'domcontentloaded' })
 await p.click('[role=tab]:has-text("Channels")')
 await p.waitForSelector('[data-testid=channel-panel-telegram]')
 ok('telegram configuration lists the connected chats',

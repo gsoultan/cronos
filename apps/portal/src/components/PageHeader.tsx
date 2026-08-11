@@ -10,7 +10,10 @@ interface Props {
 
 export function PageHeader({ eyebrow, title, description, actions }: Props) {
   return (
-    <header className="mb-6 flex items-start justify-between gap-6">
+    /* Wraps rather than shrinks. Two buttons side by side do not fit at 390px,
+       and `shrink-0` on the action group meant they pushed the document wide
+       instead of dropping to their own line. */
+    <header className="mb-6 flex flex-wrap items-start justify-between gap-x-6 gap-y-4">
       <div>
         {eyebrow && (
           <p className="mb-1 text-caption font-medium tracking-[0.06em] text-ink-muted uppercase">
@@ -22,7 +25,7 @@ export function PageHeader({ eyebrow, title, description, actions }: Props) {
           <p className="mt-2 max-w-[60ch] text-ink-secondary">{description}</p>
         )}
       </div>
-      {actions && <div className="flex shrink-0 gap-2">{actions}</div>}
+      {actions && <div className="flex flex-wrap gap-2 max-sm:w-full">{actions}</div>}
     </header>
   )
 }

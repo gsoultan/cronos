@@ -158,11 +158,11 @@ export function DatasetForm({ onDone, onCancel }: Props) {
         {/* -- Canvas ------------------------------------------------------- */}
         <section className="flex min-h-[calc(100vh-11rem)] flex-col rounded-lg border
                             border-line bg-surface shadow-card">
-          <div className="flex items-center gap-1 border-b border-line px-3" role="tablist">
+          <div className="flex gap-1 overflow-x-auto border-b border-line px-3" role="tablist">
             {TABS.map((t) => (
               <button key={t.id} type="button" role="tab" aria-selected={tab === t.id}
                 onClick={() => setTab(t.id)}
-                className={`cursor-pointer border-b-2 px-3 py-3 text-small font-medium
+                className={`shrink-0 cursor-pointer border-b-2 px-3 py-3 text-small font-medium
                   ${tab === t.id
                     ? 'border-accent text-ink'
                     : 'border-transparent text-ink-secondary hover:text-ink'}`}>
