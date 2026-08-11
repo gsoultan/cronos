@@ -45,11 +45,11 @@ func (d *Definitions) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case r.Method == http.MethodPost && kind == "":
 		d.publish(w, r, pr)
 	case r.Method == http.MethodGet && kind == "":
-		d.list(w, r)
+		d.list(w, r, pr)
 	case r.Method == http.MethodGet:
-		d.get(w, r, kind, name)
+		d.get(w, r, pr, kind, name)
 	case r.Method == http.MethodDelete:
-		d.delete(w, r, kind, name)
+		d.delete(w, r, pr, kind, name)
 	default:
 		fail(w, http.StatusMethodNotAllowed, "Not a method this endpoint takes.")
 	}
@@ -71,8 +71,8 @@ func (d *Definitions) publish(w http.ResponseWriter, r *http.Request, pr princip
 	send(w, http.StatusOK, result)
 }
 
-func (d *Definitions) list(w http.ResponseWriter, r *http.Request) {
-	entries, err := d.store.List(r.Context())
+func (d *Definitions) list(w http.ResponseWriter, r *http.Request, pr principal.Principal) {
+	entries, err := d.store.List(r.Context(), pr)
 	if err != nil {
 		d.log.Error("listing definitions failed", "err", err)
 		fail(w, http.StatusInternalServerError, "Could not read the definitions.")
@@ -91,8 +91,8 @@ func (d *Definitions) list(w http.ResponseWriter, r *http.Request) {
 // The bytes, not a re-serialisation: comments and ordering are the author's,
 // and a management API that hands back its own rendering makes every round
 // trip a diff.
-func (d *Definitions) get(w http.ResponseWriter, r *http.Request, kind, name string) {
-	raw, err := d.store.Get(r.Context(), canonicalKind(kind), name)
+func (d *Definitions) get(w http.ResponseWriter, r *http.Request, pr principal.Principal, kind, name string) {
+	raw, err := d.store.Get(r.Context(), pr, canonicalKind(kind), name)
 	if err != nil {
 		fail(w, http.StatusNotFound, "No such definition.")
 		return
@@ -102,8 +102,8 @@ func (d *Definitions) get(w http.ResponseWriter, r *http.Request, kind, name str
 	_, _ = w.Write(raw)
 }
 
-func (d *Definitions) delete(w http.ResponseWriter, r *http.Request, kind, name string) {
-	if err := d.store.Delete(r.Context(), canonicalKind(kind), name); err != nil {
+func (d *Definitions) delete(w http.ResponseWriter, r *http.Request, pr principal.Principal, kind, name string) {
+	if err := d.store.Delete(r.Context(), pr, canonicalKind(kind), name); err != nil {
 		fail(w, http.StatusNotFound, "No such definition.")
 		return
 	}

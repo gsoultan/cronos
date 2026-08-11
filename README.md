@@ -58,6 +58,20 @@ reproducible.
 
 Changes are live immediately; there is no restart.
 
+By default definitions are files, because a definitions directory is somebody's
+git repository and a publish is a commit they can review. Set `CRONOS_STORE_DSN`
+and they go to a database instead, which is what makes management
+multi-tenant: every statement is scoped by organization and project taken from
+the caller's identity, never from an argument. The file store holds one project
+and refuses a principal acting anywhere else, rather than serving it to whoever
+asks.
+
+The SQL store is tested against SQLite — its statements use nothing outside
+`ON CONFLICT` and ordinary predicates, so the tenancy and versioning logic
+under test is the logic Postgres runs. Postgres-specific behaviour around types
+and concurrency is **not** covered yet; that wants a container this repository
+does not have.
+
 ## Schedules
 
 `CRONOS_SCHEDULER=1` arms them. Off by default, because two instances both

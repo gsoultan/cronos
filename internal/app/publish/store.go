@@ -1,6 +1,10 @@
 package publish
 
-import "context"
+import (
+	"context"
+
+	"github.com/gsoultan/cronos/internal/core/principal"
+)
 
 // Store keeps definition documents as authors wrote them.
 //
@@ -8,11 +12,20 @@ import "context"
 // run is reproducible against, and re-serialising a parsed definition would
 // mean the thing stored is our rendering of their intent rather than their
 // intent — comments, ordering and all.
+//
+// # Every method takes the principal
+//
+// Not because the store needs to know who is asking, but because it needs to
+// know *where*. The organization and project come from the caller's identity
+// and never from an argument the caller chose, so there is no shape of request
+// that reads another tenant's definitions. A store that took them separately
+// would let one be passed while acting in the other, which is the whole of the
+// bug class this prevents — see docs/tenancy.md.
 type Store interface {
-	Put(ctx context.Context, kind, name string, raw []byte) (version string, err error)
-	Get(ctx context.Context, kind, name string) ([]byte, error)
-	List(ctx context.Context) ([]Entry, error)
-	Delete(ctx context.Context, kind, name string) error
+	Put(ctx context.Context, pr principal.Principal, kind, name string, raw []byte) (version string, err error)
+	Get(ctx context.Context, pr principal.Principal, kind, name string) ([]byte, error)
+	List(ctx context.Context, pr principal.Principal) ([]Entry, error)
+	Delete(ctx context.Context, pr principal.Principal, kind, name string) error
 }
 
 // Entry is one stored definition, as a listing shows it.

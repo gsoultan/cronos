@@ -57,7 +57,7 @@ func (s *Service) Publish(ctx context.Context, raw []byte, pr principal.Principa
 		return Result{}, err
 	}
 
-	version, err := s.store.Put(ctx, kind, name, raw)
+	version, err := s.store.Put(ctx, pr, kind, name, raw)
 	if err != nil {
 		return Result{}, err
 	}

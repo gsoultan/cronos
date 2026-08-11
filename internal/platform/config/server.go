@@ -27,6 +27,10 @@ type Server struct {
 	// file store holds one — see api.AdminKey.
 	Org     string
 	Project string
+	// StoreDSN puts definitions in a database instead of a directory. Empty
+	// keeps the file store, which is one project — see api.AdminKey.
+	StoreDSN    string
+	StoreDriver string
 	// Deliveries is where the file channel writes. Empty disables it.
 	Deliveries string
 	// Scheduler arms schedules when true. Off by default: two instances both
@@ -52,14 +56,16 @@ func Load() (Server, error) {
 		// a plain in-memory SQLite gets its own empty database, so the seed
 		// lands on one connection and every concurrent request afterwards
 		// finds no tables.
-		DSN:        env("CRONOS_DSN", "file:cronos?mode=memory&cache=shared"),
-		SigningKey: []byte(os.Getenv("CRONOS_SIGNING_KEY")),
-		Seed:       os.Getenv("CRONOS_SEED"),
-		AdminKey:   []byte(os.Getenv("CRONOS_ADMIN_KEY")),
-		Org:        env("CRONOS_ORG", "default"),
-		Project:    env("CRONOS_PROJECT", "default"),
-		Deliveries: env("CRONOS_DELIVERIES", "deliveries"),
-		Scheduler:  os.Getenv("CRONOS_SCHEDULER") == "1",
+		DSN:         env("CRONOS_DSN", "file:cronos?mode=memory&cache=shared"),
+		SigningKey:  []byte(os.Getenv("CRONOS_SIGNING_KEY")),
+		Seed:        os.Getenv("CRONOS_SEED"),
+		AdminKey:    []byte(os.Getenv("CRONOS_ADMIN_KEY")),
+		Org:         env("CRONOS_ORG", "default"),
+		Project:     env("CRONOS_PROJECT", "default"),
+		StoreDSN:    os.Getenv("CRONOS_STORE_DSN"),
+		StoreDriver: env("CRONOS_STORE_DRIVER", "postgres"),
+		Deliveries:  env("CRONOS_DELIVERIES", "deliveries"),
+		Scheduler:   os.Getenv("CRONOS_SCHEDULER") == "1",
 		SMTP: SMTP{
 			Host: os.Getenv("CRONOS_SMTP_HOST"), From: os.Getenv("CRONOS_SMTP_FROM"),
 			Username: os.Getenv("CRONOS_SMTP_USER"), Password: os.Getenv("CRONOS_SMTP_PASSWORD"),

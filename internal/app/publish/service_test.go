@@ -63,7 +63,7 @@ func setup(t *testing.T) (*publish.Service, *file.Repository, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	writer := file.NewWriter(dir, repo)
+	writer := file.NewWriter(dir, "o1", "p1", repo)
 	return publish.New(writer, repo), repo, dir
 }
 

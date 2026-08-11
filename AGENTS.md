@@ -82,7 +82,7 @@ internal/
     codec/yaml/          The file format authors write          ✓
     api/                 The embed endpoint, CORS               ✓
     store/file/          Definitions from a directory           ✓
-    store/postgres/      Content-addressed versions
+    store/sql/           Multi-tenant, content-addressed        ✓
     driver/sql/          Anything database/sql speaks           ✓
     driver/duckdb/       Federation. cgo, `-tags duckdb`        ✓
     render/paginated/    Typst PDF                              ✓

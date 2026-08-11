@@ -84,9 +84,14 @@ func serve(log *slog.Logger) error {
 		}()
 	}
 
-	writer := file.NewWriter(cfg.Definitions, repo)
+	defs, closeStore, err := definitionStore(context.Background(), cfg, repo, log)
+	if err != nil {
+		return err
+	}
+	defer closeStore()
+
 	handler := api.RoutesWith(repo, runner, signer, cfg.Origins, log,
-		publish.New(writer, repo).WithReports(repo), writer,
+		publish.New(defs, repo).WithReports(repo), defs,
 		api.NewAdminKey(cfg.AdminKey, cfg.Org, cfg.Project))
 
 	datasets, reports, schedules := repo.Counts()

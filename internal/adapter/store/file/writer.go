@@ -12,6 +12,7 @@ import (
 
 	codec "github.com/gsoultan/cronos/internal/adapter/codec/yaml"
 	"github.com/gsoultan/cronos/internal/app/publish"
+	"github.com/gsoultan/cronos/internal/core/principal"
 )
 
 // safeName is the only shape a stored definition's name may take.
@@ -29,6 +30,13 @@ var safeName = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
 // deployment wants Postgres and the same ports.
 type Writer struct {
 	dir string
+	// org and project are the single tenant this directory holds.
+	//
+	// Checked rather than ignored. A store that quietly served every tenant
+	// the same files would be indistinguishable from a working multi-tenant
+	// one right up until the first customer saw another's report.
+	org     string
+	project string
 	// mu serialises writes. Two publishes of the same definition would
 	// otherwise interleave a rename with a read, and the loser leaves a
 	// half-written file where a definition used to be.
@@ -38,9 +46,22 @@ type Writer struct {
 	repo *Repository
 }
 
-// NewWriter returns a Writer over dir, sharing repo's view.
-func NewWriter(dir string, repo *Repository) *Writer {
-	return &Writer{dir: dir, repo: repo}
+// NewWriter returns a Writer over dir, sharing repo's view, holding one
+// project's definitions.
+func NewWriter(dir, org, project string, repo *Repository) *Writer {
+	return &Writer{dir: dir, org: org, project: project, repo: repo}
+}
+
+// tenant refuses a principal acting somewhere this directory does not hold.
+//
+// A directory is one project. Serving it to whoever asks would work perfectly
+// until the day a second project existed.
+func (w *Writer) tenant(pr principal.Principal) error {
+	if pr.OrgID != w.org || pr.ProjectID != w.project {
+		return fmt.Errorf("%w: this repository holds %s/%s, not %s/%s",
+			publish.ErrNotFound, w.org, w.project, pr.OrgID, pr.ProjectID)
+	}
+	return nil
 }
 
 // Version is the content address of a document.
@@ -54,7 +75,10 @@ func Version(raw []byte) string {
 }
 
 // Put writes a definition and keeps the previous content addressable.
-func (w *Writer) Put(_ context.Context, kind, name string, raw []byte) (string, error) {
+func (w *Writer) Put(_ context.Context, pr principal.Principal, kind, name string, raw []byte) (string, error) {
+	if err := w.tenant(pr); err != nil {
+		return "", err
+	}
 	if !safeName.MatchString(name) {
 		return "", fmt.Errorf("file: %q is not a definition name", name)
 	}
@@ -93,7 +117,10 @@ func (w *Writer) keep(kind, name string, raw []byte) error {
 }
 
 // Get returns the stored document.
-func (w *Writer) Get(_ context.Context, kind, name string) ([]byte, error) {
+func (w *Writer) Get(_ context.Context, pr principal.Principal, kind, name string) ([]byte, error) {
+	if err := w.tenant(pr); err != nil {
+		return nil, err
+	}
 	path, err := w.pathFor(kind, name)
 	if err != nil {
 		return nil, err
@@ -108,7 +135,10 @@ func (w *Writer) Get(_ context.Context, kind, name string) ([]byte, error) {
 // Delete removes a definition. The version history is left alone: a run that
 // used it must still be reproducible, and deleting a definition is not a claim
 // that it never existed.
-func (w *Writer) Delete(_ context.Context, kind, name string) error {
+func (w *Writer) Delete(_ context.Context, pr principal.Principal, kind, name string) error {
+	if err := w.tenant(pr); err != nil {
+		return err
+	}
 	path, err := w.pathFor(kind, name)
 	if err != nil {
 		return err
@@ -128,11 +158,14 @@ func (w *Writer) Delete(_ context.Context, kind, name string) error {
 // The repository rather than the directory layout: Load walks recursively and
 // an author may have organised their files by team, so scanning two fixed
 // folders would report an empty repository that is plainly not empty.
-func (w *Writer) List(ctx context.Context) ([]publish.Entry, error) {
+func (w *Writer) List(ctx context.Context, pr principal.Principal) ([]publish.Entry, error) {
+	if err := w.tenant(pr); err != nil {
+		return nil, err
+	}
 	var out []publish.Entry
 	for _, kind := range []string{codec.KindDataset, codec.KindReport, codec.KindSchedule} {
 		for _, name := range w.repo.Names(kind) {
-			raw, err := w.Get(ctx, kind, name)
+			raw, err := w.Get(ctx, pr, kind, name)
 			if err != nil {
 				continue
 			}
