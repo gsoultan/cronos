@@ -1,0 +1,160 @@
+# cronos portal
+
+The authoring and viewing UI. React 19 · TypeScript 7 · Vite 8 (Rolldown) ·
+Tailwind CSS 4 · Mantine 9 · TanStack Router/Query/Form/Virtual · Bun · oxlint.
+
+```bash
+bun install
+bun run dev      # http://localhost:5173
+bun run check    # typecheck + lint + build + bundle budgets
+bun run shots    # drive it in headless Chrome, write shots/
+bun run test     # unit tests (SQL generation, filter compilation)
+bun run shell    # assert the header, sidebar collapse and canvas sizing
+bun run builder  # assert the report editor: canvas size, WYSIWYG, inspector
+bun run acl      # assert the org/project access rules in a real browser
+```
+
+## Design rules
+
+**Every value comes from a token.** `src/theme/index.css` declares the colour,
+type, radius and shadow scales inside Tailwind's `@theme`, which turns each one
+into a utility: `--color-surface` gives `bg-surface`, `--text-small` gives
+`text-small`. Spacing is Tailwind's default 4px step, which was already our
+scale. A component that writes a raw hex or `p-[17px]` has left the system.
+
+**Dark mode needs no `dark:` classes.** `src/theme/tokens.css` redefines the same
+theme variables under `[data-theme='dark']`, so `bg-surface` resolves differently
+without any component knowing. Dark is a *selected* palette validated against the
+dark surface, not an inversion — adding a colour means adding both steps.
+
+**Charts are hand-built SVG, not a charting library.** They follow the data-viz
+mark spec: bars capped at 24px with a 4px rounded data-end and a 2px surface gap
+between stacked segments, 2px lines, ≥8px markers with a 2px surface ring,
+hairline recessive gridlines. A library would cost ~130 KB gzipped and still
+need overriding to match. `ColumnChart` and `LineChart` are the reference
+implementations — copy their structure.
+
+**Series colours are indexed, never cycled.** `SERIES` in `theme.ts` is a fixed
+eight-slot order chosen so adjacent pairs stay distinguishable under colour
+blindness. Take slot *n* for series *n*; past eight, fold into "Other" or facet.
+Never generate a ninth hue.
+
+**Colour never carries meaning alone.** Legends accompany every chart with two or
+more series, status pills always show their label, and deltas pair their colour
+with an arrow.
+
+## Two constraints that will bite
+
+**Mantine CSS is subsetted and layered.** `src/theme/mantine.css` imports only the
+component stylesheets this app renders — the full `@mantine/core/styles.css` is
+~231 KB and blows the initial-route budget on its own. Adding a Mantine component
+means adding its `.layer.css` there, plus any it depends on (`Select` needs
+`Combobox`, `Input`, `Popover`, `ScrollArea`, `CloseButton`).
+
+The `.layer.css` variants matter: cascade order is declared as
+`theme, base, mantine, components, utilities`, so a Tailwind utility can override
+a Mantine style. The unlayered stylesheets sit outside cascade layers and beat
+every utility class — if a `bg-*` on a Mantine component stops working, this is
+why.
+
+Mantine's base layer — the reset, `--mantine-scale`, the colour-scheme
+variables — is supplied separately by `plugins/mantine-base.ts` as
+`virtual:mantine-base.css`. It is not optional: every Mantine rule is built on
+`calc(… * var(--mantine-scale))`, and an undefined custom property invalidates
+the whole declaration, so component CSS without the base renders controls that
+look unstyled rather than throwing.
+
+**Bundle budgets fail the build.** Initial route ≤500 KB raw and ≤150 KB gzip;
+any lazy chunk ≤500 KB raw. `scripts/check-bundle-size.mjs` measures the initial
+route the way a browser does — the stylesheet, entry script and every
+modulepreload in `index.html`. Keep new routes behind `lazyRouteComponent`.
+
+## Shell
+
+Header across the top, collapsible rail beneath it. The rail collapses to 64px
+of icons rather than disappearing — an icon rail is still navigable, a hidden
+one is a memory test. State persists in `localStorage` and is read
+synchronously on first render, so the layout does not visibly jump from wide to
+narrow. `[` toggles it, ignored while typing.
+
+**Nothing library-sized goes in the shell.** It is in the eager bundle on every
+page load, so the icon set is eleven hand-drawn paths rather than an icon
+package, the workspace switcher is hand-built rather than a Mantine `Menu`
+(~90 KB), and the collapsed rail uses a native `title` rather than a Mantine
+`Tooltip` (~30 KB). Each of those, added casually, blew the initial-route budget
+on its own.
+
+## Report editor
+
+Palette strip · canvas · inspector, filling the viewport below a toolbar.
+
+**The canvas is WYSIWYG in the literal sense**: blocks render through the same
+`StatTile`, `ColumnChart`, `LineChart` and `DataTable` the report itself uses,
+fed sample rows. Previews are `pointer-events-none`, so a click selects the
+block rather than landing on a chart tooltip.
+
+Three decisions bought the space, and each one is worth keeping:
+
+- **Config left the block.** A card carrying its own form is twice the height of
+  the thing it previews, which makes a twelve-column layout impossible to judge —
+  the point of two half-width charts side by side is lost if each sits under four
+  dropdowns. Settings moved to the inspector.
+- **One panel, two modes.** Nothing selected → the panel is the report
+  (description, folder, identifier, outputs). A block selected → it is that
+  block. A second permanent rail would cost 340px to show settings nobody is
+  looking at.
+- **The editor collapses the app rail** via `useFocusMode()` — an override, not
+  a write, so leaving restores whatever preference the person had, and the
+  toggle still wins if they want it back.
+
+Width is four visual splits (quarter / half / three-quarters / full), not a
+column count. Nobody thinks "span 9"; they think "three quarters of the row".
+
+Reorder by dragging or `⌥↑` / `⌥↓`; `Delete` removes the selection. Drag-only
+reordering is unusable by keyboard.
+
+`bun run builder` asserts the canvas is at least 950×600, that it renders real
+charts and table headers rather than sketches, that the width control actually
+resizes the block, and that the inspector switches modes correctly.
+
+## Query builder
+
+`DataSource → Dataset → Report`. A dataset is a query against one source plus
+the contract it exposes; reports bind to datasets, never to a source directly.
+
+The visual builder edits a `QueryModel` and compiles it to SQL — **one way,
+never back**. Switching to SQL mode seeds the editor with the generated query
+and says plainly that the builder is gone, because arbitrary SQL cannot be
+turned back into steps and losing that work silently would be worse.
+
+Two rules live in `toSql` and are covered by tests:
+
+- **Parameters and row scope emit `{{ … }}` placeholders, never literals.** The
+  engine binds them. A builder that pasted values in would be teaching the wrong
+  model while quietly building an injection. `SqlView` highlights placeholders
+  differently from the rest so this is visible at a glance.
+- **GROUP BY is derived, never asked about.** If any column is aggregated, every
+  column that is not becomes the grouping. "List every non-aggregated column in
+  GROUP BY" is a rule about SQL, not about the question being asked.
+
+Also load-bearing: an aggregate *always* gets an alias. `SUM(i.total_cents)`
+with none comes back as a column called `sum`, and every field bound to it
+downstream misses.
+
+Steps are ordered the way a person thinks — what am I looking at, what else
+comes with it, which columns, which rows — which is deliberately not the order
+SQL is written in. Joins are offered from the schema's foreign keys, so a join
+is a click rather than a formula.
+
+## Filter builder
+
+`FilterGroup` is the piece to preserve when things change. Boolean logic is
+stated once per group as **Match all / Match any**, not as an and/or dropdown
+between rows: people misread per-row joins constantly and nobody misreads "match
+all of the following". `filterToText` renders the tree back as a sentence above
+the panel, so a person can confirm what a report will return without reading a
+single control.
+
+Client-side evaluation in `applyFilter` exists so the mock UI behaves like the
+real thing. In production the tree compiles to bound SQL predicates on the
+server — the browser never decides what anyone is allowed to see.
