@@ -14,6 +14,24 @@ breaking stored definitions.
 | `Report` | Layout and output profiles (interactive, PDF, spreadsheet) | Report author |
 | `Schedule` | Cron, bursting, delivery, retry | Ops / business owner |
 
+### There is no separate Dashboard kind
+
+A dashboard is a `Report` whose only output is `interactive`. Every difference
+anyone offers between the two turns out to be a property rather than a type: the
+number of datasets is a choice, the output medium is the `outputs` list, refresh
+is a setting, per-recipient parameterisation belongs to the `Schedule`, and grid
+versus page layout is the renderer.
+
+The prior art agrees. Superset has no report artifact — its "Report" is a
+schedule. Metabase has none either — a report is a *subscription* on a dashboard.
+Sigma collapsed the distinction outright. The counter-example is Power BI, which
+ships Report, Dashboard *and* Paginated Report and has spawned an entire genre of
+"when to use which" articles; when a distinction needs that much explaining, the
+distinction is the problem.
+
+Keeping one kind also makes the product's own claim literally true rather than
+true-with-an-asterisk: one definition, several outputs.
+
 ## Why `Dataset` is separate from `Report`
 
 This is the load-bearing decision in the format.
@@ -105,6 +123,51 @@ spec:
   rowLevelSecurity:
     - predicate: customer_id = {{ .scope.customer_id }}
 ```
+
+### Datasets bind per tile
+
+`spec.dataset` is the report's default. Any block may override it, which is what
+lets one report combine invoices and shipments — the thing a separate Dashboard
+kind would otherwise have existed to do.
+
+```yaml
+spec:
+  dataset: invoices          # default for every block
+
+  layout:
+    - kind: stat
+      value: {field: total, aggregate: sum}
+    - kind: bar
+      dataset: shipments     # this block reads somewhere else
+      x: {field: shipped_at, grain: month}
+      y: {field: cost, aggregate: sum}
+```
+
+Row-level security follows the dataset, not the report: each block carries the
+predicates of whatever dataset it reads. A report combining two datasets applies
+both, to their own blocks. Nothing is weakened by mixing.
+
+### Shared filters bind per dataset
+
+A filter bar spanning blocks on different datasets has to say what it means in
+each of them. `bind` is that mapping, and it is explicit because guessing is how
+a filter silently applies to half a screen.
+
+```yaml
+spec:
+  filters:
+    - name: period
+      label: Period
+      type: date
+      bind:
+        invoices: issued_at
+        shipments: shipped_at
+```
+
+A block whose dataset has no binding for a filter is **unaffected** by it, and
+the interface says so on the block rather than leaving it to be discovered. A
+filter that quietly applies to some blocks and not others is worse than one that
+admits it.
 
 ### Definitions belong to a project
 

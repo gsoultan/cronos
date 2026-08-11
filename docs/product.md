@@ -115,7 +115,7 @@ cross-dataset joins in a report, mobile native apps.
 
 | Pillar | What it means | Why a competitor cannot copy it cheaply |
 | :--- | :--- | :--- |
-| **One definition, three outputs** | Interactive, paginated PDF and spreadsheet from one report | Dashboard tools have no typesetting engine; legacy tools have no embed story. Both would need to rebuild half their product |
+| **One definition, three outputs** | Interactive, paginated PDF and spreadsheet from one report — a dashboard is simply a report whose only output is interactive | Dashboard tools have no typesetting engine; legacy tools have no embed story. Both would need to rebuild half their product |
 | **Governed by construction** | RLS lives on the dataset and is applied on every read path, including exports and scheduled bursts | Retrofitting unconditional RLS into a tool that has a "run as owner" mode is a breaking change |
 | **Flat cost** | Free for internal use; commercial license priced per deployment, never per viewer | Vendors whose revenue model is per-viewer cannot follow without cutting revenue |
 | **Definitions as files** | YAML, versioned, diffable, git-syncable, content-addressed | Legacy formats are proprietary; SaaS BI tools keep definitions in their database |

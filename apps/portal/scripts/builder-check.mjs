@@ -13,6 +13,33 @@ await p.click('input[placeholder="Choose a dataset"]')
 await p.locator('[role="option"]:visible').first().click()
 await p.waitForSelector('[data-testid=block-palette]')
 
+// One artifact: no Dashboards section, and "dashboard" survives as a template.
+ok('no Dashboards nav item',
+  await p.locator('nav[aria-label=Main] >> text=Dashboards').count() === 0)
+ok('the empty canvas offers starting templates',
+  await p.locator('[data-testid=template-dashboard]').isVisible())
+await p.click('[data-testid=template-dashboard]')
+await p.waitForTimeout(500)
+ok('the Dashboard template lays out blocks',
+  await p.locator('[data-testid=layout-canvas] > div').count() === 6)
+
+// A block may read a different dataset — what replaces a Dashboard kind.
+await p.click('[data-testid=layout-canvas] > div >> nth=4')
+await p.waitForTimeout(250)
+await p.click('[data-testid=inspector] input[value*="report default"]')
+await p.locator('[role="option"]:visible', { hasText: 'Shipments' }).first().click()
+await p.waitForTimeout(500)
+ok('a block can read a different dataset',
+  await p.locator('[data-testid=layout-canvas] >> text=Shipments').count() > 0)
+ok('switching dataset re-seeds the fields rather than blanking them',
+  await p.locator('[data-testid=inspector] input[value="Weight (kg)"], [data-testid=inspector] input[value="Cost"]').count() > 0)
+
+// Back to a clean slate for the sizing assertions below.
+await p.reload({ waitUntil: 'networkidle' })
+await p.click('input[placeholder="Choose a dataset"]')
+await p.locator('[role="option"]:visible').first().click()
+await p.waitForSelector('[data-testid=block-palette]')
+
 const canvasBefore = await p.locator('[data-testid=inspector]').boundingBox()
 ok('inspector shows report settings with nothing selected',
   await p.locator('[data-testid=inspector] h2:has-text("Report")').isVisible())

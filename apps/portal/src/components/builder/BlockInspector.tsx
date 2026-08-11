@@ -1,10 +1,15 @@
 import { MultiSelect, Select, TextInput } from '@mantine/core'
 import { Field } from '../form/Field'
-import type { Field as FieldDef, Tile } from '../../lib/types'
+import type { Dataset, Field as FieldDef, Tile } from '../../lib/types'
 
 interface Props {
   block: Tile
+  /** Fields of whichever dataset this block reads. */
   fields: FieldDef[]
+  /** Every dataset in the project, so a block can read somewhere else. */
+  datasets: Dataset[]
+  /** The report's default, shown as the fallback option. */
+  defaultDataset: string
   onChange: (patch: Partial<Tile>) => void
 }
 
@@ -26,7 +31,29 @@ const WIDTHS = [
   { span: 12, label: 'Full', bars: 4 },
 ]
 
-export function BlockInspector({ block, fields, onChange }: Props) {
+/**
+ * Moving a block to another dataset re-seeds its fields from the new one rather
+ * than clearing them. The old choices are genuinely invalid — they named columns
+ * that no longer exist — but blanking them leaves a block that looks broken, and
+ * a sensible default is one click away from whatever the author actually wants.
+ */
+function rebind(
+  block: Tile, next: string | null, defaultDataset: string, datasets: Dataset[],
+): Partial<Tile> {
+  const name = !next || next === defaultDataset ? undefined : next
+  const target = datasets.find((d) => d.name === (name ?? defaultDataset))
+  const usable = target?.fields.filter((f) => !f.hidden) ?? []
+  return {
+    dataset: name,
+    field: usable.find((f) => f.role === 'measure')?.name,
+    groupBy: block.kind === 'stat' ? undefined : usable.find((f) => f.role === 'dimension')?.name,
+    columns: block.kind === 'table' ? usable.slice(0, 5).map((f) => f.name) : undefined,
+  }
+}
+
+export function BlockInspector({
+  block, fields, datasets, defaultDataset, onChange,
+}: Props) {
   const visible = fields.filter((f) => !f.hidden)
   const measures = visible.filter((f) => f.role === 'measure')
   const dimensions = visible.filter((f) => f.role === 'dimension')
@@ -35,6 +62,21 @@ export function BlockInspector({ block, fields, onChange }: Props) {
     <div className="grid gap-4">
       <Field label="Title">
         <TextInput value={block.title} onChange={(e) => onChange({ title: e.currentTarget.value })} />
+      </Field>
+
+      {/* Per-block, so one report can combine invoices and shipments. Changing
+          it clears the field choices, which belonged to the old dataset — a
+          silently invalid reference is worse than an obvious reset. */}
+      <Field label="Reads from"
+        help={block.dataset && block.dataset !== defaultDataset
+          ? 'This block reads a different dataset from the rest of the report.'
+          : 'Uses the report’s dataset unless you change it.'}>
+        <Select allowDeselect={false} value={block.dataset ?? defaultDataset}
+          data={datasets.map((d) => ({
+            value: d.name,
+            label: d.name === defaultDataset ? `${d.label} (report default)` : d.label,
+          }))}
+          onChange={(v) => onChange(rebind(block, v, defaultDataset, datasets))} />
       </Field>
 
       {/* A picture of the width, not a number of columns. Nobody thinks

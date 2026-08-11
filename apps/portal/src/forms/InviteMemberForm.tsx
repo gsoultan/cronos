@@ -20,7 +20,7 @@ const ORG_ROLES = [
 
 const PROJECT_ROLES = [
   { id: 'viewer', label: 'Viewer', hint: 'Runs and views reports. Cannot change them.' },
-  { id: 'editor', label: 'Editor', hint: 'Creates and edits datasets, reports, dashboards and schedules.' },
+  { id: 'editor', label: 'Editor', hint: 'Creates and edits datasets, reports and schedules.' },
   { id: 'admin', label: 'Admin', hint: 'Everything an editor can do, plus members, data sources and settings.' },
 ]
 

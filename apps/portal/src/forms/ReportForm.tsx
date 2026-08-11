@@ -7,7 +7,8 @@ import { LayoutCanvas } from '../components/builder/LayoutCanvas'
 import { BlockInspector } from '../components/builder/BlockInspector'
 import { OutputPicker } from './OutputPicker'
 import { datasets } from '../lib/mock'
-import type { Tile, TileKind } from '../lib/types'
+import type { Dataset, Tile, TileKind } from '../lib/types'
+import type { Template } from '../lib/templates'
 import { required, slug, toSlug } from '../lib/validators'
 import { useFocusMode } from '../lib/useSidebar'
 
@@ -51,6 +52,10 @@ export function ReportForm({ onDone, onCancel }: Props) {
   const dataset = datasets.find((d) => d.name === values.dataset)
   const fields = dataset?.fields ?? []
   const selected = blocks.find((b) => b.id === selectedId) ?? null
+
+  /* A block reads its own dataset if it has one, otherwise the report's. */
+  const datasetFor = (b: Tile): Dataset =>
+    datasets.find((d) => d.name === b.dataset) ?? dataset!
   const ready = values.name.trim() !== '' && !!dataset && blocks.length > 0
 
   function add(kind: TileKind) {
@@ -72,6 +77,15 @@ export function ReportForm({ onDone, onCancel }: Props) {
 
   const patch = (p: Partial<Tile>) =>
     setBlocks((bs) => bs.map((b) => (b.id === selectedId ? { ...b, ...p } : b)))
+
+  function applyTemplate(t: Template) {
+    if (!dataset) return
+    const built: Tile[] = []
+    for (const b of t.build(dataset)) built.push(Object.assign({ id: nextId() }, b))
+    setBlocks(built)
+    setOutputs(t.outputs)
+    setSelectedId(null)
+  }
 
   return (
     <form onSubmit={(e) => { e.preventDefault(); e.stopPropagation(); form.handleSubmit() }}
@@ -123,8 +137,9 @@ export function ReportForm({ onDone, onCancel }: Props) {
 
         <div className="min-w-0 flex-1 overflow-auto rounded-lg border border-line bg-surface p-1">
           {dataset ? (
-            <LayoutCanvas blocks={blocks} fields={fields} selectedId={selectedId}
-              onSelect={setSelectedId} onChange={setBlocks} />
+            <LayoutCanvas blocks={blocks} dataset={dataset} datasetFor={datasetFor}
+              selectedId={selectedId} onSelect={setSelectedId} onChange={setBlocks}
+              onApplyTemplate={applyTemplate} />
           ) : (
             <div className="grid h-full place-items-center px-6 text-center">
               <p className="max-w-[40ch] text-small text-ink-secondary">
@@ -147,7 +162,8 @@ export function ReportForm({ onDone, onCancel }: Props) {
                   Report settings
                 </button>
               </div>
-              <BlockInspector block={selected} fields={fields} onChange={patch} />
+              <BlockInspector block={selected} fields={datasetFor(selected).fields}
+                datasets={datasets} defaultDataset={dataset!.name} onChange={patch} />
             </>
           ) : (
             <>

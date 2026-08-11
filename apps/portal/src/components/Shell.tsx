@@ -8,7 +8,6 @@ import { useSidebar } from '../lib/useSidebar'
 
 const NAV: { to: string; label: string; hint: string; icon: IconName }[] = [
   { to: '/', label: 'Reports', hint: 'Run and schedule reports', icon: 'reports' },
-  { to: '/dashboards', label: 'Dashboards', hint: 'Live views for your team', icon: 'dashboards' },
   { to: '/data', label: 'Data', hint: 'Sources and datasets', icon: 'data' },
   { to: '/schedules', label: 'Schedules', hint: 'What sends, and when', icon: 'schedules' },
   { to: '/settings', label: 'Settings', hint: 'People and projects', icon: 'settings' },
@@ -16,6 +15,10 @@ const NAV: { to: string; label: string; hint: string; icon: IconName }[] = [
 
 /**
  * Header across the top, collapsible rail beneath it, content beside.
+ *
+ * Four destinations, not five: there is no Dashboards section because there is
+ * no Dashboard artifact. A dashboard is a report whose only output is
+ * interactive — see docs/report-format.md.
  *
  * Collapsed, the rail keeps its icons and gains tooltips rather than
  * disappearing — an icon-only rail is still navigable, a hidden one is a

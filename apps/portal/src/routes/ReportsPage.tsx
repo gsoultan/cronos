@@ -38,7 +38,7 @@ export function ReportsPage() {
     <>
       <PageHeader
         title="Reports"
-        description="Everything in this project. Open one to run it."
+        description="Dashboards, statements and exports — all reports, differing only in what they output."
         actions={editable ? newReport : undefined}
       />
 

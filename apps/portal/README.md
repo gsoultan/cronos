@@ -88,6 +88,17 @@ on its own.
 
 Palette strip · canvas · inspector, filling the viewport below a toolbar.
 
+**There is one artifact.** No Dashboard sits alongside Report — a dashboard is a
+report whose only output is interactive, and every other proposed difference is
+a property rather than a type. Superset models a "report" as a schedule;
+Metabase as a subscription; Sigma collapsed the distinction outright. Power BI
+ships three content types and needs a genre of articles to explain them.
+
+Two consequences in this code: a block may override the report's dataset, which
+is what lets one report combine invoices and shipments; and the empty canvas
+offers **templates, not types** — Dashboard, Statement, Data export — each
+presetting outputs and a layout and leaving nothing behind in the model.
+
 **The canvas is WYSIWYG in the literal sense**: blocks render through the same
 `StatTile`, `ColumnChart`, `LineChart` and `DataTable` the report itself uses,
 fed sample rows. Previews are `pointer-events-none`, so a click selects the

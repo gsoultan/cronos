@@ -12,7 +12,6 @@ interface Props {
 
 const TITLES: Record<string, string> = {
   '/': 'Reports',
-  '/dashboards': 'Dashboards',
   '/data': 'Data',
   '/schedules': 'Schedules',
   '/settings': 'Settings',

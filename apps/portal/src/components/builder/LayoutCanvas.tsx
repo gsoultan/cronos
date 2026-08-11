@@ -1,13 +1,18 @@
 import { useEffect, useState } from 'react'
-import type { Field, Tile } from '../../lib/types'
+import type { Dataset, Tile } from '../../lib/types'
 import { BlockPreview } from './BlockPreview'
+import { TEMPLATES, type Template } from '../../lib/templates'
 
 interface Props {
   blocks: Tile[]
-  fields: Field[]
+  /** The report's default dataset. Blocks may override it individually. */
+  dataset: Dataset
+  /** Resolves a block's dataset, falling back to the report default. */
+  datasetFor: (block: Tile) => Dataset
   selectedId: string | null
   onSelect: (id: string | null) => void
   onChange: (blocks: Tile[]) => void
+  onApplyTemplate: (template: Template) => void
 }
 
 /**
@@ -22,7 +27,9 @@ interface Props {
  * removed with Delete. The canvas background deselects, so there is always a way
  * back to the report-level settings.
  */
-export function LayoutCanvas({ blocks, fields, selectedId, onSelect, onChange }: Props) {
+export function LayoutCanvas({
+  blocks, dataset, datasetFor, selectedId, onSelect, onChange, onApplyTemplate,
+}: Props) {
   const [dragging, setDragging] = useState<string | null>(null)
   const [over, setOver] = useState<string | null>(null)
 
@@ -69,19 +76,39 @@ export function LayoutCanvas({ blocks, fields, selectedId, onSelect, onChange }:
     return () => window.removeEventListener('keydown', onKey)
   })
 
+  /* The empty canvas is the one place a starting point is worth offering, so it
+     does the offering instead of describing the emptiness. Templates preset
+     outputs and a layout; they are not a second kind of thing. */
   if (blocks.length === 0) {
     return (
-      <button type="button" onClick={() => onSelect(null)}
-        className="grid h-full w-full cursor-default place-items-center rounded-lg border
-                   border-dashed border-line bg-sunken px-6 text-center">
-        <span className="max-w-[44ch]">
-          <span className="block text-lead font-semibold text-ink">An empty report</span>
-          <span className="mt-2 block text-small text-ink-secondary">
-            Add a block from the strip on the left. Start with a number or a table —
-            you can change the order and widths at any time.
-          </span>
-        </span>
-      </button>
+      <div className="grid h-full place-items-center rounded-lg border border-dashed
+                      border-line bg-sunken px-6 py-10">
+        <div className="w-full max-w-[720px] text-center">
+          <p className="text-lead font-semibold text-ink">Start from something</p>
+          <p className="mx-auto mt-2 max-w-[48ch] text-small text-ink-secondary">
+            Each of these is a report — they differ only in what they output and how
+            they are laid out. Change anything afterwards.
+          </p>
+          <div className="mt-6 grid gap-3 sm:grid-cols-3">
+            {TEMPLATES.map((t) => (
+              <button key={t.id} type="button" onClick={() => onApplyTemplate(t)}
+                data-testid={`template-${t.id}`}
+                className="grid cursor-pointer gap-1 rounded-lg border border-line bg-surface
+                           p-4 text-left text-ink hover:border-accent hover:bg-accent-wash">
+                <span aria-hidden className="text-title leading-none text-accent">{t.icon}</span>
+                <span className="font-semibold">{t.label}</span>
+                <span className="text-small text-ink-secondary">{t.hint}</span>
+                <span className="mt-1 text-micro tracking-[0.04em] text-ink-muted uppercase">
+                  {t.outputs.join(' · ')}
+                </span>
+              </button>
+            ))}
+          </div>
+          <p className="mt-6 text-small text-ink-muted">
+            Or add blocks one at a time from the strip on the left.
+          </p>
+        </div>
+      </div>
     )
   }
 
@@ -110,8 +137,18 @@ export function LayoutCanvas({ blocks, fields, selectedId, onSelect, onChange }:
             {/* The preview is inert: clicks select the block rather than
                 landing on a chart tooltip or a table scroller. */}
             <div className="pointer-events-none">
-              <BlockPreview block={b} fields={fields} />
+              <BlockPreview block={b} fields={datasetFor(b).fields} />
             </div>
+
+            {/* A block reading somewhere other than the report default says so
+                on its face — otherwise a mixed report looks like one dataset
+                and reads wrong. */}
+            {b.dataset && b.dataset !== dataset.name && (
+              <span className="pointer-events-none absolute bottom-2 left-2 rounded-full
+                               bg-accent-wash px-2 py-px text-micro font-medium text-ink">
+                {datasetFor(b).label}
+              </span>
+            )}
 
             <div className={`absolute -top-3 right-2 flex items-center gap-0.5 rounded-md border
                              border-line bg-surface px-1 py-0.5 shadow-pop transition-opacity

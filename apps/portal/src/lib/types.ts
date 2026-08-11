@@ -60,6 +60,12 @@ export interface Tile {
   title: string
   /** Grid span out of 12. */
   span: number
+  /**
+   * Overrides the report's dataset for this block alone. Undefined means the
+   * report default. This is what lets one report combine invoices and
+   * shipments — the job a separate Dashboard kind would have existed to do.
+   */
+  dataset?: string
   field?: string
   groupBy?: string
   series?: string

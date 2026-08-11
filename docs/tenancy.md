@@ -5,7 +5,7 @@ failure modes, and collapsing any two of them is the most expensive mistake
 available in this codebase.
 
 ```
-Organization ──1:N── Project ──1:N── DataSource · Dataset · Report · Dashboard · Schedule
+Organization ──1:N── Project ──1:N── DataSource · Dataset · Report · Schedule
      │                   │
      └── M:N ── User ── M:N ──┘
         org_members    project_members
@@ -23,8 +23,8 @@ Organization ──1:N── Project ──1:N── DataSource · Dataset · Re
 belongs to many organizations and switches between them.
 
 **Project** is the isolation boundary and the unit of work. Datasources,
-datasets, reports, dashboards and schedules belong to exactly one project. A
-user belongs to many projects, across many organizations.
+datasets, reports and schedules belong to exactly one project. A user belongs to
+many projects, across many organizations.
 
 **Row scope** is not a level of the hierarchy — it is a predicate inside a
 project, and it is where an ISV's own customers live. A company embedding
@@ -50,7 +50,7 @@ project roles govern content.
 | Project role | Can |
 | :--- | :--- |
 | `admin` | Manage project members, datasources, and settings |
-| `editor` | Create and edit datasets, reports, dashboards, schedules |
+| `editor` | Create and edit datasets, reports and schedules |
 | `viewer` | Run and view; export if the report allows it |
 
 Org `owner` and `admin` may enter any project in their organization without a

@@ -31,12 +31,6 @@ const settingsRoute = createRoute({
   component: lazyRouteComponent(() => import('./routes/SettingsPage'), 'SettingsPage'),
 })
 
-const dashboardsRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/dashboards',
-  component: lazyRouteComponent(() => import('./routes/DashboardsPage'), 'DashboardsPage'),
-})
-
 const dataRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/data',
@@ -51,7 +45,7 @@ const schedulesRoute = createRoute({
 
 const routeTree = rootRoute.addChildren([
   indexRoute, newReportRoute, reportRoute, settingsRoute,
-  dashboardsRoute, dataRoute, schedulesRoute,
+  dataRoute, schedulesRoute,
 ])
 
 /* defaultPreload 'intent' fetches the route chunk on hover, so the split is
