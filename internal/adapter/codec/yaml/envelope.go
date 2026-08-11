@@ -17,7 +17,8 @@ type envelope struct {
 // metadata is a definition's identity, which lives outside the spec because it
 // is what the repository indexes rather than what the engine executes.
 type metadata struct {
-	Name        string `yaml:"name"`
-	Description string `yaml:"description"`
-	Folder      string `yaml:"folder"`
+	Name        string            `yaml:"name"`
+	Description string            `yaml:"description"`
+	Folder      string            `yaml:"folder"`
+	Labels      map[string]string `yaml:"labels"`
 }

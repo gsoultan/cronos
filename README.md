@@ -65,6 +65,7 @@ Changes are live immediately; there is no restart.
 | `internal/core/` | Definitions, validation, query compilation. No external dependencies. |
 | `internal/app/run/` | Report → SQL → rows → what a viewer draws |
 | `internal/adapter/` | YAML, `database/sql`, the Typst renderer, the HTTP API |
+| `internal/adapter/driver/duckdb/` | Federation — one query over a warehouse, a lake and a spreadsheet. cgo, so `-tags duckdb` |
 | `apps/portal/` | The authoring UI — React 19, Mantine, Tailwind, PWA |
 | `packages/embed/` | `<cronos-report>`, 3.2 KB gzipped, framework-agnostic |
 | `packages/react/` | A React wrapper for it |
@@ -77,7 +78,14 @@ make check          # build, vet, gofmt, test, licence boundary, typecheck, budg
 make ui             # every browser suite, plus the embed against a real server
 make live           # just the embed against a real cronosd
 make pdf            # render a sample statement and open it
+make duckdb         # build and test federation (cgo, several hundred MB)
 ```
+
+Federation is behind a build tag on purpose. DuckDB is a C++ library, so it
+needs cgo and adds several hundred megabytes to a module download — neither
+cost belongs in a build that only ever reads one Postgres. Without the tag
+cronos is pure Go, cross-compiles to anything, and asking for federation is a
+clear error rather than a missing symbol.
 
 `make live` is the one that matters most. The Go tests prove the server
 computes the right numbers and the package checks prove the component renders

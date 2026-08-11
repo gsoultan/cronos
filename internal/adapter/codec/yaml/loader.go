@@ -80,6 +80,25 @@ func (l Loader) Report(data []byte) (definition.Report, error) {
 	return r, r.Validate()
 }
 
+// DataSource decodes a DataSource document and validates it.
+func (l Loader) DataSource(data []byte) (definition.DataSource, error) {
+	e, err := l.open(data, KindDataSource)
+	if err != nil {
+		return definition.DataSource{}, err
+	}
+
+	var ds definition.DataSource
+	if err := strict(&e.Spec, &ds); err != nil {
+		return definition.DataSource{}, fmt.Errorf("%w: datasource %q spec: %v",
+			ErrDecode, e.Metadata.Name, err)
+	}
+	ds.Name = e.Metadata.Name
+	ds.Description = e.Metadata.Description
+	ds.Labels = e.Metadata.Labels
+
+	return ds, ds.Validate()
+}
+
 // Schedule decodes a Schedule document and validates it.
 func (l Loader) Schedule(data []byte) (definition.Schedule, error) {
 	e, err := l.open(data, KindSchedule)

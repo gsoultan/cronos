@@ -6,7 +6,7 @@ REACT  := packages/react
 GO     := go
 
 .DEFAULT_GOAL := help
-.PHONY: help setup dev dev-web dev-api build check test pdf lint fmt boundary live ui shots clean
+.PHONY: help setup dev dev-web dev-api build check test duckdb pdf lint fmt boundary live ui shots clean
 
 help: ## Show this help
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage: make <target>\n\n"} \
@@ -44,6 +44,10 @@ check: ## Everything CI runs — build, vet, test, boundary, typecheck, lint, bu
 
 test: ## Run Go tests
 	$(GO) test ./...
+
+duckdb: ## Build and test the federation adapter (cgo, several hundred MB)
+	$(GO) build -tags duckdb ./...
+	$(GO) test -tags duckdb ./internal/adapter/driver/duckdb/
 
 pdf: ## Render a sample statement to /tmp/statement.pdf and open it
 	CRONOS_PDF_OUT=/tmp/statement.pdf $(GO) test ./internal/adapter/render/paginated/ -run TestRenderProducesAPDF -v

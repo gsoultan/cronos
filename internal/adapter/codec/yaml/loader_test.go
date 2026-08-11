@@ -214,3 +214,56 @@ spec:
 		t.Errorf("the message should name the key that was not understood: %v", err)
 	}
 }
+
+func TestTheShippedDataSourcesLoad(t *testing.T) {
+	entries, err := os.ReadDir(filepath.Join(examples, "datasources"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		t.Run(e.Name(), func(t *testing.T) {
+			ds, err := Loader{}.DataSource(read(t, filepath.Join("datasources", e.Name())))
+			if err != nil {
+				t.Fatalf("%s does not load: %v", e.Name(), err)
+			}
+			// Defaulted rather than zero: a source with no statement timeout is
+			// a connection pool waiting to be held by a query nobody watches.
+			if ds.Limits.Timeout() <= 0 || ds.Limits.Rows() <= 0 {
+				t.Errorf("%s has no effective limits: %+v", e.Name(), ds.Limits)
+			}
+		})
+	}
+}
+
+func TestTheShippedScheduleLoads(t *testing.T) {
+	s, err := Loader{}.Schedule(read(t, "schedules/monthly-customer-statements.yaml"))
+	if err != nil {
+		t.Fatalf("the documented schedule does not load: %v", err)
+	}
+	if !s.Bursts() || s.Burst.Over.Dataset != "active-customers" {
+		t.Errorf("burst = %+v", s.Burst)
+	}
+	if s.Timezone == "" {
+		t.Error(`"the first of the month" is a local claim and needs a timezone`)
+	}
+	if got := len(s.Deliver); got != 2 {
+		t.Errorf("got %d deliveries, want email and s3", got)
+	}
+	// One destination field for every channel — see DeliverSpec.
+	for _, d := range s.Deliver {
+		if d.To == "" {
+			t.Errorf("%s delivery has no destination", d.Via)
+		}
+	}
+}
+
+// Durations are written the way people say them, not as nanoseconds.
+func TestDurationsReadAsAuthorsWriteThem(t *testing.T) {
+	ds, err := Loader{}.DataSource(read(t, "datasources/events-lake.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ds.Limits.StatementTimeout.String() != "2m0s" {
+		t.Errorf("120s parsed as %s", ds.Limits.StatementTimeout)
+	}
+}
