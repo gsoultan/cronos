@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useForm, useStore } from '@tanstack/react-form'
 import { Button, Select, Textarea, TextInput } from '@mantine/core'
 import { Field, fieldError } from '../components/form/Field'
+import { IdentifierField } from '../components/form/IdentifierField'
 import { FormActions } from '../components/form/FormShell'
 import { QueryBuilder } from '../components/query/QueryBuilder'
 import { SqlView } from '../components/query/SqlView'
@@ -37,6 +38,9 @@ const SOURCES = [
  * See docs/report-format.md.
  */
 export function DatasetForm({ onDone, onCancel }: Props) {
+  /* Once someone edits the API name, typing in Name must stop
+     overwriting it — silently discarding a deliberate edit. */
+  const [slugEdited, setSlugEdited] = useState(false)
   const [tab, setTab] = useState<Tab>('query')
   const [mode, setMode] = useState<Mode>('visual')
   const [query, setQuery] = useState<QueryModel>(emptyQuery)
@@ -97,7 +101,7 @@ export function DatasetForm({ onDone, onCancel }: Props) {
                     <TextInput value={f.state.value} onBlur={f.handleBlur} placeholder="Invoices"
                       onChange={(e) => {
                         f.handleChange(e.currentTarget.value)
-                        form.setFieldValue('slug', toSlug(e.currentTarget.value))
+                        if (!slugEdited) form.setFieldValue('slug', toSlug(e.currentTarget.value))
                       }} />
                   </Field>
                 )}
@@ -116,11 +120,10 @@ export function DatasetForm({ onDone, onCancel }: Props) {
 
               <form.Field name="slug" validators={{ onBlur: ({ value }) => slug(value) }}>
                 {(f) => (
-                  <Field label="Identifier" error={fieldError(f.state.meta)}
-                    help="Referenced by reports. Unique within this project.">
-                    <TextInput value={f.state.value} onBlur={f.handleBlur}
-                      onChange={(e) => f.handleChange(e.currentTarget.value)} />
-                  </Field>
+                  <IdentifierField value={f.state.value} onBlur={f.handleBlur}
+                      error={fieldError(f.state.meta)} 
+                      usedFor="Reports point at this name when they say which dataset they read."
+                      onChange={(v) => { setSlugEdited(true); f.handleChange(v) }} />
                 )}
               </form.Field>
             </div>

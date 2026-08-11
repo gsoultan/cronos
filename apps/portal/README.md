@@ -11,6 +11,7 @@ bun run shots    # drive it in headless Chrome, write shots/
 bun run test     # unit tests (SQL generation, filter compilation)
 bun run shell    # assert the header, sidebar collapse and canvas sizing
 bun run builder  # assert the report editor: canvas size, WYSIWYG, inspector
+bun run identifier # assert the API-name field: collapsed, follows, stops following
 bun run acl      # assert the org/project access rules in a real browser
 ```
 
@@ -156,6 +157,21 @@ Steps are ordered the way a person thinks — what am I looking at, what else
 comes with it, which columns, which rows — which is deliberately not the order
 SQL is written in. Joins are offered from the schema's foreign keys, so a join
 is a click rather than a formula.
+
+## The API name field
+
+Every creatable thing has a machine-readable name, and it was a full-weight
+text input on four forms, each explaining itself differently, sitting at the
+same visual weight as Name — which reads as a decision you have to make. It is
+not: it is derived, and almost nobody should change it.
+
+`IdentifierField` collapses it to one muted line and states the consequence at
+the moment of editing rather than in help text read beforehand. The path prefix
+appears only when opened; in a 320px rail it would otherwise eat the value,
+which is the part worth checking.
+
+**It stops following the name once edited.** Forms guard the sync with
+`slugEdited` — without that, typing in Name silently destroys a deliberate edit.
 
 ## Filter builder
 

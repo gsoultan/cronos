@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useForm, useStore } from '@tanstack/react-form'
 import { Button, Select, Textarea, TextInput } from '@mantine/core'
 import { Field, fieldError } from '../components/form/Field'
+import { IdentifierField } from '../components/form/IdentifierField'
 import { BlockPalette, PALETTE } from '../components/builder/BlockPalette'
 import { LayoutCanvas } from '../components/builder/LayoutCanvas'
 import { BlockInspector } from '../components/builder/BlockInspector'
@@ -32,6 +33,9 @@ const nextId = () => `b${++seq}`
  * the block. One panel, never two, and the canvas keeps the rest.
  */
 export function ReportForm({ onDone, onCancel }: Props) {
+  /* Once someone edits the API name, typing in Name must stop
+     overwriting it — silently discarding a deliberate edit. */
+  const [slugEdited, setSlugEdited] = useState(false)
   /* Collapse the app rail while the editor is open — the canvas needs the
      184px more than the navigation does. The preference itself is untouched. */
   useFocusMode()
@@ -101,7 +105,7 @@ export function ReportForm({ onDone, onCancel }: Props) {
               classNames={{ input: 'font-semibold text-lead' }} className="min-w-[220px]"
               onChange={(e) => {
                 f.handleChange(e.currentTarget.value)
-                form.setFieldValue('slug', toSlug(e.currentTarget.value))
+                if (!slugEdited) form.setFieldValue('slug', toSlug(e.currentTarget.value))
               }} />
           )}
         </form.Field>
@@ -191,11 +195,10 @@ export function ReportForm({ onDone, onCancel }: Props) {
 
                 <form.Field name="slug" validators={{ onBlur: ({ value }) => slug(value) }}>
                   {(f) => (
-                    <Field label="Identifier" error={fieldError(f.state.meta)}
-                      help="Used in the API and embed URLs.">
-                      <TextInput value={f.state.value} onBlur={f.handleBlur}
-                        onChange={(e) => f.handleChange(e.currentTarget.value)} />
-                    </Field>
+                    <IdentifierField value={f.state.value} onBlur={f.handleBlur}
+                      error={fieldError(f.state.meta)} prefix="…/reports/" 
+                      usedFor="Reports are addressed by this in the API and in embed URLs."
+                      onChange={(v) => { setSlugEdited(true); f.handleChange(v) }} />
                   )}
                 </form.Field>
 

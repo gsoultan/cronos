@@ -1,6 +1,8 @@
+import { useState } from 'react'
 import { useForm, useStore } from '@tanstack/react-form'
 import { TextInput, Textarea } from '@mantine/core'
 import { Field, fieldError } from '../components/form/Field'
+import { IdentifierField } from '../components/form/IdentifierField'
 import { FormActions, FormSection, Callout } from '../components/form/FormShell'
 import { all, maxLength, required, slug, toSlug } from '../lib/validators'
 import { useWorkspace } from '../lib/WorkspaceContext'
@@ -11,6 +13,9 @@ interface Props {
 }
 
 export function ProjectForm({ onDone, onCancel }: Props) {
+  /* Once someone edits the API name, typing in Name must stop
+     overwriting it — silently discarding a deliberate edit. */
+  const [slugEdited, setSlugEdited] = useState(false)
   const { org } = useWorkspace()
 
   const form = useForm({
@@ -32,7 +37,7 @@ export function ProjectForm({ onDone, onCancel }: Props) {
               <TextInput value={f.state.value} onBlur={f.handleBlur} placeholder="Finance"
                 onChange={(e) => {
                   f.handleChange(e.currentTarget.value)
-                  form.setFieldValue('slug', toSlug(e.currentTarget.value))
+                  if (!slugEdited) form.setFieldValue('slug', toSlug(e.currentTarget.value))
                 }} />
             </Field>
           )}
@@ -40,11 +45,10 @@ export function ProjectForm({ onDone, onCancel }: Props) {
 
         <form.Field name="slug" validators={{ onBlur: ({ value }) => slug(value) }}>
           {(f) => (
-            <Field label="Identifier" error={fieldError(f.state.meta)}
-              help={`Appears in URLs and the API: /v1/orgs/${org.slug}/projects/${f.state.value || 'finance'}/…`}>
-              <TextInput value={f.state.value} onBlur={f.handleBlur}
-                onChange={(e) => f.handleChange(e.currentTarget.value)} />
-            </Field>
+            <IdentifierField value={f.state.value} onBlur={f.handleBlur}
+                      error={fieldError(f.state.meta)} 
+                      usedFor="Every API path for this project contains it."
+                      onChange={(v) => { setSlugEdited(true); f.handleChange(v) }} />
           )}
         </form.Field>
 

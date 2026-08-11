@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useForm, useStore } from '@tanstack/react-form'
 import { NumberInput, PasswordInput, TextInput, Textarea } from '@mantine/core'
 import { Field, fieldError } from '../components/form/Field'
+import { IdentifierField } from '../components/form/IdentifierField'
 import { FormSection, Callout } from '../components/form/FormShell'
 import { Wizard, type Step } from '../components/form/Wizard'
 import { all, port as portRule, required, slug, toSlug, url } from '../lib/validators'
@@ -33,6 +34,9 @@ interface Props {
  * was the cause.
  */
 export function DataSourceForm({ onDone, onCancel }: Props) {
+  /* Once someone edits the API name, typing in Name must stop
+     overwriting it — silently discarding a deliberate edit. */
+  const [slugEdited, setSlugEdited] = useState(false)
   const [step, setStep] = useState(0)
   const [completed, setCompleted] = useState(0)
   const [kind, setKind] = useState<SourceKind | null>(null)
@@ -264,7 +268,7 @@ export function DataSourceForm({ onDone, onCancel }: Props) {
                     placeholder="Production warehouse"
                     onChange={(e) => {
                       f.handleChange(e.currentTarget.value)
-                      form.setFieldValue('slug', toSlug(e.currentTarget.value))
+                      if (!slugEdited) form.setFieldValue('slug', toSlug(e.currentTarget.value))
                     }} />
                 </Field>
               )}
@@ -272,11 +276,10 @@ export function DataSourceForm({ onDone, onCancel }: Props) {
 
             <form.Field name="slug" validators={{ onBlur: ({ value }) => slug(value) }}>
               {(f) => (
-                <Field label="Identifier" error={fieldError(f.state.meta)}
-                  help="Used in report definitions and the API. Changing it later breaks references.">
-                  <TextInput value={f.state.value} onBlur={f.handleBlur}
-                    onChange={(e) => f.handleChange(e.currentTarget.value)} />
-                </Field>
+                <IdentifierField value={f.state.value} onBlur={f.handleBlur}
+                      error={fieldError(f.state.meta)} 
+                      usedFor="Datasets point at this name when they say which source they query."
+                      onChange={(v) => { setSlugEdited(true); f.handleChange(v) }} />
               )}
             </form.Field>
           </FormSection>
