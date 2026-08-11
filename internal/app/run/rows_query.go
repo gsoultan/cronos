@@ -22,11 +22,15 @@ func (s *Service) Rows(ctx context.Context, dataset string, params map[string]an
 	if err != nil {
 		return nil, err
 	}
-	plan, err := s.builder.Build(ds, params, pr)
+	engine, err := s.engines.Engine(ctx, ds)
 	if err != nil {
 		return nil, err
 	}
-	result, err := s.exec.Execute(ctx, plan)
+	plan, err := engine.Builder.Build(ds, params, pr)
+	if err != nil {
+		return nil, err
+	}
+	result, err := engine.Executor.Execute(ctx, plan)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrExecute, err)
 	}

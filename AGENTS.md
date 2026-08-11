@@ -84,6 +84,7 @@ internal/
     api/                 Embed + portal + management, CORS      ✓
     store/file/          Definitions from a directory           ✓
     store/sql/           Multi-tenant, content-addressed        ✓
+    driver/registry/     One connection per datasource          ✓
     driver/sql/          Anything database/sql speaks           ✓
     driver/duckdb/       Federation. cgo, `-tags duckdb`        ✓
     render/paginated/    Typst PDF                              ✓

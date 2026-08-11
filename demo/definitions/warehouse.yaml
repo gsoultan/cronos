@@ -1,0 +1,15 @@
+apiVersion: cronos.dev/v1
+kind: DataSource
+metadata:
+  name: warehouse
+  description: The demo database, seeded from demo/seed.sql.
+spec:
+  driver: sqlite
+  # Shared cache: database/sql pools connections, and each connection to a
+  # plain in-memory SQLite gets its own empty database.
+  dsn: "file:cronos-demo?mode=memory&cache=shared"
+  pool:
+    maxOpen: 8
+  limits:
+    statementTimeout: 30s
+    maxRows: 100000

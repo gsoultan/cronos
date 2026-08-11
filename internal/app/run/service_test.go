@@ -125,11 +125,10 @@ func setup(t *testing.T) (*run.Service, definition.Report) {
 		t.Fatalf("report: %v", err)
 	}
 
-	return run.New(
-		datasets{"invoices": ds},
-		sqldriver.NewExecutor(db),
-		query.NewBuilder(query.SQLite{}),
-	), rep
+	return run.New(datasets{"invoices": ds}, run.One{Only: run.Engine{
+		Executor: sqldriver.NewExecutor(db),
+		Builder:  query.NewBuilder(query.SQLite{}),
+	}}), rep
 }
 
 func customer(id string) principal.Principal {

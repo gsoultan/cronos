@@ -9,17 +9,47 @@ import (
 	"github.com/gsoultan/cronos/internal/core/query"
 )
 
+// Engine is how one dataset's queries are compiled and run.
+//
+// Both together, because they are one decision. A dataset lives in a database,
+// and that database determines the SQL to write as much as it determines where
+// to send it — pairing a Postgres builder with a SQLite connection produces
+// statements that parse and bind the wrong values.
+type Engine struct {
+	Executor Executor
+	Builder  query.Builder
+}
+
+// Engines resolves the engine for a dataset.
+//
+// A port rather than a field, because "which database does this dataset live
+// in" is a deployment's answer and not this package's. A single-source
+// deployment implements it with one engine and never notices.
+type Engines interface {
+	Engine(ctx context.Context, ds definition.Dataset) (Engine, error)
+}
+
 // Service renders reports.
 type Service struct {
 	datasets Datasets
-	exec     Executor
-	builder  query.Builder
+	engines  Engines
 }
 
-// New wires a Service. The builder carries the dialect, because which SQL to
-// write is a property of where the rows live rather than of the request.
-func New(d Datasets, e Executor, b query.Builder) *Service {
-	return &Service{datasets: d, exec: e, builder: b}
+// New wires a Service.
+func New(d Datasets, e Engines) *Service {
+	return &Service{datasets: d, engines: e}
+}
+
+// One is an Engines that answers with the same engine for everything.
+//
+// What a deployment reading a single database wants, and what the tests use.
+// Written here rather than in each caller so "there is only one database" is a
+// stated configuration rather than an assumption spread across the code.
+type One struct{ Only Engine }
+
+// Engine returns the one engine, whatever was asked for.
+func (o One) Engine(context.Context, definition.Dataset) (Engine, error) {
+	return o.Only, nil
 }
 
 // Request is what a caller asks for.
@@ -120,11 +150,15 @@ func (s *Service) block(ctx context.Context, r definition.Report, blk definition
 	if err != nil {
 		return Block{}, err
 	}
-	plan, cov, err := s.builder.BuildBlock(ds, blk, params, filters, pr)
+	engine, err := s.engines.Engine(ctx, ds)
 	if err != nil {
 		return Block{}, err
 	}
-	rows, err := s.exec.Execute(ctx, plan)
+	plan, cov, err := engine.Builder.BuildBlock(ds, blk, params, filters, pr)
+	if err != nil {
+		return Block{}, err
+	}
+	rows, err := engine.Executor.Execute(ctx, plan)
 	if err != nil {
 		return Block{}, fmt.Errorf("%w: block %q: %v", ErrExecute, blk.Heading(), err)
 	}

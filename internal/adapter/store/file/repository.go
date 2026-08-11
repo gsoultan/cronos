@@ -27,6 +27,7 @@ type Repository struct {
 	datasets  map[string]definition.Dataset
 	reports   map[string]definition.Report
 	schedules map[string]definition.Schedule
+	sources   map[string]definition.DataSource
 	// paths remembers where each definition was read from, keyed kind/name.
 	//
 	// A definitions directory is somebody's git repository and they organised
@@ -41,7 +42,7 @@ func (r *Repository) replace(fresh *Repository) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.datasets, r.reports, r.paths = fresh.datasets, fresh.reports, fresh.paths
-	r.schedules = fresh.schedules
+	r.schedules, r.sources = fresh.schedules, fresh.sources
 }
 
 // Path returns where a definition was read from.
@@ -81,6 +82,7 @@ func Load(dir string) (*Repository, error) {
 		datasets:  map[string]definition.Dataset{},
 		reports:   map[string]definition.Report{},
 		schedules: map[string]definition.Schedule{},
+		sources:   map[string]definition.DataSource{},
 		paths:     map[string]string{},
 	}
 	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
@@ -145,10 +147,14 @@ func (r *Repository) add(path string) error {
 		}
 		r.schedules[sc.Name] = sc
 		r.paths[kind+"/"+sc.Name] = path
+	case codec.KindDataSource:
+		src, err := codec.Loader{}.DataSource(data)
+		if err != nil {
+			return fmt.Errorf("%s: %w", path, err)
+		}
+		r.sources[src.Name] = src
+		r.paths[kind+"/"+src.Name] = path
 	}
-	// A DataSource is read by the driver registry rather than here. Ignoring it
-	// is not the same as dropping it silently: Kind already proved the document
-	// is one of the four.
 	return nil
 }
 
@@ -206,9 +212,34 @@ func (r *Repository) Schedules() []definition.Schedule {
 	return out
 }
 
-// Counts reports what was loaded, for a startup line an operator can read.
-func (r *Repository) Counts() (datasets, reports, schedules int) {
+// DataSource returns the named connection definition.
+func (r *Repository) DataSource(_ context.Context, name string) (definition.DataSource, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	return len(r.datasets), len(r.reports), len(r.schedules)
+
+	src, ok := r.sources[name]
+	if !ok {
+		return definition.DataSource{}, fmt.Errorf("%w: datasource %q", ErrNotFound, name)
+	}
+	return src, nil
+}
+
+// DataSources returns everything loaded, for a registry to open at startup.
+func (r *Repository) DataSources() []definition.DataSource {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	out := make([]definition.DataSource, 0, len(r.sources))
+	for _, s := range r.sources {
+		out = append(out, s)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
+}
+
+// Counts reports what was loaded, for a startup line an operator can read.
+func (r *Repository) Counts() (datasets, reports, schedules, sources int) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return len(r.datasets), len(r.reports), len(r.schedules), len(r.sources)
 }

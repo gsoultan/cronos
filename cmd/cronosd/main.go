@@ -15,11 +15,9 @@ import (
 	"time"
 
 	"github.com/gsoultan/cronos/internal/adapter/api"
-	sqldriver "github.com/gsoultan/cronos/internal/adapter/driver/sql"
 	"github.com/gsoultan/cronos/internal/adapter/store/file"
 	"github.com/gsoultan/cronos/internal/app/publish"
 	"github.com/gsoultan/cronos/internal/app/run"
-	"github.com/gsoultan/cronos/internal/core/query"
 	"github.com/gsoultan/cronos/internal/extension"
 	"github.com/gsoultan/cronos/internal/platform/config"
 	"github.com/gsoultan/cronos/internal/platform/token"
@@ -52,23 +50,13 @@ func serve(log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	db, err := sql.Open(cfg.Driver, cfg.DSN)
+	engines, closeEngines, err := datasources(cfg, repo, log)
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer closeEngines()
 
-	if err := seed(db, cfg.Seed, log); err != nil {
-		return err
-	}
-
-	dialect, err := dialectFor(cfg.Driver)
-	if err != nil {
-		return err
-	}
-
-	exec := sqldriver.NewExecutor(db)
-	runner := run.New(repo, exec, query.NewBuilder(dialect))
+	runner := run.New(repo, engines)
 
 	// One store, opened before the scheduler so a burst's first run is
 	// recorded. It doubles as the run recorder when it is a database; when it
@@ -97,10 +85,10 @@ func serve(log *slog.Logger) error {
 		publish.New(defs, repo).WithReports(repo), defs,
 		api.NewAdminKey(cfg.AdminKey, cfg.Org, cfg.Project), history(records))
 
-	datasets, reports, schedules := repo.Counts()
+	datasets, reports, schedules, sources := repo.Counts()
 	log.Info("cronosd listening",
 		"addr", cfg.Addr, "driver", cfg.Driver,
-		"datasets", datasets, "reports", reports, "schedules", schedules,
+		"datasets", datasets, "reports", reports, "schedules", schedules, "sources", sources,
 		"origins", cfg.Origins, "management", len(cfg.AdminKey) > 0,
 		"scheduler", cfg.Scheduler,
 		"auth", extension.Auth().Name(), "audit", extension.Audit().Name())
@@ -122,21 +110,6 @@ func seed(db *sql.DB, path string, log *slog.Logger) error {
 	}
 	log.Info("seeded", "file", path)
 	return nil
-}
-
-func dialectFor(driver string) (query.Dialect, error) {
-	switch driver {
-	case "postgres", "pgx", "duckdb":
-		return query.Postgres{}, nil
-	case "sqlite":
-		return query.SQLite{}, nil
-	case "mysql":
-		return query.MySQL{}, nil
-	}
-	// Guessing would produce statements that are subtly wrong rather than
-	// statements that fail — a placeholder style that happens to parse binds
-	// the wrong values.
-	return nil, errors.New("cronosd: no dialect for driver " + driver)
 }
 
 // listen serves until interrupted, then drains.

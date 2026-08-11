@@ -28,11 +28,15 @@ const ExportLimit = 100_000
 func (s *Service) BlockRows(ctx context.Context, ds definition.Dataset, blk definition.Block,
 	params map[string]any, filters query.Filters, pr principal.Principal) ([]string, [][]any, error) {
 
-	plan, _, err := s.builder.BuildBlock(ds, blk, params, filters, pr)
+	engine, err := s.engines.Engine(ctx, ds)
 	if err != nil {
 		return nil, nil, err
 	}
-	result, err := s.exec.Execute(ctx, plan)
+	plan, _, err := engine.Builder.BuildBlock(ds, blk, params, filters, pr)
+	if err != nil {
+		return nil, nil, err
+	}
+	result, err := engine.Executor.Execute(ctx, plan)
 	if err != nil {
 		return nil, nil, fmt.Errorf("%w: %v", ErrExecute, err)
 	}

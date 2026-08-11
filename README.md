@@ -72,6 +72,35 @@ under test is the logic Postgres runs. Postgres-specific behaviour around types
 and concurrency is **not** covered yet; that wants a container this repository
 does not have.
 
+## Datasources
+
+A dataset names the sources it reads, and that is where its rows come from:
+
+```yaml
+spec:
+  sources:
+    - ref: warehouse
+```
+
+Each datasource is opened once at startup with its own pool bound, its own
+statement timeout and its own row cap — somebody else operates that database
+and decided what a reasonable answer from it looks like. A source that will not
+open stops the server rather than being skipped: three of four warehouses
+reachable means three-quarters of the reports work and the rest fail at six in
+the morning.
+
+The row cap **refuses** rather than truncates. A report that quietly stopped at
+a million rows is a wrong answer presented as a right one, and the reader has
+no way to tell.
+
+A dataset naming two sources is a join across databases and needs
+`-tags duckdb`. Without it the error says so, rather than failing to find a
+driver.
+
+With no datasources defined, every dataset reads `CRONOS_DSN`. That is the
+development path, and it stays because a demo needing four YAML files before it
+shows a number is a demo nobody runs.
+
 ## The portal, on real data
 
 With no `VITE_CRONOS_API` the portal runs on **sample data** — which is what

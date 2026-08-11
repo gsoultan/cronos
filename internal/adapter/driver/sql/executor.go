@@ -7,12 +7,19 @@ import (
 	"time"
 
 	"github.com/gsoultan/cronos/internal/app/run"
+	"github.com/gsoultan/cronos/internal/core/definition"
 	"github.com/gsoultan/cronos/internal/core/query"
 )
 
 // Executor runs plans against one database.
 type Executor struct {
 	db *sql.DB
+	// MaxRows bounds what a single query may return. Zero means
+	// definition.DefaultMaxRows.
+	//
+	// The datasource's own limit, not a global: somebody else operates that
+	// database and decided what a reasonable answer from it looks like.
+	MaxRows int
 	// Timeout bounds a single statement. Zero means DefaultTimeout.
 	//
 	// Never unbounded: a report is a query someone wrote against a database
@@ -27,6 +34,11 @@ const DefaultTimeout = 30 * time.Second
 
 // NewExecutor returns an Executor over db.
 func NewExecutor(db *sql.DB) *Executor { return &Executor{db: db} }
+
+// WithLimits applies a datasource's own bounds.
+func (e *Executor) WithLimits(l definition.Limits) *Executor {
+	return &Executor{db: e.db, MaxRows: l.Rows(), Timeout: l.Timeout()}
+}
 
 // Execute runs p.
 //
@@ -51,9 +63,13 @@ func (e *Executor) Execute(ctx context.Context, p query.Plan) (run.Rows, error) 
 		cancel()
 		return nil, err
 	}
+	limit := e.MaxRows
+	if limit <= 0 {
+		limit = definition.DefaultMaxRows
+	}
 	// The context outlives this call because the caller reads from rows, so
 	// cancellation is tied to closing them rather than to returning.
-	return &cancelling{Rows: rows, cancel: cancel}, nil
+	return &capped{Rows: &cancelling{Rows: rows, cancel: cancel}, limit: limit}, nil
 }
 
 // cancelling releases the statement's context when the caller is finished.

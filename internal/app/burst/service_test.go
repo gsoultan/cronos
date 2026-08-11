@@ -238,7 +238,7 @@ func setup(t *testing.T) (*burst.Service, definition.Schedule, string) {
 	exec := sqldriver.NewExecutor(db)
 	builder := query.NewBuilder(query.SQLite{})
 
-	runner := run.New(r, exec, builder)
+	runner := run.New(r, run.One{Only: run.Engine{Executor: exec, Builder: builder}})
 	statements := run.NewStatements(runner, paginated.New(paginated.TypstCLI{}))
 
 	out := t.TempDir()

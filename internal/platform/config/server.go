@@ -40,6 +40,9 @@ type Server struct {
 	Scheduler bool
 	SMTP      SMTP
 	S3        S3
+	// SeedSource names which datasource the seed applies to. Required when
+	// several are defined: the seed runs DDL, and picking one would be a guess.
+	SeedSource string
 	// Seed is a .sql file applied at startup. Development only: it exists so
 	// an in-memory database has something in it, and a deployment that points
 	// this at a real DSN is running DDL on every restart.
@@ -59,6 +62,7 @@ func Load() (Server, error) {
 		DSN:         env("CRONOS_DSN", "file:cronos?mode=memory&cache=shared"),
 		SigningKey:  []byte(os.Getenv("CRONOS_SIGNING_KEY")),
 		Seed:        os.Getenv("CRONOS_SEED"),
+		SeedSource:  os.Getenv("CRONOS_SEED_SOURCE"),
 		AdminKey:    []byte(os.Getenv("CRONOS_ADMIN_KEY")),
 		Org:         env("CRONOS_ORG", "default"),
 		Project:     env("CRONOS_PROJECT", "default"),
