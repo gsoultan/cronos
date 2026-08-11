@@ -76,4 +76,20 @@ CREATE TABLE IF NOT EXISTS cronos_deliveries (
 -- without this it is a scan of every delivery ever made.
 CREATE INDEX IF NOT EXISTS cronos_deliveries_by_recipient
   ON cronos_deliveries (recipient, at DESC);
+
+CREATE TABLE IF NOT EXISTS cronos_users (
+  id         TEXT PRIMARY KEY,
+  -- Lowercased on the way in. Somebody typing Dewi@Acme.example at six in the
+  -- morning is the same person as dewi@acme.example, and a unique index that
+  -- disagrees lets them create a second account instead of failing to log in.
+  email      TEXT NOT NULL UNIQUE,
+  name       TEXT NOT NULL DEFAULT '',
+  password   TEXT NOT NULL,
+  org        TEXT NOT NULL,
+  project    TEXT NOT NULL,
+  role       TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  last_seen  TEXT,
+  disabled   INTEGER NOT NULL DEFAULT 0
+);
 `

@@ -12,28 +12,38 @@ export CRONOS_DEFINITIONS=demo/definitions
 export CRONOS_SEED=demo/seed.sql
 export CRONOS_ADDR="${CRONOS_ADDR:-:8794}"
 export CRONOS_ORG=acme CRONOS_PROJECT=finance
+# Users live in the definition store, so sign-in needs one.
+export CRONOS_STORE_DRIVER=sqlite
+export CRONOS_STORE_DSN="file:${TMPDIR:-/tmp}/cronos-live-users.db"
+rm -f "${TMPDIR:-/tmp}/cronos-live-users.db"
 PORT="${CRONOS_ADDR#:}"
 WEB_PORT="${PORTAL_PORT:-5174}"
 export CRONOS_ORIGINS="http://localhost:${WEB_PORT}"
 
-for p in "$PORT" "$WEB_PORT"; do
-  if lsof -ti "tcp:${p}" >/dev/null 2>&1; then
-    lsof -ti "tcp:${p}" | xargs kill 2>/dev/null || true
+free_port() {
+  if lsof -ti "tcp:$1" >/dev/null 2>&1; then
+    lsof -ti "tcp:$1" | xargs kill 2>/dev/null || true
     sleep 1
   fi
-done
+}
+
+for p in "$PORT" "$WEB_PORT"; do free_port "$p"; done
 
 go build -o bin/cronosd ./cmd/cronosd
 go build -o bin/cronos-token ./cmd/cronos-token
 
 ./bin/cronosd > /tmp/cronosd-portal.log 2>&1 &
 SERVER=$!
-trap 'kill $SERVER 2>/dev/null || true; kill $WEB 2>/dev/null || true' EXIT
+trap 'kill $SERVER 2>/dev/null || true; free_port "$WEB_PORT"' EXIT
 
 for _ in $(seq 1 40); do
   curl -sf -o /dev/null "http://localhost:${PORT}/v1/health" && break
   sleep 0.25
 done
+
+go build -o bin/cronos-user ./cmd/cronos-user
+echo "correct horse battery staple" | ./bin/cronos-user \
+  -email dewi@acme.example -name Dewi -org acme -project finance -role editor >/dev/null
 
 TOKEN="$(./bin/cronos-token -audience portal -role editor -org acme -project finance -subject dewi)"
 
@@ -49,3 +59,18 @@ for _ in $(seq 1 60); do
 done
 
 BASE="http://localhost:${WEB_PORT}" node apps/portal/scripts/live-portal-check.mjs
+
+# And again with no token baked in, so the portal has to sign somebody in.
+#
+# Killed by port, not by job id: $WEB is the subshell, and vite is its child —
+# killing the parent leaves the server listening, so the next instance loses
+# --strictPort and the old one keeps serving the token-baked build.
+free_port "$WEB_PORT"
+( cd apps/portal && VITE_CRONOS_API="http://localhost:${PORT}" \
+  bunx vite --port "$WEB_PORT" --strictPort > /tmp/portal-signin.log 2>&1 ) &
+WEB=$!
+for _ in $(seq 1 60); do
+  curl -sf -o /dev/null "http://localhost:${WEB_PORT}/" && break
+  sleep 0.5
+done
+BASE="http://localhost:${WEB_PORT}" node apps/portal/scripts/live-signin-check.mjs

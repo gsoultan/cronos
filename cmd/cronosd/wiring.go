@@ -162,3 +162,17 @@ func history(records *sqlstore.Store) api.History {
 	}
 	return records
 }
+
+// users adapts a possibly-absent store to the sign-in port.
+//
+// Sign-in needs somewhere to keep people, which is the definition store when
+// it is a database. A file-backed deployment has nowhere to put a password
+// hash, so the endpoint is not mounted at all rather than mounted and refusing
+// every attempt — a login that always fails is indistinguishable from a wrong
+// password and impossible to debug.
+func users(records *sqlstore.Store) api.Users {
+	if records == nil {
+		return nil
+	}
+	return records
+}

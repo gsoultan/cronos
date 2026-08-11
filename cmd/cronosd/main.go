@@ -83,14 +83,14 @@ func serve(log *slog.Logger) error {
 
 	handler := api.RoutesWith(repo, runner, signer, cfg.Origins, log,
 		publish.New(defs, repo).WithReports(repo), defs,
-		api.NewAdminKey(cfg.AdminKey, cfg.Org, cfg.Project), history(records))
+		api.NewAdminKey(cfg.AdminKey, cfg.Org, cfg.Project), history(records), users(records))
 
 	datasets, reports, schedules, sources := repo.Counts()
 	log.Info("cronosd listening",
 		"addr", cfg.Addr, "driver", cfg.Driver,
 		"datasets", datasets, "reports", reports, "schedules", schedules, "sources", sources,
 		"origins", cfg.Origins, "management", len(cfg.AdminKey) > 0,
-		"scheduler", cfg.Scheduler,
+		"scheduler", cfg.Scheduler, "sign-in", records != nil,
 		"auth", extension.Auth().Name(), "audit", extension.Audit().Name())
 
 	return listen(cfg.Addr, handler, log)

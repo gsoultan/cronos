@@ -16,7 +16,7 @@ import (
 // customer's business.
 func Routes(reports Reports, runner *run.Service, signer *token.Signer,
 	origins []string, log *slog.Logger) http.Handler {
-	return RoutesWith(reports, runner, signer, origins, log, nil, nil, nil, nil)
+	return RoutesWith(reports, runner, signer, origins, log, nil, nil, nil, nil, nil)
 }
 
 // RoutesWith adds the management API when an admin key is configured.
@@ -27,7 +27,8 @@ func Routes(reports Reports, runner *run.Service, signer *token.Signer,
 // probing.
 func RoutesWith(reports Reports, runner *run.Service, signer *token.Signer,
 	origins []string, log *slog.Logger,
-	pub *publish.Service, store publish.Store, admin *AdminKey, runs History) http.Handler {
+	pub *publish.Service, store publish.Store, admin *AdminKey, runs History,
+	users Users) http.Handler {
 
 	embed := NewEmbed(reports, runner, signer, log)
 	author := NewAuthor(signer, admin)
@@ -42,6 +43,13 @@ func RoutesWith(reports Reports, runner *run.Service, signer *token.Signer,
 	mux.HandleFunc("/v1/health", func(w http.ResponseWriter, _ *http.Request) {
 		send(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
+
+	// Sign-in exists only where there is somewhere to check credentials.
+	// Mounted against nothing it would refuse every attempt identically, which
+	// is indistinguishable from a wrong password and impossible to debug.
+	if users != nil {
+		mux.Handle("/v1/auth/login", NewAuth(users, signer, log))
+	}
 
 	// Management is open to an author with a portal token or to a pipeline
 	// with the shared key. Mounted when either can exist.

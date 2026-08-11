@@ -27,12 +27,85 @@ export interface ApiConfig {
   token: string
 }
 
+/** Where the API is, whether or not anybody has signed in. */
+export function apiBase(): string | null {
+  const base = import.meta.env.VITE_CRONOS_API as string | undefined
+  return base ? base.replace(/\/$/, '') : null
+}
+
 /** Where the API is, or null when the portal is running on samples. */
 export function apiConfig(): ApiConfig | null {
-  const base = import.meta.env.VITE_CRONOS_API as string | undefined
+  const base = apiBase()
   const token = (import.meta.env.VITE_CRONOS_TOKEN as string | undefined) ?? readToken()
   if (!base || !token) return null
-  return { base: base.replace(/\/$/, ''), token }
+  return { base, token }
+}
+
+/**
+ * Signs in and keeps the session.
+ *
+ * The token goes to localStorage, which is where it lives until there is a
+ * cookie to put it in — and it is worth being honest that this is the weaker
+ * of the two: a cookie can be HttpOnly and this cannot, so a script that runs
+ * on the page can read it. That is a trade taken knowingly for now, and the
+ * short lifetime is what limits it.
+ */
+export async function signIn(email: string, password: string) {
+  const base = apiBase()
+  if (!base) throw new ApiError(0, 'This portal is not connected to a server.')
+
+  const res = await fetch(base + '/v1/auth/login', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  })
+  if (!res.ok) throw new ApiError(res.status, await serverMessage(res))
+
+  const session = (await res.json()) as { token: string; expiresIn: number; user: SignedInUser }
+  globalThis.localStorage?.setItem('cronos.token', session.token)
+  globalThis.localStorage?.setItem('cronos.user', JSON.stringify(session.user))
+  return session
+}
+
+/** The event the shell listens for, so a session ending is not silent. */
+export const SIGNED_OUT = 'cronos:signed-out'
+
+/**
+ * Forgets the session, and says so.
+ *
+ * Clearing localStorage is not enough on its own: React has already decided
+ * what to render, so a token going stale mid-session would leave the shell up
+ * and every panel showing "unauthorised" with no way out. The event is what
+ * turns that into the sign-in page.
+ */
+export function signOut() {
+  globalThis.localStorage?.removeItem('cronos.token')
+  globalThis.localStorage?.removeItem('cronos.user')
+  globalThis.dispatchEvent?.(new Event(SIGNED_OUT))
+}
+
+export interface SignedInUser {
+  id: string
+  email: string
+  name?: string
+  org: string
+  project: string
+  role: string
+}
+
+/** Who is signed in, as far as the browser knows. */
+export function currentUser(): SignedInUser | null {
+  try {
+    const raw = globalThis.localStorage?.getItem('cronos.user')
+    return raw ? (JSON.parse(raw) as SignedInUser) : null
+  } catch {
+    return null
+  }
+}
+
+/** True when a server is configured but nobody has signed in. */
+export function needsSignIn(): boolean {
+  return apiBase() !== null && apiConfig() === null
 }
 
 /**
@@ -75,6 +148,14 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
     },
   })
 
+  if (res.status === 401) {
+    // The session is over. Clearing it here rather than at each call site is
+    // what makes the next render show the sign-in page instead of an error
+    // nobody can act on — a portal that says "unauthorised" and offers no way
+    // to fix it is a portal somebody reloads until it works.
+    signOut()
+    throw new ApiError(401, await serverMessage(res))
+  }
   if (!res.ok) throw new ApiError(res.status, await serverMessage(res))
   if (res.status === 204) return undefined as T
   return (await res.json()) as T

@@ -1,7 +1,14 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { Outlet, useRouterState } from '@tanstack/react-router'
 import { Header } from './Header'
 import { SampleBanner } from './SampleBanner'
+import { needsSignIn, SIGNED_OUT } from '../lib/api'
+
+/* Lazy, because the sign-in page pulls Mantine's password field and most loads
+   never show it — a signed-in author, and every load in sample mode. It was
+   ten kilobytes in the eager bundle for a page shown once a day. */
+const SignInPage = lazy(() =>
+  import('../routes/SignInPage').then((m) => ({ default: m.SignInPage })))
 import { NavRail } from './NavRail'
 import { WorkspaceSwitcher } from './WorkspaceSwitcher'
 import { useWorkspace } from '../lib/WorkspaceContext'
@@ -23,6 +30,10 @@ export function Shell() {
   const { collapsed, toggle } = useSidebar()
   const [drawer, setDrawer] = useState(false)
   const [theme, setTheme] = useState<'light' | 'dark'>('light')
+  /* Bumped after signing in, so the shell re-reads the session. A router
+     redirect would be tidier and would also mean the sign-in page has a URL
+     somebody can be sent to while their session is fine. */
+  const [session, setSession] = useState(0)
 
   /* Mantine keys its own dark steps off `data-mantine-color-scheme`; our tokens
      key off `data-theme`. Both are set from one state so they cannot disagree. */
@@ -36,6 +47,15 @@ export function Shell() {
      to, so leaving it open hides the result of the tap that opened it. */
   useEffect(() => { setDrawer(false) }, [path])
 
+  /* A session can end while somebody is looking at a page — a token expires,
+     or the server restarts with a new signing key. The request that discovers
+     it clears the session and says so; this is what listens. */
+  useEffect(() => {
+    const ended = () => setSession((n) => n + 1)
+    globalThis.addEventListener(SIGNED_OUT, ended)
+    return () => globalThis.removeEventListener(SIGNED_OUT, ended)
+  }, [])
+
   useEffect(() => {
     if (!drawer) return
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setDrawer(false) }
@@ -43,8 +63,20 @@ export function Shell() {
     return () => window.removeEventListener('keydown', onKey)
   }, [drawer])
 
+  /* A configured server with nobody signed in is the sign-in page and nothing
+     else — no shell, no navigation to pages that would only 401. Sample mode
+     never reaches here, which is what keeps the interface workable before a
+     server exists. */
+  if (needsSignIn()) {
+    return (
+      <Suspense fallback={<main className="min-h-screen bg-canvas" />}>
+        <SignInPage onSignedIn={() => setSession((n) => n + 1)} />
+      </Suspense>
+    )
+  }
+
   return (
-    <div className="min-h-full">
+    <div className="min-h-full" key={session}>
       <a href="#main" className="skip-link z-100 bg-surface px-4 py-2">Skip to content</a>
 
       <Header collapsed={collapsed} onToggleSidebar={toggle}

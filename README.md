@@ -118,6 +118,25 @@ The mode is announced in the shell rather than inferred. A reporting tool
 showing invented figures that look real is the worst thing this product could
 do, so "these are samples" is a statement the interface makes.
 
+### Signing in
+
+```bash
+export CRONOS_STORE_DSN=postgres://…        # users live in the definition store
+echo "correct horse battery staple" | go run ./cmd/cronos-user \
+  -email dewi@acme.example -name Dewi -org acme -project finance -role editor
+```
+
+A command rather than a first-run web form: a deployment that shows "create the
+first admin" to whoever reaches it is a deployment where the first visitor is
+whoever found the port. The password is read from a terminal or piped, never
+from a flag — a password on a command line is in the shell history, in the
+process list, and in whatever shipped that history somewhere.
+
+A session lasts eight hours and does not refresh; a token that renews itself is
+a permanent credential wearing an expiry. Every sign-in failure reads the same,
+and an unknown address costs the same to refuse as a known one — otherwise a
+stopwatch tells you who has an account.
+
 The portal never holds the admin key. That is a shared secret a deployment
 pipeline has, and a browser is the one place it must not be — anything in a
 browser is in a devtools console, a screenshot and a support ticket. It uses a
