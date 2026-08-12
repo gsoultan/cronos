@@ -17,7 +17,7 @@
   "sideEffects": false,
   "scripts": {
     "build": "vite build && tsc -p tsconfig.build.json",
-    "check": "tsc --noEmit && oxlint src && bun run build && node scripts/size-check.mjs",
+    "check": "bun run build && tsc --noEmit && oxlint src && node scripts/size-check.mjs",
     "size": "vite build && node scripts/size-check.mjs",
     "react": "bun run build && bun run harness && node scripts/react-check.mjs",
     "lint": "oxlint src",
