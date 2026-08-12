@@ -110,6 +110,24 @@ else
   export CRONOS_SEED="$WORK/seed.sql"
 fi
 
+# The burst's worker count, so "is eight the right default" is a question this
+# can answer rather than assert.
+if [ -n "${BURST_WORKERS:-}" ]; then
+  SCHED="$WORK/definitions/monthly-statements.yaml"
+  if LC_ALL=C grep -q "concurrency:" "$SCHED"; then
+    # Replaced, not added. Inserting a second `concurrency` into the same map
+    # is a duplicate key, which the decoder refuses — so the definition failed
+    # to load, the server did not start, and four runs reported the same
+    # number because none of them ran.
+    LC_ALL=C sed -i.bak "s/^\( *\)concurrency: [0-9]*/\1concurrency: ${BURST_WORKERS}/" "$SCHED"
+  else
+    LC_ALL=C sed -i.bak "s/^    bind:/    concurrency: ${BURST_WORKERS}\\
+    bind:/" "$SCHED"
+  fi
+  rm -f "$SCHED.bak"
+  echo "burst workers: $(LC_ALL=C grep -c 'concurrency:' "$SCHED") setting at ${BURST_WORKERS}"
+fi
+
 export CRONOS_SIGNING_KEY="${CRONOS_SIGNING_KEY:-development-key-at-least-32-bytes-long}"
 export CRONOS_DEFINITIONS="$WORK/definitions"
 export CRONOS_ORG=acme CRONOS_PROJECT=finance

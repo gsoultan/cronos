@@ -206,7 +206,7 @@ func (b *Service) finish(ctx context.Context, r history.Run, result Result) Resu
 func (b *Service) fan(ctx context.Context, s definition.Schedule, report definition.Report,
 	rows []Row, run Run, runID string, pr principal.Principal) Result {
 
-	workers := definition.DefaultConcurrency
+	workers := definition.DefaultConcurrency()
 	if s.Burst != nil {
 		workers = s.Burst.Workers()
 	}

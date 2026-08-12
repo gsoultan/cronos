@@ -18,7 +18,6 @@ spec:
       customer_id: "{{ .row.id }}"
       from: "{{ .run.periodStart }}"
       to: "{{ .run.periodEnd }}"
-    concurrency: 4
 
   deliver:
     - via: file

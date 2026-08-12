@@ -157,3 +157,27 @@ func TestAPoolThatSaysSomethingIsHonoured(t *testing.T) {
 		t.Errorf("idle for %s, lifetime %s", set.IdleFor(), set.LifetimeOf())
 	}
 }
+
+// Eight on every machine was two things at once: a fifth of the throughput
+// unused on fifteen cores, and four typesetters per core on a container with
+// two. The bounds are what make one number safe on both.
+func TestBurstConcurrencyFollowsTheMachineWithinBounds(t *testing.T) {
+	got := DefaultConcurrency()
+
+	if got < minConcurrency {
+		t.Errorf("%d is below the floor of %d — a worker spends most of its life "+
+			"waiting, so even one core wants several in flight", got, minConcurrency)
+	}
+	if got > maxConcurrency {
+		t.Errorf("%d is above the ceiling of %d — a burst is not supposed to be the "+
+			"only thing this process can do", got, maxConcurrency)
+	}
+}
+
+// A schedule that knows its own database says so, and is not second-guessed.
+func TestAStatedConcurrencyWins(t *testing.T) {
+	stated := BurstSpec{Concurrency: 3}
+	if stated.Workers() != 3 {
+		t.Fatalf("workers is %d", stated.Workers())
+	}
+}
