@@ -35,6 +35,7 @@ customer's warehouse at once.
 type Platform interface {
 	EveryPerson(ctx context.Context) ([]identity.User, error)
 	Tenants(ctx context.Context) ([]identity.Tenant, error)
+	AddPerson(ctx context.Context, u identity.User, password string) error
 	MovePerson(ctx context.Context, id, org, project, role string) error
 	DisableAnywhere(ctx context.Context, id string, disabled bool) error
 
@@ -92,6 +93,8 @@ func (h *PlatformAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.tenants(w, r)
 	case path == "/people" && r.Method == http.MethodGet:
 		h.people(w, r)
+	case path == "/people" && r.Method == http.MethodPost:
+		h.add(w, r, pr)
 	case strings.HasPrefix(path, "/people/") && r.Method == http.MethodPatch:
 		h.amend(w, r, pr, id)
 	case path == "/admins" && r.Method == http.MethodGet:
@@ -125,6 +128,71 @@ func (h *PlatformAPI) people(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	send(w, http.StatusOK, map[string]any{"people": out})
+}
+
+/*
+add creates an account in any tenant.
+
+Onboarding, which is what this tier is for and what it could not do. The
+password is chosen here rather than emailed, and that is a deliberate narrowing:
+an invitation is addressed to a project's own people by somebody who works with
+them, while this is a deployment operator standing up a customer who has no
+account, no project and nobody to invite them yet. They hand over the password
+and the person changes it, which is the same trade the CLI makes for the first
+account of all.
+*/
+func (h *PlatformAPI) add(w http.ResponseWriter, r *http.Request, pr principal.Principal) {
+	var in struct {
+		Email    string `json:"email"`
+		Name     string `json:"name"`
+		Org      string `json:"org"`
+		Project  string `json:"project"`
+		Role     string `json:"role"`
+		Password string `json:"password"`
+	}
+	if err := decodeJSON(w, r, &in); err != nil {
+		fail(w, http.StatusBadRequest,
+			"Send an email, an organisation, a project, a role and a password.")
+		return
+	}
+
+	switch {
+	case !strings.Contains(in.Email, "@"):
+		fail(w, http.StatusBadRequest, "That is not an email address.")
+		return
+	case in.Org == "" || in.Project == "":
+		fail(w, http.StatusBadRequest, "An account needs an organisation and a project.")
+		return
+	case !validRole(in.Role):
+		fail(w, http.StatusBadRequest, "A role is admin, editor or viewer.")
+		return
+	}
+	if err := identity.Acceptable(in.Password); err != nil {
+		fail(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	user := identity.User{
+		ID: identity.NewID(), Email: strings.TrimSpace(in.Email),
+		Name: strings.TrimSpace(in.Name),
+		// Named in the request, which is the whole point of this route and the
+		// one thing the ordinary /v1/people must never allow.
+		Org: in.Org, Project: in.Project, Role: in.Role,
+	}
+	if err := h.store.AddPerson(r.Context(), user, in.Password); err != nil {
+		if errors.Is(err, identity.ErrExists) {
+			fail(w, http.StatusConflict, "That email already has an account here.")
+			return
+		}
+		h.refuse(w, err)
+		return
+	}
+
+	h.log.Warn("account created in another project",
+		"user", user.ID, "in", user.Org+"/"+user.Project, "role", user.Role, "by", pr.Subject)
+	audit(r.Context(), h.log, pr, ActionPlatformAdd, user.Email, Allowed,
+		map[string]any{"org": user.Org, "project": user.Project, "role": user.Role})
+	send(w, http.StatusCreated, user)
 }
 
 type platformChange struct {

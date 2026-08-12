@@ -116,6 +116,13 @@ func (e *empty) EndSessions(context.Context, string) (time.Time, error) {
 }
 func (e *empty) EveryPerson(context.Context) ([]identity.User, error) { return e.people, nil }
 func (e *empty) Tenants(context.Context) ([]identity.Tenant, error)   { return nil, nil }
+func (e *empty) AddPerson(_ context.Context, u identity.User, _ string) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.people = append(e.people, u)
+	return nil
+}
+
 func (e *empty) MovePerson(context.Context, string, string, string, string) error {
 	return nil
 }

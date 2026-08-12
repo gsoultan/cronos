@@ -83,6 +83,26 @@ func (s *Store) Tenants(ctx context.Context) ([]identity.Tenant, error) {
 	return out, rows.Err()
 }
 
+/*
+AddPerson creates an account in any organisation and project.
+
+The verb this tier was missing. It could move somebody between organisations,
+turn their access off and grant administration — and it could not create the
+first account of a new customer, so onboarding meant adding the person to your
+own project through the ordinary endpoint and then moving them. A two-step
+workaround for the primary job of the tier.
+
+Unscoped, like everything else here, which is exactly the thing no project
+administrator may do: create an account somewhere they have no business.
+*/
+func (s *Store) AddPerson(ctx context.Context, u identity.User, password string) error {
+	if u.Org == "" || u.Project == "" {
+		return fmt.Errorf("%w: an account needs an organisation and a project",
+			identity.ErrBadCredentials)
+	}
+	return s.CreateUser(ctx, u, password)
+}
+
 // MovePerson changes where somebody works, and what they are there.
 //
 // Unscoped, so it can move an account from one organisation to another — the

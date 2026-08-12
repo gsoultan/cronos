@@ -1,6 +1,7 @@
 package api_test
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -183,4 +184,112 @@ func TestTheseRoutesNeedASession(t *testing.T) {
 	if w.Code != http.StatusUnauthorized {
 		t.Fatalf("answered %d", w.Code)
 	}
+}
+
+/*
+Onboarding, which is what this tier is for.
+
+It could move somebody between organisations, turn access off and grant
+administration — and it could not create the first account of a new customer.
+Onboarding meant adding the person to your own project through the ordinary
+endpoint and then moving them, which is a two-step workaround for the primary
+job of the whole tier.
+*/
+func TestAnAccountCanBeCreatedInAnyTenant(t *testing.T) {
+	rows := newEmpty()
+	signer, _ := token.NewSigner([]byte("0123456789abcdef0123456789abcdef"))
+	h := api.NewPlatformAPI(rows, api.NewAuthor(signer, nil), quiet())
+
+	// An operator whose own account is in acme, creating one in globex.
+	ops, err := signer.Mint(token.Claims{
+		Audience: token.Portal, Role: "viewer",
+		Org: "acme", Project: "finance", Subject: "usr_ops", Platform: true,
+	}, api.SessionLifetime)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	w := askPlatform(t, h, http.MethodPost, "/v1/platform/people", ops, map[string]string{
+		"email": "dewi@globex.example", "name": "Dewi",
+		"org": "globex", "project": "ops", "role": "admin",
+		"password": "a-password-for-dewi",
+	})
+	if w.Code != http.StatusCreated {
+		t.Fatalf("%d: %s", w.Code, w.Body)
+	}
+
+	rows.mu.Lock()
+	defer rows.mu.Unlock()
+	if len(rows.people) != 1 {
+		t.Fatalf("%d accounts created", len(rows.people))
+	}
+	made := rows.people[0]
+	if made.Org != "globex" || made.Project != "ops" || made.Role != "admin" {
+		t.Fatalf("created in %s/%s as %s", made.Org, made.Project, made.Role)
+	}
+}
+
+// And an ordinary project administrator cannot, which is the whole difference
+// between this route and /v1/people.
+func TestOnlyThisTierCanCreateAnAccountElsewhere(t *testing.T) {
+	rows := newEmpty()
+	signer, _ := token.NewSigner([]byte("0123456789abcdef0123456789abcdef"))
+	h := api.NewPlatformAPI(rows, api.NewAuthor(signer, nil), quiet())
+
+	ordinary, _ := signer.Mint(token.Claims{
+		Audience: token.Portal, Role: "admin",
+		Org: "acme", Project: "finance", Subject: "usr_ada",
+	}, api.SessionLifetime)
+
+	w := askPlatform(t, h, http.MethodPost, "/v1/platform/people", ordinary, map[string]string{
+		"email": "dewi@globex.example", "org": "globex", "project": "ops",
+		"role": "admin", "password": "a-password-for-dewi",
+	})
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("a project administrator created an account elsewhere: %d", w.Code)
+	}
+	rows.mu.Lock()
+	defer rows.mu.Unlock()
+	if len(rows.people) != 0 {
+		t.Fatal("an account was created")
+	}
+}
+
+// A weak password is refused here too. This is the one place an account is
+// created for somebody who is not present to choose their own.
+func TestAnAccountCreatedElsewhereStillNeedsARealPassword(t *testing.T) {
+	rows := newEmpty()
+	signer, _ := token.NewSigner([]byte("0123456789abcdef0123456789abcdef"))
+	h := api.NewPlatformAPI(rows, api.NewAuthor(signer, nil), quiet())
+	ops, _ := signer.Mint(token.Claims{
+		Audience: token.Portal, Role: "viewer",
+		Org: "acme", Project: "finance", Subject: "usr_ops", Platform: true,
+	}, api.SessionLifetime)
+
+	for _, bad := range []map[string]string{
+		{"email": "d@globex.example", "org": "globex", "project": "ops", "role": "admin", "password": "short"},
+		{"email": "not-an-address", "org": "globex", "project": "ops", "role": "admin", "password": "a-password-for-dewi"},
+		{"email": "d@globex.example", "org": "", "project": "ops", "role": "admin", "password": "a-password-for-dewi"},
+		{"email": "d@globex.example", "org": "globex", "project": "ops", "role": "owner", "password": "a-password-for-dewi"},
+	} {
+		if w := askPlatform(t, h, http.MethodPost, "/v1/platform/people", ops, bad); w.Code != http.StatusBadRequest {
+			t.Fatalf("%v answered %d", bad, w.Code)
+		}
+	}
+}
+
+// askPlatform drives one platform request.
+func askPlatform(t *testing.T, h *api.PlatformAPI, method, path, session string,
+	body map[string]string) *httptest.ResponseRecorder {
+	t.Helper()
+
+	encoded, _ := json.Marshal(body)
+	r := httptest.NewRequest(method, path, strings.NewReader(string(encoded)))
+	r.Header.Set("Content-Type", "application/json")
+	if session != "" {
+		r.Header.Set("Authorization", "Bearer "+session)
+	}
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	return w
 }

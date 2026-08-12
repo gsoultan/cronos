@@ -306,8 +306,16 @@ it was told, and says so in the log if a first run names something else.
 A tier above organisations, for whoever runs the servers. **Settings →
 Deployment**, visible only to an account that holds it.
 
-It can list every tenant and every account, move somebody from one organisation
-to another, turn access off anywhere, and grant or revoke itself.
+It can list every tenant and every account, **create the first account of an
+organisation that has none**, move somebody from one organisation to another,
+turn access off anywhere, and grant or revoke itself.
+
+Creating one names the organisation and project, which is the single thing no
+project administrator may do — `/v1/people` always creates into the caller's own
+project. The password is chosen rather than emailed: an invitation is addressed
+to a project's own people by somebody who works with them, and this is a
+deployment operator standing up a customer who has no account, no project and
+nobody to invite them yet.
 
 It **cannot read any project's data**. Opening a report, running a query or
 seeing a dataset still requires membership in that project — `Principal.Platform`

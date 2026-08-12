@@ -753,6 +753,24 @@ export function everyPerson() {
   return call<{ people: Person[] }>('/v1/platform/people')
 }
 
+/**
+ * Creates an account in any organisation and project.
+ *
+ * Onboarding a customer, which is the one change no project administrator can
+ * make — `/v1/people` always creates into the caller's own project, and this
+ * names where. The password is chosen rather than emailed: the person has no
+ * account, no project and nobody to invite them yet.
+ */
+export function addAnywhere(person: {
+  email: string; name: string; org: string; project: string
+  role: string; password: string
+}) {
+  return call<Person>('/v1/platform/people', {
+    method: 'POST',
+    body: JSON.stringify(person),
+  })
+}
+
 /** Moves somebody to another project, or turns their access off. */
 export function amendAnywhere(id: string, change: {
   org?: string; project?: string; role?: string; disabled?: boolean

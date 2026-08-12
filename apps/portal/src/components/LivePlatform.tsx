@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Button, Select, TextInput } from '@mantine/core'
+import { Button, PasswordInput, Select, TextInput } from '@mantine/core'
 import { Field } from './form/Field'
 import { EmptyState } from './EmptyState'
 import {
-  amendAnywhere, ApiError, everyPerson, grantPlatform, type Person,
+  addAnywhere, amendAnywhere, ApiError, everyPerson, grantPlatform, type Person,
   platformAdmins, revokePlatform, type Tenant, tenants,
 } from '../lib/api'
 
@@ -42,9 +42,100 @@ export function LivePlatform({ me }: { me: string }) {
         </p>
       )}
       <Tenants onRefused={setRefused} />
+      <Onboard onDone={() => setReloads((n) => n + 1)} onRefused={setRefused} />
       <Administrators me={me} onChanged={() => setReloads((n) => n + 1)} onRefused={setRefused} />
       <Everybody me={me} onChanged={() => setReloads((n) => n + 1)} onRefused={setRefused} />
     </div>
+  )
+}
+
+/**
+ * Standing up a new customer.
+ *
+ * The verb this panel was missing. Everything else here changes an account that
+ * exists; a deployment operator's first job with a new customer is that there is
+ * no account, no project and nobody to invite them — so the password is chosen
+ * here and handed over, the same trade the command line makes for the very
+ * first account.
+ */
+function Onboard({ onDone, onRefused }: {
+  onDone: () => void
+  onRefused: (m: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [email, setEmail] = useState('')
+  const [name, setName] = useState('')
+  const [org, setOrg] = useState('')
+  const [project, setProject] = useState('')
+  const [role, setRole] = useState<string>('admin')
+  const [password, setPassword] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const ready = email.includes('@') && org.trim() !== '' && project.trim() !== ''
+    && password.trim().length >= 12
+
+  return (
+    <section className={CARD} data-testid="platform-onboard">
+      <div className={HEAD}>
+        <div>
+          <h2 className="text-lead font-semibold text-ink">Add a customer</h2>
+          <p className="mt-1 max-w-[68ch] text-small text-ink-secondary">
+            Creates the first account of an organisation that has none. Everything
+            else on this page changes an account that already exists.
+          </p>
+        </div>
+        <Button onClick={() => setOpen((v) => !v)} data-testid="onboard-toggle">
+          {open ? 'Cancel' : 'Add a customer'}
+        </Button>
+      </div>
+
+      {open && (
+        <div className="grid gap-4 p-4 md:grid-cols-2">
+          <Field label="Email">
+            <TextInput type="email" value={email} data-testid="onboard-email"
+              onChange={(e) => setEmail(e.currentTarget.value)} />
+          </Field>
+          <Field label="Name" required={false}>
+            <TextInput value={name} onChange={(e) => setName(e.currentTarget.value)} />
+          </Field>
+          <Field label="Organisation">
+            <TextInput value={org} data-testid="onboard-org" placeholder="globex"
+              onChange={(e) => setOrg(e.currentTarget.value)} />
+          </Field>
+          <Field label="Project">
+            <TextInput value={project} data-testid="onboard-project" placeholder="ops"
+              onChange={(e) => setProject(e.currentTarget.value)} />
+          </Field>
+          <Field label="Role">
+            <Select data={ROLES} value={role} allowDeselect={false}
+              onChange={(v) => setRole(v ?? 'admin')} />
+          </Field>
+          <Field label="First password"
+            help="Give it to them directly. They change it themselves from Account.">
+            <PasswordInput value={password} data-testid="onboard-password"
+              onChange={(e) => setPassword(e.currentTarget.value)} />
+          </Field>
+          <div className="md:col-span-2">
+            <Button disabled={!ready} loading={busy} data-testid="onboard-save"
+              onClick={() => {
+                setBusy(true)
+                onRefused('')
+                addAnywhere({ email, name, org, project, role, password })
+                  .then(() => {
+                    setOpen(false)
+                    setEmail(''); setName(''); setOrg(''); setProject(''); setPassword('')
+                    onDone()
+                  })
+                  .catch((err: unknown) =>
+                    onRefused(err instanceof ApiError ? err.message : 'Could not create it.'))
+                  .finally(() => setBusy(false))
+              }}>
+              Create the account
+            </Button>
+          </div>
+        </div>
+      )}
+    </section>
   )
 }
 

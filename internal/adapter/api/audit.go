@@ -28,6 +28,7 @@ const (
 	// somebody reads when asking "who reached across tenants, and when" — and
 	// mixed in with ordinary project administration they are impossible to
 	// find.
+	ActionPlatformAdd     = "platform.person.add"
 	ActionPlatformMove    = "platform.person.move"
 	ActionPlatformDisable = "platform.person.disable"
 	ActionPlatformEnable  = "platform.person.enable"

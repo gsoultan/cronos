@@ -211,4 +211,37 @@ ok "and the next sign-in carries it"
 	die "the CLI reset the password it was given on stdin"
 ok "without touching the password it never asked for"
 
+# --- onboarding a customer ------------------------------------------------------
+
+say "Standing up a customer that has no account at all"
+
+# The verb this tier was missing. Before it, onboarding meant adding the person
+# to your own project through the ordinary endpoint and then moving them — a
+# two-step workaround for the primary job of the whole tier.
+made=$(post POST /v1/platform/people \
+	'{"email":"ops@globex.example","name":"Rin","org":"globex","project":"warehouse","role":"admin","password":"a-password-for-rin"}' \
+	-H "Authorization: Bearer $rescued")
+case "$made" in
+*'"org":"globex"'*) ;;
+*) printf '  %s\n' "$made"; die "the account was not created in globex" ;;
+esac
+case "$made" in
+*'"project":"warehouse"'*) ;;
+*) die "the account is in the wrong project" ;;
+esac
+ok "created directly in globex/warehouse"
+
+# And it works: they can sign in, which is what "onboarded" has to mean.
+theirs2=$(curl -s "$API/v1/auth/login" -H 'content-type: application/json' \
+	-d '{"email":"ops@globex.example","password":"a-password-for-rin"}' | token)
+[ -n "$theirs2" ] || die "the new customer cannot sign in"
+ok "and they can sign in"
+
+# The same request from an ordinary project administrator reaches nothing. This
+# is the one change no project administrator may make, which is why it lives
+# behind the platform check rather than beside /v1/people.
+[ "$(code POST /v1/platform/people '{"email":"x@evil.example","org":"acme-logistics","project":"finance","role":"admin","password":"a-password-for-them"}' -H "Authorization: Bearer $theirs2")" = 404 ] ||
+	die "an ordinary administrator created an account in another organisation"
+ok "and an ordinary administrator cannot do the same"
+
 say "All of it worked."
