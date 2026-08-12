@@ -6,22 +6,18 @@ import { ChangePassword } from '../components/ChangePassword'
 import { Tag } from '../components/StatusPill'
 import { TwoFactorSetup } from '../forms/TwoFactorSetup'
 import { relativeTime } from '../lib/format'
-import { endSession } from '../lib/api'
+import { ApiError, endOtherSessions, endSession } from '../lib/api'
 import type { Factor, FactorKind } from '../lib/security'
 
 const CARD = 'mb-4 overflow-hidden rounded-lg border border-line bg-surface shadow-card'
 const HEAD = 'flex flex-wrap items-center justify-between gap-4 border-b border-line p-4'
 
-const SESSIONS = [
-  { id: 's1', device: 'MacBook Pro · Chrome', where: 'Jakarta, ID', at: '2026-08-11T05:20:00Z', current: true },
-  { id: 's2', device: 'iPhone · Safari', where: 'Jakarta, ID', at: '2026-08-10T21:04:00Z' },
-  { id: 's3', device: 'Windows · Edge', where: 'Singapore, SG', at: '2026-08-04T09:31:00Z' },
-]
 
 export function AccountPage() {
   const [enrolling, setEnrolling] = useState(false)
   const [factors, setFactors] = useState<Factor[]>([])
-  const [sessions, setSessions] = useState(SESSIONS)
+  const [ending, setEnding] = useState(false)
+  const [ended, setEnded] = useState('')
 
   if (enrolling) {
     return (
@@ -133,35 +129,40 @@ export function AccountPage() {
       <section className={CARD}>
         <div className={HEAD}>
           <div>
-            <h2 className="text-lead font-semibold text-ink">Where you are signed in</h2>
+            <h2 className="text-lead font-semibold text-ink">Sessions</h2>
             <p className="mt-1 text-small text-ink-secondary">
-              Signing out a device does not change your password.
+              Signing in gives your browser a token that lasts eight hours. There
+              is no list of devices here because there is none to show — nothing
+              is recorded when a session starts, so one cannot be told from
+              another.
             </p>
           </div>
-          <Button variant="default"
-            onClick={() => setSessions((s) => s.filter((x) => x.current))}>
+          <Button variant="default" color="red" loading={ending}
+            data-testid="end-sessions"
+            onClick={() => {
+              setEnding(true)
+              setEnded('')
+              endOtherSessions()
+                .then(() => setEnded('Done. Every other session has ended.'))
+                .catch((err: unknown) =>
+                  setEnded(err instanceof ApiError ? err.message : 'Could not end them.'))
+                .finally(() => setEnding(false))
+            }}>
             Sign out everywhere else
           </Button>
         </div>
-        <ul>
-          {sessions.map((s) => (
-            <li key={s.id}
-              className="flex flex-wrap items-center gap-4 border-b border-line px-4 py-3 last:border-b-0">
-              <span className="min-w-[220px] flex-1 font-medium text-ink">
-                {s.device}
-                {s.current && <Tag>this device</Tag>}
-              </span>
-              <span className="text-small text-ink-secondary">{s.where}</span>
-              <span className="text-caption text-ink-muted">{relativeTime(s.at)}</span>
-              {!s.current && (
-                <Button variant="subtle" color="gray" size="xs"
-                  onClick={() => setSessions((all) => all.filter((x) => x.id !== s.id))}>
-                  Sign out
-                </Button>
-              )}
-            </li>
-          ))}
-        </ul>
+        <div className="px-4 py-3">
+          <p className="text-small text-ink-secondary">
+            What this does instead is end every session at once and give this
+            browser a new one — so you stay signed in here and every other
+            machine is signed out. Press it if a laptop or phone has gone
+            missing. It does not change your password.
+          </p>
+          {ended && (
+            <p role="status" data-testid="sessions-ended"
+              className="mt-3 text-small text-ink">{ended}</p>
+          )}
+        </div>
       </section>
 
       <section className={CARD}>

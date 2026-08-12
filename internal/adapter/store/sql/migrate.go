@@ -92,6 +92,32 @@ CREATE TABLE IF NOT EXISTS cronos_invitations (
 -- Listing what is outstanding, per project, is the common read.
 CREATE INDEX IF NOT EXISTS cronos_invitations_by_project
   ON cronos_invitations (org, project, accepted_at);`,
+	}, {
+		ID:   4,
+		Name: "when an account's sessions were last cut",
+		/*
+		   A portal token is signed and stateless, so there is no list of
+		   sessions to revoke — which meant "sign out everywhere" could not be
+		   built, and the interface offered it anyway. One timestamp per account
+		   is the whole mechanism: every token minted before it is refused.
+
+		   Its own table rather than a column on cronos_users, for two reasons.
+		   Schema() is the concatenation of every migration and a fresh install
+		   applies all of it, so a migration that is not idempotent breaks the
+		   adoption of an existing database — and ALTER TABLE ADD COLUMN is not
+		   idempotent on either driver without writing two dialects of it.
+
+		   And it reads better: cronos_users says who somebody is, and this says
+		   something that happened to them.
+		*/
+		SQL: `
+CREATE TABLE IF NOT EXISTS cronos_sessions_cut (
+  user_id TEXT PRIMARY KEY,
+  -- Rounded up to the next second when written. A token's issue time has
+  -- second granularity, so a line drawn inside a second cannot be told from
+  -- the sessions minted during that same second.
+  at      TEXT NOT NULL
+);`,
 	},
 }
 

@@ -13,14 +13,15 @@ import (
 // call sites, because an audit is queried by action and a typo makes one
 // action into two that nobody notices until the query returns half of it.
 const (
-	ActionRead      = "report.read"
-	ActionPublish   = "definition.publish"
-	ActionDelete    = "definition.delete"
-	ActionShare     = "share.create"
-	ActionShareOpen = "share.open"
-	ActionRevoke    = "share.revoke"
-	ActionSignIn    = "auth.signin"
-	ActionSignOut   = "auth.signout"
+	ActionRead        = "report.read"
+	ActionPublish     = "definition.publish"
+	ActionDelete      = "definition.delete"
+	ActionShare       = "share.create"
+	ActionShareOpen   = "share.open"
+	ActionRevoke      = "share.revoke"
+	ActionSignIn      = "auth.signin"
+	ActionSignOut     = "auth.signout"
+	ActionSessionsEnd = "auth.sessions.end"
 	// Who has access, and every change to it. The one part of an audit that
 	// answers "how did they still have a login in March".
 	ActionPersonAdd     = "person.add"

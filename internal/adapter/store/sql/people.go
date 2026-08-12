@@ -145,14 +145,80 @@ It is safe to serve a subject nobody has because this store never deletes a
 person: leaving is disabling, and the row stays. So "unknown" means "not one of
 our accounts" rather than "an account that used to be here".
 */
-func (s *Store) Active(ctx context.Context, id string) (known, active bool) {
+func (s *Store) Active(ctx context.Context, id string) (known, active bool, since time.Time) {
 	var disabled bool
-	err := s.db.QueryRowContext(ctx, s.sql(
-		`SELECT disabled FROM cronos_users WHERE id = ?`), id).Scan(&disabled)
+	var from sql.NullString
+
+	// A left join, because most accounts have never had their sessions cut and
+	// an inner one would report every one of them as unknown — which reads as
+	// "machine credential" and would wave a disabled account straight through.
+	err := s.db.QueryRowContext(ctx, s.sql(`
+		SELECT u.disabled, c.at
+		FROM cronos_users u
+		LEFT JOIN cronos_sessions_cut c ON c.user_id = u.id
+		WHERE u.id = ?`), id).
+		Scan(&disabled, &from)
 	if err != nil {
-		return false, false
+		return false, false, time.Time{}
 	}
-	return true, !disabled
+	if from.Valid {
+		since = unstamp(from.String)
+	}
+	return true, !disabled, since
+}
+
+/*
+EndSessions draws the line: every token minted before now stops working.
+
+The one control that helps somebody whose laptop was taken. There is no list of
+sessions to walk — a portal token is signed and carries no server-side record —
+so this is a timestamp, and the standing check every request already makes is
+where it takes effect.
+
+Their own account only, which the caller enforces by passing the acting
+subject. An administrator ending somebody else's sessions is `SetDisabled`, and
+those are different things: one is "I lost my phone" and the other is "they no
+longer work here".
+*/
+func (s *Store) EndSessions(ctx context.Context, id string) (time.Time, error) {
+	/*
+	   The next second, not this one.
+
+	   A token's `iat` has second granularity, so a line drawn at 12:00:03.750
+	   and a session minted at 12:00:03.100 are indistinguishable — and the
+	   comparison has to spare same-second tokens, or the replacement this
+	   endpoint mints is refused by the line it just drew. Driving it with two
+	   real browsers found exactly that: a phone signed in 900ms before the
+	   button was pressed survived it.
+
+	   Rounding up removes the ambiguity instead of narrowing it. Everything
+	   minted up to and including this second is on the far side; the
+	   replacement is dated at the boundary and is the first token on this one.
+	   The cost is that the replacement's `iat` is up to a second in the future,
+	   which is well inside the 30 seconds of skew a token is already verified
+	   with.
+	*/
+	line := s.now().Truncate(time.Second).Add(time.Second)
+
+	// The account has to exist. Writing a cut for a subject that is not one
+	// here would record a security event about nobody, and the caller wants to
+	// be told rather than reassured.
+	var exists int
+	if err := s.db.QueryRowContext(ctx, s.sql(
+		`SELECT COUNT(*) FROM cronos_users WHERE id = ?`), id).Scan(&exists); err != nil {
+		return time.Time{}, err
+	}
+	if exists == 0 {
+		return time.Time{}, identity.ErrNoUser
+	}
+
+	if _, err := s.db.ExecContext(ctx, s.sql(`
+		INSERT INTO cronos_sessions_cut (user_id, at) VALUES (?, ?)
+		ON CONFLICT (user_id) DO UPDATE SET at = EXCLUDED.at`),
+		id, stamp(line)); err != nil {
+		return time.Time{}, err
+	}
+	return line, nil
 }
 
 func scanUser(row scanner) (identity.User, error) {

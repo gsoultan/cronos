@@ -616,6 +616,28 @@ export function amendPerson(id: string, change: { role?: string; disabled?: bool
   })
 }
 
+/**
+ * Ends every other session this account has.
+ *
+ * There is no list of devices to choose from and there cannot be: a portal
+ * token is signed and carries no server-side record, so nothing distinguishes
+ * one from another. What the server draws is a line in time that every token is
+ * checked against, and it hands this browser a fresh one on the right side of
+ * it — so the effect is "everywhere else", achieved without pretending to know
+ * what a device is.
+ */
+export async function endOtherSessions(): Promise<void> {
+  const replacement = await call<{ token?: string } | undefined>(
+    '/v1/auth/sessions/end', { method: 'POST' })
+
+  // Swapped in before the next call goes out. Without this the very next
+  // request carries a token the server has just invalidated, and pressing the
+  // button would sign this browser out too.
+  if (replacement?.token) {
+    globalThis.localStorage?.setItem('cronos.token', replacement.token)
+  }
+}
+
 /** Changes your own password, having proved you know the current one. */
 export function changePassword(current: string, next: string) {
   return call<void>('/v1/auth/password', {

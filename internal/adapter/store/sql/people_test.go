@@ -40,14 +40,14 @@ func TestDisablingRefusesTheNextSignIn(t *testing.T) {
 		t.Fatal("a disabled account signed in with the right password")
 	}
 	// And the running check that a live session is tested against.
-	if known, active := s.Active(ctx, person.ID); !known || active {
+	if known, active, _ := s.Active(ctx, person.ID); !known || active {
 		t.Fatalf("a disabled account: known=%v active=%v", known, active)
 	}
 
 	/* A subject that is not an account here is a machine credential — a
 	   pipeline's token, or one baked into a portal build. Collapsing that into
 	   "not allowed" locked every one of them out. */
-	if known, _ := s.Active(ctx, "dewi"); known {
+	if known, _, _ := s.Active(ctx, "dewi"); known {
 		t.Fatal("a subject nobody has was reported as an account")
 	}
 
@@ -120,7 +120,7 @@ func TestOneProjectCannotSeeOrTouchAnothersPeople(t *testing.T) {
 		t.Fatalf("another project changed our person's role: %v", err)
 	}
 	// And ours is untouched.
-	if _, active := s.Active(ctx, "usr_ours"); !active {
+	if _, active, _ := s.Active(ctx, "usr_ours"); !active {
 		t.Fatal("our person was disabled by somebody else's administrator")
 	}
 }

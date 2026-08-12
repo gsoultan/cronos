@@ -7,9 +7,11 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gsoultan/cronos/internal/core/identity"
 	"github.com/gsoultan/cronos/internal/core/principal"
+	"github.com/gsoultan/cronos/internal/platform/token"
 )
 
 // Roster is what the API may ask about the people in a project.
@@ -19,6 +21,10 @@ type Roster interface {
 	SetRole(ctx context.Context, pr principal.Principal, id, role string) error
 	SetDisabled(ctx context.Context, pr principal.Principal, id string, disabled bool) error
 	ChangePassword(ctx context.Context, id, current, next string) error
+	// EndSessions draws a line: every token this account holds stops working.
+	// It returns where it drew it, so the caller can mint itself one on the
+	// near side rather than guessing at a clock it does not own.
+	EndSessions(ctx context.Context, id string) (time.Time, error)
 }
 
 /*
@@ -439,4 +445,106 @@ func (h *People) addressOf(ctx context.Context, pr principal.Principal) string {
 		}
 	}
 	return ""
+}
+
+/*
+Sessions is the one control that helps somebody whose laptop was taken.
+
+A portal token is signed and carries no server-side record, so there is no list
+of sessions to show and no way to end one and keep another. What there is, is a
+line: a timestamp on the account that every token is checked against. Pressing
+this draws it, which ends every session at once — and then mints one new token
+for the browser that pressed it, so what the person experiences is "everywhere
+else".
+
+The limit is real and the interface says so rather than offering a list of
+devices it cannot produce. Nothing here is per-device, per-city or per-browser.
+Those were invented, and invented security data is worse than none: somebody
+reads "2 devices, Singapore" and believes it.
+*/
+type Sessions struct {
+	roster Roster
+	auth   Principals
+	// signer mints the caller a fresh token, which is what turns "sign out
+	// everywhere" into "everywhere else".
+	signer *token.Signer
+	log    *slog.Logger
+}
+
+// NewSessions wires the handler.
+func NewSessions(r Roster, a Principals, s *token.Signer, log *slog.Logger) *Sessions {
+	return &Sessions{roster: r, auth: a, signer: s, log: log}
+}
+
+/*
+ServeHTTP handles POST /v1/auth/sessions/end.
+
+Their own account and nobody else's, which needs no permission check beyond
+having a session: the subject comes from the token, never from the request. An
+administrator ending somebody else's access is PATCH /v1/people/{id} with
+`disabled`, and the two are different acts — one is "I lost my phone", the other
+is "they no longer work here".
+*/
+func (h *Sessions) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		fail(w, http.StatusMethodNotAllowed, "Use POST.")
+		return
+	}
+	pr, ok := h.auth.Principal(r)
+	if !ok {
+		fail(w, http.StatusUnauthorized, "Not authorised.")
+		return
+	}
+
+	line, err := h.roster.EndSessions(r.Context(), pr.Subject)
+	if err != nil {
+		if errors.Is(err, identity.ErrNoUser) {
+			// A machine credential, which has no account and therefore no
+			// sessions to end. Nothing happened and saying so is honest.
+			fail(w, http.StatusNotFound, "This credential has no sessions to end.")
+			return
+		}
+		h.log.Error("could not end sessions", "user", pr.Subject, "err", err)
+		fail(w, http.StatusInternalServerError, "Could not end your sessions.")
+		return
+	}
+
+	h.log.Info("sessions ended", "user", pr.Subject)
+	audit(r.Context(), h.log, pr, ActionSessionsEnd, pr.Subject, Allowed, nil)
+
+	/*
+	   And a new session for whoever pressed it, which is what makes this
+	   "everywhere else" rather than "everywhere".
+
+	   The line refuses every token minted before it, including the caller's —
+	   so without this, ending your sessions from a stolen-laptop panic would
+	   also bounce you to a password prompt at the worst possible moment.
+	   Minting one now puts this browser on the right side of the line and
+	   leaves every other device on the wrong one.
+
+	   Handed back rather than set as a cookie, because that is how every other
+	   session in this API travels.
+	*/
+	// Dated at the line rather than at now: the store decides where the line
+	// falls and says so, and this token has to be the first one on the near
+	// side of it. Reading a clock here instead would be two clocks agreeing by
+	// luck.
+	issued, err := h.signer.WithClock(func() time.Time { return line }).
+		Mint(token.Claims{
+			Audience: token.Portal, Role: string(pr.ProjectRole),
+			Org: pr.OrgID, Project: pr.ProjectID, Subject: pr.Subject,
+		}, SessionLifetime)
+	if err != nil {
+		// The sessions did end — that write already happened. This browser is
+		// simply on the wrong side of the line now, like the others, and
+		// signing in again is the whole of the remedy.
+		h.log.Error("could not mint a session after ending them", "err", err)
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	send(w, http.StatusOK, map[string]any{
+		"token":     issued,
+		"expiresIn": int(SessionLifetime.Seconds()),
+	})
 }

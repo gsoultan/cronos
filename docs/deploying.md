@@ -158,3 +158,33 @@ an address kept by accident.
 Runs a real SMTP server and a real database, invites somebody, reads the message
 out of the mailbox, follows the link, and then checks the two things that matter
 most: that the link does not work twice, and that replaying it changes nothing.
+
+## Ending sessions
+
+A portal token is signed and stateless: nothing is written when one is minted,
+so there is no list of sessions to show and no way to end one and keep another.
+The account page used to offer "sign out everywhere else" over a list of devices
+and cities that were invented in the browser — a control that did nothing beside
+data that was not true.
+
+What replaced it is one timestamp per account, in `cronos_sessions_cut`. Every
+request already asks whether the account is still active; it now also asks when
+its sessions were cut, and refuses any token minted before that. `POST
+/v1/auth/sessions/end` draws the line and hands the calling browser a fresh
+token dated at it — so the person who pressed the button stays signed in and
+every other machine is signed out.
+
+The line falls on the **next second boundary**, not on the current instant. A
+token's `iat` has second granularity, so a line drawn part-way through a second
+cannot be told from a session minted earlier in that same second — driving it
+with two real browsers found exactly that, and rounding up removes the ambiguity
+instead of narrowing it. The replacement token's `iat` is therefore up to a
+second in the future, well inside the 30 seconds of skew every token is already
+verified with.
+
+It takes effect within about five seconds, which is how long the standing answer
+is cached — the same trade already made for disabling somebody.
+
+```bash
+./scripts/live-sessions.sh
+```
