@@ -77,7 +77,7 @@ func TestEachDatasetReachesTheSourceItNames(t *testing.T) {
 	reg, err := registry.New([]definition.DataSource{
 		source("warehouse", seed(t, "warehouse", "from-warehouse", 1)),
 		source("archive", seed(t, "archive", "from-lake", 1)),
-	}, quiet())
+	}, nil, quiet())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +129,7 @@ func readID(t *testing.T, reg *registry.Registry, ds definition.Dataset) string 
 func TestAnUnknownSourceIsRefused(t *testing.T) {
 	reg, err := registry.New([]definition.DataSource{
 		source("warehouse", seed(t, "warehouse", "x", 1)),
-	}, quiet())
+	}, nil, quiet())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,7 +150,7 @@ func TestFederationSaysWhatItNeeds(t *testing.T) {
 	reg, err := registry.New([]definition.DataSource{
 		source("warehouse", seed(t, "warehouse", "a", 1)),
 		source("archive", seed(t, "archive", "b", 1)),
-	}, quiet())
+	}, nil, quiet())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,7 +173,7 @@ func TestFederationSaysWhatItNeeds(t *testing.T) {
 func TestAnObjectStoreAloneStillNeedsAnEngine(t *testing.T) {
 	reg, err := registry.New([]definition.DataSource{{
 		Name: "lake", Driver: "object-store", URI: "s3://b/x", Format: "parquet",
-	}}, quiet())
+	}}, nil, quiet())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -189,7 +189,7 @@ func TestAnObjectStoreAloneStillNeedsAnEngine(t *testing.T) {
 func TestASourceThatWillNotOpenStopsStartup(t *testing.T) {
 	_, err := registry.New([]definition.DataSource{
 		{Name: "warehouse", Driver: "oracle", DSN: "x"},
-	}, quiet())
+	}, nil, quiet())
 	if err == nil {
 		t.Fatal("a driver nobody implements was accepted")
 	}
@@ -204,7 +204,7 @@ func TestTheRowCapIsEnforced(t *testing.T) {
 	src := source("warehouse", seed(t, "warehouse", "x", 50))
 	src.Limits.MaxRows = 10
 
-	reg, err := registry.New([]definition.DataSource{src}, quiet())
+	reg, err := registry.New([]definition.DataSource{src}, nil, quiet())
 	if err != nil {
 		t.Fatal(err)
 	}

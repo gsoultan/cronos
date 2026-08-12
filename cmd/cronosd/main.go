@@ -100,11 +100,24 @@ func serve(log *slog.Logger) error {
 		}()
 	}
 
-	handler := api.RoutesWith(repo, runner, signer, cfg.Origins, log,
-		publishing(defs, repo, records), defs,
-		api.NewAdminKey(cfg.AdminKey, cfg.Org, cfg.Project), history(records), users(records),
-		repo, armed, firing, sharing(records, signer, repo), probing(engines),
-		cfg.Org, cfg.Project)
+	handler := api.Routes(api.Deps{
+		Reports: repo, Runner: runner, Signer: signer,
+		Origins: cfg.Origins, Log: log,
+
+		Publish: publishing(defs, repo, records),
+		Store:   defs,
+		Admin:   api.NewAdminKey(cfg.AdminKey, cfg.Org, cfg.Project),
+
+		Definitions: repo,
+		Due:         armed,
+		Runs:        history(records),
+		Users:       users(records),
+		Fires:       firing,
+		Shares:      sharing(records, signer, repo),
+		Probes:      probing(engines),
+
+		Org: cfg.Org, Project: cfg.Project,
+	})
 
 	datasets, reports, schedules, sources := repo.Counts()
 	log.Info("cronosd listening",

@@ -66,6 +66,21 @@ the caller's identity, never from an argument. The file store holds one project
 and refuses a principal acting anywhere else, rather than serving it to whoever
 asks.
 
+A password never appears in a definition. The format carries a reference —
+`${secret:warehouse_password}` — and it is resolved where the connection is
+opened, from a file in `CRONOS_SECRETS_DIR` if there is one and from
+`CRONOS_SECRET_<NAME>` otherwise. Files first, because an environment variable
+is visible in `/proc` to anything running as the same user and appears in a
+crash dump. A reference nothing can supply stops the server at startup, naming
+what was missing, rather than becoming a connection error at six in the
+morning; and the resolved value exists between the resolver and `database/sql`
+and nowhere else — not in the management API's copy, not in a log line.
+
+The schema is versioned and forward-only. Each migration runs once, inside a
+transaction, and records itself in the same transaction — so a failure halfway
+leaves the database where it started, and a database migrated by a newer cronos
+is refused rather than written to by an older one.
+
 With both configured, the store is the truth once it holds anything, and the
 directory is the bootstrap: an empty store adopts it whole, and from then on
 what runs is what the store holds. That is what makes editing in the portal

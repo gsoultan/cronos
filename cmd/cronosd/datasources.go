@@ -27,7 +27,7 @@ func datasources(cfg config.Server, repo *file.Repository,
 	log *slog.Logger) (run.Engines, func() error, error) {
 
 	if defs := repo.DataSources(); len(defs) > 0 {
-		reg, err := registry.New(defs, log)
+		reg, err := registry.New(defs, secrets(cfg), log)
 		if err != nil {
 			return nil, nil, err
 		}

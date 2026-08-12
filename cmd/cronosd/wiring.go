@@ -24,6 +24,7 @@ import (
 	"github.com/gsoultan/cronos/internal/core/definition"
 	"github.com/gsoultan/cronos/internal/core/principal"
 	"github.com/gsoultan/cronos/internal/platform/config"
+	"github.com/gsoultan/cronos/internal/platform/secret"
 	"github.com/gsoultan/cronos/internal/platform/token"
 )
 
@@ -305,4 +306,17 @@ func probing(engines run.Engines) api.Probes {
 		return reg
 	}
 	return nil
+}
+
+// secrets is where ${secret:name} is looked up.
+//
+// Files first, then the environment. A mounted file is not visible in /proc to
+// everything running as the same user and does not appear in a crash dump, so
+// a deployment that can use one should; a deployment that cannot has the
+// environment, which is what every orchestrator already fills in.
+func secrets(cfg config.Server) secret.Resolver {
+	return secret.Chain{
+		secret.Files{Dir: cfg.SecretsDir},
+		secret.Env{},
+	}
 }

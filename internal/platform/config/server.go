@@ -11,6 +11,10 @@ type Server struct {
 	Addr string
 	// Definitions is a directory of YAML.
 	Definitions string
+	// SecretsDir is a directory of files, one per secret, as Docker secrets
+	// and Kubernetes projected volumes produce. Empty means the environment
+	// alone.
+	SecretsDir string
 	// Driver and DSN say where rows live. "sqlite" and a path is the
 	// development answer; "postgres" and a URL is the deployed one.
 	Driver string
@@ -59,11 +63,15 @@ func Load() (Server, error) {
 		// a plain in-memory SQLite gets its own empty database, so the seed
 		// lands on one connection and every concurrent request afterwards
 		// finds no tables.
-		DSN:         env("CRONOS_DSN", "file:cronos?mode=memory&cache=shared"),
-		SigningKey:  []byte(os.Getenv("CRONOS_SIGNING_KEY")),
-		Seed:        os.Getenv("CRONOS_SEED"),
-		SeedSource:  os.Getenv("CRONOS_SEED_SOURCE"),
-		AdminKey:    []byte(os.Getenv("CRONOS_ADMIN_KEY")),
+		DSN:        env("CRONOS_DSN", "file:cronos?mode=memory&cache=shared"),
+		SigningKey: []byte(os.Getenv("CRONOS_SIGNING_KEY")),
+		Seed:       os.Getenv("CRONOS_SEED"),
+		SeedSource: os.Getenv("CRONOS_SEED_SOURCE"),
+		AdminKey:   []byte(os.Getenv("CRONOS_ADMIN_KEY")),
+		// Where ${secret:name} is looked up. Files first when a directory is
+		// given, because a mounted file is not visible in /proc to everything
+		// running as the same user and does not appear in a crash dump.
+		SecretsDir:  os.Getenv("CRONOS_SECRETS_DIR"),
 		Org:         env("CRONOS_ORG", "default"),
 		Project:     env("CRONOS_PROJECT", "default"),
 		StoreDSN:    os.Getenv("CRONOS_STORE_DSN"),

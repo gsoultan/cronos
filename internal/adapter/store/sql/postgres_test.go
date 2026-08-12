@@ -201,3 +201,36 @@ func TestPostgresStoresNoPlaintextPassword(t *testing.T) {
 		t.Errorf("got %v", err)
 	}
 }
+
+// The upgrade a real deployment performs: a database created by the version
+// that had no migration table, brought forward without losing what it holds.
+//
+// Postgres specifically, because this is the one place the mechanism touches
+// DDL inside a transaction — which Postgres supports and most databases do
+// not, and which is the whole reason a failed migration leaves nothing behind.
+func TestPostgresAdoptsADatabaseFromBeforeMigrations(t *testing.T) {
+	s := postgres(t)
+	ctx := context.Background()
+
+	// Migrate() has already run in the helper. Forget that it did, leaving the
+	// tables and the rows exactly as the older code would have left them.
+	if err := s.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Put(ctx, acme, "Dataset", "invoices", doc("invoices")); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Forget(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.Migrate(ctx); err != nil {
+		t.Fatalf("adopting an existing database failed: %v", err)
+	}
+	if _, err := s.Get(ctx, acme, "Dataset", "invoices"); err != nil {
+		t.Fatalf("the definition that was already there: %v", err)
+	}
+	if at, _ := s.SchemaVersion(ctx); at != store.Wanted() {
+		t.Fatalf("version %d, want %d", at, store.Wanted())
+	}
+}

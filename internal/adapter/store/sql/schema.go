@@ -122,17 +122,27 @@ CREATE INDEX IF NOT EXISTS cronos_shares_by_project
   ON cronos_shares (org, project, created_at DESC);
 `
 
-// Schema is the DDL for a driver.
+// Substitute fills in the types a driver has its own name for.
 //
 // Almost identical, and the almost is the point. SQLite has BLOB and Postgres
 // has BYTEA, and neither knows the other's name — a schema written for one
 // does not create tables on the other, it fails on the first statement. That
 // is the class of thing testing against a single database cannot show, and it
 // was true here until a Postgres ran the same code.
-func Schema(driver string) string {
+func Substitute(sqlText, driver string) string {
 	bytes := "BLOB"
 	if driver == "postgres" || driver == "pgx" {
 		bytes = "BYTEA"
 	}
-	return strings.ReplaceAll(schema, "{{bytes}}", bytes)
+	return strings.ReplaceAll(sqlText, "{{bytes}}", bytes)
+}
+
+// Schema is the whole schema for a driver, as one string. For a reader, and
+// for a test that wants to see what a fresh database looks like.
+func Schema(driver string) string {
+	var all []string
+	for _, m := range migrations {
+		all = append(all, Substitute(m.SQL, driver))
+	}
+	return strings.Join(all, "\n")
 }

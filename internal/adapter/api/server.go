@@ -9,34 +9,64 @@ import (
 	"github.com/gsoultan/cronos/internal/platform/token"
 )
 
-// Routes builds the HTTP surface.
-//
-// Every route is behind a token. There is no unauthenticated read of a
-// definition, not even its name: a report's existence is information about our
-// customer's business.
-func Routes(reports Reports, runner *run.Service, signer *token.Signer,
-	origins []string, log *slog.Logger) http.Handler {
-	return RoutesWith(reports, runner, signer, origins, log,
-		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "", "")
+/*
+Deps is everything the HTTP surface can be given.
+
+A struct rather than an argument list. It reached sixteen positional
+parameters, ten of which were nil at the only caller that did not want them,
+and the failure mode of that shape is silent: two adjacent interfaces of the
+same kind swapped by a hand that miscounted commas, compiling cleanly and
+serving the wrong thing.
+
+Almost every field is optional, and absent means the routes it would have
+served are not mounted at all rather than mounted and refusing. A read-only
+server is a legitimate deployment, and an endpoint that exists only to say no
+is one somebody will spend an afternoon probing.
+*/
+type Deps struct {
+	// Reports, Runner and Signer are what makes a server: rendering, and the
+	// tokens that decide who may. Nothing works without all three.
+	Reports Reports
+	Runner  *run.Service
+	Signer  *token.Signer
+
+	Origins []string
+	Log     *slog.Logger
+
+	// Publish and Store are the management API.
+	Publish *publish.Service
+	Store   publish.Store
+	Admin   *AdminKey
+
+	// Definitions is the running view: the catalogue reads it, and a
+	// management read falls back to it for what no store holds.
+	Definitions Repository
+	Due         Due
+	Runs        History
+	Users       Users
+	Fires       Firing
+	Shares      Sharing
+	Probes      Probes
+
+	// Org and Project are the single tenant this process serves. The store is
+	// multi-tenant; the process is not, and the read fallback is gated on
+	// these because a directory is not multi-tenant either.
+	Org     string
+	Project string
 }
 
-// RoutesWith adds the management API when an admin key is configured.
+// Routes builds the HTTP surface.
 //
-// Absent, the endpoints are not mounted at all rather than mounted and always
-// refusing. A read-only server is a legitimate deployment, and an endpoint
-// that exists only to say no is an endpoint somebody will spend an afternoon
-// probing.
-func RoutesWith(reports Reports, runner *run.Service, signer *token.Signer,
-	origins []string, log *slog.Logger,
-	pub *publish.Service, store publish.Store, admin *AdminKey, runs History,
-	users Users, defs Repository, due Due, fires Firing, shares Sharing, probes Probes,
-	org, project string) http.Handler {
-
-	embed := NewEmbed(reports, runner, signer, log)
-	if rv, ok := shares.(Revocations); ok {
+// Every route is behind a token, with one exception that earns it: opening a
+// share, where the id is the credential and the recipient has no account here.
+// There is no other unauthenticated read of a definition, not even its name —
+// a report's existence is information about our customer's business.
+func Routes(d Deps) http.Handler {
+	embed := NewEmbed(d.Reports, d.Runner, d.Signer, d.Log)
+	if rv, ok := d.Shares.(Revocations); ok {
 		embed = embed.WithRevocations(rv)
 	}
-	author := NewAuthor(signer, admin)
+	author := NewAuthor(d.Signer, d.Admin)
 
 	mux := http.NewServeMux()
 	mux.Handle("/v1/embed/reports/{name}", embed)
@@ -44,24 +74,27 @@ func RoutesWith(reports Reports, runner *run.Service, signer *token.Signer,
 	// two have different callers and different audiences, and the audience
 	// check should be the first thing a handler does rather than a branch
 	// inside it.
-	mux.Handle("/v1/reports/{name}", NewPortalReports(embed, author, log))
+	mux.Handle("/v1/reports/{name}", NewPortalReports(embed, author, d.Log))
 
 	// What the project contains, in one request. A browsing interface asking
 	// for the names and then once per name is a page that loads in a hundred
 	// round trips.
-	if defs != nil {
-		mux.Handle("/v1/catalog", NewCatalog(defs, due, author, log))
+	if d.Definitions != nil {
+		mux.Handle("/v1/catalog", NewCatalog(d.Definitions, d.Due, author, d.Log))
 	}
+
 	// Sharing needs somewhere to record what was handed out, so that it can be
 	// withdrawn. A deployment without one has no way to take a link back, and
 	// a link that cannot be taken back is not a link anybody should be offered.
-	if shares != nil {
-		h := NewShares(shares, author, log)
+	if d.Shares != nil {
+		h := NewShares(d.Shares, author, d.Log)
 		mux.Handle("/v1/shares", h)
 		mux.Handle("/v1/shares/{id}", h)
 		mux.Handle("/v1/shares/{id}/open", h)
 	}
 
+	// Liveness: this process is running and can serve. Deliberately not a
+	// readiness check — see /v1/ready, which asks the dependencies.
 	mux.HandleFunc("/v1/health", func(w http.ResponseWriter, _ *http.Request) {
 		send(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
@@ -69,43 +102,46 @@ func RoutesWith(reports Reports, runner *run.Service, signer *token.Signer,
 	// Sign-in exists only where there is somewhere to check credentials.
 	// Mounted against nothing it would refuse every attempt identically, which
 	// is indistinguishable from a wrong password and impossible to debug.
-	if users != nil {
-		mux.Handle("/v1/auth/login", NewAuth(users, signer, log))
+	if d.Users != nil {
+		mux.Handle("/v1/auth/login", NewAuth(d.Users, d.Signer, d.Log))
 	}
 
 	// Management is open to an author with a portal token or to a pipeline
 	// with the shared key. Mounted when either can exist.
-	if pub != nil && (author.Enabled() || (admin != nil && admin.Enabled())) {
-		handler := NewDefinitions(pub, store, author, log)
+	if d.Publish != nil && (author.Enabled() || (d.Admin != nil && d.Admin.Enabled())) {
+		handler := NewDefinitions(d.Publish, d.Store, author, d.Log)
 		// A read falls back to what the process booted with, for the
 		// definitions no store has a copy of — a directory-bootstrapped
 		// deployment answering for a report that plainly renders.
-		if loaded, ok := defs.(Loaded); ok {
-			handler = handler.WithLoaded(loaded, org, project)
+		if loaded, ok := d.Definitions.(Loaded); ok {
+			handler = handler.WithLoaded(loaded, d.Org, d.Project)
 		}
 		mux.Handle("/v1/definitions", handler)
 		mux.Handle("/v1/definitions/{kind}/{name}", handler)
 
 		// Only where sources are named. A deployment reading one configured
 		// database has nothing to put in the URL.
-		if probes != nil {
-			mux.Handle("/v1/datasources/{name}/test", NewDataSources(probes, author, log))
+		if d.Probes != nil {
+			mux.Handle("/v1/datasources/{name}/test", NewDataSources(d.Probes, author, d.Log))
 		}
 
 		// Only where a scheduler is armed. A deployment that renders on
 		// request has no schedules to fire, and an endpoint that exists only
 		// to say no is one somebody will spend an afternoon probing.
-		if fires != nil {
-			mux.Handle("/v1/schedules/{name}/run", NewSchedules(fires, author, log))
+		if d.Fires != nil {
+			mux.Handle("/v1/schedules/{name}/run", NewSchedules(d.Fires, author, d.Log))
 		}
 
 		// Behind the admin key and never the embed token: a run record names
 		// every recipient of a burst.
-		if runs != nil {
-			h := NewRuns(runs, author, log)
+		if d.Runs != nil {
+			h := NewRuns(d.Runs, author, d.Log)
 			mux.Handle("/v1/runs", h)
 			mux.Handle("/v1/runs/{id}", h)
 		}
 	}
-	return NewCORS(origins, mux)
+
+	// Outermost, so a panic in the CORS layer is caught too and every request
+	// gets an id — including the ones refused before they reach a handler.
+	return NewObserved(NewCORS(d.Origins, mux), d.Log)
 }

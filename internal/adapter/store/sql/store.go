@@ -48,28 +48,6 @@ func Question(int) string { return "?" }
 // WithClock makes the stored timestamps predictable in a test.
 func (s *Store) WithClock(now func() time.Time) *Store { s.now = now; return s }
 
-// Migrate creates the tables if they are absent.
-//
-// Statement by statement. Postgres refuses multiple commands in one prepared
-// exec, and the driver prepares anything with parameters — so a schema that
-// arrives as one string works on SQLite and fails on Postgres, which is the
-// same asymmetry the types had.
-func (s *Store) Migrate(ctx context.Context) error {
-	// Comments first, then the split. A semicolon inside a comment is not a
-	// statement boundary, and splitting before stripping turns the rest of that
-	// comment into SQL — which fails with a syntax error naming a word from an
-	// English sentence, and takes a while to recognise as such.
-	for _, stmt := range strings.Split(stripComments(Schema(s.driver)), ";") {
-		if strings.TrimSpace(stmt) == "" {
-			continue
-		}
-		if _, err := s.db.ExecContext(ctx, stmt); err != nil {
-			return fmt.Errorf("sql: migrating: %w", err)
-		}
-	}
-	return nil
-}
-
 // stripComments removes the SQL comments, so a statement that is only a
 // comment is not sent as an empty query.
 func stripComments(stmt string) string {

@@ -13,6 +13,7 @@ import (
 	"github.com/gsoultan/cronos/internal/app/run"
 	"github.com/gsoultan/cronos/internal/core/definition"
 	"github.com/gsoultan/cronos/internal/core/query"
+	"github.com/gsoultan/cronos/internal/platform/secret"
 )
 
 // source is one opened datasource.
@@ -38,7 +39,7 @@ type Registry struct {
 // A source that will not open is fatal rather than skipped: a server that
 // starts with three of its four warehouses unreachable serves three-quarters
 // of its reports and fails the rest at six in the morning.
-func New(defs []definition.DataSource, log *slog.Logger) (*Registry, error) {
+func New(defs []definition.DataSource, secrets secret.Resolver, log *slog.Logger) (*Registry, error) {
 	r := &Registry{sources: map[string]*source{}, log: log}
 
 	for _, def := range defs {
@@ -46,10 +47,20 @@ func New(defs []definition.DataSource, log *slog.Logger) (*Registry, error) {
 			// An object store is not connected to; it is read through an
 			// engine that can address files. It is registered so a dataset can
 			// name it, and resolving one is what needs federation.
+			//
+			// Its URI is resolved all the same: a bucket URL can carry a
+			// reference, and one left as literal ${secret:…} text becomes a
+			// path the reader looks for and does not find.
+			uri, err := secret.Resolve(def.URI, secrets)
+			if err != nil {
+				r.Close()
+				return nil, fmt.Errorf("datasource %q: %w", def.Name, err)
+			}
+			def.URI = uri
 			r.sources[def.Name] = &source{def: def}
 			continue
 		}
-		s, err := open(def)
+		s, err := open(def, secrets)
 		if err != nil {
 			r.Close()
 			return nil, err
@@ -61,14 +72,25 @@ func New(defs []definition.DataSource, log *slog.Logger) (*Registry, error) {
 	return r, nil
 }
 
-func open(def definition.DataSource) (*source, error) {
+func open(def definition.DataSource, secrets secret.Resolver) (*source, error) {
 	dialect, err := dialectFor(def.Driver)
 	if err != nil {
 		return nil, fmt.Errorf("datasource %q: %w", def.Name, err)
 	}
-	db, err := sql.Open(sqlDriver(def.Driver), def.DSN)
+
+	// The password arrives here and goes no further. It is resolved from the
+	// reference the definition carries, handed to the driver, and never
+	// stored, returned or logged — the definition on disk still says
+	// ${secret:name}, which is the only version anything else ever sees.
+	dsn, err := secret.Resolve(def.DSN, secrets)
 	if err != nil {
 		return nil, fmt.Errorf("datasource %q: %w", def.Name, err)
+	}
+	db, err := sql.Open(sqlDriver(def.Driver), dsn)
+	if err != nil {
+		// The definition's own text, not the resolved one: a driver error
+		// quotes the string it was given, and by then it has a password in it.
+		return nil, fmt.Errorf("datasource %q (%s): %w", def.Name, def.DSN, err)
 	}
 
 	// The pool is bounded because somebody else operates this database. A
