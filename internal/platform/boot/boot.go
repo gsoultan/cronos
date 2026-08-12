@@ -131,6 +131,7 @@ func Serve(log *slog.Logger) error {
 		Roster:    roster(records),
 		Directory: directory(records),
 
+		Factors:     factors(records),
 		Invitations: invitations(records),
 		Post:        postman(cfg, log),
 		Portal:      cfg.Portal,

@@ -188,3 +188,60 @@ is cached — the same trade already made for disabling somebody.
 ```bash
 ./scripts/live-sessions.sh
 ```
+
+## Two-factor authentication
+
+TOTP, RFC 6238, against any authenticator app. Enabled per account by its owner;
+there is deliberately no path by which an administrator enrols, inspects or
+removes somebody else's — enrolling for another person is meaningless, they hold
+the phone, and removing one is exactly what a social-engineering call asks for.
+
+The portal has shown an enrolment wizard since before there was a server to
+enrol against. It accepted any six digits, the QR code beside it was noise with
+finder squares drawn in the corners, and the recovery codes were generated in
+the browser and stored nowhere. An account could finish that wizard and be
+marked as protected by a secret that existed in no app anywhere — which is worse
+than offering nothing, because its owner then picks a weaker password.
+
+What is enforced now:
+
+- **Enrolment is proved.** Nothing is switched on until a code computed from the
+  stored secret comes back. `confirmed_at` is NULL until then and `Protected`
+  reads it, so an abandoned enrolment protects nothing and is replaced by the
+  next attempt.
+- **A code is spent.** It is valid for a whole thirty-second step, long enough to
+  be read off a shoulder or a screenshot. The step is recorded, and the check is
+  inside the `UPDATE` — two sign-ins racing with one stolen code let one in.
+- **The secret is write-once.** Readable while enrolment is in progress, so a
+  reloaded page can show the QR again, and never afterwards. An endpoint that
+  hands it back turns a stolen session into a permanent second factor of the
+  attacker's own.
+- **Turning it off takes a code**, or a recovery code. Without that, a stolen
+  session strips the factor off the account it stole at the moment the factor is
+  all that is left.
+- **Recovery codes are passwords.** Ten, from Crockford's alphabet so nothing is
+  misread, shown once at confirmation, stored as SHA-256 hashes, spent by the
+  `DELETE` that checks them, and deleted with the factor.
+
+Sign-in sends the password and the code together. A two-step exchange would need
+a challenge that says "this password was right", and that challenge is a
+credential to steal, expire, rate limit, and — worst — a way to learn which
+accounts have a factor by watching which ones issue one. Instead, an attempt
+with the password alone against a protected account answers `{"factorRequired":
+true}`, which is only ever said to somebody who already proved the password.
+
+The two steps have **separate rate limits**, which a live run forced: they shared
+one, so three mistyped codes locked somebody out of their own password. The
+password limit stays tight because password lists are long; the code limit is
+looser because the legitimate retry is common and guessing six digits is
+hopeless at any rate a person would tolerate.
+
+```bash
+./scripts/live-2fa.sh
+```
+
+Enrols against a running server and computes every code independently, in
+Python, from the `otpauth://` URI — because a test that checks cronos against
+cronos passes just as well when both halves are wrong, which is how the old
+wizard shipped. It takes about forty seconds: most of that is waiting for the
+sign-in rate limit to refill, which is the limiter working.

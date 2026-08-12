@@ -22,6 +22,11 @@ const (
 	ActionSignIn      = "auth.signin"
 	ActionSignOut     = "auth.signout"
 	ActionSessionsEnd = "auth.sessions.end"
+	ActionFactorAdd   = "auth.factor.add"
+	ActionFactorCodes = "auth.factor.codes"
+	// Removing a second factor is the one worth a warning in the log: it is
+	// what a social-engineering call asks for, and it is invisible afterwards.
+	ActionFactorRemove = "auth.factor.remove"
 	// Who has access, and every change to it. The one part of an audit that
 	// answers "how did they still have a login in March".
 	ActionPersonAdd     = "person.add"

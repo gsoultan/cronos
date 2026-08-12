@@ -57,21 +57,40 @@ export function apiConfig(): ApiConfig | null {
  * on the page can read it. That is a trade taken knowingly for now, and the
  * short lifetime is what limits it.
  */
-export async function signIn(email: string, password: string) {
+export async function signIn(email: string, password: string, code?: string) {
   const base = apiBase()
   if (!base) throw new ApiError(0, 'This portal is not connected to a server.')
 
   const res = await fetch(base + '/v1/auth/login', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify(code ? { email, password, code } : { email, password }),
   })
   if (!res.ok) throw new ApiError(res.status, await serverMessage(res))
 
-  const session = (await res.json()) as { token: string; expiresIn: number; user: SignedInUser }
+  const session = (await res.json()) as {
+    token?: string
+    expiresIn?: number
+    user?: SignedInUser
+    factorRequired?: boolean
+  }
+
+  /*
+   * The password was right and this account has a second factor.
+   *
+   * Not an error: nothing was refused. The caller shows a code field and asks
+   * again with the same password. This answer is only ever given to somebody
+   * who has already proved the password, which is what stops it being a way to
+   * learn which accounts are protected.
+   */
+  if (session.factorRequired) return { factorRequired: true as const }
+
+  if (!session.token || !session.user) {
+    throw new ApiError(res.status, 'The server did not return a session.')
+  }
   globalThis.localStorage?.setItem('cronos.token', session.token)
   globalThis.localStorage?.setItem('cronos.user', JSON.stringify(session.user))
-  return session
+  return { token: session.token, expiresIn: session.expiresIn ?? 0, user: session.user }
 }
 
 /** The event the shell listens for, so a session ending is not silent. */
@@ -636,6 +655,59 @@ export async function endOtherSessions(): Promise<void> {
   if (replacement?.token) {
     globalThis.localStorage?.setItem('cronos.token', replacement.token)
   }
+}
+
+/** What protects this account, without anything that could be used. */
+export function factor() {
+  return call<{
+    enrolled: boolean
+    label?: string
+    addedAt?: string
+    remainingCodes?: number
+  }>('/v1/auth/factor')
+}
+
+/**
+ * Begins enrolment and returns what the app needs.
+ *
+ * The secret is in this answer and in no other. Nothing is protected yet —
+ * the account gains a second factor at `confirmFactor`, when a code computed
+ * from this exact secret comes back.
+ */
+export function startFactor() {
+  return call<{ secret: string; uri: string }>('/v1/auth/factor/start', { method: 'POST' })
+}
+
+/**
+ * Proves the enrolment with a real code and returns the recovery codes.
+ *
+ * They come back here and nowhere else: they are passwords, shown once, stored
+ * as hashes. A page that can fetch them again is a page that hands them to
+ * whoever has the session.
+ */
+export function confirmFactor(code: string) {
+  return call<{ recoveryCodes: string[] }>('/v1/auth/factor/confirm', {
+    method: 'POST',
+    body: JSON.stringify({ code }),
+  })
+}
+
+/** Replaces the recovery codes, retiring the old set. */
+export function newRecoveryCodes() {
+  return call<{ recoveryCodes: string[] }>('/v1/auth/factor/codes', { method: 'POST' })
+}
+
+/**
+ * Turns the second factor off, with a current code or a recovery code.
+ *
+ * Proof is required because without it a stolen session strips the factor off
+ * the account it stole, at exactly the moment the factor is all that is left.
+ */
+export function removeFactor(code: string) {
+  return call<void>('/v1/auth/factor', {
+    method: 'DELETE',
+    body: JSON.stringify({ code }),
+  })
 }
 
 /** Changes your own password, having proved you know the current one. */

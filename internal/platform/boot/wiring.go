@@ -489,3 +489,14 @@ func postman(cfg config.Server, log *slog.Logger) api.Postman {
 	}
 	return c
 }
+
+// factors is where second factors are recorded.
+//
+// Nil for a file-backed deployment, which has no accounts either — so there is
+// nothing to protect and sign-in is the password alone.
+func factors(records *sqlstore.Store) api.Factors {
+	if records == nil {
+		return nil
+	}
+	return records
+}

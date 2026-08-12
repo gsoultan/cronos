@@ -119,6 +119,47 @@ CREATE TABLE IF NOT EXISTS cronos_sessions_cut (
   at      TEXT NOT NULL
 );`,
 	},
+	{
+		ID:   5,
+		Name: "second factors",
+		/*
+		   The portal has rendered a two-factor enrolment wizard since before
+		   there was a server to enrol against, and it accepted any six digits.
+		   Telling somebody their account has a second factor when it has none
+		   is worse than not offering one: they choose a weaker password because
+		   they believe something else is guarding it.
+
+		   Two tables. A factor is a secret and its state; a recovery code is a
+		   password, one row each, spent by deleting it. Separate because their
+		   lifetimes differ — regenerating the codes must not disturb the
+		   enrolment, and removing the factor takes the codes with it.
+		*/
+		SQL: `
+CREATE TABLE IF NOT EXISTS cronos_factors (
+  user_id TEXT PRIMARY KEY,
+  -- The TOTP secret, and a credential: whoever reads it can produce codes for
+  -- this account for ever. Returned by no endpoint once enrolment is
+  -- confirmed, and never logged.
+  secret       TEXT NOT NULL,
+  label        TEXT NOT NULL DEFAULT '',
+  -- NULL until a real code has been entered. An enrolment offered but never
+  -- proved must not count as protection — that is the state the old wizard
+  -- left every account in.
+  confirmed_at TEXT,
+  -- The last step accepted, so one code cannot be used twice inside its thirty
+  -- seconds. Without it a code read over a shoulder is usable.
+  last_step    INTEGER NOT NULL DEFAULT 0,
+  created_at   TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS cronos_recovery_codes (
+  user_id   TEXT NOT NULL,
+  -- The hash, never the code. A backup of this table is a set of dead strings
+  -- rather than a working way into every account that has a second factor.
+  code_hash TEXT NOT NULL,
+  PRIMARY KEY (user_id, code_hash)
+);`,
+	},
 }
 
 // migrationTable records what has run. Created outside the ordered list,

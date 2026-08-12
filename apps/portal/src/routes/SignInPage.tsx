@@ -17,6 +17,10 @@ import { ApiError, signIn, signInMethods, ssoStart, type SignInMethods } from '.
 export function SignInPage({ onSignedIn }: { onSignedIn: () => void }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  /* Shown only after the password has been accepted, which is what stops this
+     page being a way to learn which accounts have a second factor. */
+  const [needsCode, setNeedsCode] = useState(false)
+  const [code, setCode] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -38,10 +42,21 @@ export function SignInPage({ onSignedIn }: { onSignedIn: () => void }) {
     setBusy(true)
     setError(null)
     try {
-      await signIn(email, password)
+      const out = await signIn(email, password, code || undefined)
+      if (out.factorRequired) {
+        /* The password was right and this account has a second factor. Not an
+           error — nothing was refused — so the field appears and the message
+           says what to do rather than what went wrong. */
+        setNeedsCode(true)
+        setError(null)
+        return
+      }
       onSignedIn()
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not reach the server.')
+      // The app has moved on by now, so the old digits are stale whatever went
+      // wrong. Clearing saves somebody pressing sign-in twice on the same code.
+      setCode('')
     } finally {
       setBusy(false)
     }
@@ -91,6 +106,17 @@ export function SignInPage({ onSignedIn }: { onSignedIn: () => void }) {
           <PasswordInput label="Password" required
             autoComplete="current-password" value={password} data-testid="password"
             onChange={(e) => setPassword(e.currentTarget.value)} />
+
+          {needsCode && (
+            <TextInput label="Code from your authenticator app" required autoFocus
+              data-testid="factor-code" value={code}
+              /* one-time-code lets a phone offer the digits straight from the
+                 notification, and inputMode brings up the number pad. */
+              autoComplete="one-time-code" inputMode="numeric" maxLength={11}
+              placeholder="123456"
+              description="Or one of your recovery codes, if you no longer have the app."
+              onChange={(e) => setCode(e.currentTarget.value)} />
+          )}
 
           {error && (
             <p data-testid="sign-in-error" role="alert"

@@ -64,6 +64,9 @@ type Deps struct {
 	// and a deployment manages accounts with the CLI, which is where they were
 	// managed before this existed.
 	Roster Roster
+	// Factors is second factors. Absent — a file-backed deployment — sign-in
+	// is the password alone, because there is nowhere to record one.
+	Factors Factors
 	// Invitations holds places for people who have not arrived. Absent — a
 	// file-backed deployment — adding somebody still means choosing their
 	// password, because there is nowhere to record the invitation.
@@ -109,6 +112,10 @@ var (
 	// Sign-in: five a minute, ten at once. A person mistyping a password three
 	// times in a row is ordinary; three hundred attempts is not a person.
 	signInRate, signInBurst = 5.0 / 60, 10.0
+	// The second step gets its own, and a looser one. Guessing six digits is
+	// hopeless at any rate a person would tolerate, and the person is the one
+	// retrying after an expired code or a drifting phone clock.
+	codeRate, codeBurst = 10.0 / 60, 20.0
 	// Opening a share: the id is the credential and there is no other, so this
 	// is what stands between the id space and somebody enumerating it. Thirty
 	// a minute is more than any reader needs and far less than a script wants.
@@ -226,7 +233,8 @@ func Routes(d Deps) http.Handler {
 	// is indistinguishable from a wrong password and impossible to debug.
 	if d.Users != nil {
 		mux.Handle("/v1/auth/login",
-			limited(NewAuth(d.Users, d.Signer, d.Log), NewLimit(signInRate, signInBurst),
+			limited(NewAuth(d.Users, d.Signer, d.Log).WithFactors(d.Factors),
+				NewLimit(signInRate, signInBurst),
 				"Too many sign-in attempts. Try again in a minute."))
 	}
 
@@ -274,6 +282,28 @@ func Routes(d Deps) http.Handler {
 		// idempotent, it takes nothing to guess at, and it is pressed by
 		// somebody whose laptop has just been taken.
 		mux.Handle("/v1/auth/sessions/end", NewSessions(d.Roster, author, d.Signer, d.Log))
+
+		/*
+		   Second factors, all four routes about the caller's own account.
+
+		   There is deliberately no path by which an administrator enrols,
+		   inspects or removes somebody else's: enrolling for another person is
+		   meaningless — they hold the phone — and removing one is precisely
+		   what a social-engineering call asks for.
+		*/
+		if d.Factors != nil {
+			factor := NewFactor(d.Factors, d.Roster, author, d.Org, d.Log)
+			mux.Handle("/v1/auth/factor", factor)
+			// Confirming and removing both take a code, so both are limited
+			// like sign-in: an unbounded rate here is an unbounded number of
+			// guesses at six digits from inside a borrowed session.
+			for _, path := range []string{
+				"/v1/auth/factor/start", "/v1/auth/factor/confirm", "/v1/auth/factor/codes",
+			} {
+				mux.Handle(path, limited(factor, NewLimit(signInRate, signInBurst),
+					"Too many attempts. Try again in a minute."))
+			}
+		}
 
 		// Limited like sign-in rather than like a render: it takes the current
 		// password, so an unbounded rate is an unbounded number of guesses at

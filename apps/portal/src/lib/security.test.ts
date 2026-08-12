@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { formatSecret, makeRecoveryCodes, makeSecret, readiness } from './security'
+import { formatSecret, readiness } from './security'
 import type { Person } from './people'
 
 const person = (name: string, twoFactor: boolean, isYou = false): Person => ({
@@ -7,40 +7,6 @@ const person = (name: string, twoFactor: boolean, isYou = false): Person => ({
   projectRoles: {}, twoFactor, isYou,
 })
 
-describe('makeRecoveryCodes', () => {
-  test('produces ten distinct codes', () => {
-    // The first version multiplied 32-bit values with `*`, overflowed 2^53, and
-    // returned ten identical codes — which would have shipped as one usable
-    // recovery code instead of ten.
-    const codes = makeRecoveryCodes('seed')
-    expect(codes).toHaveLength(10)
-    expect(new Set(codes).size).toBe(10)
-  })
-
-  test('uses more than one symbol', () => {
-    const chars = new Set(makeRecoveryCodes('seed').join('').replace(/-/g, ''))
-    expect(chars.size).toBeGreaterThan(8)
-  })
-
-  test('is deterministic for a seed and different across seeds', () => {
-    expect(makeRecoveryCodes('a')).toEqual(makeRecoveryCodes('a'))
-    expect(makeRecoveryCodes('a')).not.toEqual(makeRecoveryCodes('b'))
-  })
-})
-
-describe('makeSecret', () => {
-  test('is 32 characters of base32 with real variety', () => {
-    const s = makeSecret('x')
-    expect(s).toHaveLength(32)
-    expect(s).toMatch(/^[A-Z2-7]+$/)
-    expect(new Set(s).size).toBeGreaterThan(8)
-  })
-
-  test('groups into readable blocks without losing characters', () => {
-    const s = makeSecret('x')
-    expect(formatSecret(s).replace(/ /g, '')).toBe(s)
-  })
-})
 
 const on = (p: Person) => !!p.twoFactor
 
@@ -61,5 +27,34 @@ describe('readiness', () => {
 
   test('nobody is covered when there are no members', () => {
     expect(readiness([], on).youAreCovered).toBe(false)
+  })
+})
+
+/*
+ * The secret and the recovery codes used to be made here, in the browser, from
+ * a seeded generator — and stored nowhere. Both now come from the server: one
+ * from crypto/rand, the other hashed before it is written, and neither is
+ * something a page can invent. What is left in this module is formatting.
+ */
+
+/*
+ * Grouping the key for somebody typing it by hand.
+ *
+ * The only part of enrolment still done in the browser. A 32-character base32
+ * string read off a screen and typed into a phone is where people lose their
+ * place, and four-character groups are what every authenticator app's own
+ * manual-entry screen shows.
+ */
+describe('formatSecret', () => {
+  test('four at a time', () => {
+    expect(formatSecret('ABCDEFGHIJKLMNOP')).toBe('ABCD EFGH IJKL MNOP')
+  })
+
+  test('a ragged tail is left as it is rather than padded', () => {
+    expect(formatSecret('ABCDEFG')).toBe('ABCD EFG')
+  })
+
+  test('nothing in, nothing out', () => {
+    expect(formatSecret('')).toBe('')
   })
 })
