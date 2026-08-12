@@ -3,6 +3,7 @@ import { Link, useRouterState } from '@tanstack/react-router'
 import { Icon } from './Icon'
 import { Brand } from './Brand'
 import { useWorkspace } from '../lib/WorkspaceContext'
+import { currentUser, endSession, type SignedInUser } from '../lib/api'
 
 interface Props {
   collapsed: boolean
@@ -38,6 +39,9 @@ export function Header({ collapsed, onToggleSidebar, drawerOpen, onToggleDrawer,
   theme, onToggleTheme }: Props) {
   const path = useRouterState({ select: (s) => s.location.pathname })
   const { org, project } = useWorkspace()
+  // Read once per render rather than held in state: a sign-out takes the whole
+  // shell down to the sign-in page, so there is nothing here to keep in step.
+  const me = currentUser()
 
   const title = TITLES[path] ?? (path.startsWith('/reports/') ? 'Report' : '')
 
@@ -101,13 +105,22 @@ export function Header({ collapsed, onToggleSidebar, drawerOpen, onToggleDrawer,
           <Icon name={theme === 'light' ? 'moon' : 'sun'} />
         </button>
 
-        <Link to="/account" aria-label="Your account" title="Your account"
+        <Link to="/account" aria-label="Your account" title={me ? me.email : 'Your account'}
           data-testid="account-link"
           className="grid size-8 place-items-center rounded-full border border-line
                      bg-sunken text-small font-semibold text-ink-secondary no-underline
                      hover:border-accent">
-          DR
+          {initials(me)}
         </Link>
+
+        {me && (
+          <button type="button" onClick={() => void endSession()}
+            aria-label="Sign out" title="Sign out" data-testid="sign-out"
+            className="grid size-8 cursor-pointer place-items-center rounded-md
+                       text-ink-secondary hover:bg-hover hover:text-ink">
+            <Icon name="sign-out" />
+          </button>
+        )}
       </div>
     </header>
   )
@@ -147,4 +160,28 @@ function GlobalSearch() {
       </kbd>
     </div>
   )
+}
+
+/*
+ * Whose session this is, in two letters.
+ *
+ * Next to a sign-out button, showing the wrong person is worse than showing
+ * nobody — this used to be hardcoded initials, which on a shared machine reads
+ * as being signed in as somebody else.
+ *
+ * From the name where there is one, and from the email otherwise, because a
+ * directory that gave us an address and no name is common and "?" is not an
+ * improvement on the first letter of it.
+ */
+function initials(me: SignedInUser | null): string {
+  if (!me) return '\u00B7'
+
+  const words = (me.name ?? '').trim().split(/\s+/).filter(Boolean)
+  const first = words.at(0)
+  const last = words.at(-1)
+  if (first && last && words.length >= 2) {
+    return (first.slice(0, 1) + last.slice(0, 1)).toUpperCase()
+  }
+  if (first) return first.slice(0, 2).toUpperCase()
+  return (me.email || '?').slice(0, 2).toUpperCase()
 }

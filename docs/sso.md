@@ -21,11 +21,49 @@ export CRONOS_OIDC_SCOPES=openid,email,profile,groups
 export CRONOS_OIDC_ROLES="analytics-admins=admin,analysts=editor"
 export CRONOS_OIDC_DEFAULT_ROLE=viewer
 export CRONOS_OIDC_DOMAINS=acme.com
+export CRONOS_OIDC_POST_LOGOUT_URL=https://reports.acme.com/
 ```
 
 The redirect URL must be registered with the provider exactly, path included.
 A mismatch is the most common failure and the provider's own message names it,
 which is why that message is passed through rather than replaced.
+
+## Signing out
+
+Signing out of cronos alone is half a sign-out: the provider's session is still
+open, so the next sign-in is silent, and on a shared machine the next person is
+signed in as the last one.
+
+The sign-out button posts to `/v1/auth/sso/logout` while the session is still
+valid, and the answer is where to send the browser next:
+
+```json
+{ "redirect": "https://acme.okta.com/oauth2/v1/logout?client_id=0oa1b2c3&id_token_hint=…" }
+```
+
+Built from the provider's own `end_session_endpoint`, which cronos reads from
+the discovery document it already fetches. A provider that publishes none —
+Dex, for instance — gets an empty redirect, the local session ends, and nothing
+is said about the other one. It is not guessed at: a guessed `/logout` is a 404
+on a domain the person recognises, which reads as cronos being broken.
+
+`id_token_hint` is the token the provider signed at sign-in. Okta requires it
+and refuses a logout without one; Entra and Keycloak accept `client_id` alone,
+so both are sent. It is held **in this process's memory only**, keyed by
+account, dropped when spent and swept when the session it belongs to expires. It
+is never written to the database, never in a backup, and never handed to the
+browser — an identity token is a credential at the provider, and localStorage is
+readable by any script the page loads. A restart therefore loses the hints, and
+a sign-out after one goes without: some providers refuse that, which is the
+honest outcome, because the cronos session has already ended by then.
+
+`CRONOS_OIDC_POST_LOGOUT_URL` is where the provider sends somebody afterwards.
+It must be registered with them, exactly like the redirect URL, and is omitted
+when unset rather than guessed — an unregistered value is refused outright and
+turns every sign-out into an error page at the identity provider. Nothing in
+the request influences it: the route takes no landing parameter, which is what
+keeps an open redirect off the one page somebody reaches expecting to have just
+left.
 
 Setting an issuer makes single sign-on **required to start**: discovery runs at
 startup and a failure stops the server. A deployment that asked for SSO and
@@ -71,3 +109,21 @@ sign-in button for the entire internet.
 An address the provider marks unverified is refused whatever the domain list
 says. Otherwise anybody could self-assert `someone@yourcompany.example` and the
 restriction would mean nothing.
+
+## Checking it against a real provider
+
+Every part of SSO that can be wrong is wrong at a boundary — a redirect URL the
+provider does not recognise, a discovery document without the field we expected,
+a cookie the browser withholds, a logout refused because it wanted a hint we did
+not keep. Unit tests answer none of those, because in a unit test both sides of
+each boundary are ours.
+
+```bash
+./scripts/live-sso.sh
+```
+
+Stands up Keycloak in a container, creates a realm, a client and a person, and
+then behaves like a browser: follows the redirects, keeps the cookies, signs in
+at the provider's own login page, signs out, and — the assertion the whole
+feature exists for — starts a second sign-in and requires that it asks who you
+are. Before single log-out that step went through silently.

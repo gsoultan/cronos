@@ -17,9 +17,16 @@
  *
  * Never the admin key. That is a shared secret a deployment pipeline holds,
  * and a browser is the one place it must not be — anything in a browser is in
- * a devtools console, a screenshot and a support ticket. Real sign-in is not
- * built; until it is, the token comes from configuration and the server
- * enforces its audience either way.
+ * a devtools console, a screenshot and a support ticket. A session comes from
+ * signing in, by password or through the deployment's own directory, and the
+ * server enforces its audience either way.
+ *
+ * # Signing out is two calls, in an order
+ *
+ * `signOut` forgets the session here. `endSession` is the button: it asks the
+ * server where to go next while the token still works, and only then forgets.
+ * The involuntary path — a 401 mid-session — takes the first, because by then
+ * there is no token left to ask with.
  */
 
 export interface ApiConfig {
@@ -82,6 +89,45 @@ export function signOut() {
   globalThis.localStorage?.removeItem('cronos.token')
   globalThis.localStorage?.removeItem('cronos.user')
   globalThis.dispatchEvent?.(new Event(SIGNED_OUT))
+}
+
+/**
+ * Ends this session and, where there is one, the identity provider's.
+ *
+ * Clearing our own storage is half a sign-out. Somebody who signed in through
+ * their company's directory still has a session there, so signing out and
+ * signing back in asks them nothing — which reads as a button that did not
+ * work, and on a shared machine means the next person is signed in as the last.
+ *
+ * Asked before the token is cleared, because the route is authenticated: it is
+ * the session being ended that says whose provider session to end. A server
+ * that has no SSO, or a provider that publishes no sign-out endpoint, answers
+ * with nowhere to go, and the local sign-out is the whole of it.
+ */
+export async function endSession(): Promise<void> {
+  const cfg = apiConfig()
+  if (!cfg) {
+    signOut()
+    return
+  }
+
+  let redirect = ''
+  try {
+    const res = await fetch(cfg.base + '/v1/auth/sso/logout', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${cfg.token}` },
+    })
+    // A 404 is a deployment with no SSO configured, which is most of them, and
+    // is not a failure to report — there is simply no second session to end.
+    if (res.ok) redirect = ((await res.json()) as { redirect?: string }).redirect ?? ''
+  } catch {
+    // The server is unreachable. Ending the local session is still the right
+    // thing and is the part that does not need it; leaving somebody signed in
+    // because a network call failed is the worse of the two outcomes.
+  }
+
+  signOut()
+  if (redirect) globalThis.location?.assign(redirect)
 }
 
 export interface SignedInUser {

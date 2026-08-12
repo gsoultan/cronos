@@ -8,6 +8,7 @@ interface Props {
 export type IconName =
   | 'reports' | 'data' | 'schedules' | 'activity' | 'settings'
   | 'sidebar' | 'menu' | 'search' | 'sun' | 'moon' | 'user' | 'chevron'
+  | 'sign-out'
 
 /*
  * A hand-drawn icon set, not a library.
@@ -32,6 +33,7 @@ const PATHS: Record<IconName, string> = {
   moon: 'M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z',
   user: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z M5 20a7 7 0 0 1 14 0',
   chevron: 'M8 10l4 4 4-4',
+  'sign-out': 'M15 4h3a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-3 M11 16l4-4-4-4 M15 12H4',
 }
 
 export function Icon({ name, label, className = 'size-[18px]' }: Props) {

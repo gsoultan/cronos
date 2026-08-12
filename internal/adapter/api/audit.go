@@ -20,6 +20,7 @@ const (
 	ActionShareOpen = "share.open"
 	ActionRevoke    = "share.revoke"
 	ActionSignIn    = "auth.signin"
+	ActionSignOut   = "auth.signout"
 	// Who has access, and every change to it. The one part of an audit that
 	// answers "how did they still have a login in March".
 	ActionPersonAdd     = "person.add"

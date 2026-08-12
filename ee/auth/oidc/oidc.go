@@ -41,6 +41,11 @@ type Config struct {
 	// RedirectURL is where the provider sends the browser back, and must be
 	// registered with them exactly. Ours is /v1/auth/sso/callback.
 	RedirectURL string
+	// PostLogoutURL is where the provider sends somebody after ending its own
+	// session. Registered with them too, and omitted when empty rather than
+	// guessed — an unregistered one is refused, which turns a sign-out into an
+	// error page.
+	PostLogoutURL string
 	// Scopes beyond openid. `email` and `profile` are the usual two; `groups`
 	// is how most providers are asked for role information.
 	Scopes []string
@@ -77,6 +82,10 @@ type metadata struct {
 	Authorization string `json:"authorization_endpoint"`
 	Token         string `json:"token_endpoint"`
 	JWKS          string `json:"jwks_uri"`
+	// EndSession ends the provider's own session. Optional: plenty of
+	// providers do not publish one, and a deployment on one of those signs out
+	// of cronos alone.
+	EndSession string `json:"end_session_endpoint"`
 }
 
 /*
@@ -204,6 +213,9 @@ func (p *Provider) Complete(ctx context.Context, r *http.Request,
 	}
 
 	return extension.Identity{
+		// The signed token, carried so a later sign-out can present it back.
+		// Never stored and never sent to the browser.
+		Token:     raw,
 		Subject:   claims.Subject,
 		Email:     claims.Email,
 		Name:      firstOf(claims.Name, claims.PreferredUsername, claims.Email),
@@ -388,4 +400,43 @@ func firstOf(values ...string) string {
 		}
 	}
 	return ""
+}
+
+/*
+SignOut returns where to send the browser to end the provider's session.
+
+RP-initiated logout. Without it, signing out ends the cronos session and
+nothing else — the person is still signed in where they thought they had left,
+the next sign-in is silent, and on a shared machine that is somebody else's
+session.
+
+The hint is the identity token this session was minted from. Okta requires it
+and refuses without one; Entra and Keycloak accept the client id alone. It is
+held in memory, so a restart loses it and the redirect goes without — which
+some providers will refuse, and refusing is the honest outcome: the local
+session has already ended by then, and what remains is the provider's to
+decide.
+*/
+func (p *Provider) SignOut(hint string) string {
+	if p.metadata.EndSession == "" {
+		// This provider publishes no such endpoint. The caller ends the local
+		// session and says nothing about the other one, rather than sending
+		// somebody to a URL that was guessed.
+		return ""
+	}
+
+	query := url.Values{"client_id": {p.cfg.ClientID}}
+	if hint != "" {
+		query.Set("id_token_hint", hint)
+	}
+	if p.cfg.PostLogoutURL != "" {
+		// Must be registered with the provider, the same as the sign-in
+		// redirect, and absolute — a path is refused, which turns every
+		// sign-out into an error page at the identity provider. Sent only when
+		// a deployment configured one; without it the browser lands on the
+		// provider's own "you have signed out" page, which is plainer and
+		// works.
+		query.Set("post_logout_redirect_uri", p.cfg.PostLogoutURL)
+	}
+	return p.metadata.EndSession + "?" + query.Encode()
 }

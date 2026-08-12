@@ -6,6 +6,7 @@ import { ChangePassword } from '../components/ChangePassword'
 import { Tag } from '../components/StatusPill'
 import { TwoFactorSetup } from '../forms/TwoFactorSetup'
 import { relativeTime } from '../lib/format'
+import { endSession } from '../lib/api'
 import type { Factor, FactorKind } from '../lib/security'
 
 const CARD = 'mb-4 overflow-hidden rounded-lg border border-line bg-surface shadow-card'
@@ -161,6 +162,23 @@ export function AccountPage() {
             </li>
           ))}
         </ul>
+      </section>
+
+      <section className={CARD}>
+        <div className="flex flex-wrap items-center justify-between gap-4 p-4">
+          <div>
+            <h2 className="text-lead font-semibold text-ink">Sign out</h2>
+            <p className="mt-1 text-small text-ink-secondary">
+              Ends this session here. If you signed in through your
+              organisation's directory, it ends that session too — so the next
+              person at this machine is asked who they are.
+            </p>
+          </div>
+          <Button variant="default" color="red" data-testid="account-sign-out"
+            onClick={() => void endSession()}>
+            Sign out
+          </Button>
+        </div>
       </section>
     </>
   )

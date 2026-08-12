@@ -228,12 +228,13 @@ func Routes(d Deps) http.Handler {
 	   afternoon probing.
 	*/
 	if flow := extension.SignIn(); flow != nil {
-		sso := NewSSO(flow, d.Signer, d.Directory, d.Log).In(d.Org, d.Project, "viewer")
+		sso := NewSSO(flow, d.Signer, d.Directory, author, d.Log).In(d.Org, d.Project, "viewer")
 		// Limited like sign-in: it reaches an identity provider, which is
 		// somebody else's service and somebody else's rate limit.
 		mux.Handle("/v1/auth/sso/start",
 			limited(sso, NewLimit(signInRate, signInBurst), "Too many attempts. Try again in a minute."))
 		mux.Handle("/v1/auth/sso/callback", sso)
+		mux.Handle("/v1/auth/sso/logout", sso)
 	}
 
 	// Who has access, and the ways it changes. Only where there is somewhere

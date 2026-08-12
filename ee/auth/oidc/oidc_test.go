@@ -279,6 +279,9 @@ type fakeIDP struct {
 	email         string
 	emailVerified *bool
 	groups        []string
+	// endSession is what this provider publishes for RP-initiated logout, and
+	// most publish nothing.
+	endSession string
 }
 
 func newFakeIDP(t *testing.T) *fakeIDP {
@@ -296,12 +299,16 @@ func newFakeIDP(t *testing.T) *fakeIDP {
 		if issuer == "" {
 			issuer = idp.URL
 		}
-		_ = json.NewEncoder(w).Encode(map[string]string{
+		doc := map[string]string{
 			"issuer":                 issuer,
 			"authorization_endpoint": idp.URL + "/authorize",
 			"token_endpoint":         idp.URL + "/token",
 			"jwks_uri":               idp.URL + "/keys",
-		})
+		}
+		if idp.endSession != "" {
+			doc["end_session_endpoint"] = idp.endSession
+		}
+		_ = json.NewEncoder(w).Encode(doc)
 	})
 
 	mux.HandleFunc("/keys", func(w http.ResponseWriter, _ *http.Request) {
@@ -433,4 +440,147 @@ func signIn(t *testing.T, p *Provider, idp *fakeIDP) (extension.Identity, error)
 		idp.nonce = state.Data["nonce"]
 	}
 	return p.Complete(context.Background(), callback(state.ID, "code"), state)
+}
+
+/*
+Ending the provider's session.
+
+Signing out of cronos alone leaves the person signed in where they thought they
+had left: the next sign-in is silent, and on a shared machine the next person
+gets the last one's session. RP-initiated logout is the other half, and it is
+one URL built from three things — so these are the tests that each of the three
+is right, because a wrong one produces a page at the identity provider that says
+"invalid request" and nothing that says why.
+*/
+
+func TestSignOutGoesWhereTheProviderSaid(t *testing.T) {
+	idp := newFakeIDP(t)
+	defer idp.Close()
+	idp.endSession = "https://idp.example/oauth2/logout"
+
+	p, err := New(context.Background(), config(idp))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	where := p.SignOut("the-id-token")
+	parsed, err := url.Parse(where)
+	if err != nil {
+		t.Fatalf("sign-out built %q: %v", where, err)
+	}
+
+	if parsed.Scheme+"://"+parsed.Host+parsed.Path != idp.endSession {
+		t.Fatalf("sign-out goes to %q", where)
+	}
+	// The hint says whose session. Okta refuses a logout without one.
+	if got := parsed.Query().Get("id_token_hint"); got != "the-id-token" {
+		t.Fatalf("id_token_hint is %q", got)
+	}
+	// The client id is what Entra and Keycloak accept instead, and sending
+	// both is what makes one implementation work against all three.
+	if got := parsed.Query().Get("client_id"); got != "cronos-test-client" {
+		t.Fatalf("client_id is %q", got)
+	}
+}
+
+/*
+A provider that publishes no end-session endpoint is not guessed at.
+
+Dex publishes none. Guessing /logout — because the last provider had one —
+sends somebody to a 404 on a domain they recognise, which reads as cronos being
+broken rather than as this provider not offering the feature.
+*/
+func TestSignOutIsNotInventedForAProviderThatHasNone(t *testing.T) {
+	idp := newFakeIDP(t)
+	defer idp.Close()
+
+	p, err := New(context.Background(), config(idp))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if where := p.SignOut("the-id-token"); where != "" {
+		t.Fatalf("a provider with no end-session endpoint sent us to %q", where)
+	}
+}
+
+/*
+Where the browser lands afterwards is only sent when a deployment registered
+one.
+
+post_logout_redirect_uri must match a value configured at the provider, and an
+unregistered one is refused outright — turning every sign-out into an error page
+at the identity provider. Sending nothing lands on the provider's own "you have
+signed out" page, which is worse-looking and works.
+*/
+func TestAnUnconfiguredLandingIsNotSent(t *testing.T) {
+	idp := newFakeIDP(t)
+	defer idp.Close()
+	idp.endSession = "https://idp.example/logout"
+
+	p, err := New(context.Background(), config(idp))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Nothing configured, so nothing sent: without a registered URL the
+	// provider has nowhere it will agree to send anybody.
+	where, _ := url.Parse(p.SignOut("t"))
+	if got := where.Query().Get("post_logout_redirect_uri"); got != "" {
+		t.Fatalf("an unregistered landing was sent: %q", got)
+	}
+
+	cfg := config(idp)
+	cfg.PostLogoutURL = "https://portal.example/signed-out"
+	p, err = New(context.Background(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	where, _ = url.Parse(p.SignOut("t"))
+	if got := where.Query().Get("post_logout_redirect_uri"); got != cfg.PostLogoutURL {
+		t.Fatalf("the configured landing was not sent: %q", got)
+	}
+}
+
+// A restart loses the hints, and a sign-out then goes without one. Some
+// providers refuse that; sending an empty id_token_hint= is refused by more.
+func TestSignOutWithoutAHintSendsNoEmptyOne(t *testing.T) {
+	idp := newFakeIDP(t)
+	defer idp.Close()
+	idp.endSession = "https://idp.example/logout"
+
+	p, err := New(context.Background(), config(idp))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	where, _ := url.Parse(p.SignOut(""))
+	if _, present := where.Query()["id_token_hint"]; present {
+		t.Fatalf("an empty hint was sent: %q", where)
+	}
+}
+
+// The identity token has to survive the sign-in to be presentable later. It
+// used to be dropped on the floor once verified, which is what made single
+// log-out impossible without storing one.
+func TestTheIdentityTokenIsCarriedOutOfASignIn(t *testing.T) {
+	idp := newFakeIDP(t)
+	defer idp.Close()
+
+	p, err := New(context.Background(), config(idp))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	who, err := signIn(t, p, idp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if who.Token == "" {
+		t.Fatal("the identity token was dropped, so no sign-out can present it")
+	}
+	// And it is the token, not something that looks like one.
+	if strings.Count(who.Token, ".") != 2 {
+		t.Fatalf("what came back is not a JWT: %q", who.Token)
+	}
 }

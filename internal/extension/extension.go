@@ -68,6 +68,38 @@ type SignInFlow interface {
 	Complete(ctx context.Context, r *http.Request, state State) (Identity, error)
 }
 
+/*
+SignOutFlow ends the session at the identity provider as well as here.
+
+Optional, and asked for by type rather than required, because not every
+provider supports it and a flow that cannot do it should not have to pretend.
+
+Without it, signing out ends the cronos session and nothing else: the person is
+still signed in where they thought they had left, and the next sign-in is
+silent — which reads as "the log-out button does not work", and on a shared
+machine is somebody else's session.
+*/
+type SignOutFlow interface {
+	/*
+	   SignOut returns where to send the browser to end the provider's session.
+
+	   `hint` is the identity token this session was minted from, when the core
+	   still has it. Some providers require it and refuse without one; others
+	   accept the client id alone. Empty means it is gone — a restart drops
+	   them — and the provider decides what to do about that.
+
+	   An empty redirect means this provider has no such endpoint, and the
+	   caller ends the local session and says nothing more.
+
+	   Where the browser lands afterwards is deliberately not a parameter. It
+	   must be a URL registered with the provider, an unregistered one is
+	   refused outright, and the caller's idea of "where I was" is a path inside
+	   the portal — so it is the provider's own configuration, and nothing a
+	   request can influence.
+	*/
+	SignOut(hint string) string
+}
+
 // State is what a sign-in leaves behind while the browser is away.
 //
 // Opaque to the core, which stores it against a cookie and hands it back. A
@@ -104,6 +136,16 @@ type Identity struct {
 	Role    string
 	// Returning is where the browser asked to land, carried through.
 	Returning string
+	/*
+	   Token is what the provider signed, kept only so a later sign-out can
+	   present it back as an id_token_hint.
+
+	   It is not stored anywhere durable and never reaches the browser: a
+	   provider's identity token is a credential at that provider, and putting
+	   one in a database or a page would hand somebody a way in that has
+	   nothing to do with cronos.
+	*/
+	Token string
 }
 
 // Event is one auditable action. Report runs, definition changes, and delivery
