@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 )
 
 // Server is everything cronosd needs to start.
@@ -19,6 +20,8 @@ type Server struct {
 	Audit string
 	// BehindProxy trusts X-Forwarded-For for rate limiting.
 	BehindProxy bool
+	// Retention is how long run history is kept. Zero means for ever.
+	Retention time.Duration
 	// Driver and DSN say where rows live. "sqlite" and a path is the
 	// development answer; "postgres" and a URL is the deployed one.
 	Driver string
@@ -86,6 +89,12 @@ func Load() (Server, error) {
 		// in front sets it, because a caller can send whatever it likes and a
 		// rate limit keyed by that is not a limit.
 		BehindProxy: os.Getenv("CRONOS_BEHIND_PROXY") == "1",
+		// How long run history is kept. Zero is for ever, which is the
+		// default: how long a business must be able to show what it sent its
+		// customers is a legal question with a different answer in every
+		// jurisdiction, and deleting at ninety days by default would be this
+		// product answering it on their behalf.
+		Retention:   duration("CRONOS_HISTORY_RETENTION"),
 		Org:         env("CRONOS_ORG", "default"),
 		Project:     env("CRONOS_PROJECT", "default"),
 		StoreDSN:    os.Getenv("CRONOS_STORE_DSN"),
@@ -145,3 +154,20 @@ func (s SMTP) Configured() bool { return s.Host != "" && s.From != "" }
 
 // Configured reports whether there is enough to register the channel.
 func (s S3) Configured() bool { return s.AccessKey != "" && s.SecretKey != "" }
+
+// duration reads a Go duration from the environment, or zero.
+//
+// A bad value is zero rather than an error, and the difference matters: this
+// one governs deletion, and a typo that stopped the server would be safer than
+// a typo that deleted more than somebody meant.
+func duration(key string) time.Duration {
+	raw := os.Getenv(key)
+	if raw == "" {
+		return 0
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil || d < 0 {
+		return 0
+	}
+	return d
+}

@@ -54,6 +54,14 @@ type Deps struct {
 	Org     string
 	Project string
 
+	// Ready are the dependencies a readiness probe asks. Empty means the probe
+	// answers ok, which is honest for a deployment with nothing to ask.
+	Ready []Check
+	// Metrics counts what is served. Absent, nothing is counted and /v1/metrics
+	// is not mounted — a deployment that scrapes nothing should not be serving
+	// an endpoint that lists its routes and their volumes.
+	Metrics *Metrics
+
 	// BehindProxy says something in front terminates the connection, so the
 	// caller's address arrives in X-Forwarded-For. Off by default: reading it
 	// with no proxy in front keys every rate limit by a value the caller
@@ -138,11 +146,22 @@ func Routes(d Deps) http.Handler {
 				"Too many attempts. Try again shortly."))
 	}
 
-	// Liveness: this process is running and can serve. Deliberately not a
-	// readiness check — see /v1/ready, which asks the dependencies.
+	// Liveness and readiness are different questions, and answering only the
+	// first is how a load balancer keeps sending work to a process whose
+	// warehouse has gone away.
+	//
+	// Liveness: this process is running, do not restart it. Unconditional on
+	// purpose — a liveness probe that fails because a database is unreachable
+	// restarts a healthy process and does not fix the database.
 	mux.HandleFunc("/v1/health", func(w http.ResponseWriter, _ *http.Request) {
 		send(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
+	// Readiness: send it work. This one asks.
+	mux.Handle("/v1/ready", NewReady(d.Log, d.Ready...))
+
+	if d.Metrics != nil {
+		mux.Handle("/v1/metrics", d.Metrics)
+	}
 
 	// Sign-in exists only where there is somewhere to check credentials.
 	// Mounted against nothing it would refuse every attempt identically, which
@@ -190,5 +209,9 @@ func Routes(d Deps) http.Handler {
 
 	// Outermost, so a panic in the CORS layer is caught too and every request
 	// gets an id — including the ones refused before they reach a handler.
-	return NewObserved(NewCORS(d.Origins, mux), d.Log)
+	observed := NewObserved(NewCORS(d.Origins, mux), d.Log)
+	if d.Metrics != nil {
+		observed = observed.WithMetrics(d.Metrics)
+	}
+	return observed
 }

@@ -76,6 +76,32 @@ what was missing, rather than becoming a connection error at six in the
 morning; and the resolved value exists between the resolver and `database/sql`
 and nowhere else — not in the management API's copy, not in a log line.
 
+## Operating it
+
+`/v1/health` is liveness: this process is running, do not restart it.
+Unconditional on purpose — a liveness probe that fails because a database is
+unreachable restarts a healthy process and does not fix the database.
+
+`/v1/ready` is readiness, and it asks. The store is required; a process that
+cannot reach it cannot publish, sign anybody in or record a run. Datasources
+are not: one warehouse of four being unreachable leaves three-quarters of the
+reports working, so the answer is `degraded` and still 200 — taking the
+instance out of rotation would fail those too. Probes are cached for a few
+seconds, because a readiness check every second from each of several load
+balancers, each opening a connection to every warehouse, is a denial of service
+performed on your customers' databases.
+
+`/v1/metrics` is Prometheus exposition: requests by route and status, how long
+they took, and runs and deliveries by result — the last of which has no other
+source, since a burst that failed at 06:00 is over by the time anybody looks.
+Labelled by route and never by path: a path carries a report name, and one
+series per report is one series per customer of your customer.
+
+Run history grows without bound. `CRONOS_HISTORY_RETENTION=2160h` prunes daily;
+unset keeps everything, because how long a business must be able to show what
+it sent its customers is a legal question with a different answer in every
+jurisdiction, and answering it on their behalf is not this product's job.
+
 Every read, publish, delete, share and sign-in is recorded — who, in which
 project, against what, and whether it was allowed. Refusals too: an audit that
 only shows what succeeded answers the wrong half of every question. A read

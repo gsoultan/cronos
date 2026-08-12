@@ -105,6 +105,12 @@ func serve(log *slog.Logger) error {
 	// chose, not one they ended up with.
 	auditSink := auditing(cfg, log)
 
+	// Run history is the only thing here that grows without bound, and the
+	// page that reads it is the one somebody opens when something is wrong.
+	retention, stopRetention := context.WithCancel(context.Background())
+	defer stopRetention()
+	retain(retention, records, cfg, log)
+
 	handler := api.Routes(api.Deps{
 		Reports: repo, Runner: runner, Signer: signer,
 		Origins: cfg.Origins, Log: log,
@@ -120,6 +126,9 @@ func serve(log *slog.Logger) error {
 		Fires:       firing,
 		Shares:      sharing(records, signer, repo),
 		Probes:      probing(engines),
+
+		Ready:   readiness(records, engines),
+		Metrics: api.NewMetrics(),
 
 		Org: cfg.Org, Project: cfg.Project,
 		BehindProxy: cfg.BehindProxy,

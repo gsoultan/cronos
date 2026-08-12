@@ -339,3 +339,49 @@ func auditing(cfg config.Server, log *slog.Logger) string {
 	extension.RegisterAuditSink(audit.NewLog(log))
 	return extension.Audit().Name()
 }
+
+// readiness is what this deployment cannot serve without.
+//
+// The store is required: with a database configured, a process that cannot
+// reach it cannot publish, cannot sign anybody in and cannot record a run, so
+// there is nothing useful to send it. Datasources are not: one warehouse of
+// four being unreachable means three-quarters of the reports still work, and
+// taking the instance out of rotation fails those too. That distinction is the
+// whole reason the answer has three states rather than two.
+func readiness(records *sqlstore.Store, engines run.Engines) []api.Check {
+	var checks []api.Check
+
+	if records != nil {
+		checks = append(checks, api.Check{
+			Name:     "store",
+			Required: true,
+			Probe: func(ctx context.Context) error {
+				// The schema too, not only the connection. A store answering
+				// at a version this build does not know is one this build must
+				// not write to, and it is the state a half-finished deploy
+				// leaves behind.
+				at, err := records.SchemaVersion(ctx)
+				if err != nil {
+					return err
+				}
+				if at != sqlstore.Wanted() {
+					return fmt.Errorf("schema is at %d, this build wants %d", at, sqlstore.Wanted())
+				}
+				return nil
+			},
+		})
+	}
+
+	if reg, ok := engines.(*registry.Registry); ok {
+		for _, name := range reg.Names() {
+			checks = append(checks, api.Check{
+				Name: "datasource:" + name,
+				Probe: func(ctx context.Context) error {
+					_, err := reg.Probe(ctx, name)
+					return err
+				},
+			})
+		}
+	}
+	return checks
+}

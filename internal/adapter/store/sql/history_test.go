@@ -181,3 +181,65 @@ func TestRunsAreListedNewestFirstAndCapped(t *testing.T) {
 		t.Errorf("returned %d rows", len(all))
 	}
 }
+
+// Run history is the only thing here that grows without bound. One monthly
+// schedule bursting to five thousand customers writes sixty thousand delivery
+// rows a year, on the same database that answers "did last night work".
+func TestPruningRemovesOldRunsAndWhatTheyDelivered(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+
+	old := time.Date(2026, 1, 1, 6, 0, 0, 0, time.UTC)
+	recent := time.Date(2026, 8, 1, 6, 0, 0, 0, time.UTC)
+
+	for _, at := range []time.Time{old, recent} {
+		id := "run_" + at.Format("20060102")
+		if err := s.Begin(ctx, history.Run{
+			ID: id, Org: "acme", Project: "finance",
+			Schedule: "monthly", Report: "statement", Output: "pdf",
+			StartedAt: at, Status: history.Running,
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.Delivered(ctx, history.Delivery{
+			RunID: id, Recipient: "c-1", Channel: "email",
+			Destination: "c1@example.com", Status: history.Delivered, At: at,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	runs, deliveries, err := s.Prune(ctx, time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runs != 1 || deliveries != 1 {
+		t.Fatalf("pruned %d runs and %d deliveries, want 1 and 1", runs, deliveries)
+	}
+
+	// The recent one is untouched, with its deliveries: pruning by age must
+	// not be pruning by "everything before the newest".
+	kept, err := s.Runs(ctx, acme, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(kept) != 1 || kept[0].ID != "run_20260801" {
+		t.Fatalf("kept %+v", kept)
+	}
+	_, delivered, err := s.Run(ctx, acme, "run_20260801")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(delivered) != 1 {
+		t.Fatalf("the surviving run has %d deliveries", len(delivered))
+	}
+}
+
+// Nothing to prune is not an error, and does not report having done anything.
+func TestPruningNothingIsQuiet(t *testing.T) {
+	s := open(t)
+	runs, deliveries, err := s.Prune(context.Background(), time.Now().Add(-time.Hour))
+	if err != nil || runs != 0 || deliveries != 0 {
+		t.Fatalf("pruned %d/%d: %v", runs, deliveries, err)
+	}
+}

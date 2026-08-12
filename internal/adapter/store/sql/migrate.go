@@ -52,6 +52,15 @@ var migrations = []Migration{
 		// migration runs, finds everything already there, and records itself.
 		SQL: schema,
 	},
+	{
+		ID:   2,
+		Name: "index runs by age, for pruning",
+		// Retention deletes by age, and without this that is a scan of every
+		// run ever recorded — on the one table that grows without bound, at
+		// the one moment nobody is watching.
+		SQL: `
+CREATE INDEX IF NOT EXISTS cronos_runs_by_age ON cronos_runs (started_at);`,
+	},
 }
 
 // migrationTable records what has run. Created outside the ordered list,

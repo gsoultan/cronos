@@ -41,6 +41,8 @@ unavoidable is a rule that holds for the handler somebody adds next year.
 type Observed struct {
 	next http.Handler
 	log  *slog.Logger
+	// metrics is optional. Absent, this does everything else.
+	metrics *Metrics
 	// now is injectable so a test can assert on a duration it chose.
 	now func() time.Time
 }
@@ -48,6 +50,12 @@ type Observed struct {
 // NewObserved wraps next.
 func NewObserved(next http.Handler, log *slog.Logger) *Observed {
 	return &Observed{next: next, log: log, now: time.Now}
+}
+
+// WithMetrics counts what passes through.
+func (o *Observed) WithMetrics(m *Metrics) *Observed {
+	o.metrics = m
+	return o
 }
 
 func (o *Observed) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -69,7 +77,16 @@ func (o *Observed) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if cause := recover(); cause != nil {
 			o.crashed(rec, r, id, cause, debug.Stack())
 		}
-		o.done(rec, r, id, o.now().Sub(started))
+		took := o.now().Sub(started)
+		o.done(rec, r, id, took)
+		if o.metrics != nil {
+			// The route, which the mux writes onto this same request while
+			// serving it — not the path. A path carries a report name, and a
+			// metric with one series per report is one series per customer of
+			// our customer: a cardinality explosion, and in a shared
+			// monitoring system a list of who they sell to.
+			o.metrics.Request(routeOf(r), rec.status, took)
+		}
 	}()
 
 	o.next.ServeHTTP(rec, r)
@@ -172,4 +189,16 @@ func plausibleID(id string) bool {
 		}
 	}
 	return true
+}
+
+// routeOf is the pattern that matched, or a placeholder.
+//
+// Never the raw path. A request that matched nothing has no pattern, and
+// counting those under their paths would let anybody scanning for URLs create
+// a series each.
+func routeOf(r *http.Request) string {
+	if r.Pattern != "" {
+		return r.Pattern
+	}
+	return "unmatched"
 }
