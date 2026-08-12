@@ -2,7 +2,9 @@ import { lazy, Suspense, useEffect, useState } from 'react'
 import { Outlet, useRouterState } from '@tanstack/react-router'
 import { Header } from './Header'
 import { SampleBanner } from './SampleBanner'
-import { adoptSessionFromFragment, needsSignIn, setupNeeded, SIGNED_OUT } from '../lib/api'
+import {
+  adoptSessionFromFragment, mustEnrol, needsSignIn, setupNeeded, SIGNED_OUT,
+} from '../lib/api'
 
 /* Lazy, because the sign-in page pulls Mantine's password field and most loads
    never show it — a signed-in author, and every load in sample mode. It was
@@ -12,6 +14,9 @@ const SignInPage = lazy(() =>
 
 const SetupPage = lazy(() =>
   import('../routes/SetupPage').then((m) => ({ default: m.SetupPage })))
+
+const MustEnrolPage = lazy(() =>
+  import('../routes/MustEnrolPage').then((m) => ({ default: m.MustEnrolPage })))
 import { NavRail } from './NavRail'
 import { WorkspaceSwitcher } from './WorkspaceSwitcher'
 import { useWorkspace } from '../lib/WorkspaceContext'
@@ -95,6 +100,18 @@ export function Shell() {
     return (
       <Suspense fallback={<main className="min-h-screen bg-canvas" />}>
         <Outlet />
+      </Suspense>
+    )
+  }
+
+  /* Signed in, and to one thing only: this project requires a second factor
+     and this account has none. The wizard and nothing else, because the shell
+     around it would be a navigation bar over panels that each answer 403 — and
+     the server refuses every one of those routes anyway. */
+  if (mustEnrol()) {
+    return (
+      <Suspense fallback={<main className="min-h-screen bg-canvas" />}>
+        <MustEnrolPage onDone={() => setSession((n) => n + 1)} />
       </Suspense>
     )
   }

@@ -219,6 +219,39 @@ CREATE TABLE IF NOT EXISTS cronos_setup (
   by_user TEXT NOT NULL DEFAULT ''
 );`,
 	},
+	{
+		ID:   8,
+		Name: "per-project security policy",
+		/*
+		   Requiring a second factor of everybody in a project.
+
+		   The portal has shown this switch since before there was anything
+		   behind it, over the sample directory, so an administrator could turn
+		   on "require two-factor" and nothing whatever would happen. It was
+		   gated to sample mode rather than shipped half-built, because the hard
+		   part is not the flag: it is what happens to somebody who has no
+		   factor, cannot enrol without signing in, and cannot sign in without
+		   enrolling.
+
+		   Keyed by organisation and project, like every other row in this
+		   store. The panel says "organisation" and cronos's unit of tenancy is
+		   the pair — a policy keyed by half of it would apply to projects
+		   nobody meant.
+		*/
+		SQL: `
+CREATE TABLE IF NOT EXISTS cronos_policies (
+  org       TEXT NOT NULL,
+  project   TEXT NOT NULL,
+  -- Everybody signing in here needs a second factor. Somebody who has none
+  -- still signs in — to a session that can reach the enrolment endpoints and
+  -- nothing else — because the alternative locks a team out of its own
+  -- reporting on the afternoon somebody turns this on.
+  require_two_factor BOOLEAN NOT NULL DEFAULT FALSE,
+  updated_at TEXT NOT NULL,
+  updated_by TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY (org, project)
+);`,
+	},
 }
 
 // migrationTable records what has run. Created outside the ordered list,

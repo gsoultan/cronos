@@ -519,3 +519,14 @@ func accounts(records *sqlstore.Store) api.Accounts {
 	}
 	return records
 }
+
+// policies is what each project requires of the people in it.
+//
+// Nil for a file-backed deployment, which has no accounts to require anything
+// of — and where sign-in does not exist at all.
+func policies(records *sqlstore.Store) api.Policies {
+	if records == nil {
+		return nil
+	}
+	return records
+}

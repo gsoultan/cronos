@@ -349,3 +349,34 @@ in the token and would otherwise outlive the revocation by up to eight hours.
 
 Every cross-tenant action is audited under its own `platform.*` prefix, so "who
 reached across tenants, and when" is a question the log answers directly.
+
+## Requiring a second factor of everyone
+
+**Settings → Security**, per project, by a project administrator.
+
+The flag was never the hard part. What made this wait is that somebody with no
+second factor cannot enrol without signing in and cannot sign in without
+enrolling — so refusing the sign-in locks a team out of its own reporting on the
+afternoon it is switched on, and puts an administrator on the phone being asked
+to turn a second factor off. That is the exact call a second factor exists to
+make suspicious.
+
+So nobody is refused. Somebody without one signs in normally and gets a session
+that reaches the enrolment routes and **nothing else** — every other route
+answers 403, and the portal shows the wizard instead of a shell of refusals.
+Finishing it hands back an ordinary session in the same response, so they are not
+asked to sign in again thirty seconds after proving a password and a code.
+
+The gate is an allow-list wrapped around the whole API rather than a check per
+handler, and the direction matters: a route added tomorrow is refused to these
+sessions until somebody deliberately lists it. A deny-list would let every new
+route through and nobody would be looking.
+
+Turning it on does not touch sessions that already exist, including the one that
+turned it on — the requirement bites at the next sign-in. The panel shows how
+many people have one before you switch it, because "12 people, 4 without" is the
+whole decision.
+
+```bash
+./scripts/live-require-2fa.sh
+```

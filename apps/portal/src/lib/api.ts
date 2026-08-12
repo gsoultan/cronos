@@ -73,6 +73,7 @@ export async function signIn(email: string, password: string, code?: string) {
     expiresIn?: number
     user?: SignedInUser
     factorRequired?: boolean
+    mustEnrol?: boolean
   }
 
   /*
@@ -90,8 +91,21 @@ export async function signIn(email: string, password: string, code?: string) {
   }
   globalThis.localStorage?.setItem('cronos.token', session.token)
   globalThis.localStorage?.setItem('cronos.user', JSON.stringify(session.user))
+  /*
+   * A session that may only set up a second factor.
+   *
+   * Kept beside the token because every render has to know: the shell shows the
+   * enrolment wizard instead of the app, and without this it would show the app
+   * and let every panel discover the restriction by hitting a 403.
+   */
+  if (session.mustEnrol) globalThis.localStorage?.setItem('cronos.enrol', '1')
+  else globalThis.localStorage?.removeItem('cronos.enrol')
+
   announceSignIn()
-  return { token: session.token, expiresIn: session.expiresIn ?? 0, user: session.user }
+  return {
+    token: session.token, expiresIn: session.expiresIn ?? 0, user: session.user,
+    mustEnrol: session.mustEnrol === true,
+  }
 }
 
 /** The event the shell listens for, so a session ending is not silent. */
@@ -123,6 +137,7 @@ function announceSignIn() {
 export function signOut() {
   globalThis.localStorage?.removeItem('cronos.token')
   globalThis.localStorage?.removeItem('cronos.user')
+  globalThis.localStorage?.removeItem('cronos.enrol')
   globalThis.dispatchEvent?.(new Event(SIGNED_OUT))
 }
 
@@ -181,6 +196,21 @@ export function currentUser(): SignedInUser | null {
     return raw ? (JSON.parse(raw) as SignedInUser) : null
   } catch {
     return null
+  }
+}
+
+/**
+ * True when this session exists only to set up a second factor.
+ *
+ * The project requires one and this account has none. The server enforces it —
+ * every route but the enrolment ones answers 403 — and this is how the
+ * interface knows to show the wizard rather than a shell of refusals.
+ */
+export function mustEnrol(): boolean {
+  try {
+    return globalThis.localStorage?.getItem('cronos.enrol') === '1'
+  } catch {
+    return false
   }
 }
 
@@ -838,6 +868,28 @@ export function rename(name: string) {
   })
 }
 
+/**
+ * What this project requires of the people in it.
+ *
+ * The counts come back only for an administrator: telling a viewer how many
+ * colleagues have no second factor is handing them a list of who to attack.
+ */
+export function policy() {
+  return call<{
+    requireTwoFactor: boolean
+    covered?: number
+    uncovered?: number
+  }>('/v1/policy')
+}
+
+/** Changes it. Project administrators only. */
+export function setPolicy(requireTwoFactor: boolean) {
+  return call<{ requireTwoFactor: boolean }>('/v1/policy', {
+    method: 'PUT',
+    body: JSON.stringify({ requireTwoFactor }),
+  })
+}
+
 /** What protects this account, without anything that could be used. */
 export function factor() {
   return call<{
@@ -866,11 +918,22 @@ export function startFactor() {
  * as hashes. A page that can fetch them again is a page that hands them to
  * whoever has the session.
  */
-export function confirmFactor(code: string) {
-  return call<{ recoveryCodes: string[] }>('/v1/auth/factor/confirm', {
-    method: 'POST',
-    body: JSON.stringify({ code }),
-  })
+export async function confirmFactor(code: string) {
+  const out = await call<{ recoveryCodes: string[]; token?: string }>(
+    '/v1/auth/factor/confirm', { method: 'POST', body: JSON.stringify({ code }) })
+
+  /*
+   * A session that could only enrol has finished.
+   *
+   * The server hands back an unrestricted token rather than making somebody
+   * sign in again with the password and now a code, thirty seconds after
+   * proving both.
+   */
+  if (out.token) {
+    globalThis.localStorage?.setItem('cronos.token', out.token)
+    globalThis.localStorage?.removeItem('cronos.enrol')
+  }
+  return out
 }
 
 /** Replaces the recovery codes, retiring the old set. */

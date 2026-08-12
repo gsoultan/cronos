@@ -36,6 +36,20 @@ type Claims struct {
 	   revocation that takes eight hours is not a revocation.
 	*/
 	Platform bool `json:"plt,omitempty"`
+	/*
+	   Enrol marks a session that may do one thing: set up a second factor.
+
+	   Issued when a project requires one and this account has none. They signed
+	   in — the password was right — and the session reaches the enrolment
+	   endpoints and nothing else, so the requirement bites immediately without
+	   locking anybody out of their own reporting.
+
+	   A claim rather than a separate audience because everything else about it
+	   is a portal session: the same signature, the same expiry, the same
+	   subject. What differs is one bit, and the check that reads it is in one
+	   place.
+	*/
+	Enrol bool `json:"enr,omitempty"`
 	// Report pins the token to one report. Empty means any report in the
 	// project, which is a decision the minting host makes rather than a
 	// default we impose.

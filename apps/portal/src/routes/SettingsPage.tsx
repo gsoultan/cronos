@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from '@tanstack/react-router'
-import { Button, TextInput } from '@mantine/core'
+import { Button, Switch, TextInput } from '@mantine/core'
 import { PageHeader } from '../components/PageHeader'
 import { EmptyState } from '../components/EmptyState'
 import { Tag } from '../components/StatusPill'
@@ -20,7 +20,7 @@ import { SecurityPolicy } from '../components/settings/SecurityPolicy'
 import { ChannelsPanel } from '../components/settings/ChannelsPanel'
 import { OrganizationPanel } from '../components/settings/OrganizationPanel'
 import { LivePlatform } from '../components/LivePlatform'
-import { platformAdmins, profile } from '../lib/api'
+import { ApiError, platformAdmins, policy, profile, setPolicy } from '../lib/api'
 
 type Tab = 'organization' | 'people' | 'projects' | 'security' | 'channels' | 'platform'
 type Panel = 'none' | 'invite' | 'new-project'
@@ -269,15 +269,14 @@ export function SettingsPage() {
 }
 
 /**
- * What this deployment actually enforces.
+ * What this deployment enforces.
  *
- * Rather than the policy switches, which persist nowhere. An organisation-wide
- * two-factor requirement is a real feature and is not built: enforcing it means
- * deciding what happens to somebody who has no second factor and cannot enrol
- * without signing in, and the half of that which is easy to ship — refusing
- * their sign-in — locks a team out of its own reporting on a Friday.
- *
- * So this says what is true, and points at the parts that are.
+ * The requirement below is real now. What made it wait was never the flag: it
+ * was what happens to somebody who has no second factor, cannot enrol without
+ * signing in, and cannot sign in without enrolling. They sign in to a session
+ * that reaches the enrolment wizard and nothing else, so nobody is locked out
+ * and nobody has to ring an administrator and ask them to turn a second factor
+ * off — which is the exact call a second factor exists to make suspicious.
  */
 function LiveSecurity() {
   return (
@@ -301,12 +300,7 @@ function LiveSecurity() {
           one and keep another. Ending all of them at once is on the account
           page, and it is what to press if a laptop goes missing.
         </p>
-        <p>
-          <strong className="text-ink">Requiring two-factor for everyone</strong>{' '}
-          is not enforced yet. It is shown in sample mode as the shape it would
-          take; a switch here that persisted nothing would be worse than its
-          absence, because somebody would believe it.
-        </p>
+        <RequireTwoFactor />
         <p>
           Everything that changes access — adding somebody, changing a role,
           turning access off, enrolling or removing a second factor — is in the
@@ -333,4 +327,70 @@ function tabs(isPlatformAdmin: boolean): (readonly [Tab, string])[] {
     ['channels', 'Channels'],
   ]
   return isPlatformAdmin ? [...always, ['platform', 'Deployment'] as const] : always
+}
+
+/**
+ * The requirement, and who it will ask to enrol.
+ *
+ * The counts come before the switch rather than after, because "12 people, 4
+ * without" is the whole decision. Nobody is locked out either way — the four
+ * sign in to the enrolment wizard — so this is information rather than the
+ * warning it would have to be under a lockout rollout.
+ */
+function RequireTwoFactor() {
+  const [state, setState] = useState<Awaited<ReturnType<typeof policy>> | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [said, setSaid] = useState('')
+
+  useEffect(() => {
+    let live = true
+    policy()
+      .then((out) => { if (live) setState(out) })
+      .catch(() => { if (live) setState(null) })
+    return () => { live = false }
+  }, [])
+
+  if (state === null) return null
+  const uncovered = state.uncovered ?? 0
+
+  return (
+    <div className="rounded-lg border border-line bg-sunken p-4">
+      <Switch checked={state.requireTwoFactor} disabled={busy}
+        data-testid="require-2fa"
+        label="Require a second factor of everyone in this project"
+        onChange={(e) => {
+          const next = e.currentTarget.checked
+          setBusy(true)
+          setSaid('')
+          setPolicy(next)
+            .then(() => {
+              setState((s) => (s ? { ...s, requireTwoFactor: next } : s))
+              setSaid(next
+                ? 'On. Anyone without one will be asked to set it up at their next sign-in.'
+                : 'Off.')
+            })
+            .catch((err: unknown) =>
+              setSaid(err instanceof ApiError ? err.message : 'Could not save that.'))
+            .finally(() => setBusy(false))
+        }} />
+
+      <p className="mt-2 text-small text-ink-secondary">
+        {state.covered !== undefined && (
+          <>
+            <strong className="text-ink">{state.covered}</strong> of{' '}
+            <strong className="text-ink">{state.covered + uncovered}</strong> people
+            here have one.{' '}
+          </>
+        )}
+        {uncovered > 0
+          ? `The other ${uncovered} will sign in to the setup wizard and nothing else until it is done. Nobody is locked out.`
+          : 'Everyone here already has one.'}
+      </p>
+
+      {said && (
+        <p role="status" data-testid="policy-said"
+          className="mt-2 text-small text-ink">{said}</p>
+      )}
+    </div>
+  )
 }

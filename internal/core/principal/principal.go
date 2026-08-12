@@ -77,6 +77,21 @@ type Principal struct {
 	   customer sees adds themselves to that project, and the audit log says so.
 	*/
 	Platform bool
+
+	/*
+	   Enrol marks a session that exists only to set up a second factor.
+
+	   Its project requires one and this account has none. Rather than refusing
+	   the sign-in — which locks a team out of its own reporting on the
+	   afternoon somebody turns the requirement on — they get in, and get
+	   nowhere: the enrolment endpoints and nothing else.
+
+	   Deliberately not consulted by CanRead, CanEdit or either administrative
+	   check. Those answer "what may this role do"; this answers "may this
+	   session do anything at all", which is a different question asked earlier,
+	   in one place. See api.OnlyEnrolment.
+	*/
+	Enrol bool
 }
 
 // CanRead reports whether the principal may run reports in the active project.

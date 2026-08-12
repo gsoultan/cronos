@@ -136,6 +136,7 @@ func Serve(log *slog.Logger) error {
 
 		Factors:     factors(records),
 		Platform:    platform(records),
+		Policies:    policies(records),
 		Accounts:    accounts(records),
 		Invitations: invitations(records),
 		Post:        postman(cfg, log),

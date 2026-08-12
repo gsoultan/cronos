@@ -38,6 +38,8 @@ type Auth struct {
 	// factors is the second step, where this deployment has somewhere to
 	// record one.
 	factors Factors
+	// policies says whether this project requires one of everybody.
+	policies Policies
 	/*
 	   codes throttles the second step, separately from the password.
 
@@ -53,6 +55,12 @@ type Auth struct {
 	   does more slowly.
 	*/
 	codes *Limit
+}
+
+// WithPolicies makes the project's requirement bite at sign-in.
+func (a *Auth) WithPolicies(p Policies) *Auth {
+	a.policies = p
+	return a
 }
 
 // WithFactors adds the second step. Absent — a file-backed deployment — sign-in
@@ -129,6 +137,15 @@ type session struct {
 	Token     string        `json:"token"`
 	ExpiresIn int           `json:"expiresIn"`
 	User      identity.User `json:"user"`
+	/*
+	   MustEnrol says this session may only set up a second factor.
+
+	   Told to the portal so it can show the wizard rather than a shell whose
+	   every panel answers 403. The token says the same thing and the server
+	   enforces it; this exists so the interface does not have to discover the
+	   restriction by hitting it.
+	*/
+	MustEnrol bool `json:"mustEnrol,omitempty"`
 }
 
 // ServeHTTP handles POST /v1/auth/login.
@@ -203,7 +220,31 @@ func (a *Auth) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	   right, and saying "now the code" to somebody who has already proved that
 	   tells them nothing they did not know.
 	*/
-	if a.factors != nil && a.factors.Protected(r.Context(), user.ID) {
+	/*
+	   A project that requires one, and somebody who has none.
+
+	   They sign in. What they get is a session that reaches the enrolment
+	   endpoints and nothing else, because the alternative — refusing — locks a
+	   team out of its own reporting on the afternoon somebody switches the
+	   requirement on, with no self-service way back. See api.OnlyEnrolment.
+
+	   Checked before the factor challenge below, because there is nothing to
+	   challenge them with.
+	*/
+	mustEnrol := false
+	if a.policies != nil && a.factors != nil && !a.factors.Protected(r.Context(), user.ID) {
+		policy, err := a.policies.PolicyOf(r.Context(), user.Org, user.Project)
+		if err != nil {
+			// Fail open on a policy read, deliberately. The requirement is
+			// worth a great deal and is not worth a deployment where nobody
+			// can sign in because one table is unreadable — and the factor
+			// check below is unaffected by this either way.
+			a.log.Error("could not read the project policy", "err", err)
+		}
+		mustEnrol = policy.RequireTwoFactor
+	}
+
+	if !mustEnrol && a.factors != nil && a.factors.Protected(r.Context(), user.ID) {
 		if in.Code == "" {
 			// Not an error. The portal shows a code field and asks again, and
 			// the attempt is not counted against the throttle because nothing
@@ -234,6 +275,7 @@ func (a *Auth) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Audience: token.Portal, Role: user.Role,
 		Org: user.Org, Project: user.Project, Subject: user.ID,
 		Platform: user.Platform,
+		Enrol:    mustEnrol,
 	}, SessionLifetime)
 	if err != nil {
 		a.log.Error("could not mint a session", "err", err)
@@ -242,6 +284,10 @@ func (a *Auth) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	a.codes.Forget(user.ID)
+	if mustEnrol {
+		a.log.Info("signed in to enrol", "user", user.ID,
+			"project", user.Org+"/"+user.Project)
+	}
 	a.log.Info("signed in", "user", user.ID, "project", user.Org+"/"+user.Project, "role", user.Role)
 	audit(r.Context(), a.log, principal.Principal{
 		Subject: user.ID, Email: user.Email,
@@ -249,6 +295,11 @@ func (a *Auth) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}, ActionSignIn, user.Email, Allowed, map[string]any{"role": user.Role})
 	send(w, http.StatusOK, session{
 		Token: issued, ExpiresIn: int(SessionLifetime.Seconds()), User: user,
+		// So the portal shows the wizard rather than a shell whose every panel
+		// answers 403. The token says the same thing and the server enforces
+		// it; this exists so the interface does not have to discover the
+		// restriction by hitting it.
+		MustEnrol: mustEnrol,
 	})
 }
 

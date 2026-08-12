@@ -70,6 +70,9 @@ type Deps struct {
 	// Platform administers the deployment across tenants. Absent for a
 	// file-backed deployment, which has no accounts to administer.
 	Platform Platform
+	// Policies is what a project requires of the people in it — today, whether
+	// everybody needs a second factor.
+	Policies Policies
 	// Accounts counts them, for the first-run check.
 	Accounts Accounts
 	// Invitations holds places for people who have not arrived. Absent — a
@@ -238,7 +241,8 @@ func Routes(d Deps) http.Handler {
 	// is indistinguishable from a wrong password and impossible to debug.
 	if d.Users != nil {
 		mux.Handle("/v1/auth/login",
-			limited(NewAuth(d.Users, d.Signer, d.Log).WithFactors(d.Factors),
+			limited(NewAuth(d.Users, d.Signer, d.Log).
+				WithFactors(d.Factors).WithPolicies(d.Policies),
 				NewLimit(signInRate, signInBurst),
 				"Too many sign-in attempts. Try again in a minute."))
 	}
@@ -337,8 +341,13 @@ func Routes(d Deps) http.Handler {
 		   meaningless — they hold the phone — and removing one is precisely
 		   what a social-engineering call asks for.
 		*/
+		if d.Policies != nil {
+			mux.Handle("/v1/policy", NewPolicyAPI(d.Policies, author, d.Log))
+		}
+
 		if d.Factors != nil {
-			factor := NewFactor(d.Factors, d.Roster, author, d.Org, d.Log)
+			factor := NewFactor(d.Factors, d.Roster, author, d.Org, d.Log).
+				Upgrading(d.Signer)
 			mux.Handle("/v1/auth/factor", factor)
 			// Confirming and removing both take a code, so both are limited
 			// like sign-in: an unbounded rate here is an unbounded number of
@@ -386,9 +395,22 @@ func Routes(d Deps) http.Handler {
 		}
 	}
 
+	/*
+	   A session that may only enrol reaches the enrolment routes and nothing
+	   else.
+
+	   Around the whole mux rather than inside each handler, and an allow-list
+	   rather than a deny-list: a route added tomorrow is refused to these
+	   sessions until somebody deliberately lists it. See OnlyEnrolment.
+	*/
+	var handler http.Handler = mux
+	if d.Policies != nil {
+		handler = OnlyEnrolment(mux, author)
+	}
+
 	// Outermost, so a panic in the CORS layer is caught too and every request
 	// gets an id — including the ones refused before they reach a handler.
-	observed := NewObserved(NewCORS(d.Origins, mux), d.Log)
+	observed := NewObserved(NewCORS(d.Origins, handler), d.Log)
 	if d.Metrics != nil {
 		observed = observed.WithMetrics(d.Metrics)
 	}

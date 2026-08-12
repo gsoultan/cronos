@@ -10,6 +10,7 @@ import (
 	sqlstore "github.com/gsoultan/cronos/internal/adapter/store/sql"
 	"github.com/gsoultan/cronos/internal/core/identity"
 	"github.com/gsoultan/cronos/internal/core/principal"
+	"github.com/gsoultan/cronos/internal/platform/token"
 )
 
 /*
@@ -55,6 +56,8 @@ type Factor struct {
 	factors Factors
 	roster  Roster
 	auth    Principals
+	// signer upgrades an enrolment-only session once it has enrolled.
+	signer *token.Signer
 	// issuer is what an authenticator app shows beside the code. A deployment
 	// name, so somebody with three cronos accounts can tell them apart.
 	issuer string
@@ -67,6 +70,13 @@ func NewFactor(f Factors, r Roster, a Principals, issuer string, log *slog.Logge
 		issuer = "cronos"
 	}
 	return &Factor{factors: f, roster: r, auth: a, issuer: issuer, log: log}
+}
+
+// Upgrading lets a session that could only enrol become an ordinary one, the
+// moment it has.
+func (h *Factor) Upgrading(s *token.Signer) *Factor {
+	h.signer = s
+	return h
 }
 
 // ServeHTTP handles /v1/auth/factor and its sub-paths.
@@ -187,7 +197,35 @@ func (h *Factor) confirm(w http.ResponseWriter, r *http.Request, pr principal.Pr
 
 	h.log.Info("second factor enrolled", "user", pr.Subject)
 	audit(r.Context(), h.log, pr, ActionFactorAdd, pr.Subject, Allowed, nil)
-	send(w, http.StatusOK, map[string]any{"recoveryCodes": codes})
+
+	out := map[string]any{"recoveryCodes": codes}
+
+	/*
+	   A session that could only enrol has finished enrolling.
+
+	   Without this they would have to sign in again — with the password, and
+	   now a code — immediately after proving both. Minting the unrestricted
+	   session here is not a shortcut around the requirement: the requirement is
+	   that they have a second factor, and they now do, thirty seconds after
+	   proving it with a code from it.
+	*/
+	if pr.Enrol && h.signer != nil {
+		issued, err := h.signer.Mint(token.Claims{
+			Audience: token.Portal, Role: string(pr.ProjectRole),
+			Org: pr.OrgID, Project: pr.ProjectID, Subject: pr.Subject,
+			Platform: pr.Platform,
+		}, SessionLifetime)
+		if err != nil {
+			// The factor is on and the codes are shown; they sign in again,
+			// which now works. Worth logging and not worth failing over.
+			h.log.Error("could not upgrade a session after enrolment", "err", err)
+		} else {
+			out["token"] = issued
+			out["expiresIn"] = int(SessionLifetime.Seconds())
+		}
+	}
+
+	send(w, http.StatusOK, out)
 }
 
 // regenerate replaces the recovery codes, retiring the old set.
@@ -218,6 +256,14 @@ stolen session is enough to strip the second factor off the account it stole —
 which makes the factor protect nothing at the moment it matters most.
 */
 func (h *Factor) remove(w http.ResponseWriter, r *http.Request, pr principal.Principal) {
+	if pr.Enrol {
+		// This session exists because the project requires a factor and this
+		// account has none. There is nothing to remove, and a route that said
+		// otherwise would be the way around the requirement.
+		fail(w, http.StatusForbidden, "This project requires a second factor.")
+		return
+	}
+
 	var in struct {
 		Code string `json:"code"`
 	}
