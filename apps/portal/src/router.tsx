@@ -51,6 +51,15 @@ const sharedRoute = createRoute({
   component: lazyRouteComponent(() => import('./routes/SharedPage'), 'SharedPage'),
 })
 
+/* Setting a password from an invitation. Reached by somebody with no account,
+   so it sits beside the shared-report route on the near side of the sign-in
+   check. */
+const invitationRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/invitation',
+  component: lazyRouteComponent(() => import('./routes/InvitationPage'), 'InvitationPage'),
+})
+
 const activityRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/activity',
@@ -92,7 +101,7 @@ const schedulesRoute = createRoute({
 
 const routeTree = rootRoute.addChildren([
   indexRoute, newReportRoute, reportRoute, settingsRoute, accountRoute,
-  dataRoute, schedulesRoute, activityRoute, sharedRoute,
+  dataRoute, schedulesRoute, activityRoute, sharedRoute, invitationRoute,
   editReportRoute, editDatasetRoute, editSourceRoute, editScheduleRoute,
 ])
 

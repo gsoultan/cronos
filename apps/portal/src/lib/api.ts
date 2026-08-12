@@ -512,20 +512,100 @@ export interface Person {
 }
 
 export function listPeople() {
-  return call<{ people: Person[] }>('/v1/people')
+  return call<{ people: Person[]; canInvite: boolean }>('/v1/people')
 }
 
 /**
- * Adds somebody, with a password to hand them.
+ * Adds somebody, one of two ways.
  *
- * Not an emailed invitation: that needs a token, a delivery channel that is
- * configured, and a set-password page that works with no session — and half of
- * that shipped is a link that does not open.
+ * With no password, an invitation: nothing is created until they accept, and
+ * the password is one only they ever see. With one, the account exists
+ * immediately and somebody else has chosen their credential — kept because a
+ * deployment with no mail server has to be able to add its second
+ * administrator somehow.
+ *
+ * A server that cannot send mail answers 400 to the first form, which is what
+ * `invitesAvailable` asks about before showing the choice.
  */
 export function addPerson(person: {
-  email: string; name: string; role: string; password: string
+  email: string; name: string; role: string; password?: string
 }) {
-  return call<Person>('/v1/people', { method: 'POST', body: JSON.stringify(person) })
+  return call<Person | Invitation>('/v1/people', {
+    method: 'POST',
+    body: JSON.stringify(person),
+  })
+}
+
+/** A place held for somebody who has not arrived. */
+export interface Invitation {
+  id: string
+  email: string
+  name?: string
+  org: string
+  project: string
+  role: string
+  invitedBy?: string
+  createdAt: string
+  expires: string
+}
+
+/** Who has been invited and has not yet accepted. */
+export function invitations() {
+  return call<Invitation[]>('/v1/people/invitations')
+}
+
+/** Withdraws one before it is used. */
+export function uninvite(id: string) {
+  return call<void>(`/v1/people/invitations/${encodeURIComponent(id)}`, { method: 'DELETE' })
+}
+
+/**
+ * Who an invitation is for, read without a session.
+ *
+ * The one call in this module that carries no token — the person making it does
+ * not have an account yet, which is the entire point of the endpoint. Its only
+ * credential is the secret out of the link, so it goes in a query string on a
+ * request the page makes, never in the page's own URL.
+ */
+export async function describeInvitation(secret: string): Promise<{
+  email: string; name?: string; org: string; project: string
+  role: string; invitedBy?: string
+}> {
+  const base = apiBase()
+  if (!base) throw new ApiError(0, 'This portal is not connected to a server.')
+
+  const res = await fetch(`${base}/v1/auth/invitation?secret=${encodeURIComponent(secret)}`)
+  if (!res.ok) throw new ApiError(res.status, await serverMessage(res))
+  return res.json() as Promise<{
+    email: string; name?: string; org: string; project: string
+    role: string; invitedBy?: string
+  }>
+}
+
+/**
+ * Spends an invitation and signs them in.
+ *
+ * The session comes back from this call, so there is no login page in between:
+ * they have just proved control of the mailbox and chosen a password nobody
+ * else has seen, which is more than a sign-in form asks for.
+ */
+export async function acceptInvitation(secret: string, password: string) {
+  const base = apiBase()
+  if (!base) throw new ApiError(0, 'This portal is not connected to a server.')
+
+  const res = await fetch(base + '/v1/auth/invitation', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ secret, password }),
+  })
+  if (!res.ok) throw new ApiError(res.status, await serverMessage(res))
+
+  const out = (await res.json()) as { token?: string; user: SignedInUser }
+  if (out.token) {
+    globalThis.localStorage?.setItem('cronos.token', out.token)
+    globalThis.localStorage?.setItem('cronos.user', JSON.stringify(out.user))
+  }
+  return out
 }
 
 /** Changes a role, or turns access off. Absent fields are left alone. */

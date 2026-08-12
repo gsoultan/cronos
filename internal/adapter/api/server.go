@@ -64,6 +64,16 @@ type Deps struct {
 	// and a deployment manages accounts with the CLI, which is where they were
 	// managed before this existed.
 	Roster Roster
+	// Invitations holds places for people who have not arrived. Absent — a
+	// file-backed deployment — adding somebody still means choosing their
+	// password, because there is nowhere to record the invitation.
+	Invitations Invitations
+	// Post delivers one. Absent where no mail server is configured, in which
+	// case the invite path is refused rather than quietly downgraded.
+	Post Postman
+	// Portal is where the portal is served, for the link in the email. There
+	// is nothing to put in an invitation without it.
+	Portal string
 
 	// Org and Project are the single tenant this process serves. The store is
 	// multi-tenant; the process is not, and the read fallback is gated on
@@ -240,9 +250,25 @@ func Routes(d Deps) http.Handler {
 	// Who has access, and the ways it changes. Only where there is somewhere
 	// to keep people: a file-backed deployment has no accounts to manage.
 	if d.Roster != nil {
-		people := NewPeople(d.Roster, author, d.Log)
+		invite := NewInvite(d.Invitations, d.Post, d.Portal, d.Log)
+
+		people := NewPeople(d.Roster, author, d.Log).Inviting(invite)
 		mux.Handle("/v1/people", people)
 		mux.Handle("/v1/people/{id}", people)
+		mux.Handle("/v1/people/invitations", people)
+		mux.Handle("/v1/people/invitations/{id}", people)
+
+		// The one route in this API that takes no session, because the person
+		// using it has no account yet. Limited per address: the secret is
+		// unguessable, so this is not what stops an attack on it — it stops an
+		// unauthenticated endpoint that runs bcrypt from being a way to spend
+		// somebody else's CPU.
+		if invite.Available() {
+			mux.Handle("/v1/auth/invitation",
+				limited(NewAcceptance(d.Invitations, d.Signer, d.Log),
+					NewLimit(AcceptRate, AcceptBurst),
+					"Too many attempts. Wait a minute."))
+		}
 
 		// Limited like sign-in rather than like a render: it takes the current
 		// password, so an unbounded rate is an unbounded number of guesses at

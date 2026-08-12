@@ -113,6 +113,9 @@ func Serve(log *slog.Logger) error {
 	retention, stopRetention := context.WithCancel(context.Background())
 	defer stopRetention()
 	retain(retention, records, cfg, log)
+	// Whatever the history retention, an expired invitation is dead weight
+	// holding an address and the hash of a credential.
+	sweepInvitations(retention, records, log)
 
 	handler := api.Routes(api.Deps{
 		Projects: projects, Signer: signer,
@@ -127,8 +130,12 @@ func Serve(log *slog.Logger) error {
 		Shares:    sharingFor(records, signer, runtimes),
 		Roster:    roster(records),
 		Directory: directory(records),
-		Sends:     sendingFor(cfg, runtimes, log),
-		Channels:  channelNames(cfg, log),
+
+		Invitations: invitations(records),
+		Post:        postman(cfg, log),
+		Portal:      cfg.Portal,
+		Sends:       sendingFor(cfg, runtimes, log),
+		Channels:    channelNames(cfg, log),
 
 		Ready:   readinessFor(records, runtimes),
 		Metrics: api.NewMetrics(),

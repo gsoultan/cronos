@@ -52,7 +52,11 @@ type Server struct {
 	// default.
 	Scheduler bool
 	SMTP      SMTP
-	S3        S3
+	// Portal is where the portal is served, for links in email. A separate
+	// origin from the API in every real deployment — the portal is a static
+	// build behind a CDN — so it cannot be derived from the listen address.
+	Portal string
+	S3     S3
 	// SeedSource names which datasource the seed applies to. Required when
 	// several are defined: the seed runs DDL, and picking one would be a guess.
 	SeedSource string
@@ -107,6 +111,7 @@ func Load() (Server, error) {
 		StoreDriver: env("CRONOS_STORE_DRIVER", "postgres"),
 		Deliveries:  env("CRONOS_DELIVERIES", "deliveries"),
 		Scheduler:   os.Getenv("CRONOS_SCHEDULER") == "1",
+		Portal:      strings.TrimRight(os.Getenv("CRONOS_PORTAL_URL"), "/"),
 		SMTP: SMTP{
 			Host: os.Getenv("CRONOS_SMTP_HOST"), From: os.Getenv("CRONOS_SMTP_FROM"),
 			Username: os.Getenv("CRONOS_SMTP_USER"), Password: os.Getenv("CRONOS_SMTP_PASSWORD"),

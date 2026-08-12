@@ -59,3 +59,57 @@ func retain(ctx context.Context, records *sqlstore.Store, cfg config.Server, log
 		}
 	}()
 }
+
+/*
+KeepAcceptedInvitations is how long a used invitation's row survives.
+
+Thirty days. After that its only remaining value is telling an auditor that this
+account arrived by invitation, and the audit log already says that in a place
+built for it. What is left here is an email address in a table with no purpose,
+which is the definition of data kept by accident.
+
+Unusable ones go as soon as they expire, because they are already dead.
+*/
+const KeepAcceptedInvitations = 30 * 24 * time.Hour
+
+/*
+sweepInvitations removes the ones nobody can use.
+
+Its own loop rather than a line inside retain(), because it runs whatever the
+history retention is set to. Run history is a deliberate choice about how much
+to keep; an expired invitation is not kept on purpose by anybody.
+
+Hourly rather than daily: the row is small, but it holds an address and a hash
+of a credential, and there is no reason for either to outlive the week the link
+was good for by more than an hour.
+*/
+func sweepInvitations(ctx context.Context, records *sqlstore.Store, log *slog.Logger) {
+	if records == nil {
+		return
+	}
+
+	sweep := func() {
+		gone, err := records.PruneInvitations(ctx, KeepAcceptedInvitations)
+		if err != nil {
+			log.Error("pruning invitations", "err", err)
+			return
+		}
+		if gone > 0 {
+			log.Info("pruned invitations", "rows", gone)
+		}
+	}
+
+	go func() {
+		sweep()
+		ticker := time.NewTicker(time.Hour)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				sweep()
+			}
+		}
+	}()
+}

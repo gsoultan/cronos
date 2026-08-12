@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/gsoultan/cronos/internal/core/identity"
 	"github.com/gsoultan/cronos/internal/core/principal"
@@ -34,12 +35,23 @@ somebody can see and undo. Adding a person, or removing one, is neither.
 type People struct {
 	roster Roster
 	auth   Principals
-	log    *slog.Logger
+	// invitations is nil where this deployment cannot send mail, in which case
+	// adding somebody still means choosing their password.
+	invitations *Invite
+	log         *slog.Logger
 }
 
 // NewPeople wires the handler.
 func NewPeople(r Roster, a Principals, log *slog.Logger) *People {
 	return &People{roster: r, auth: a, log: log}
+}
+
+// Inviting adds the option to mail somebody instead of choosing for them.
+func (h *People) Inviting(inv *Invite) *People {
+	if inv.Available() {
+		h.invitations = inv
+	}
+	return h
 }
 
 // ServeHTTP handles /v1/people and /v1/people/{id}.
@@ -58,6 +70,22 @@ func (h *People) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	id := r.PathValue("id")
+	// An invitation is not a person yet, so it lives under its own path rather
+	// than in the roster with a flag on it. An account that does not exist and
+	// an account that is disabled are different things, and one list holding
+	// both is a list where "remove them" means two operations.
+	if strings.HasPrefix(r.URL.Path, "/v1/people/invitations") {
+		switch {
+		case r.Method == http.MethodGet && id == "":
+			h.pending(w, r, pr)
+		case r.Method == http.MethodDelete && id != "":
+			h.uninvite(w, r, pr, id)
+		default:
+			fail(w, http.StatusMethodNotAllowed, "Not a method this endpoint takes.")
+		}
+		return
+	}
+
 	switch {
 	case r.Method == http.MethodGet && id == "":
 		h.list(w, r, pr)
@@ -80,7 +108,12 @@ func (h *People) list(w http.ResponseWriter, r *http.Request, pr principal.Princ
 	if people == nil {
 		people = []identity.User{}
 	}
-	send(w, http.StatusOK, map[string]any{"people": people})
+	// Whether this deployment can invite is answered here rather than on the
+	// unauthenticated methods endpoint: it describes the deployment's mail
+	// configuration, and only somebody who may add people needs to know.
+	send(w, http.StatusOK, map[string]any{
+		"people": people, "canInvite": h.invitations != nil,
+	})
 }
 
 type newPerson struct {
@@ -91,22 +124,30 @@ type newPerson struct {
 }
 
 /*
-add registers somebody.
+add registers somebody, one of two ways.
 
-An initial password rather than an emailed invitation. An invitation needs a
-token, a delivery channel that is configured, and a set-password page that
-works for somebody with no session — and half of that shipped is a link that
-does not open, which is worse than a password handed over deliberately. The
-person changes it themselves, which is the endpoint below.
+With no password, an invitation: the account is not created, a single-use secret
+is mailed to them, and the password is one only they ever see. That is the right
+default and what the portal asks for when this deployment can send mail.
+
+With a password, the account is created immediately and somebody else has chosen
+their credential. Kept because a deployment with no mail server has to be able
+to add its second administrator somehow, and because the first one is created by
+the CLI the same way. It is the weaker path and the portal says so.
 */
 func (h *People) add(w http.ResponseWriter, r *http.Request, pr principal.Principal) {
 	var in newPerson
 	if err := decodeJSON(w, r, &in); err != nil {
-		fail(w, http.StatusBadRequest, "Send an email, a name, a role and a password.")
+		fail(w, http.StatusBadRequest, "Send an email, a name and a role.")
 		return
 	}
 	if !validRole(in.Role) {
 		fail(w, http.StatusBadRequest, "A role is admin, editor or viewer.")
+		return
+	}
+
+	if in.Password == "" {
+		h.invite(w, r, pr, in)
 		return
 	}
 	if err := identity.Acceptable(in.Password); err != nil {
@@ -288,4 +329,114 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, into any) error {
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8<<10))
 	dec.DisallowUnknownFields()
 	return dec.Decode(into)
+}
+
+/*
+invite mails somebody a link instead of creating their account.
+
+Refused rather than silently downgraded when this deployment cannot send mail.
+An administrator who left the password field empty meant to invite; creating an
+account with a password of the server's choosing, or with none, would be a
+different thing done quietly.
+*/
+func (h *People) invite(w http.ResponseWriter, r *http.Request,
+	pr principal.Principal, in newPerson) {
+
+	if h.invitations == nil {
+		fail(w, http.StatusBadRequest,
+			"This deployment cannot send email, so a new person needs a password here.")
+		return
+	}
+
+	inv, err := h.invitations.Send(r.Context(), pr, h.addressOf(r.Context(), pr),
+		in.Email, in.Name, in.Role)
+	if err != nil {
+		if errors.Is(err, identity.ErrExists) {
+			fail(w, http.StatusConflict, "That email already has an account here.")
+			return
+		}
+		if inv.ID != "" {
+			// Written but not delivered. Saying which half failed is the
+			// difference between "try again" and "check the mail server",
+			// and an administrator can do something about the second.
+			h.log.Error("invitation not delivered", "to", in.Email, "err", err)
+			fail(w, http.StatusBadGateway,
+				"They were invited, but the email could not be sent. Check the mail server.")
+			return
+		}
+		h.log.Error("could not invite", "to", in.Email, "err", err)
+		fail(w, http.StatusInternalServerError, "Could not invite them.")
+		return
+	}
+
+	h.log.Info("person invited", "to", in.Email, "role", in.Role, "by", pr.Subject)
+	audit(r.Context(), h.log, pr, ActionInvite, in.Email, Allowed,
+		map[string]any{"role": in.Role, "expires": inv.Expires})
+	send(w, http.StatusCreated, inv)
+}
+
+// invitations lists the places held for people who have not arrived.
+func (h *People) pending(w http.ResponseWriter, r *http.Request, pr principal.Principal) {
+	if h.invitations == nil {
+		send(w, http.StatusOK, []identity.Invitation{})
+		return
+	}
+	out, err := h.invitations.invitations.Invitations(r.Context(), pr)
+	if err != nil {
+		h.log.Error("could not list invitations", "err", err)
+		fail(w, http.StatusInternalServerError, "Could not read the invitations.")
+		return
+	}
+	send(w, http.StatusOK, out)
+}
+
+// uninvite withdraws one that has not been used.
+func (h *People) uninvite(w http.ResponseWriter, r *http.Request,
+	pr principal.Principal, id string) {
+
+	if h.invitations == nil {
+		fail(w, http.StatusNotFound, "No such invitation.")
+		return
+	}
+	if err := h.invitations.invitations.Uninvite(r.Context(), pr, id); err != nil {
+		if errors.Is(err, identity.ErrInvitation) {
+			fail(w, http.StatusNotFound, "No such invitation.")
+			return
+		}
+		h.log.Error("could not withdraw an invitation", "err", err)
+		fail(w, http.StatusInternalServerError, "Could not withdraw it.")
+		return
+	}
+
+	audit(r.Context(), h.log, pr, ActionUninvite, id, Allowed, nil)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+/*
+addressOf is the acting person's own email, for the invitation to name.
+
+From the roster, because a portal token carries a subject and no address — and
+an invitation signed "usr_9f2c4a…" is one the recipient cannot tell from a
+phishing attempt. Empty when they are not in the roster, which is a machine
+credential inviting somebody, and in that case the email says "Somebody" rather
+than an id nobody recognises.
+
+A whole-roster read for one address. A project's roster is tens of rows and this
+happens once per invitation, which is a worse trade than a query would be and a
+better one than a second method on the interface for it.
+*/
+func (h *People) addressOf(ctx context.Context, pr principal.Principal) string {
+	if pr.Email != "" {
+		return pr.Email
+	}
+	people, err := h.roster.People(ctx, pr)
+	if err != nil {
+		return ""
+	}
+	for _, person := range people {
+		if person.ID == pr.Subject {
+			return person.Email
+		}
+	}
+	return ""
 }

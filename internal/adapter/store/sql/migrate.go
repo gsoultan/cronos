@@ -61,6 +61,38 @@ var migrations = []Migration{
 		SQL: `
 CREATE INDEX IF NOT EXISTS cronos_runs_by_age ON cronos_runs (started_at);`,
 	},
+	{
+		ID:   3,
+		Name: "invitations",
+		// Adding somebody used to mean choosing their password and telling
+		// them what it was, which puts a working credential in a chat message
+		// and makes it known to two people from the moment it exists.
+		SQL: `
+CREATE TABLE IF NOT EXISTS cronos_invitations (
+  id          TEXT PRIMARY KEY,
+  -- The hash of the secret, never the secret. A backup of this table is a set
+  -- of dead strings rather than a set of working invitations, and a read-only
+  -- replica is not enough to become somebody else.
+  secret_hash TEXT NOT NULL UNIQUE,
+  -- Lowercased on the way in, like cronos_users.email, so the uniqueness the
+  -- accept relies on means the same thing in both tables.
+  email       TEXT NOT NULL,
+  name        TEXT NOT NULL DEFAULT '',
+  org         TEXT NOT NULL,
+  project     TEXT NOT NULL,
+  role        TEXT NOT NULL,
+  invited_by  TEXT NOT NULL DEFAULT '',
+  created_at  TEXT NOT NULL,
+  expires_at  TEXT NOT NULL,
+  -- Set exactly once, by the UPDATE that spends it. NULL is the whole of
+  -- "still usable" as far as concurrency is concerned.
+  accepted_at TEXT
+);
+
+-- Listing what is outstanding, per project, is the common read.
+CREATE INDEX IF NOT EXISTS cronos_invitations_by_project
+  ON cronos_invitations (org, project, accepted_at);`,
+	},
 }
 
 // migrationTable records what has run. Created outside the ordered list,

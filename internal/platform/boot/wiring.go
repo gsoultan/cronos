@@ -448,3 +448,44 @@ func directory(records *sqlstore.Store) api.Directory {
 	}
 	return records
 }
+
+// invitations is where places held for people are recorded.
+//
+// Nil for a file-backed deployment, which has no accounts either — so adding
+// somebody there is the CLI's job, and there is nothing to invite them to.
+func invitations(records *sqlstore.Store) api.Invitations {
+	if records == nil {
+		return nil
+	}
+	return records
+}
+
+/*
+postman is how an invitation is delivered.
+
+The mail channel, or nothing. Nothing is the ordinary case for a deployment that
+has never configured a relay, and it means the portal offers a password field
+instead of an invite button — rather than an invite button that produces an
+error somebody has to interpret.
+
+Built here rather than taken from the channel list because that list is
+addressed by name for deliveries, and reaching into it for "the one that happens
+to be email" would tie invitations to how bursts are configured.
+*/
+func postman(cfg config.Server, log *slog.Logger) api.Postman {
+	if !cfg.SMTP.Configured() {
+		return nil
+	}
+	c, err := emailchannel.New(emailchannel.Config{
+		Host: cfg.SMTP.Host, From: cfg.SMTP.From,
+		Username: cfg.SMTP.Username, Password: cfg.SMTP.Password,
+	})
+	if err != nil {
+		// The same configuration channels() already refused startup over, so
+		// this cannot be reached by a running server. Logged rather than
+		// returned so one bad relay does not take out the whole boot twice.
+		log.Error("no invitation mail", "err", err)
+		return nil
+	}
+	return c
+}

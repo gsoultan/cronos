@@ -24,6 +24,9 @@ const (
 	// Who has access, and every change to it. The one part of an audit that
 	// answers "how did they still have a login in March".
 	ActionPersonAdd     = "person.add"
+	ActionInvite        = "person.invite"
+	ActionInviteAccept  = "person.invite.accept"
+	ActionUninvite      = "person.invite.revoke"
 	ActionPersonRole    = "person.role"
 	ActionPersonDisable = "person.disable"
 	ActionPersonEnable  = "person.enable"

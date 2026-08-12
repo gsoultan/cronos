@@ -69,11 +69,14 @@ export function Shell() {
   const [adopted] = useState(() => adoptSessionFromFragment())
   void adopted
 
-  /* A shared report is the page and nothing else, and before the sign-in check
-     rather than after: whoever follows a share link has no account here, and
+  /* Two pages stand on their own, before the sign-in check rather than after.
+     A shared report, because whoever follows the link has no account here and
      asking them to sign in to read something they were deliberately given
-     without one would be the interface undoing the feature. */
-  if (path.startsWith('/s/')) {
+     without one would be the interface undoing the feature. And an invitation,
+     because the person opening it does not have an account *yet* — sending
+     them to a sign-in page they cannot pass is the loop this feature exists to
+     break. */
+  if (path.startsWith('/s/') || path === '/invitation') {
     return (
       <Suspense fallback={<main className="min-h-screen bg-canvas" />}>
         <Outlet />

@@ -47,6 +47,8 @@ And what should be:
 | `CRONOS_HISTORY_RETENTION` | e.g. `2160h`. Unset keeps run history for ever. |
 | `CRONOS_BEHIND_PROXY=1` | Only where something in front sets `X-Forwarded-For`. Believing it without a proxy keys every rate limit by a value the caller chooses. |
 | `CRONOS_AUDIT` | `log` by default, `off` to stop it. |
+| `CRONOS_SMTP_HOST`, `CRONOS_SMTP_FROM` | A mail relay. Needed to deliver a schedule by email, and to invite anybody. |
+| `CRONOS_PORTAL_URL` | Where the portal is served, for links in email. Without it, invitations are not offered — there would be nothing to put in the link. |
 
 ## Probes
 
@@ -119,3 +121,40 @@ curl -sf -X POST localhost:9999/v1/reports/<a-real-report> \
 Step 4 is the one that matters. A database that restores and a product that
 serves are different claims, and only the second is the one anybody is asking
 about.
+
+## Adding people
+
+Two ways, and the first is the one to use.
+
+**An invitation.** `POST /v1/people` with an email, a name and a role and *no*
+password. Nothing is created: a single-use secret is mailed to them, and the
+account comes into being when they set a password only they have ever seen.
+Needs `CRONOS_SMTP_HOST`, `CRONOS_SMTP_FROM` and `CRONOS_PORTAL_URL`; the portal
+asks whether they are set and offers the choice only where they are.
+
+**A password you choose.** The same endpoint with a password. The account exists
+immediately and somebody other than its owner knows its credential — which then
+lives in whatever carried it, a chat message or a ticket or a sent folder, known
+to at least two people from the moment it exists. Kept because a deployment
+without a mail relay has to be able to add its second administrator somehow, and
+because the first one is created by `cronos-user` the same way.
+
+The invitation's secret is 256 bits from `crypto/rand`, stored as a SHA-256 hash
+and never in the clear, spent by the `UPDATE` that accepts it, and dead after a
+week. It travels in the link's **fragment** — after the `#` — which a browser
+sends to no server, so it is not in the portal's access log, its CDN's, or a
+`Referer` header. `GET /v1/auth/invitation` answers the same for expired, spent
+and never-issued, because that endpoint has no session by design and telling
+them apart would say which addresses somebody is onboarding.
+
+Rows are swept hourly: unusable ones as soon as they expire, accepted ones after
+thirty days, by which point the audit log is the record and what is left here is
+an address kept by accident.
+
+```bash
+./scripts/live-invite.sh
+```
+
+Runs a real SMTP server and a real database, invites somebody, reads the message
+out of the mailbox, follows the link, and then checks the two things that matter
+most: that the link does not work twice, and that replaying it changes nothing.
