@@ -16,6 +16,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -24,8 +25,6 @@ import (
 	"time"
 
 	"github.com/gsoultan/cronos/internal/adapter/api"
-	"github.com/gsoultan/cronos/internal/adapter/store/file"
-	"github.com/gsoultan/cronos/internal/app/run"
 	"github.com/gsoultan/cronos/internal/extension"
 	"github.com/gsoultan/cronos/internal/platform/config"
 	"github.com/gsoultan/cronos/internal/platform/token"
@@ -48,59 +47,61 @@ func Serve(log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	repo, err := file.Load(cfg.Definitions)
+	which, err := tenants(cfg)
+	if err != nil {
+		return err
+	}
+	several := len(which) > 1
+
+	/*
+	   One runtime per project: its definitions, its connections, its runner.
+	   Never shared, because a report resolved from one project and run against
+	   another's warehouse is one customer's numbers on another customer's
+	   screen.
+
+	   Definitions are read before the store, because a file-backed store
+	   writes into the directory it was loaded from and refreshes that
+	   repository after a publish.
+	*/
+	ctx := context.Background()
+	runtimes, err := load(cfg, which, several)
 	if err != nil {
 		return err
 	}
 
-	// The store, opened before anything reads a definition. It doubles as the
-	// run recorder when it is a database; when it is a directory there is
-	// nowhere to write history and records is nil.
-	ctx := context.Background()
-	defs, records, closeStore, err := definitionStore(ctx, cfg, repo, log)
+	// One store for every project: it has been multi-tenant since it existed,
+	// and scopes each statement by the organisation and project of whoever is
+	// asking rather than by which process is running. It doubles as the run
+	// recorder when it is a database; a directory has nowhere to write history.
+	defs, records, closeStore, err := definitionStore(ctx, cfg, only(runtimes), log)
 	if err != nil {
 		return err
 	}
 	defer closeStore()
 
-	// Before the connections are opened, because the store decides which
-	// sources exist: building engines from the directory and then adopting a
-	// different set would leave every dataset pointing at a pool nobody made.
-	if records != nil {
-		if err := reconcile(ctx, defs, repo, cfg.Org, cfg.Project, log); err != nil {
-			return err
-		}
+	if several && records == nil {
+		// A directory holds one project, and there is no sensible reading of
+		// one as three. Said here rather than discovered as three projects
+		// sharing a definition.
+		return fmt.Errorf(
+			"CRONOS_PROJECTS names %d projects, which needs CRONOS_STORE_DSN: "+
+				"a definitions directory holds one", len(which))
 	}
 
-	engines, closeEngines, err := datasources(cfg, repo, log)
-	if err != nil {
+	for _, rt := range runtimes {
+		if err := finish(ctx, cfg, rt, defs, records, log); err != nil {
+			return err
+		}
+		defer rt.close() //nolint:errcheck // closing pools on the way out
+	}
+
+	schedules, stopSchedulers := context.WithCancel(context.Background())
+	defer stopSchedulers()
+	if err := startSchedulers(schedules, cfg, runtimes, records, log); err != nil {
 		return err
 	}
-	defer closeEngines()
 
-	runner := run.New(repo, engines)
-
-	// armed answers when each schedule next fires; firing runs one now. Both
-	// are the same service, named apart so a handler is given only the verb it
-	// needs.
-	var armed api.Due
-	var firing api.Firing
-	if cfg.Scheduler {
-		sched, err := scheduler(cfg, repo, runner, records, log)
-		if err != nil {
-			return err
-		}
-		// So the catalogue can say when each schedule next fires, and say
-		// nothing rather than a time nothing will honour when it cannot.
-		armed, firing = sched, sched
-		ctx, stop := context.WithCancel(context.Background())
-		defer stop()
-		go func() {
-			if err := sched.Start(ctx); err != nil {
-				log.Error("scheduler stopped", "err", err)
-			}
-		}()
-	}
+	projects := projectsFor(runtimes, several)
 
 	// Before the first request can arrive, and said out loud in the line
 	// below: a deployment recording nothing should be a deployment somebody
@@ -114,36 +115,31 @@ func Serve(log *slog.Logger) error {
 	retain(retention, records, cfg, log)
 
 	handler := api.Routes(api.Deps{
-		Reports: repo, Runner: runner, Signer: signer,
+		Projects: projects, Signer: signer,
 		Origins: cfg.Origins, Log: log,
 
-		Publish: publishing(defs, repo, records, engines),
+		Publish: publishingFor(runtimes),
 		Store:   defs,
 		Admin:   api.NewAdminKey(cfg.AdminKey, cfg.Org, cfg.Project),
 
-		Definitions: repo,
-		Due:         armed,
-		Runs:        history(records),
-		Users:       users(records),
-		Fires:       firing,
-		Shares:      sharing(records, signer, repo),
-		Probes:      probing(engines),
-		Roster:      roster(records),
-		Directory:   directory(records),
-		Sends:       sending(cfg, repo, runner, log),
-		Channels:    channelNames(cfg, log),
+		Runs:      history(records),
+		Users:     users(records),
+		Shares:    sharingFor(records, signer, runtimes),
+		Roster:    roster(records),
+		Directory: directory(records),
+		Sends:     sendingFor(cfg, runtimes, log),
+		Channels:  channelNames(cfg, log),
 
-		Ready:   readiness(records, engines),
+		Ready:   readinessFor(records, runtimes),
 		Metrics: api.NewMetrics(),
 
 		Org: cfg.Org, Project: cfg.Project,
 		BehindProxy: cfg.BehindProxy,
 	})
 
-	datasets, reports, schedules, sources := repo.Counts()
 	log.Info("cronosd listening",
 		"addr", cfg.Addr, "driver", cfg.Driver,
-		"datasets", datasets, "reports", reports, "schedules", schedules, "sources", sources,
+		"projects", names(which), "definitions", counts(runtimes),
 		"origins", cfg.Origins, "management", len(cfg.AdminKey) > 0,
 		"scheduler", cfg.Scheduler, "sign-in", records != nil,
 		"auth", extension.Auth().Name(), "audit", auditSink)

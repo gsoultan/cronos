@@ -36,8 +36,10 @@ type Server struct {
 	AdminKey []byte
 	// Org and Project are who the admin key acts as. One project, because the
 	// file store holds one — see api.AdminKey.
-	Org     string
-	Project string
+	Org string
+	// Projects is `org/project,org/project`. Empty means the single one.
+	Projects string
+	Project  string
 	// StoreDSN puts definitions in a database instead of a directory. Empty
 	// keeps the file store, which is one project — see api.AdminKey.
 	StoreDSN    string
@@ -94,8 +96,12 @@ func Load() (Server, error) {
 		// customers is a legal question with a different answer in every
 		// jurisdiction, and deleting at ninety days by default would be this
 		// product answering it on their behalf.
-		Retention:   duration("CRONOS_HISTORY_RETENTION"),
-		Org:         env("CRONOS_ORG", "default"),
+		Retention: duration("CRONOS_HISTORY_RETENTION"),
+		Org:       env("CRONOS_ORG", "default"),
+		// The projects one process serves, as org/project pairs. Empty is the
+		// ordinary deployment: the single project named above, with its
+		// definitions where they have always been.
+		Projects:    os.Getenv("CRONOS_PROJECTS"),
 		Project:     env("CRONOS_PROJECT", "default"),
 		StoreDSN:    os.Getenv("CRONOS_STORE_DSN"),
 		StoreDriver: env("CRONOS_STORE_DRIVER", "postgres"),

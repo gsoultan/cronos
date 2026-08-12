@@ -24,14 +24,16 @@ type Firing interface {
 // definition, which the management API already does — a second way to change
 // the same thing is a second thing to keep in step.
 type Schedules struct {
-	fires Firing
-	auth  Principals
-	log   *slog.Logger
+	// projects resolves whose scheduler this is. Firing another project's
+	// schedule sends real documents to their customers.
+	projects Projects
+	auth     Principals
+	log      *slog.Logger
 }
 
 // NewSchedules wires the handler.
-func NewSchedules(f Firing, a Principals, log *slog.Logger) *Schedules {
-	return &Schedules{fires: f, auth: a, log: log}
+func NewSchedules(projects Projects, a Principals, log *slog.Logger) *Schedules {
+	return &Schedules{projects: projects, auth: a, log: log}
 }
 
 // ServeHTTP handles POST /v1/schedules/{name}/run.
@@ -52,6 +54,13 @@ func (h *Schedules) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	project, err := h.projects.Project(r.Context(), pr)
+	if err != nil || project.Fires == nil {
+		// No scheduler armed here, or not this caller's project.
+		fail(w, http.StatusNotFound, "No such schedule.")
+		return
+	}
+
 	name := r.PathValue("name")
 	h.log.Info("running a schedule on request", "schedule", name, "by", pr.Subject)
 
@@ -59,7 +68,7 @@ func (h *Schedules) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// documents outlives the HTTP request that asked for it, and cancelling it
 	// when the browser tab closes would leave a delivery that half happened —
 	// which is worse to reconcile than one that did not start.
-	if err := h.fires.Fire(context.WithoutCancel(r.Context()), name); err != nil {
+	if err := project.Fires.Fire(context.WithoutCancel(r.Context()), name); err != nil {
 		switch {
 		case errors.Is(err, schedule.ErrNoSchedule):
 			fail(w, http.StatusNotFound, "No such schedule.")

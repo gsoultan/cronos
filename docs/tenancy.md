@@ -115,6 +115,31 @@ claim becomes a full-table disclosure. A principal nobody marked is treated as
 an end customer, so forgetting costs a blank report rather than everybody's
 data.
 
+## One process, or several
+
+A process serves one project by default — `CRONOS_ORG` and `CRONOS_PROJECT` —
+and that was the whole of the isolation: the blast radius of a bad definition,
+a runaway query or a leaked signing key was one customer's project, because
+there was physically nothing else in the process.
+
+`CRONOS_PROJECTS=acme/finance,globex/ops` serves several, with definitions under
+`$CRONOS_DEFINITIONS/<org>/<project>` and a database store, because a
+definitions directory holds one project. Each gets its own definitions in
+memory, its own connection pools and its own scheduler, resolved per request
+from the caller's own principal. Nothing is shared but the store, which has
+scoped every statement by organisation and project since it existed.
+
+That trade is worth naming: with several, isolation is a property of the code
+rather than of the operating system. One process per project is still supported
+and is still the stronger answer.
+
+**A token now has to name a project the server serves.** It always carried one;
+the embed handler simply never read it, because one signing key meant one
+deployment meant one project. Any token signed with the right key opened any
+report on that server whatever project it claimed. That is no longer true, and
+a host minting tokens with the wrong organisation or project will find them
+refused.
+
 A **share link** is an embed token, so this rule decides what it can be. The
 recipient is by definition not a project member, which means a link to a report
 whose dataset is row-scoped would show them nothing — and the only way to make

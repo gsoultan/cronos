@@ -40,7 +40,7 @@ spec:
 
 func TestAnEmptyStoreAdoptsTheDirectory(t *testing.T) {
 	dir := definitionsIn(t, fmt.Sprintf(dataset, "from the file"))
-	repo := load(t, dir)
+	repo := loadRepo(t, dir)
 	store := emptyStore(t)
 
 	if err := reconcile(context.Background(), store, repo, "acme", "finance", quiet()); err != nil {
@@ -62,7 +62,7 @@ func TestAPublishedEditSurvivesARestart(t *testing.T) {
 	dir := definitionsIn(t, fmt.Sprintf(dataset, "from the file"))
 	store := emptyStore(t)
 
-	first := load(t, dir)
+	first := loadRepo(t, dir)
 	if err := reconcile(context.Background(), store, first, "acme", "finance", quiet()); err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +72,7 @@ func TestAPublishedEditSurvivesARestart(t *testing.T) {
 	}
 
 	// A second process, reading the same untouched directory.
-	next := load(t, dir)
+	next := loadRepo(t, dir)
 	if err := reconcile(context.Background(), store, next, "acme", "finance", quiet()); err != nil {
 		t.Fatal(err)
 	}
@@ -94,14 +94,14 @@ func TestADeletionIsNotResurrectedByItsFile(t *testing.T) {
 		strings.Replace(fmt.Sprintf(dataset, "removed"), "name: invoices", "name: drafts", 1))
 	store := emptyStore(t)
 
-	if err := reconcile(context.Background(), store, load(t, dir), "acme", "finance", quiet()); err != nil {
+	if err := reconcile(context.Background(), store, loadRepo(t, dir), "acme", "finance", quiet()); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.Delete(context.Background(), deployment, "Dataset", "drafts"); err != nil {
 		t.Fatal(err)
 	}
 
-	next := load(t, dir)
+	next := loadRepo(t, dir)
 	if err := reconcile(context.Background(), store, next, "acme", "finance", quiet()); err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +118,7 @@ func TestADeletionIsNotResurrectedByItsFile(t *testing.T) {
 func TestADefinitionNoFileEverHadIsLive(t *testing.T) {
 	dir := definitionsIn(t, fmt.Sprintf(dataset, "from the file"))
 	store := emptyStore(t)
-	if err := reconcile(context.Background(), store, load(t, dir), "acme", "finance", quiet()); err != nil {
+	if err := reconcile(context.Background(), store, loadRepo(t, dir), "acme", "finance", quiet()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -127,7 +127,7 @@ func TestADefinitionNoFileEverHadIsLive(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	next := load(t, dir)
+	next := loadRepo(t, dir)
 	if err := reconcile(context.Background(), store, next, "acme", "finance", quiet()); err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +153,7 @@ func definitionsIn(t *testing.T, docs ...string) string {
 	return dir
 }
 
-func load(t *testing.T, dir string) *file.Repository {
+func loadRepo(t *testing.T, dir string) *file.Repository {
 	t.Helper()
 	repo, err := file.Load(dir)
 	if err != nil {

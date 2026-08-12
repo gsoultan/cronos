@@ -5,7 +5,6 @@ import (
 	"net/http"
 
 	"github.com/gsoultan/cronos/internal/app/publish"
-	"github.com/gsoultan/cronos/internal/app/run"
 	"github.com/gsoultan/cronos/internal/extension"
 	"github.com/gsoultan/cronos/internal/platform/token"
 )
@@ -25,29 +24,32 @@ server is a legitimate deployment, and an endpoint that exists only to say no
 is one somebody will spend an afternoon probing.
 */
 type Deps struct {
-	// Reports, Runner and Signer are what makes a server: rendering, and the
-	// tokens that decide who may. Nothing works without all three.
-	Reports Reports
-	Runner  *run.Service
-	Signer  *token.Signer
+	/*
+	   Projects resolves the runtime a request acts in — its definitions, its
+	   connections, and the things that read them.
+
+	   A port rather than five fields, because they must never be mixed: a
+	   report resolved from one project and run against another's warehouse is
+	   one customer's numbers on another customer's screen. api.One is the
+	   single-project deployment every one of these was before, and it checks
+	   the caller belongs to it rather than assuming the narrowness of the
+	   deployment does that.
+	*/
+	Projects Projects
+	Signer   *token.Signer
 
 	Origins []string
 	Log     *slog.Logger
 
-	// Publish and Store are the management API.
-	Publish *publish.Service
+	// Publish and Store are the management API. Publish resolves the caller's
+	// own project: each has its own datasets to check a report against.
+	Publish Publishing
 	Store   publish.Store
 	Admin   *AdminKey
 
-	// Definitions is the running view: the catalogue reads it, and a
-	// management read falls back to it for what no store holds.
-	Definitions Repository
-	Due         Due
-	Runs        History
-	Users       Users
-	Fires       Firing
-	Shares      Sharing
-	Probes      Probes
+	Runs   History
+	Users  Users
+	Shares Sharing
 	// Channels are the ways this deployment can deliver something, so an
 	// interface offers what exists rather than what the format supports.
 	Channels []string
@@ -116,7 +118,7 @@ var (
 // There is no other unauthenticated read of a definition, not even its name —
 // a report's existence is information about our customer's business.
 func Routes(d Deps) http.Handler {
-	embed := NewEmbed(d.Reports, d.Runner, d.Signer, d.Log)
+	embed := NewEmbed(d.Projects, d.Signer, d.Log)
 	if rv, ok := d.Shares.(Revocations); ok {
 		embed = embed.WithRevocations(rv)
 	}
@@ -159,10 +161,7 @@ func Routes(d Deps) http.Handler {
 	// What the project contains, in one request. A browsing interface asking
 	// for the names and then once per name is a page that loads in a hundred
 	// round trips.
-	if d.Definitions != nil {
-		mux.Handle("/v1/catalog",
-			NewCatalog(d.Definitions, d.Due, author, d.Log).WithChannels(d.Channels))
-	}
+	mux.Handle("/v1/catalog", NewCatalog(d.Projects, author, d.Log).WithChannels(d.Channels))
 
 	// Sharing needs somewhere to record what was handed out, so that it can be
 	// withdrawn. A deployment without one has no way to take a link back, and
@@ -255,28 +254,20 @@ func Routes(d Deps) http.Handler {
 	// Management is open to an author with a portal token or to a pipeline
 	// with the shared key. Mounted when either can exist.
 	if d.Publish != nil && (author.Enabled() || (d.Admin != nil && d.Admin.Enabled())) {
-		handler := NewDefinitions(d.Publish, d.Store, author, d.Log)
 		// A read falls back to what the process booted with, for the
 		// definitions no store has a copy of — a directory-bootstrapped
-		// deployment answering for a report that plainly renders.
-		if loaded, ok := d.Definitions.(Loaded); ok {
-			handler = handler.WithLoaded(loaded, d.Org, d.Project)
-		}
+		// deployment answering for a report that plainly renders. Resolved per
+		// request now, so the fallback is this caller's project and not
+		// whichever one the process was configured with.
+		handler := NewDefinitions(d.Publish, d.Store, author, d.Log).WithProjects(d.Projects)
 		mux.Handle("/v1/definitions", handler)
 		mux.Handle("/v1/definitions/{kind}/{name}", handler)
 
-		// Only where sources are named. A deployment reading one configured
-		// database has nothing to put in the URL.
-		if d.Probes != nil {
-			mux.Handle("/v1/datasources/{name}/test", NewDataSources(d.Probes, author, d.Log))
-		}
-
-		// Only where a scheduler is armed. A deployment that renders on
-		// request has no schedules to fire, and an endpoint that exists only
-		// to say no is one somebody will spend an afternoon probing.
-		if d.Fires != nil {
-			mux.Handle("/v1/schedules/{name}/run", NewSchedules(d.Fires, author, d.Log))
-		}
+		// Both resolve their project per request. A deployment with no named
+		// sources, or no scheduler armed, answers from the project rather than
+		// from a nil check here — see Project.
+		mux.Handle("/v1/datasources/{name}/test", NewDataSources(d.Projects, author, d.Log))
+		mux.Handle("/v1/schedules/{name}/run", NewSchedules(d.Projects, author, d.Log))
 
 		// Behind the admin key and never the embed token: a run record names
 		// every recipient of a burst.

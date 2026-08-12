@@ -12,6 +12,14 @@ export CRONOS_SIGNING_KEY="${CRONOS_SIGNING_KEY:-development-key-at-least-32-byt
 export CRONOS_DEFINITIONS=demo/definitions
 export CRONOS_SEED=demo/seed.sql
 export CRONOS_ADDR="${CRONOS_ADDR:-:8788}"
+# The project cronos-token mints for by default. It used not to matter: the
+# embed handler never read the organisation and project out of a token, so
+# tenancy came from the signing key alone and any token signed with it opened
+# this server. It matters now — a token names the project it acts in, and this
+# server serves one — and the demo was inconsistent, with the CLI defaulting to
+# acme/finance and the server to default/default.
+export CRONOS_ORG=acme
+export CRONOS_PROJECT=finance
 PORT="${CRONOS_ADDR#:}"
 export CRONOS_ORIGINS="http://localhost:${LIVE_PORT:-5199}"
 

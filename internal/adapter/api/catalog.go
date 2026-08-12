@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/gsoultan/cronos/internal/core/definition"
-	"github.com/gsoultan/cronos/internal/core/principal"
 )
 
 // Catalog is what the project contains, as a browsing interface needs it.
@@ -103,17 +102,17 @@ type Due interface {
 
 // CatalogHandler serves it.
 type CatalogHandler struct {
+	// projects resolves whose catalogue this is, per request.
+	projects Projects
 	// channels are the delivery channels this deployment has configured.
 	channels []string
-	defs     Repository
-	due      Due
 	auth     Principals
 	log      *slog.Logger
 }
 
 // NewCatalog wires the handler.
-func NewCatalog(d Repository, due Due, a Principals, log *slog.Logger) *CatalogHandler {
-	return &CatalogHandler{defs: d, due: due, auth: a, log: log}
+func NewCatalog(projects Projects, a Principals, log *slog.Logger) *CatalogHandler {
+	return &CatalogHandler{projects: projects, auth: a, log: log}
 }
 
 // WithChannels names the ways this deployment can deliver something, so an
@@ -138,10 +137,17 @@ func (c *CatalogHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusMethodNotAllowed, "Not a method this endpoint takes.")
 		return
 	}
-	send(w, http.StatusOK, c.build(pr))
+	project, err := c.projects.Project(r.Context(), pr)
+	if err != nil {
+		// The same answer as a project that does not exist. Telling them apart
+		// would let somebody enumerate which customers a deployment holds.
+		fail(w, http.StatusForbidden, "You do not have access to this project.")
+		return
+	}
+	send(w, http.StatusOK, c.build(project))
 }
 
-func (c *CatalogHandler) build(_ principal.Principal) Catalog {
+func (c *CatalogHandler) build(project *Project) Catalog {
 	out := Catalog{
 		Sources: []SourceSummary{}, Datasets: []DatasetSummary{},
 		Reports: []ReportSummary{}, Schedules: []ScheduleSummary{},
@@ -152,7 +158,7 @@ func (c *CatalogHandler) build(_ principal.Principal) Catalog {
 	}
 
 	readers := map[string]int{}
-	for _, ds := range c.defs.Datasets() {
+	for _, ds := range project.Definitions.Datasets() {
 		names := make([]string, 0, len(ds.Sources))
 		for _, s := range ds.Sources {
 			names = append(names, s.Ref)
@@ -171,7 +177,7 @@ func (c *CatalogHandler) build(_ principal.Principal) Catalog {
 		})
 	}
 
-	for _, src := range c.defs.DataSources() {
+	for _, src := range project.Definitions.DataSources() {
 		out.Sources = append(out.Sources, SourceSummary{
 			Name: src.Name, Title: src.Title, Description: src.Description, Driver: src.Driver,
 			Detail: detail(src), Datasets: readers[src.Name], Federated: src.Federated(),
@@ -179,7 +185,7 @@ func (c *CatalogHandler) build(_ principal.Principal) Catalog {
 		})
 	}
 
-	for _, rep := range c.defs.Reports() {
+	for _, rep := range project.Definitions.Reports() {
 		outputs, blocks := []string{}, 0
 		for _, o := range rep.Outputs {
 			outputs = append(outputs, o.Name)
@@ -192,10 +198,10 @@ func (c *CatalogHandler) build(_ principal.Principal) Catalog {
 	}
 
 	due := map[string]time.Time{}
-	if c.due != nil {
-		due = c.due.Due()
+	if project.Due != nil {
+		due = project.Due.Due()
 	}
-	for _, s := range c.defs.Schedules() {
+	for _, s := range project.Definitions.Schedules() {
 		summary := ScheduleSummary{
 			Name: s.Name, Title: s.Title, Description: s.Description, Report: s.Report,
 			Output: s.Output, Cron: s.Cron, Timezone: s.Timezone,

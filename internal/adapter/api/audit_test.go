@@ -29,7 +29,7 @@ func TestTheServerEmitsWhatAnAuditNeeds(t *testing.T) {
 	extension.RegisterAuditSink(sink)
 
 	h := api.Routes(api.Deps{
-		Reports: nil, Runner: nil, Signer: nil,
+		Projects: nil, Signer: nil,
 		Log:     logger(&bytes.Buffer{}),
 		Origins: []string{"http://localhost:5174"},
 	})

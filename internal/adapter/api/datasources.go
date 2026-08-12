@@ -25,14 +25,18 @@ database has nothing to name in the URL, and an endpoint that exists to say
 "which one?" is one somebody will spend an afternoon probing.
 */
 type DataSources struct {
-	probes Probes
-	auth   Principals
-	log    *slog.Logger
+	// projects resolves whose sources these are. A probe opens a connection to
+	// somebody's warehouse, and doing it on behalf of a caller from another
+	// project is both a leak of which sources exist and a use of their
+	// database.
+	projects Projects
+	auth     Principals
+	log      *slog.Logger
 }
 
 // NewDataSources wires the handler.
-func NewDataSources(p Probes, a Principals, log *slog.Logger) *DataSources {
-	return &DataSources{probes: p, auth: a, log: log}
+func NewDataSources(projects Projects, a Principals, log *slog.Logger) *DataSources {
+	return &DataSources{projects: projects, auth: a, log: log}
 }
 
 // ServeHTTP handles POST /v1/datasources/{name}/test.
@@ -54,8 +58,17 @@ func (h *DataSources) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	project, err := h.projects.Project(r.Context(), pr)
+	if err != nil || project.Probes == nil {
+		// No named sources here, or not this caller's project. The same answer
+		// for both: a deployment reading one configured database has nothing
+		// to name in the URL.
+		fail(w, http.StatusNotFound, "No such datasource.")
+		return
+	}
+
 	name := r.PathValue("name")
-	took, err := h.probes.Probe(r.Context(), name)
+	took, err := project.Probes.Probe(r.Context(), name)
 
 	if err != nil {
 		// The driver's own sentence, in full. It is the only party that knows

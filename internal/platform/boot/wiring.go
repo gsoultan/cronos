@@ -75,8 +75,8 @@ func channels(cfg config.Server, log *slog.Logger) ([]burst.Channel, error) {
 }
 
 // scheduler wires the burst pipeline behind a cron loop.
-func scheduler(cfg config.Server, repo *file.Repository, runner *run.Service,
-	records *sqlstore.Store, log *slog.Logger) (*schedule.Service, error) {
+func scheduler(cfg config.Server, org, project string, repo *file.Repository,
+	runner *run.Service, records *sqlstore.Store, log *slog.Logger) (*schedule.Service, error) {
 
 	chans, err := channels(cfg, log)
 	if err != nil {
@@ -92,7 +92,7 @@ func scheduler(cfg config.Server, repo *file.Repository, runner *run.Service,
 		bursts = bursts.WithHistory(records)
 	}
 
-	sched := schedule.New(repo, bursts, owner{cfg}, log)
+	sched := schedule.New(repo, bursts, owner{org: org, project: project}, log)
 	if mail := mailer(chans); mail != nil {
 		sched = sched.WithAlerts(alertemail.New(mail))
 	} else {
@@ -131,13 +131,16 @@ func mailer(chans []burst.Channel) alertemail.Sender {
 // and not as an end customer — see docs/tenancy.md, and note that publishing
 // refuses a schedule whose datasets carry a scope predicate for exactly this
 // reason.
-type owner struct{ cfg config.Server }
+// The project is carried rather than read from configuration: a process may
+// serve several, and a schedule that ran as the wrong one would read the wrong
+// warehouse and mail the result to the wrong customers.
+type owner struct{ org, project string }
 
 func (o owner) Owner(s definition.Schedule) principal.Principal {
 	return principal.Principal{
 		Subject:     "schedule:" + s.Name,
-		OrgID:       o.cfg.Org,
-		ProjectID:   o.cfg.Project,
+		OrgID:       o.org,
+		ProjectID:   o.project,
 		ProjectRole: principal.ProjectEditor,
 		// A schedule runs as a project member. docs/tenancy.md is explicit
 		// that burst targets rely on membership alone.
@@ -343,50 +346,35 @@ func auditing(cfg config.Server, log *slog.Logger) string {
 	return extension.Audit().Name()
 }
 
-// readiness is what this deployment cannot serve without.
-//
-// The store is required: with a database configured, a process that cannot
-// reach it cannot publish, cannot sign anybody in and cannot record a run, so
-// there is nothing useful to send it. Datasources are not: one warehouse of
-// four being unreachable means three-quarters of the reports still work, and
-// taking the instance out of rotation fails those too. That distinction is the
-// whole reason the answer has three states rather than two.
-func readiness(records *sqlstore.Store, engines run.Engines) []api.Check {
-	var checks []api.Check
+/*
+storeCheck is the one dependency every project shares.
 
-	if records != nil {
-		checks = append(checks, api.Check{
-			Name:     "store",
-			Required: true,
-			Probe: func(ctx context.Context) error {
-				// The schema too, not only the connection. A store answering
-				// at a version this build does not know is one this build must
-				// not write to, and it is the state a half-finished deploy
-				// leaves behind.
-				at, err := records.SchemaVersion(ctx)
-				if err != nil {
-					return err
-				}
-				if at != sqlstore.Wanted() {
-					return fmt.Errorf("schema is at %d, this build wants %d", at, sqlstore.Wanted())
-				}
-				return nil
-			},
-		})
+Required: with a database configured, a process that cannot reach it cannot
+publish, cannot sign anybody in and cannot record a run — for any project — so
+there is nothing useful to send it. Datasources are per project and are not
+required, because one warehouse being unreachable leaves every report that does
+not read it working, and taking the instance out of rotation would fail those
+too. That distinction is the whole reason the answer has three states.
+*/
+func storeCheck(records *sqlstore.Store) api.Check {
+	return api.Check{
+		Name:     "store",
+		Required: true,
+		Probe: func(ctx context.Context) error {
+			// The schema too, not only the connection. A store answering at a
+			// version this build does not know is one this build must not
+			// write to, and it is the state a half-finished deploy leaves
+			// behind.
+			at, err := records.SchemaVersion(ctx)
+			if err != nil {
+				return err
+			}
+			if at != sqlstore.Wanted() {
+				return fmt.Errorf("schema is at %d, this build wants %d", at, sqlstore.Wanted())
+			}
+			return nil
+		},
 	}
-
-	if reg, ok := engines.(*registry.Registry); ok {
-		for _, name := range reg.Names() {
-			checks = append(checks, api.Check{
-				Name: "datasource:" + name,
-				Probe: func(ctx context.Context) error {
-					_, err := reg.Probe(ctx, name)
-					return err
-				},
-			})
-		}
-	}
-	return checks
 }
 
 // roster adapts a possibly-absent store to the people port.

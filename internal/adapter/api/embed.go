@@ -19,16 +19,19 @@ const maxBody = 64 << 10
 
 // Embed serves reports to embedded viewers.
 type Embed struct {
-	reports     Reports
-	runner      *run.Service
+	// projects resolves the definitions and connections this request acts in.
+	// Resolved per request from the principal, never held: a handler that
+	// closed over one project's runtime would serve it to every caller, which
+	// is one customer's numbers on another customer's screen.
+	projects    Projects
 	signer      *token.Signer
 	revocations Revocations
 	log         *slog.Logger
 }
 
 // NewEmbed wires the handler.
-func NewEmbed(r Reports, s *run.Service, sg *token.Signer, log *slog.Logger) *Embed {
-	return &Embed{reports: r, runner: s, signer: sg, log: log}
+func NewEmbed(projects Projects, sg *token.Signer, log *slog.Logger) *Embed {
+	return &Embed{projects: projects, signer: sg, log: log}
 }
 
 // Revocations answers whether a token we issued still counts.
@@ -124,14 +127,25 @@ func (e *Embed) renderWith(w http.ResponseWriter, r *http.Request,
 		return
 	}
 
-	report, err := e.reports.Report(r.Context(), name)
+	// The runtime this caller acts in, from their own token. Before the
+	// report is looked up, because looking one up in the wrong project is the
+	// mistake this resolves to prevent.
+	project, err := e.projects.Project(r.Context(), pr)
+	if err != nil {
+		e.log.Info("no project for this caller",
+			"org", pr.OrgID, "project", pr.ProjectID, "err", err)
+		fail(w, http.StatusNotFound, "No such report.")
+		return
+	}
+
+	report, err := project.Reports.Report(r.Context(), name)
 	if err != nil {
 		e.log.Info("report not found", "report", name, "err", err)
 		fail(w, http.StatusNotFound, "No such report.")
 		return
 	}
 
-	view, err := e.runner.Render(r.Context(), report, run.Request{
+	view, err := project.Runner.Render(r.Context(), report, run.Request{
 		Output:  req.Output,
 		Params:  merge(pinned, req.Params),
 		Filters: req.Filters,

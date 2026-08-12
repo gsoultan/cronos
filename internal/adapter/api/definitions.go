@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"io"
 	"log/slog"
@@ -31,34 +32,51 @@ type Loaded interface {
 	Raw(kind, name string) ([]byte, bool)
 }
 
+/*
+Publishing is validating and storing a definition, and removing one.
+
+An interface rather than the service, because one process may serve several
+projects and each has its own — its own datasets to check a report against, and
+its own engines to prove a block will run. A single *publish.Service satisfies
+it directly, which is what a one-project deployment passes.
+*/
+type Publishing interface {
+	Publish(ctx context.Context, raw []byte, pr principal.Principal) (publish.Result, error)
+	Delete(ctx context.Context, pr principal.Principal, kind, name string) error
+}
+
 type Definitions struct {
-	svc   *publish.Service
+	svc   Publishing
 	store publish.Store
 	auth  Principals
 	log   *slog.Logger
-	// loaded is what the process booted with, and org and project are the one
-	// tenant it holds. A directory is not multi-tenant, so serving it to any
+	// projects resolves the caller's own running view, for the read that falls
+	// back to it. A directory is not multi-tenant, so serving one to any
 	// principal that asked would be a cross-project read through the one path
 	// that does not go via a store — which is where such a hole would live.
-	loaded  Loaded
-	org     string
-	project string
+	projects Projects
 }
 
 // NewDefinitions wires the handler.
-func NewDefinitions(s *publish.Service, st publish.Store, a Principals, log *slog.Logger) *Definitions {
+func NewDefinitions(s Publishing, st publish.Store, a Principals, log *slog.Logger) *Definitions {
 	return &Definitions{svc: s, store: st, auth: a, log: log}
 }
 
-// WithLoaded lets a read fall back to what the server booted with.
-//
-// A deployment whose definitions came from a directory and whose store is a
-// database has both: the store holds what anybody published, and the directory
-// holds everything else. Without the fallback, a report that plainly renders
-// answers 404 when asked what it says, which is a contradiction an author
-// cannot act on.
-func (d *Definitions) WithLoaded(l Loaded, org, project string) *Definitions {
-	d.loaded, d.org, d.project = l, org, project
+/*
+WithProjects lets a read fall back to what the server booted with.
+
+A deployment whose definitions came from a directory and whose store is a
+database has both: the store holds what anybody published, and the directory
+holds everything else. Without the fallback, a report that plainly renders
+answers 404 when asked what it says, which is a contradiction an author cannot
+act on.
+
+Resolved per request rather than held, so the fallback is this caller's project
+— the version that held one org and project served whichever the process was
+configured with, which was correct only because a process served one.
+*/
+func (d *Definitions) WithProjects(p Projects) *Definitions {
+	d.projects = p
 	return d
 }
 
@@ -129,7 +147,7 @@ func (d *Definitions) get(w http.ResponseWriter, r *http.Request, pr principal.P
 	if err != nil {
 		// The store first, so a published edit wins over the file it was read
 		// from — the fallback answers for what nobody has changed yet.
-		fallback, ok := d.fromLoaded(pr, canonicalKind(kind), name)
+		fallback, ok := d.fromLoaded(r.Context(), pr, canonicalKind(kind), name)
 		if !ok {
 			fail(w, http.StatusNotFound, "No such definition.")
 			return
@@ -143,11 +161,21 @@ func (d *Definitions) get(w http.ResponseWriter, r *http.Request, pr principal.P
 
 // fromLoaded answers from the running view, which is scoped to the one
 // project this process serves — so a principal from another may not read it.
-func (d *Definitions) fromLoaded(pr principal.Principal, kind, name string) ([]byte, bool) {
-	if d.loaded == nil || pr.OrgID != d.org || pr.ProjectID != d.project {
+func (d *Definitions) fromLoaded(ctx context.Context, pr principal.Principal,
+	kind, name string) ([]byte, bool) {
+
+	if d.projects == nil {
 		return nil, false
 	}
-	return d.loaded.Raw(kind, name)
+	project, err := d.projects.Project(ctx, pr)
+	if err != nil {
+		return nil, false
+	}
+	loaded, ok := project.Definitions.(Loaded)
+	if !ok {
+		return nil, false
+	}
+	return loaded.Raw(kind, name)
 }
 
 // delete removes a definition, through the service rather than the store.

@@ -36,14 +36,27 @@ type Reports interface {
 
 // Service mints share links.
 type Service struct {
-	store   Store
-	signer  *token.Signer
-	reports Reports
+	store  Store
+	signer *token.Signer
+	// reports resolves whose reports a share may name, from the sharer.
+	//
+	// A function rather than a value, because one process may serve several
+	// projects: a link to a report that happens to exist in somebody else's is
+	// a link to somebody else's data, and the check that prevents it is the
+	// one that asks which project the sharer is in.
+	reports func(principal.Principal) Reports
 	now     func() time.Time
 }
 
-// New wires a Service.
+// New wires a Service over one project's reports.
 func New(st Store, signer *token.Signer, reports Reports) *Service {
+	return NewPerProject(st, signer, func(principal.Principal) Reports { return reports })
+}
+
+// NewPerProject wires a Service that resolves reports from the sharer.
+func NewPerProject(st Store, signer *token.Signer,
+	reports func(principal.Principal) Reports) *Service {
+
 	return &Service{store: st, signer: signer, reports: reports, now: time.Now}
 }
 
@@ -71,13 +84,13 @@ func (s *Service) Create(ctx context.Context, pr principal.Principal, req Reques
 	// Checked here rather than at the first click. A link to a report that
 	// does not exist fails for the recipient, who cannot tell whether they were
 	// sent the wrong thing or refused.
-	if !s.has(req.Report) {
+	if !s.has(pr, req.Report) {
 		return core.Share{}, fmt.Errorf("%w: no report %q", ErrInvalid, req.Report)
 	}
 	if req.Days < 0 {
 		return core.Share{}, fmt.Errorf("%w: an expiry is days from now, or zero for never", ErrInvalid)
 	}
-	if err := s.scoped(ctx, req); err != nil {
+	if err := s.scoped(ctx, pr, req); err != nil {
 		return core.Share{}, err
 	}
 
@@ -201,19 +214,20 @@ exists to prevent. So it is refused, and the message says whose rows the link
 would have to name. Sharing one of these means saying which customer it is for,
 which is a question only the person sharing can answer.
 */
-func (s *Service) scoped(ctx context.Context, req Request) error {
+func (s *Service) scoped(ctx context.Context, pr principal.Principal, req Request) error {
 	// A sharer with a scope of their own is already narrowed to it, and the
 	// token carries that same narrowing to the recipient.
-	if len(req.Scope) > 0 || s.reports == nil {
+	reports := s.reports(pr)
+	if len(req.Scope) > 0 || reports == nil {
 		return nil
 	}
 
-	rep, err := s.reports.Report(ctx, req.Report)
+	rep, err := reports.Report(ctx, req.Report)
 	if err != nil {
 		return nil // the report exists; has() said so, and this is not that check
 	}
 	for _, name := range datasets(rep) {
-		ds, err := s.reports.Dataset(ctx, name)
+		ds, err := reports.Dataset(ctx, name)
 		if err != nil {
 			// Fails closed. A dataset we cannot read is one we cannot say is
 			// safe to publish.
@@ -248,11 +262,12 @@ func datasets(rep definition.Report) []string {
 	return out
 }
 
-func (s *Service) has(report string) bool {
-	if s.reports == nil {
+func (s *Service) has(pr principal.Principal, report string) bool {
+	reports := s.reports(pr)
+	if reports == nil {
 		return true
 	}
-	for _, name := range s.reports.Names("Report") {
+	for _, name := range reports.Names("Report") {
 		if name == report {
 			return true
 		}

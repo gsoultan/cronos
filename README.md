@@ -85,6 +85,12 @@ what was missing, rather than becoming a connection error at six in the
 morning; and the resolved value exists between the resolver and `database/sql`
 and nowhere else — not in the management API's copy, not in a log line.
 
+One process serves one project. `CRONOS_PROJECTS=acme/finance,globex/ops`
+serves several — definitions under `$CRONOS_DEFINITIONS/<org>/<project>`, a
+database store, and a runtime each — with every handler resolving its project
+from the caller's own token. One process per project remains the stronger
+isolation and is still the default; see [docs/tenancy.md](docs/tenancy.md).
+
 ## Operating it
 
 Running it is [docs/deploying.md](docs/deploying.md): the image, what has to be
