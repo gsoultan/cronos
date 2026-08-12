@@ -87,3 +87,35 @@ func (c *cancelling) Close() error {
 	c.cancel()
 	return err
 }
+
+/*
+Verify proves the database will accept the statement, without running it.
+
+Prepared and discarded. A prepare parses, resolves every name and resolves
+every type — which is the whole class of failure that compiling a block cannot
+see: a column the dataset declares and the warehouse does not have, a
+permission the connection lacks, and a date grain over a column stored as text,
+which works on SQLite and MySQL and is a type error on Postgres.
+
+Cheap enough to do at publish. It does no work on the data, touches no rows and
+holds no lock — the alternative to a millisecond here is finding out at six in
+the morning in the middle of a burst, with the driver's own words for it.
+*/
+func (e *Executor) Verify(ctx context.Context, p query.Plan) error {
+	if p.Empty() {
+		return fmt.Errorf("sql: refusing to verify an uncompiled plan")
+	}
+
+	timeout := e.Timeout
+	if timeout <= 0 {
+		timeout = definition.DefaultStatementTimeout
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	stmt, err := e.db.PrepareContext(ctx, p.SQL())
+	if err != nil {
+		return err
+	}
+	return stmt.Close()
+}

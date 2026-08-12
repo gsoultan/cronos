@@ -115,7 +115,7 @@ func serve(log *slog.Logger) error {
 		Reports: repo, Runner: runner, Signer: signer,
 		Origins: cfg.Origins, Log: log,
 
-		Publish: publishing(defs, repo, records),
+		Publish: publishing(defs, repo, records, engines),
 		Store:   defs,
 		Admin:   api.NewAdminKey(cfg.AdminKey, cfg.Org, cfg.Project),
 

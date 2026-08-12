@@ -3,8 +3,10 @@ package publish
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	codec "github.com/gsoultan/cronos/internal/adapter/codec/yaml"
+	"github.com/gsoultan/cronos/internal/app/run"
 	"github.com/gsoultan/cronos/internal/core/definition"
 	"github.com/gsoultan/cronos/internal/core/principal"
 	"github.com/gsoultan/cronos/internal/core/query"
@@ -35,6 +37,29 @@ type Live interface {
 	Apply(raw []byte) error
 }
 
+/*
+Engines resolves how a dataset's queries are compiled and run.
+
+Given to publish so a definition can be proved against the database it will
+actually read, rather than only against the dialect this package compiles for.
+Compiling catches a field the dataset does not declare; only the database
+catches a column it does not have, a permission the connection lacks, or a date
+grain over a column stored as text — which works on SQLite and MySQL and is a
+type error on Postgres.
+*/
+type Engines interface {
+	Engine(ctx context.Context, ds definition.Dataset) (run.Engine, error)
+}
+
+// Verifier is an executor that can prove a statement without running it.
+//
+// Optional, and asserted for rather than required: an executor that cannot
+// prepare — a federated one, a future one over an HTTP API — should not stop
+// a definition being published.
+type Verifier interface {
+	Verify(ctx context.Context, p query.Plan) error
+}
+
 // Service validates and stores definitions.
 type Service struct {
 	store    Store
@@ -42,11 +67,28 @@ type Service struct {
 	reports  Reports
 	live     Live
 	catalog  Catalog
+	engines  Engines
 }
 
 // New wires a Service. The repository satisfies both lookups, so callers pass
 // it once.
 func New(s Store, d Datasets) *Service { return &Service{store: s, datasets: d} }
+
+/*
+WithEngines proves each block against the database it will read.
+
+Publishing compiled every block and stopped there, which catches a field the
+dataset does not declare and nothing the warehouse knows. The rest — a column
+that is not there, a permission that is missing, a date grain over text —
+arrived at six in the morning in the middle of a burst, in the driver's words.
+
+A prepare, not a run: it parses, resolves every name and resolves every type,
+touches no rows and holds no lock.
+*/
+func (s *Service) WithEngines(e Engines) *Service {
+	s.engines = e
+	return s
+}
 
 // WithLive makes a publish take effect without a restart.
 func (s *Service) WithLive(l Live) *Service {
@@ -235,9 +277,109 @@ func (s *Service) checkBlocks(rep definition.Report, sets map[string]definition.
 			if _, _, err := builder.BuildBlock(ds, blk, defaults(ds), filters, checker(ds)); err != nil {
 				return fmt.Errorf("%w: output %q block %d: %v", query.ErrBadTemplate, out.Name, i, err)
 			}
+			if err := s.provable(rep, out.Name, i, ds, blk, filters); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
+}
+
+/*
+provable asks the database whether it would accept the block.
+
+Compiled against the dialect the source actually speaks, not the one used
+above: this statement is going to that database, and a plan built for Postgres
+and prepared against MySQL would fail for the wrong reason.
+
+Every failure here is the definition's, which is why the message is returned
+whole. A warehouse that is unreachable is not the definition's fault and is not
+a reason to refuse a publish — a deployment whose database is down should still
+be able to fix the report that is waiting for it.
+*/
+func (s *Service) provable(rep definition.Report, output string, i int,
+	ds definition.Dataset, blk definition.Block, filters query.Filters) error {
+
+	if s.engines == nil {
+		return nil
+	}
+	ctx := context.Background()
+	engine, err := s.engines.Engine(ctx, ds)
+	if err != nil {
+		return nil // no engine for it here; the render will say so
+	}
+	verifier, ok := engine.Executor.(Verifier)
+	if !ok {
+		return nil
+	}
+
+	plan, _, err := engine.Builder.BuildBlock(ds, blk, defaults(ds), filters, checker(ds))
+	if err != nil {
+		return fmt.Errorf("%w: output %q block %d: %v", query.ErrBadTemplate, output, i, err)
+	}
+	if err := verifier.Verify(ctx, plan); err != nil {
+		if unreachable(err) {
+			return nil
+		}
+		return fmt.Errorf("%w: output %q block %d: the database refused this query: %v%s",
+			query.ErrBadTemplate, output, i, err, hint(err, ds, blk))
+	}
+	return nil
+}
+
+/*
+hint adds what to do about it, for the failures worth recognising.
+
+One so far, and it is the one every warehouse eventually produces: a column
+holding dates as text. SQLite is typeless and MySQL coerces, so a dataset that
+works in development fails on the Postgres it was written for — with a message
+from the driver that names a function signature and not the column.
+
+Narrow on purpose. A hint that guesses is worse than none: somebody follows it,
+it does not help, and the real message was there all along.
+*/
+func hint(err error, ds definition.Dataset, blk definition.Block) string {
+	text := strings.ToLower(err.Error())
+	if !strings.Contains(text, "date_trunc") || !strings.Contains(text, "text") {
+		return ""
+	}
+
+	field := blk.X.Field
+	if field == "" {
+		return ""
+	}
+	declared, ok := ds.Field(field)
+	if !ok || declared.Type != "date" {
+		return ""
+	}
+	return fmt.Sprintf(
+		` — %q is declared as a date and this warehouse stores it as text. `+
+			`Cast it in the dataset's query: CAST(%s AS date) AS %s`,
+		field, field, field)
+}
+
+/*
+unreachable reports whether the failure was the database being away rather than
+the definition being wrong.
+
+Matched on text, which is unlovely and is the only thing available: database/sql
+returns driver errors unwrapped and every driver spells this differently. Wrong
+in the safe direction — a definition wrongly published is fixed by publishing
+again, and a publish wrongly refused during an outage is somebody unable to fix
+the report that is waiting for the outage to end.
+*/
+func unreachable(err error) bool {
+	text := strings.ToLower(err.Error())
+	for _, sign := range []string{
+		"connection refused", "no such host", "i/o timeout", "context deadline",
+		"connection reset", "broken pipe", "server closed", "database is closed",
+		"too many connections", "connection timed out",
+	} {
+		if strings.Contains(text, sign) {
+			return true
+		}
+	}
+	return false
 }
 
 // defaults supplies a value for every required parameter, so compilation is

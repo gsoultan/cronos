@@ -196,10 +196,14 @@ func users(records *sqlstore.Store) api.Users {
 // rewrite: without the live view, a definition published through the API would
 // sit in the store and in the catalogue while every render kept using what the
 // process read at startup — until somebody restarted it.
-func publishing(store publish.Store, repo *file.Repository, records *sqlstore.Store) *publish.Service {
+func publishing(store publish.Store, repo *file.Repository, records *sqlstore.Store,
+	engines run.Engines) *publish.Service {
 	svc := publish.New(store, repo).WithReports(repo).
 		// So a delete can say what would break rather than breaking it.
-		WithCatalog(repo)
+		WithCatalog(repo).
+		// And so a publish is proved against the database it will read, not
+		// only against the dialect this package compiles for.
+		WithEngines(engines)
 	if records != nil {
 		svc = svc.WithLive(repo)
 	}

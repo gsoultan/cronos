@@ -4,6 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	driversql "github.com/gsoultan/cronos/internal/adapter/driver/sql"
+	"github.com/gsoultan/cronos/internal/core/definition"
+	"github.com/gsoultan/cronos/internal/core/principal"
+	"github.com/gsoultan/cronos/internal/core/query"
 	"os"
 	"strings"
 	"sync"
@@ -233,4 +237,84 @@ func TestPostgresAdoptsADatabaseFromBeforeMigrations(t *testing.T) {
 	if at, _ := s.SchemaVersion(ctx); at != store.Wanted() {
 		t.Fatalf("version %d, want %d", at, store.Wanted())
 	}
+}
+
+/*
+Publishing proves a definition against the database, not only against a dialect.
+
+Compiling catches a field the dataset does not declare. It cannot catch a
+column the warehouse does not have, a permission the connection lacks, or a
+date grain over a column stored as text — which works on SQLite and MySQL,
+because one is typeless and the other coerces, and is a type error on the
+Postgres the dataset was written for.
+
+A prepare rather than a run: it parses, resolves every name and resolves every
+type, touches no rows and holds no lock. This is the check that turns "fails at
+six in the morning in the middle of a burst" into "refused at publish".
+*/
+func TestPreparingCatchesWhatCompilingCannot(t *testing.T) {
+	dsn := os.Getenv("CRONOS_POSTGRES_DSN")
+	if dsn == "" {
+		t.Skip("set CRONOS_POSTGRES_DSN — SQLite is typeless and cannot show this")
+	}
+
+	db, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	if _, err := db.Exec(`
+		DROP TABLE IF EXISTS verify_textdates;
+		CREATE TABLE verify_textdates (id TEXT, issued_at TEXT, total REAL)`); err != nil {
+		t.Fatal(err)
+	}
+
+	executor := driversql.NewExecutor(db)
+	builder := query.NewBuilder(query.Postgres{})
+
+	ds := definition.Dataset{
+		Name:    "textdates",
+		Sources: []definition.SourceRef{{Ref: "warehouse"}},
+		Query:   "SELECT id, issued_at, total FROM verify_textdates",
+		Fields: []definition.Field{
+			{Name: "id", Type: "string", Role: definition.Dimension},
+			{Name: "issued_at", Type: "date", Role: definition.Dimension},
+			{Name: "total", Type: "number", Role: definition.Measure, Aggregate: "sum"},
+		},
+	}
+	block := definition.Block{
+		Kind:  definition.ChartBlock,
+		Chart: "bar",
+		X:     definition.DimensionRef{Field: "issued_at", Grain: "month"},
+		Y:     definition.MeasureRef{Field: "total", Aggregate: "sum"},
+	}
+
+	plan, _, err := builder.BuildBlock(ds, block, nil, query.Filters{}, member)
+	if err != nil {
+		t.Fatalf("it compiled fine, which is the point: %v", err)
+	}
+
+	err = executor.Verify(context.Background(), plan)
+	if err == nil {
+		t.Fatal("the database accepted a month grain over a text column")
+	}
+	if !strings.Contains(err.Error(), "date_trunc") {
+		t.Fatalf("refused for a different reason: %v", err)
+	}
+
+	// And the cast the message tells an author to add makes it acceptable.
+	ds.Query = "SELECT id, CAST(issued_at AS date) AS issued_at, total FROM verify_textdates"
+	plan, _, err = builder.BuildBlock(ds, block, nil, query.Filters{}, member)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := executor.Verify(context.Background(), plan); err != nil {
+		t.Fatalf("the suggested fix does not work: %v", err)
+	}
+}
+
+// A project member, which is who a publish check compiles as.
+var member = principal.Principal{
+	OrgID: "acme", ProjectID: "finance", ProjectRole: principal.ProjectEditor, Member: true,
 }

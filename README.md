@@ -50,6 +50,15 @@ block: a field the dataset does not publish, a filter bound to a column nobody
 has, a report reading a dataset that does not exist. Each of those otherwise
 fails identically at 6am in the middle of a burst.
 
+Then it asks the database. Every block is prepared against the source it will
+actually read — a parse that resolves every name and every type, touching no
+rows and holding no lock — because compiling cannot see a column the warehouse
+does not have, a permission the connection lacks, or a date grain over a column
+stored as text, which works on SQLite and MySQL and is a type error on the
+Postgres it was written for. A warehouse that is unreachable is not the
+definition's fault and does not refuse the publish: a deployment whose database
+is down should still be able to fix the report waiting for it.
+
 The version is the document's content hash, so republishing unchanged bytes
 returns the same one and a run record naming a version can be replayed against
 exactly what produced it. Previous versions are kept under `.versions/`, and
