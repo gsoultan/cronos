@@ -277,8 +277,15 @@ It is the most dangerous endpoint in the product, so:
 - It is open only while **no account exists at all** — not "no administrator",
   no account, anywhere. The first success closes it and nothing reopens it short
   of emptying the users table.
-- The check happens inside the write, so two people sent the same URL create one
-  administrator rather than two.
+- The check happens inside the write, and the write is one transaction in the
+  database — a marker row with a fixed key, inserted alongside the account and
+  the grant. Two people sent the same URL create one administrator; so do two
+  cronos processes brought up against one empty database before anybody has the
+  address, which a mutex in one process could not have managed. A losing request
+  writes nothing at all, so the address it used is not consumed.
+- An upgrade is not a first run. Deployments that predate the marker row have
+  accounts and no marker, so the check counts them too — without that, every
+  upgrade would offer its next visitor a deployment administrator.
 - It needs a store. A file-backed deployment has nowhere to keep an account, so
   the page is not offered rather than offered and broken.
 - There is no token in the log and no environment variable to unlock it. Both
@@ -316,8 +323,19 @@ would confirm to anybody probing that the tier exists and that some account
 holds it.
 
 The last administrator cannot be revoked. A deployment with none cannot make
-another, because the endpoints that grant it require the permission being
-granted — the only way back is `cronos-user` on the machine. Revoking anybody
+another over HTTP, because the endpoints that grant it require the permission
+being granted. The way back is the command line:
+
+```bash
+cronos-user -dsn "$CRONOS_STORE_DSN" -email ops@acme.example -platform
+```
+
+It grants the permission to an account that already exists and asks for no
+password: the account being rescued is somebody else's, and a command that reset
+their password in order to grant a permission would lock its owner out to let
+them back in. On a new account, `-platform` alongside the usual flags creates
+and grants in one go. There is deliberately no `-revoke`: removing it is the
+API's job, where the guard against taking the last one lives. Revoking anybody
 else ends their sessions in the same transaction, because the permission travels
 in the token and would otherwise outlive the revocation by up to eight hours.
 

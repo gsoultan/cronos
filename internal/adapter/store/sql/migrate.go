@@ -190,6 +190,35 @@ CREATE TABLE IF NOT EXISTS cronos_platform_admins (
   granted_by TEXT NOT NULL DEFAULT ''
 );`,
 	},
+	{
+		ID:   7,
+		Name: "the first run, recorded once",
+		/*
+		   /setup is open only while no account exists, and closing it was a
+		   mutex in one process. That is enough for the case it was written for
+		   — a double-clicked button, two people sent the same URL — and it is
+		   not enough for two cronos processes brought up against one empty
+		   database before anybody has been given the address. Both would find
+		   it empty, and both would create a deployment administrator.
+
+		   One row with a fixed key closes it exactly. The insert happens in the
+		   same transaction as the first account, so the second process's
+		   transaction violates the primary key and rolls back — no lock, no
+		   polling, and the database is the thing that decides, which is the
+		   only participant both processes can agree on.
+
+		   It also answers "when was this deployment set up", which is a
+		   question somebody asks of a system they inherited.
+		*/
+		SQL: `
+CREATE TABLE IF NOT EXISTS cronos_setup (
+  -- Always 1. The table holds one row or none, and which of those it is
+  -- is the whole of the state.
+  id      INTEGER PRIMARY KEY,
+  at      TEXT NOT NULL,
+  by_user TEXT NOT NULL DEFAULT ''
+);`,
+	},
 }
 
 // migrationTable records what has run. Created outside the ordered list,

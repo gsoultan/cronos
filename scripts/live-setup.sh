@@ -169,4 +169,46 @@ sleep 6
 	die "the revoked administrator still administers"
 ok "and the revoked session stops working rather than waiting to expire"
 
+# --- the way back ---------------------------------------------------------------
+
+say "The way back from having none"
+
+# A deployment can still lose its last administrator: disabled, the account
+# deleted, or somebody stepping down as the second-to-last while the last was
+# already gone. The endpoints that grant it require the permission being
+# granted, so the remedy is this command — which the documentation described
+# before the command could do it.
+python3 -c "
+import sqlite3, sys
+db = sqlite3.connect(sys.argv[1])
+db.execute('DELETE FROM cronos_platform_admins')
+db.commit()" "$work/c.db"
+
+[ "$(code GET /v1/platform/tenants '' -H "Authorization: Bearer $moved")" != 200 ] ||
+	die "an administrator survived the table being emptied"
+ok "with none left, nobody can administer the deployment"
+
+printf 'unused' | go run ./cmd/cronos-user \
+	-dsn "file:$work/c.db" -driver sqlite -email ops@acme.example -platform \
+	>"$work/grant.log" 2>&1 || { cat "$work/grant.log"; die "the CLI could not grant it"; }
+case "$(cat "$work/grant.log")" in
+*"deployment administrator"*) ;;
+*) cat "$work/grant.log"; die "the CLI said nothing about granting it" ;;
+esac
+ok "cronos-user -platform grants it to an existing account"
+
+# It takes effect on the next sign-in, because the permission travels in the
+# token — the same reason revoking cuts sessions.
+rescued=$(curl -s "$API/v1/auth/login" -H 'content-type: application/json' \
+	-d '{"email":"ops@acme.example","password":"a-password-they-chose"}' | token)
+[ -n "$rescued" ] || die "the rescued account cannot sign in"
+[ "$(code GET /v1/platform/tenants '' -H "Authorization: Bearer $rescued")" = 200 ] ||
+	die "the rescued account still cannot administer the deployment"
+ok "and the next sign-in carries it"
+
+# And it did not touch the password, which is somebody else's.
+[ "$(code POST /v1/auth/login '{"email":"ops@acme.example","password":"unused"}')" != 200 ] ||
+	die "the CLI reset the password it was given on stdin"
+ok "without touching the password it never asked for"
+
 say "All of it worked."

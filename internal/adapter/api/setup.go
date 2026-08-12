@@ -6,8 +6,8 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
-	"sync"
 
+	sqlstore "github.com/gsoultan/cronos/internal/adapter/store/sql"
 	"github.com/gsoultan/cronos/internal/core/identity"
 	"github.com/gsoultan/cronos/internal/core/principal"
 	"github.com/gsoultan/cronos/internal/platform/token"
@@ -28,9 +28,11 @@ built around closing that moment:
   - It is open only while **no account exists at all**. Not "no administrator" —
     no account, in any organisation, in any project. The first successful use
     closes it, and nothing reopens it short of emptying the users table.
-  - The check is inside the write. Two requests arriving together both see an
-    empty deployment if it is checked with a SELECT; only one of them can hold
-    the mutex and find it still empty.
+  - The check is inside the write, and the write is one transaction in the
+    database. Two requests arriving together both see an empty deployment if it
+    is checked with a SELECT — and so do two cronos processes brought up against
+    one empty database before anybody has the address. A marker row with a fixed
+    key means the second one violates a primary key and writes nothing at all.
   - It needs a store. A file-backed deployment has nowhere to put an account, so
     setup is not offered rather than offered and broken.
 
@@ -51,16 +53,24 @@ type Setup struct {
 	// is not being named here.
 	serving *One
 	log     *slog.Logger
-
-	// once serialises the write. The window this closes is small and real:
-	// two people opening the setup page and pressing the button together, or
-	// one person double-clicking it.
-	once sync.Mutex
 }
 
-// Accounts is how setup asks whether this deployment is still empty.
+/*
+Accounts is how setup asks whether this deployment has been configured, and
+configures it.
+
+FirstRun is one call rather than three because it has to be one transaction:
+creating the account, granting it deployment administration, and recording that
+this happened are a single fact. Any two of them without the third is a state
+nobody wants to meet — an administrator nobody can sign in as, an account with
+no permission, or a deployment that can be set up twice.
+*/
 type Accounts interface {
-	CountAccounts(ctx context.Context) (int, error)
+	// SetUp reports whether a first run has already happened.
+	SetUp(ctx context.Context) (bool, error)
+	// FirstRun creates the first account and makes it a deployment
+	// administrator, or refuses because one already exists.
+	FirstRun(ctx context.Context, u identity.User, password string) error
 }
 
 // NewSetup wires the handler.
@@ -82,7 +92,7 @@ func (h *Setup) Serving(one *One) *Setup {
 // offering a page that ends in "could not create an account" is worse than not
 // offering it.
 func (h *Setup) Available() bool {
-	return h != nil && h.roster != nil && h.platform != nil && h.accounts != nil
+	return h != nil && h.accounts != nil
 }
 
 // ServeHTTP handles GET and POST /v1/setup.
@@ -106,15 +116,15 @@ first. On one that has not, there is nothing to protect yet — the whole point 
 that no credential exists.
 */
 func (h *Setup) needed(w http.ResponseWriter, r *http.Request) {
-	n, err := h.accounts.CountAccounts(r.Context())
+	done, err := h.accounts.SetUp(r.Context())
 	if err != nil {
-		h.log.Error("could not count accounts", "err", err)
+		h.log.Error("could not tell whether this is a first run", "err", err)
 		// Fail closed. Answering "yes, set me up" because a query failed would
 		// offer a stranger an administrator on a deployment that has one.
 		send(w, http.StatusOK, map[string]bool{"needed": false})
 		return
 	}
-	send(w, http.StatusOK, map[string]bool{"needed": n == 0})
+	send(w, http.StatusOK, map[string]bool{"needed": !done})
 }
 
 type firstRun struct {
@@ -153,28 +163,16 @@ func (h *Setup) create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	/*
-	   From here to the insert is the window, and the mutex is what closes it.
+	   Asked here for the sake of the answer, not for the guarantee.
 
-	   Checked and written under one lock, in one process. That is the whole
-	   guarantee and it is worth being exact about its limit: two cronos
-	   processes against one database, both freshly installed, could both pass
-	   this check. The unique index on email catches an identical address; two
-	   different ones would produce two administrators. It is a real gap and a
-	   narrow one — it needs a multi-process deployment brought up before
-	   anybody has been given the URL — and closing it properly means a lock in
-	   the database, which is a table and a migration for a race that lasts
-	   the first thirty seconds of a deployment's life.
+	   It costs one query and saves hashing a password for a request that cannot
+	   succeed. What actually closes the door is the insert below: this was a
+	   mutex and a count, which is enough for a double-clicked button and not
+	   enough for two cronos processes brought up against one empty database
+	   before anybody had the address — both would find it empty, and both would
+	   create a deployment administrator.
 	*/
-	h.once.Lock()
-	defer h.once.Unlock()
-
-	n, err := h.accounts.CountAccounts(r.Context())
-	if err != nil {
-		h.log.Error("could not count accounts", "err", err)
-		fail(w, http.StatusInternalServerError, "Could not check whether this is a first run.")
-		return
-	}
-	if n != 0 {
+	if done, err := h.accounts.SetUp(r.Context()); err == nil && done {
 		// Somebody got here first, or this deployment was set up long ago. The
 		// same answer either way, and a 409 rather than a 403 because nothing
 		// was refused — the request simply arrived too late.
@@ -193,24 +191,29 @@ func (h *Setup) create(w http.ResponseWriter, r *http.Request) {
 		// that.
 		Role: string(principal.ProjectAdmin),
 	}
-	if err := h.roster.CreateUser(r.Context(), user, in.Password); err != nil {
-		if errors.Is(err, identity.ErrExists) {
-			fail(w, http.StatusConflict, "That email already has an account here.")
-			return
-		}
-		h.log.Error("could not create the first account", "err", err)
-		fail(w, http.StatusInternalServerError, "Could not create the account.")
-		return
-	}
+	/*
+	   One transaction, in the store: the account, the permission, and the fact
+	   that this happened.
 
-	if err := h.platform.GrantPlatform(r.Context(), user.ID, "setup"); err != nil {
-		// The account exists and is a project administrator; it is not a
-		// platform one. Said plainly, because the remedy is a command on the
-		// machine and somebody has to know to run it.
-		h.log.Error("could not grant platform administration at setup", "err", err)
-		fail(w, http.StatusInternalServerError,
-			"The account was created, but it could not be made a platform administrator. "+
-				"Grant it from the command line before signing in.")
+	   Two calls would leave three states nobody wants to meet — an
+	   administrator with no permission, a permission on no account, and a
+	   deployment that can be set up twice — and the middle one used to be
+	   reachable, with an error message telling somebody to fix it from the
+	   command line.
+	*/
+	if err := h.accounts.FirstRun(r.Context(), user, in.Password); err != nil {
+		switch {
+		case errors.Is(err, sqlstore.ErrAlreadySetUp):
+			// Somebody got here first — possibly through another process
+			// against the same database. Nothing at all was written.
+			fail(w, http.StatusConflict,
+				"This deployment has already been set up. Sign in instead.")
+		case errors.Is(err, identity.ErrExists):
+			fail(w, http.StatusConflict, "That email already has an account here.")
+		default:
+			h.log.Error("could not set up the deployment", "err", err)
+			fail(w, http.StatusInternalServerError, "Could not create the account.")
+		}
 		return
 	}
 	user.Platform = true

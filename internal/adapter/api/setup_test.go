@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gsoultan/cronos/internal/adapter/api"
+	sqlstore "github.com/gsoultan/cronos/internal/adapter/store/sql"
 	"github.com/gsoultan/cronos/internal/core/identity"
 	"github.com/gsoultan/cronos/internal/core/principal"
 	"github.com/gsoultan/cronos/internal/platform/token"
@@ -31,6 +32,8 @@ type empty struct {
 	people  []identity.User
 	admins  map[string]bool
 	created []string
+	// setUp is the marker row: one deployment is configured once.
+	setUp bool
 }
 
 func newEmpty() *empty { return &empty{admins: map[string]bool{}} }
@@ -39,6 +42,39 @@ func (e *empty) CountAccounts(context.Context) (int, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return len(e.people), nil
+}
+
+func (e *empty) SetUp(context.Context) (bool, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.setUp, nil
+}
+
+/*
+FirstRun, with the marker the real store uses.
+
+The whole point is that the check and the writes are one atomic step, so this
+fake holds the lock across all of them — a fake that checked and then wrote
+would pass a test the real store's transaction is there to make pass, which is
+the sort of agreement that means nothing.
+*/
+func (e *empty) FirstRun(_ context.Context, u identity.User, _ string) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	if e.setUp {
+		return sqlstore.ErrAlreadySetUp
+	}
+	for _, p := range e.people {
+		if p.Email == u.Email {
+			return identity.ErrExists
+		}
+	}
+	e.setUp = true
+	e.people = append(e.people, u)
+	e.created = append(e.created, u.ID)
+	e.admins[u.ID] = true
+	return nil
 }
 
 func (e *empty) CreateUser(_ context.Context, u identity.User, _ string) error {
