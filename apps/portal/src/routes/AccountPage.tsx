@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react'
 import { Button, TextInput } from '@mantine/core'
 import { PageHeader } from '../components/PageHeader'
+import { EmptyState } from '../components/EmptyState'
 import { Field } from '../components/form/Field'
 import { ChangePassword } from '../components/ChangePassword'
 import { TwoFactorSetup } from '../forms/TwoFactorSetup'
 import { relativeTime } from '../lib/format'
 import {
-  ApiError, endOtherSessions, endSession, factor, newRecoveryCodes, removeFactor,
+  ApiError, connected, endOtherSessions, endSession, factor, newRecoveryCodes,
+  profile, removeFactor, rename,
 } from '../lib/api'
 
 const CARD = 'mb-4 overflow-hidden rounded-lg border border-line bg-surface shadow-card'
@@ -17,28 +19,43 @@ export function AccountPage() {
   // Bumped after anything that changes what the server would say, which
   // remounts the panel below rather than threading a refetch through it.
   const [reloads, setReloads] = useState(0)
+  const [enrolling, setEnrolling] = useState(false)
   const [ending, setEnding] = useState(false)
   const [ended, setEnded] = useState('')
 
+  /* Every panel below one is the server's answer about a real account. On
+     samples there is no account and no server, so they would each show the same
+     "not connected" error in a different shape — which reads as four things
+     broken rather than one thing absent. */
+  if (!connected()) {
+    return (
+      <>
+        <PageHeader title="Your account" description="Profile, sign-in and security." />
+        <EmptyState title="This is the sample portal"
+          description="Your password, your second factor and your sessions all belong to an account on a cronos server, and this build is not connected to one. Point VITE_CRONOS_API at a server and sign in to manage them." />
+      </>
+    )
+  }
+
+  if (enrolling) {
+    /* The whole page, not a card between the password and the sessions: this is
+       a four-step task with its own Back and Continue, and leaving the rest of
+       the account around it puts two sets of controls on screen at once. */
+    return (
+      <>
+        <PageHeader title="Add a second factor"
+          description="Three short steps. Nothing changes until you have proved it works." />
+        <TwoFactorSetup onCancel={() => setEnrolling(false)}
+          onDone={() => { setEnrolling(false); setReloads((n) => n + 1) }} />
+      </>
+    )
+  }
+
   return (
     <>
-      <PageHeader title="Your account" description="Profile, sign-in and devices." />
+      <PageHeader title="Your account" description="Profile, sign-in and security." />
 
-      <section className={CARD}>
-        <div className={HEAD}>
-          <h2 className="text-lead font-semibold text-ink">Profile</h2>
-        </div>
-        <div className="grid max-w-[520px] gap-4 p-4">
-          <Field label="Name">
-            <TextInput defaultValue="Dewi Rahayu" />
-          </Field>
-          <Field label="Email"
-            help="Used to sign in and to send you anything you have subscribed to.">
-            <TextInput defaultValue="dewi@acme.com" type="email" />
-          </Field>
-          <div><Button>Save changes</Button></div>
-        </div>
-      </section>
+      <ProfileCard key={`profile-${reloads}`} onSaved={() => setReloads((n) => n + 1)} />
 
       <section className={CARD} data-testid="password">
         <div className={HEAD}>
@@ -53,7 +70,8 @@ export function AccountPage() {
         <ChangePassword />
       </section>
 
-      <TwoFactor onChanged={() => setReloads((n) => n + 1)} key={reloads} />
+      <TwoFactor key={`factor-${reloads}`} enrolling={enrolling} onEnrol={setEnrolling}
+        onChanged={() => setReloads((n) => n + 1)} />
 
       <section className={CARD}>
         <div className={HEAD}>
@@ -122,9 +140,12 @@ export function AccountPage() {
  * only because nothing had been clicked in this tab, and it said "On" for the
  * rest of the session after a wizard that verified nothing.
  */
-function TwoFactor({ onChanged }: { onChanged: () => void }) {
+function TwoFactor({ enrolling, onEnrol, onChanged }: {
+  enrolling: boolean
+  onEnrol: (v: boolean) => void
+  onChanged: () => void
+}) {
   const [state, setState] = useState<Awaited<ReturnType<typeof factor>> | null>(null)
-  const [enrolling, setEnrolling] = useState(false)
   const [removing, setRemoving] = useState(false)
   const [code, setCode] = useState('')
   const [problem, setProblem] = useState('')
@@ -138,12 +159,7 @@ function TwoFactor({ onChanged }: { onChanged: () => void }) {
     return () => { live = false }
   }, [])
 
-  if (enrolling) {
-    return (
-      <TwoFactorSetup onCancel={() => setEnrolling(false)}
-        onDone={() => { setEnrolling(false); onChanged() }} />
-    )
-  }
+  if (enrolling) return null
 
   const on = state?.enrolled ?? false
 
@@ -166,7 +182,7 @@ function TwoFactor({ onChanged }: { onChanged: () => void }) {
           </p>
         </div>
         {!on && state !== null && (
-          <Button onClick={() => setEnrolling(true)} data-testid="turn-on-2fa">Turn on</Button>
+          <Button onClick={() => onEnrol(true)} data-testid="turn-on-2fa">Turn on</Button>
         )}
       </div>
 
@@ -245,6 +261,75 @@ function TwoFactor({ onChanged }: { onChanged: () => void }) {
           {problem}
         </p>
       )}
+    </section>
+  )
+}
+
+/**
+ * Who this session belongs to.
+ *
+ * Read from the server rather than typed into the source, which is what it was:
+ * a connected deployment showed "Dewi Rahayu / dewi@acme.com" whoever was signed
+ * in, above a Save button that did nothing. Being wrong about whose account this
+ * is, on the page that changes its password and its second factor, is the worst
+ * place in the product to be wrong.
+ */
+function ProfileCard({ onSaved }: { onSaved: () => void }) {
+  const [me, setMe] = useState<Awaited<ReturnType<typeof profile>> | null>(null)
+  const [name, setName] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [said, setSaid] = useState('')
+
+  useEffect(() => {
+    let live = true
+    profile()
+      .then((out) => { if (live) { setMe(out); setName(out.name ?? '') } })
+      .catch(() => { if (live) setMe(null) })
+    return () => { live = false }
+  }, [])
+
+  const changed = me !== null && name.trim() !== (me.name ?? '') && name.trim() !== ''
+
+  return (
+    <section className={CARD} data-testid="profile">
+      <div className={HEAD}>
+        <h2 className="text-lead font-semibold text-ink">Profile</h2>
+      </div>
+      <div className="grid max-w-[520px] gap-4 p-4">
+        <Field label="Name">
+          <TextInput value={name} data-testid="profile-name"
+            disabled={me === null || !me.account}
+            onChange={(e) => { setName(e.currentTarget.value); setSaid('') }} />
+        </Field>
+        <Field label="Email"
+          help="What you sign in with. Changing it needs the new address proved before the old one stops working, which is not built — ask an administrator.">
+          {/* Read-only rather than an input that discards what is typed. */}
+          <TextInput value={me?.email ?? ''} type="email" readOnly disabled
+            data-testid="profile-email" />
+        </Field>
+
+        {me && !me.account && (
+          <p className="text-small text-ink-secondary">
+            This is a machine credential rather than a person, so there is no
+            profile to change.
+          </p>
+        )}
+
+        <div className="flex items-center gap-3">
+          <Button disabled={!changed || busy} loading={busy} data-testid="save-profile"
+            onClick={() => {
+              setBusy(true)
+              rename(name.trim())
+                .then(() => { setSaid('Saved.'); onSaved() })
+                .catch((err: unknown) =>
+                  setSaid(err instanceof ApiError ? err.message : 'Could not save that.'))
+                .finally(() => setBusy(false))
+            }}>
+            Save changes
+          </Button>
+          {said && <span role="status" className="text-small text-ink-secondary">{said}</span>}
+        </div>
+      </div>
     </section>
   )
 }

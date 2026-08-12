@@ -72,6 +72,11 @@ func (s *standing) SetDisabled(context.Context, principal.Principal, string, boo
 }
 func (s *standing) ChangePassword(context.Context, string, string, string) error { return nil }
 
+func (s *standing) Me(_ context.Context, id string) (identity.User, error) {
+	return identity.User{ID: id, Email: "ada@acme.example", Name: "Ada"}, nil
+}
+func (s *standing) SetName(context.Context, string, string) error { return nil }
+
 func account(t *testing.T) (*standing, *api.Author, *token.Signer) {
 	t.Helper()
 

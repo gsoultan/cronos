@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { Link } from '@tanstack/react-router'
 import { Button, TextInput } from '@mantine/core'
 import { PageHeader } from '../components/PageHeader'
 import { EmptyState } from '../components/EmptyState'
@@ -187,10 +188,18 @@ export function SettingsPage() {
 
       {tab === 'channels' && <ChannelsPanel canAdmin={canAdminOrg} />}
 
-      {tab === 'security' && (
+      {/* The policy panel is the designed shape of a feature the engine does
+          not enforce: its switches are React state over the sample directory,
+          so on a connected deployment an administrator would turn on "require
+          two-factor" and nothing at all would happen. Shown where everything
+          else is samples and announced as such; replaced by a statement of what
+          is actually enforced where it is not. */}
+      {tab === 'security' && !connected() && (
         <SecurityPolicy orgName={org.name} members={members} canAdmin={canAdminOrg}
           twoFactorOn={(p) => !!p.twoFactor} />
       )}
+
+      {tab === 'security' && connected() && <LiveSecurity />}
 
       {tab === 'projects' && (
         <section className={CARD}>
@@ -236,5 +245,54 @@ export function SettingsPage() {
         </section>
       )}
     </>
+  )
+}
+
+/**
+ * What this deployment actually enforces.
+ *
+ * Rather than the policy switches, which persist nowhere. An organisation-wide
+ * two-factor requirement is a real feature and is not built: enforcing it means
+ * deciding what happens to somebody who has no second factor and cannot enrol
+ * without signing in, and the half of that which is easy to ship — refusing
+ * their sign-in — locks a team out of its own reporting on a Friday.
+ *
+ * So this says what is true, and points at the parts that are.
+ */
+function LiveSecurity() {
+  return (
+    <section className={CARD} data-testid="live-security">
+      <div className={HEAD}>
+        <h2 className="text-lead font-semibold text-ink">Security</h2>
+      </div>
+      <div className="grid gap-4 p-4 text-small text-ink-secondary">
+        <p>
+          <strong className="text-ink">Two-factor authentication</strong> is per
+          account and set up by its owner, from{' '}
+          <Link to="/account" className="text-accent">Your account</Link>. There
+          is no path by which an administrator enrols, inspects or removes
+          somebody else&rsquo;s — enrolling for another person is meaningless,
+          they hold the phone, and removing one is what a social-engineering
+          call asks for.
+        </p>
+        <p>
+          <strong className="text-ink">Sessions</strong> last eight hours and are
+          signed rather than stored, so there is no device list and no way to end
+          one and keep another. Ending all of them at once is on the account
+          page, and it is what to press if a laptop goes missing.
+        </p>
+        <p>
+          <strong className="text-ink">Requiring two-factor for everyone</strong>{' '}
+          is not enforced yet. It is shown in sample mode as the shape it would
+          take; a switch here that persisted nothing would be worse than its
+          absence, because somebody would believe it.
+        </p>
+        <p>
+          Everything that changes access — adding somebody, changing a role,
+          turning access off, enrolling or removing a second factor — is in the
+          audit log.
+        </p>
+      </div>
+    </section>
   )
 }

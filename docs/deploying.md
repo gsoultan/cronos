@@ -245,3 +245,19 @@ Python, from the `otpauth://` URI — because a test that checks cronos against
 cronos passes just as well when both halves are wrong, which is how the old
 wizard shipped. It takes about forty seconds: most of that is waiting for the
 sign-in rate limit to refill, which is the limiter working.
+
+## Checking the portal itself
+
+```bash
+./scripts/live-portal-2fa.sh
+```
+
+Starts a server on a fresh database, starts the portal against it, and drives
+two-factor enrolment through a real browser — computing every code in Node
+rather than asking cronos what to type.
+
+It exists because the type checker, the linter and the API checks all passed
+while the enrolment wizard was rendering *inside* the account page, between the
+password and the sessions, with two sets of Back/Continue on screen; and while
+two sibling panels were keyed by the same counter, so React was quietly
+discarding one. Neither is a thing any of those tools can see.

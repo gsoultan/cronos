@@ -22,7 +22,8 @@
     "shots": "node scripts/shoot.mjs",
     "size": "vite build && node scripts/check-bundle-size.mjs",
     "test": "bun test",
-    "verify": "node scripts/verify.mjs"
+    "verify": "node scripts/verify.mjs",
+    "e2e": "node e2e/two-factor.mjs"
   },
   "dependencies": {
     "@mantine/core": "^9.5.1",
@@ -45,7 +46,7 @@
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^6.0.5",
     "oxlint": "^1.78.0",
-    "playwright": "^1.50.0",
+    "playwright": "^1.62.1",
     "tailwindcss": "^4.3.3",
     "typescript": "^7.0.2",
     "vite": "^8.2.1",

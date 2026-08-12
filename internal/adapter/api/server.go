@@ -281,6 +281,7 @@ func Routes(d Deps) http.Handler {
 		// Ending every session this account holds. Unlimited on purpose: it is
 		// idempotent, it takes nothing to guess at, and it is pressed by
 		// somebody whose laptop has just been taken.
+		mux.Handle("/v1/auth/profile", NewProfile(d.Roster, author, d.Log))
 		mux.Handle("/v1/auth/sessions/end", NewSessions(d.Roster, author, d.Signer, d.Log))
 
 		/*

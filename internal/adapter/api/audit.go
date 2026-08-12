@@ -13,17 +13,18 @@ import (
 // call sites, because an audit is queried by action and a typo makes one
 // action into two that nobody notices until the query returns half of it.
 const (
-	ActionRead        = "report.read"
-	ActionPublish     = "definition.publish"
-	ActionDelete      = "definition.delete"
-	ActionShare       = "share.create"
-	ActionShareOpen   = "share.open"
-	ActionRevoke      = "share.revoke"
-	ActionSignIn      = "auth.signin"
-	ActionSignOut     = "auth.signout"
-	ActionSessionsEnd = "auth.sessions.end"
-	ActionFactorAdd   = "auth.factor.add"
-	ActionFactorCodes = "auth.factor.codes"
+	ActionRead          = "report.read"
+	ActionPublish       = "definition.publish"
+	ActionDelete        = "definition.delete"
+	ActionShare         = "share.create"
+	ActionShareOpen     = "share.open"
+	ActionRevoke        = "share.revoke"
+	ActionSignIn        = "auth.signin"
+	ActionSignOut       = "auth.signout"
+	ActionSessionsEnd   = "auth.sessions.end"
+	ActionProfileRename = "auth.profile.rename"
+	ActionFactorAdd     = "auth.factor.add"
+	ActionFactorCodes   = "auth.factor.codes"
 	// Removing a second factor is the one worth a warning in the log: it is
 	// what a social-engineering call asks for, and it is invisible afterwards.
 	ActionFactorRemove = "auth.factor.remove"

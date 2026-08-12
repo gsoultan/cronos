@@ -21,6 +21,11 @@ type Roster interface {
 	SetRole(ctx context.Context, pr principal.Principal, id, role string) error
 	SetDisabled(ctx context.Context, pr principal.Principal, id string, disabled bool) error
 	ChangePassword(ctx context.Context, id, current, next string) error
+	// Me is whoever a session belongs to, for the account page.
+	Me(ctx context.Context, id string) (identity.User, error)
+	// SetName changes what somebody is called. Theirs, and the only part of a
+	// profile that is self-service — the email is what they sign in with.
+	SetName(ctx context.Context, id, name string) error
 	// EndSessions draws a line: every token this account holds stops working.
 	// It returns where it drew it, so the caller can mint itself one on the
 	// near side rather than guessing at a clock it does not own.
@@ -547,4 +552,107 @@ func (h *Sessions) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		"token":     issued,
 		"expiresIn": int(SessionLifetime.Seconds()),
 	})
+}
+
+/*
+Profile is who a session belongs to, and the one thing about it they may change.
+
+The account page used to show a name and an email typed into the source — so on
+a connected deployment, "Your account" showed somebody else entirely, with a
+Save button that did nothing. Being wrong about whose account this is, on the
+page that offers to change its password and its second factor, is the worst
+place in the product to be wrong.
+
+Only the name. The email is what they sign in with and what an invitation was
+addressed to, so changing it is an identity change that needs the new address
+proved before the old one stops working — and half of that shipped is an account
+nobody can reach.
+*/
+type Profile struct {
+	roster Roster
+	auth   Principals
+	log    *slog.Logger
+}
+
+// NewProfile wires the handler.
+func NewProfile(r Roster, a Principals, log *slog.Logger) *Profile {
+	return &Profile{roster: r, auth: a, log: log}
+}
+
+// ServeHTTP handles GET and PATCH /v1/auth/profile.
+func (h *Profile) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	pr, ok := h.auth.Principal(r)
+	if !ok {
+		fail(w, http.StatusUnauthorized, "Not authorised.")
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		h.show(w, r, pr)
+	case http.MethodPatch:
+		h.rename(w, r, pr)
+	default:
+		fail(w, http.StatusMethodNotAllowed, "Not a method this endpoint takes.")
+	}
+}
+
+func (h *Profile) show(w http.ResponseWriter, r *http.Request, pr principal.Principal) {
+	me, err := h.roster.Me(r.Context(), pr.Subject)
+	if err != nil {
+		if errors.Is(err, identity.ErrNoUser) {
+			// A machine credential, which has no profile. Answering with what
+			// the token says is more useful than a 404 to a page that only
+			// wants somebody's name.
+			send(w, http.StatusOK, map[string]any{
+				"id": pr.Subject, "org": pr.OrgID, "project": pr.ProjectID,
+				"role": string(pr.ProjectRole), "account": false,
+			})
+			return
+		}
+		h.log.Error("could not read a profile", "err", err)
+		fail(w, http.StatusInternalServerError, "Could not read your account.")
+		return
+	}
+	send(w, http.StatusOK, map[string]any{
+		"id": me.ID, "email": me.Email, "name": me.Name,
+		"org": me.Org, "project": me.Project, "role": me.Role,
+		"createdAt": me.CreatedAt, "account": true,
+	})
+}
+
+func (h *Profile) rename(w http.ResponseWriter, r *http.Request, pr principal.Principal) {
+	var in struct {
+		Name string `json:"name"`
+	}
+	if err := decodeJSON(w, r, &in); err != nil {
+		fail(w, http.StatusBadRequest, "Send a name.")
+		return
+	}
+
+	name := strings.TrimSpace(in.Name)
+	if name == "" {
+		fail(w, http.StatusBadRequest, "A name cannot be empty.")
+		return
+	}
+	if len(name) > 200 {
+		// Bounded because it is displayed. Not a security boundary — the store
+		// is parameterised and the portal escapes — but a name that is a
+		// paragraph breaks every list it appears in.
+		fail(w, http.StatusBadRequest, "That name is too long.")
+		return
+	}
+
+	if err := h.roster.SetName(r.Context(), pr.Subject, name); err != nil {
+		if errors.Is(err, identity.ErrNoUser) {
+			fail(w, http.StatusNotFound, "This credential has no profile to change.")
+			return
+		}
+		h.log.Error("could not change a name", "err", err)
+		fail(w, http.StatusInternalServerError, "Could not save that.")
+		return
+	}
+
+	audit(r.Context(), h.log, pr, ActionProfileRename, pr.Subject, Allowed, nil)
+	w.WriteHeader(http.StatusNoContent)
 }

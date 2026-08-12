@@ -3,7 +3,9 @@ package sql
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/gsoultan/cronos/internal/core/identity"
@@ -282,4 +284,41 @@ func (s *Store) Upsert(ctx context.Context, u identity.User) (identity.User, err
 		return identity.User{}, err
 	}
 	return u, nil
+}
+
+/*
+SetName changes what somebody is called.
+
+Their own, and the only part of a profile that is theirs to change here. The
+email is not: it is what they sign in with and what an invitation was sent to,
+so changing it is an identity change that needs the new address proved before
+the old one stops working — and half of that shipped is an account nobody can
+reach.
+*/
+func (s *Store) SetName(ctx context.Context, id, name string) error {
+	out, err := s.db.ExecContext(ctx, s.sql(
+		`UPDATE cronos_users SET name = ? WHERE id = ?`), strings.TrimSpace(name), id)
+	if err != nil {
+		return err
+	}
+	if n, err := out.RowsAffected(); err == nil && n == 0 {
+		return identity.ErrNoUser
+	}
+	return nil
+}
+
+// Me is whoever this subject is, for the account page.
+//
+// By id rather than by email, because the id is what a session carries and an
+// email is something people change.
+func (s *Store) Me(ctx context.Context, id string) (identity.User, error) {
+	row := s.db.QueryRowContext(ctx, s.sql(`
+		SELECT id, email, name, org, project, role, created_at, last_seen, disabled
+		FROM cronos_users WHERE id = ?`), id)
+
+	u, err := scanUser(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return identity.User{}, identity.ErrNoUser
+	}
+	return u, err
 }

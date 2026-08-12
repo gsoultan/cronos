@@ -657,6 +657,42 @@ export async function endOtherSessions(): Promise<void> {
   }
 }
 
+/**
+ * Who this session belongs to.
+ *
+ * From the server, not from the token: the token carries a subject and a role
+ * and nothing anybody would want to read. The account page used to show a name
+ * and an address typed into the source, so on a connected deployment it
+ * described somebody else entirely — on the page that offers to change this
+ * account's password and its second factor.
+ */
+export function profile() {
+  return call<{
+    id: string
+    email?: string
+    name?: string
+    org: string
+    project: string
+    role: string
+    createdAt?: string
+    account: boolean
+  }>('/v1/auth/profile')
+}
+
+/**
+ * Changes what you are called.
+ *
+ * The name only. An email is what you sign in with and what an invitation was
+ * addressed to, so changing it needs the new address proved before the old one
+ * stops working — and half of that shipped is an account nobody can reach.
+ */
+export function rename(name: string) {
+  return call<void>('/v1/auth/profile', {
+    method: 'PATCH',
+    body: JSON.stringify({ name }),
+  })
+}
+
 /** What protects this account, without anything that could be used. */
 export function factor() {
   return call<{
