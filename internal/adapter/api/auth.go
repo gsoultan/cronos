@@ -32,11 +32,19 @@ type Auth struct {
 	users  Users
 	signer *token.Signer
 	log    *slog.Logger
+	// attempts throttles per account, which is the attack the per-address
+	// limit on this route does not see: many machines, one email.
+	attempts *Limit
 }
 
 // NewAuth wires the handler.
 func NewAuth(u Users, s *token.Signer, log *slog.Logger) *Auth {
-	return &Auth{users: u, signer: s, log: log}
+	return &Auth{
+		users: u, signer: s, log: log,
+		// Five a minute with ten in hand. Mistyping a password three times is
+		// ordinary; three hundred attempts against one address is not.
+		attempts: NewLimit(signInRate, signInBurst),
+	}
 }
 
 type credentials struct {
@@ -65,6 +73,28 @@ func (a *Auth) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	/*
+	   Per account, on top of the per-address limit the route already carries.
+
+	   The two catch different attacks. An address limit stops one machine
+	   working through a password list; it does nothing about a thousand
+	   machines each trying twice against one known address. This is a rate
+	   rather than a lockout on purpose: a lockout is a denial of service
+	   somebody else can trigger against a real person by guessing wrong on
+	   their behalf, and the point is to make guessing slow, not to hand an
+	   attacker a way to lock the account out.
+	*/
+	account := strings.ToLower(strings.TrimSpace(in.Email))
+	if account != "" && !a.attempts.Allow(account) {
+		a.log.Warn("sign-in throttled", "email", redact(in.Email))
+		audit(r.Context(), a.log, principal.Principal{Subject: in.Email},
+			ActionSignIn, in.Email, Refused, map[string]any{"reason": "too many attempts"})
+		// The same wording as a wrong password, and the same status. Telling
+		// somebody they have hit a limit tells them the account exists.
+		fail(w, http.StatusUnauthorized, "That email and password do not match.")
+		return
+	}
+
 	user, err := a.users.Authenticate(r.Context(), in.Email, in.Password)
 	if err != nil {
 		// The email is logged and the password is not, obviously — but note
@@ -88,6 +118,7 @@ func (a *Auth) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	a.attempts.Forget(account)
 	a.log.Info("signed in", "user", user.ID, "project", user.Org+"/"+user.Project, "role", user.Role)
 	audit(r.Context(), a.log, principal.Principal{
 		Subject: user.ID, Email: user.Email,

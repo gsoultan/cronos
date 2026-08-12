@@ -53,7 +53,36 @@ type Deps struct {
 	// these because a directory is not multi-tenant either.
 	Org     string
 	Project string
+
+	// BehindProxy says something in front terminates the connection, so the
+	// caller's address arrives in X-Forwarded-For. Off by default: reading it
+	// with no proxy in front keys every rate limit by a value the caller
+	// chooses, which is not a limit.
+	BehindProxy bool
 }
+
+/*
+The rates, which are a judgement rather than a calculation.
+
+Each is generous enough that an office behind one address does not notice, and
+small enough that a script does. They are per instance and per address, which
+is the honest scope: a deployment behind several needs the limit at its edge
+too, and what this one buys is that a single instance cannot be walked through
+on its own.
+*/
+var (
+	// Sign-in: five a minute, ten at once. A person mistyping a password three
+	// times in a row is ordinary; three hundred attempts is not a person.
+	signInRate, signInBurst = 5.0 / 60, 10.0
+	// Opening a share: the id is the credential and there is no other, so this
+	// is what stands between the id space and somebody enumerating it. Thirty
+	// a minute is more than any reader needs and far less than a script wants.
+	shareRate, shareBurst = 30.0 / 60, 20.0
+	// Rendering: each one executes SQL against somebody else's warehouse,
+	// where the cost of a request is not ours to spend. Two a second sustained
+	// is well above an interactive reader and below a loop.
+	renderRate, renderBurst = 2.0, 30.0
+)
 
 // Routes builds the HTTP surface.
 //
@@ -68,13 +97,24 @@ func Routes(d Deps) http.Handler {
 	}
 	author := NewAuthor(d.Signer, d.Admin)
 
+	// One limiter per concern, shared by the routes that serve it: an embed
+	// render and a portal render cost the same warehouse the same, so they
+	// draw on one allowance rather than two that add up to twice the limit.
+	renders := NewLimit(renderRate, renderBurst)
+	limited := func(h http.Handler, l *Limit, message string) http.Handler {
+		return NewLimited(h, l, message).BehindProxy(d.BehindProxy)
+	}
+
 	mux := http.NewServeMux()
-	mux.Handle("/v1/embed/reports/{name}", embed)
+	mux.Handle("/v1/embed/reports/{name}",
+		limited(embed, renders, "Too many requests. Try again shortly."))
 	// The portal's own read. A separate path from the embed one because the
 	// two have different callers and different audiences, and the audience
 	// check should be the first thing a handler does rather than a branch
 	// inside it.
-	mux.Handle("/v1/reports/{name}", NewPortalReports(embed, author, d.Log))
+	mux.Handle("/v1/reports/{name}",
+		limited(NewPortalReports(embed, author, d.Log), renders,
+			"Too many requests. Try again shortly."))
 
 	// What the project contains, in one request. A browsing interface asking
 	// for the names and then once per name is a page that loads in a hundred
@@ -90,7 +130,12 @@ func Routes(d Deps) http.Handler {
 		h := NewShares(d.Shares, author, d.Log)
 		mux.Handle("/v1/shares", h)
 		mux.Handle("/v1/shares/{id}", h)
-		mux.Handle("/v1/shares/{id}/open", h)
+		// Opening is the only route here with no credential but the id itself,
+		// so it is the only one whose rate decides whether the id space can be
+		// walked. The other two are behind a token already.
+		mux.Handle("/v1/shares/{id}/open",
+			limited(h, NewLimit(shareRate, shareBurst),
+				"Too many attempts. Try again shortly."))
 	}
 
 	// Liveness: this process is running and can serve. Deliberately not a
@@ -103,7 +148,9 @@ func Routes(d Deps) http.Handler {
 	// Mounted against nothing it would refuse every attempt identically, which
 	// is indistinguishable from a wrong password and impossible to debug.
 	if d.Users != nil {
-		mux.Handle("/v1/auth/login", NewAuth(d.Users, d.Signer, d.Log))
+		mux.Handle("/v1/auth/login",
+			limited(NewAuth(d.Users, d.Signer, d.Log), NewLimit(signInRate, signInBurst),
+				"Too many sign-in attempts. Try again in a minute."))
 	}
 
 	// Management is open to an author with a portal token or to a pipeline

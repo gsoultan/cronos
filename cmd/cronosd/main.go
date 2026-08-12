@@ -122,6 +122,7 @@ func serve(log *slog.Logger) error {
 		Probes:      probing(engines),
 
 		Org: cfg.Org, Project: cfg.Project,
+		BehindProxy: cfg.BehindProxy,
 	})
 
 	datasets, reports, schedules, sources := repo.Counts()

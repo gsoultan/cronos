@@ -17,6 +17,8 @@ type Server struct {
 	SecretsDir string
 	// Audit is "log" or "off".
 	Audit string
+	// BehindProxy trusts X-Forwarded-For for rate limiting.
+	BehindProxy bool
 	// Driver and DSN say where rows live. "sqlite" and a path is the
 	// development answer; "postgres" and a URL is the deployed one.
 	Driver string
@@ -79,7 +81,11 @@ func Load() (Server, error) {
 		// data, shipping with nothing recorded unless it is switched on, has
 		// no answer to the one question an auditor asks. An operator who does
 		// not want it says so.
-		Audit:       env("CRONOS_AUDIT", "log"),
+		Audit: env("CRONOS_AUDIT", "log"),
+		// Whether X-Forwarded-For may be believed. Only true where something
+		// in front sets it, because a caller can send whatever it likes and a
+		// rate limit keyed by that is not a limit.
+		BehindProxy: os.Getenv("CRONOS_BEHIND_PROXY") == "1",
 		Org:         env("CRONOS_ORG", "default"),
 		Project:     env("CRONOS_PROJECT", "default"),
 		StoreDSN:    os.Getenv("CRONOS_STORE_DSN"),

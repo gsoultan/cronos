@@ -172,6 +172,18 @@ whoever found the port. The password is read from a terminal or piped, never
 from a flag — a password on a command line is in the shell history, in the
 process list, and in whatever shipped that history somewhere.
 
+Sign-in is rate limited twice: by address, which stops one machine working
+through a password list, and by account, which stops a thousand machines each
+trying twice against one known address. A rate rather than a lockout — a
+lockout is a denial of service anybody can trigger against a real person by
+guessing wrong on their behalf. Being throttled reads exactly like a wrong
+password, because a different answer would tell somebody the account exists.
+Opening a share is limited too: the id is the credential and there is no other,
+so that rate is what stands between the id space and somebody enumerating it.
+Set `CRONOS_BEHIND_PROXY=1` only where something in front sets
+`X-Forwarded-For` — believing it without a proxy keys every limit by a value
+the caller chooses, which is not a limit.
+
 A session lasts eight hours and does not refresh; a token that renews itself is
 a permanent credential wearing an expiry. Every sign-in failure reads the same,
 and an unknown address costs the same to refuse as a known one — otherwise a
