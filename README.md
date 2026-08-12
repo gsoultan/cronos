@@ -236,6 +236,14 @@ Set `CRONOS_BEHIND_PROXY=1` only where something in front sets
 `X-Forwarded-For` — believing it without a proxy keys every limit by a value
 the caller chooses, which is not a limit.
 
+A report can be sent from the share panel — rendered once, as the sender, and
+handed to the same delivery channels a schedule uses. The panel offers the
+channels this deployment has configured and the output profiles this report
+actually declares, rather than everything the format supports: offering PDF for
+an interactive-only report produced a refusal after somebody had typed eight
+addresses. More than fifty recipients is a schedule, which is recorded and
+resumable; this is not.
+
 Who has access is managed from Settings → People, by a project administrator
 and nobody else — the list included, because who works here and when each of
 them last signed in is a description of your organisation. Adding somebody

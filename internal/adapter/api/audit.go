@@ -27,6 +27,9 @@ const (
 	ActionPersonDisable = "person.disable"
 	ActionPersonEnable  = "person.enable"
 	ActionPassword      = "auth.password"
+	// Sending a report to somebody by name. Recorded with every recipient:
+	// "who was this emailed to" is a question an audit exists to answer.
+	ActionSend = "report.send"
 )
 
 // Results. Two, because an audit that only records what succeeded answers the

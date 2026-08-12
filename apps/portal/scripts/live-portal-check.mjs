@@ -5,7 +5,7 @@
  * the interface workable before a server exists — but it also means none of
  * them would notice if the API contract moved underneath. This one would.
  */
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { chromium } from 'playwright'
 
 const B = process.env.BASE ?? 'http://localhost:5174'
@@ -369,6 +369,41 @@ ok('including an anonymous open', trail.some((l) => l.includes('action=share.ope
    the request log are one story rather than two accounts of it. */
 ok('every entry joins the request that caused it',
   trail.length > 0 && trail.every((l) => l.includes('detail.request=')))
+
+/* -- Sending ------------------------------------------------------------
+   The panel has offered to email a report since it was drawn and there was
+   nothing behind it. The channels have existed all along — schedules deliver
+   through them every month — so what was missing was the decision to send one
+   now, to addresses somebody typed. */
+
+/* The format offered is one this report has. It used to offer PDF, Excel and
+   CSV for every report, so an interactive-only one produced a refusal from the
+   server after somebody had typed the recipients — which is where this was
+   found. */
+await page.goto(`${B}/reports/customer-overview`, { waitUntil: 'domcontentloaded' })
+await page.locator('[data-testid=share-button]').waitFor({ timeout: 20000 })
+await page.locator('[data-testid=share-button]').click()
+/* This deployment has a file channel and no mail relay, and the panel offers
+   what exists: it used to offer email and Telegram whatever was configured, so
+   a deployment with neither showed two options that could only fail — after
+   somebody had typed eight addresses into one of them. */
+ok('a channel this deployment has is offered',
+  await page.locator('[data-testid=channel-file]').count() === 1)
+ok('and one it does not have is not',
+  await page.locator('[data-testid=channel-email]').count() === 0)
+
+await page.locator('[data-testid=channel-file]').click()
+await page.locator('[data-testid=share-panel] textarea').first().fill('to-a-colleague')
+await page.locator('[data-testid=send-now]').click()
+await page.locator('[data-testid=send-result]').waitFor({ timeout: 30000 })
+ok('sending says how many it reached',
+  (await page.locator('[data-testid=send-result]').innerText()).includes('1 recipient'))
+
+/* And a document actually landed. "Sent" that produced no file is the state
+   this tab was in for its whole existence. */
+const delivered = readdirSync(process.env.DELIVERIES ?? '/tmp', { recursive: true })
+  .filter((f) => String(f).includes('to-a-colleague'))
+ok('and a document was delivered', delivered.length > 0)
 
 console.log(fails ? `\n${fails} failed` : '\nall passed')
 await browser.close()

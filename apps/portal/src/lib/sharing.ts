@@ -40,7 +40,14 @@ export const CHANNELS: ChannelSpec[] = [
   },
 ]
 
-export const channel = (id: Channel) => CHANNELS.find((c) => c.id === id)!
+/**
+ * The card for a channel, if there is one.
+ *
+ * Undefined rather than a lie. This asserted non-null, which was true while
+ * the only channels were the two with cards — and a deployment configured with
+ * a file drop or an S3 bucket selected one and every read of the result threw.
+ */
+export const channel = (id: string) => CHANNELS.find((c) => c.id === id)
 
 /* -- Links --------------------------------------------------------------- */
 

@@ -47,6 +47,13 @@ type Deps struct {
 	Fires       Firing
 	Shares      Sharing
 	Probes      Probes
+	// Channels are the ways this deployment can deliver something, so an
+	// interface offers what exists rather than what the format supports.
+	Channels []string
+	// Sends delivers one report now, to people somebody names. Absent, the
+	// share panel's Send tab has nothing behind it — which is what it had
+	// since it was drawn.
+	Sends Sending
 	// Roster is who has access. Absent, the People endpoints are not mounted
 	// and a deployment manages accounts with the CLI, which is where they were
 	// managed before this existed.
@@ -138,11 +145,19 @@ func Routes(d Deps) http.Handler {
 	// inside it.
 	mux.Handle("/v1/reports/{name}", perReader(NewPortalReports(embed, author, d.Log)))
 
+	// Sending renders a document and hands it to a delivery channel, so it is
+	// limited like a render rather than not at all: the cost is a typesetter
+	// and somebody else's mail relay.
+	if d.Sends != nil {
+		mux.Handle("/v1/reports/{name}/send", perReader(NewSend(d.Sends, author, d.Log)))
+	}
+
 	// What the project contains, in one request. A browsing interface asking
 	// for the names and then once per name is a page that loads in a hundred
 	// round trips.
 	if d.Definitions != nil {
-		mux.Handle("/v1/catalog", NewCatalog(d.Definitions, d.Due, author, d.Log))
+		mux.Handle("/v1/catalog",
+			NewCatalog(d.Definitions, d.Due, author, d.Log).WithChannels(d.Channels))
 	}
 
 	// Sharing needs somewhere to record what was handed out, so that it can be

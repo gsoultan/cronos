@@ -21,6 +21,7 @@ import (
 	"github.com/gsoultan/cronos/internal/app/publish"
 	"github.com/gsoultan/cronos/internal/app/run"
 	"github.com/gsoultan/cronos/internal/app/schedule"
+	"github.com/gsoultan/cronos/internal/app/send"
 	"github.com/gsoultan/cronos/internal/app/share"
 	"github.com/gsoultan/cronos/internal/core/definition"
 	"github.com/gsoultan/cronos/internal/core/principal"
@@ -82,9 +83,7 @@ func scheduler(cfg config.Server, repo *file.Repository, runner *run.Service,
 		return nil, err
 	}
 
-	statements := run.NewStatements(runner, paginated.New(paginated.TypstCLI{})).
-		WithWorkbooks(spreadsheet.New())
-	bursts := burst.New(repo, recipients{runner}, statements, log, chans...).
+	bursts := burst.New(repo, recipients{runner}, documents(runner), log, chans...).
 		// The repository, because it holds what is running rather than what was
 		// last published — and the run record must name the bytes that produced
 		// the document, not the ones somebody stored a moment later.
@@ -398,4 +397,50 @@ func roster(records *sqlstore.Store) api.Roster {
 		return nil
 	}
 	return records
+}
+
+// documents is the renderer both the scheduler and a one-off send use.
+//
+// One construction rather than two, because a report emailed from the share
+// panel and the same report attached to a monthly schedule must be the same
+// document — and two renderers built from the same parts are two places for
+// that to stop being true.
+func documents(runner *run.Service) burst.Documents {
+	return run.NewStatements(runner, paginated.New(paginated.TypstCLI{})).
+		WithWorkbooks(spreadsheet.New())
+}
+
+// sending wires "email this report now", where there is somewhere to send it.
+//
+// Independent of the scheduler: a deployment that renders on request and has a
+// mail relay can still send one, and requiring a cron loop to be armed before
+// anybody may email a colleague would be an odd thing to require.
+func sending(cfg config.Server, repo *file.Repository, runner *run.Service,
+	log *slog.Logger) api.Sending {
+
+	chans, err := channels(cfg, log)
+	if err != nil || len(chans) == 0 {
+		// No channel, no endpoint. The share panel's Send tab then says the
+		// deployment has none rather than offering to use one.
+		return nil
+	}
+	return send.New(repo, documents(runner), chans...)
+}
+
+// channelNames is what this deployment can deliver through.
+//
+// So the share panel offers what exists. It offered email and Telegram
+// whatever was configured, which meant a deployment with neither showed two
+// options that could only fail — and the failure arrived after somebody had
+// typed eight addresses into one of them.
+func channelNames(cfg config.Server, log *slog.Logger) []string {
+	chans, err := channels(cfg, log)
+	if err != nil {
+		return nil
+	}
+	names := make([]string, 0, len(chans))
+	for _, c := range chans {
+		names = append(names, c.Name())
+	}
+	return names
 }

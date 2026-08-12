@@ -336,6 +336,28 @@ export function testDataSource(name: string) {
   return call<ProbeResult>(`/v1/datasources/${encodeURIComponent(name)}/test`, { method: 'POST' })
 }
 
+export interface SendResult {
+  sent: string[]
+  failed?: Record<string, string>
+  bytes: number
+}
+
+/**
+ * Sends one report, now, to people named here.
+ *
+ * Rendered once, as the sender: everybody named receives the view of whoever
+ * pressed the button. A share link is what to send when they should see their
+ * own rows, which is the choice the panel puts beside this one.
+ */
+export function sendReport(report: string, body: {
+  output: string; via: string; to: string[]; subject?: string; note?: string
+}) {
+  return call<SendResult>(`/v1/reports/${encodeURIComponent(report)}/send`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+}
+
 export function listShares() {
   return call<{ shares: Share[] }>('/v1/shares')
 }
@@ -493,6 +515,8 @@ export interface CatalogView {
   datasets: DatasetSummary[]
   reports: ReportSummary[]
   schedules: ScheduleSummary[]
+  /** What this deployment can deliver through. Empty means nothing can be sent. */
+  channels?: string[]
 }
 
 export function readCatalog() {

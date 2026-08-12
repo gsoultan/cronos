@@ -24,3 +24,17 @@ spec:
         - kind: table
           title: Customers
           columns: [name, city, billed]
+    # A document as well as a page. Most real reports have both: something to
+    # look at, and something to attach to an email on the first of the month.
+    - name: pdf
+      renderer: paginated
+      page: {size: A4, orientation: portrait, margins: 18mm}
+      layout:
+        - kind: stat
+          label: Billed
+          value: {field: billed, aggregate: sum}
+        - kind: table
+          title: Customers
+          columns: [name, city, billed]
+          sort:
+            - {field: billed, dir: desc}

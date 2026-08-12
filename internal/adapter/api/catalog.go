@@ -21,6 +21,11 @@ type Catalog struct {
 	Datasets  []DatasetSummary  `json:"datasets"`
 	Reports   []ReportSummary   `json:"reports"`
 	Schedules []ScheduleSummary `json:"schedules"`
+	// Channels are the ways this deployment can deliver something. The share
+	// panel offered email and Telegram whatever was configured, so a
+	// deployment with neither showed two options that could only fail — and
+	// the failure arrived after somebody had typed eight addresses.
+	Channels []string `json:"channels"`
 }
 
 // SourceSummary is a connection, without its credentials.
@@ -98,15 +103,24 @@ type Due interface {
 
 // CatalogHandler serves it.
 type CatalogHandler struct {
-	defs Repository
-	due  Due
-	auth Principals
-	log  *slog.Logger
+	// channels are the delivery channels this deployment has configured.
+	channels []string
+	defs     Repository
+	due      Due
+	auth     Principals
+	log      *slog.Logger
 }
 
 // NewCatalog wires the handler.
 func NewCatalog(d Repository, due Due, a Principals, log *slog.Logger) *CatalogHandler {
 	return &CatalogHandler{defs: d, due: due, auth: a, log: log}
+}
+
+// WithChannels names the ways this deployment can deliver something, so an
+// interface offers what exists rather than what the format supports.
+func (c *CatalogHandler) WithChannels(names []string) *CatalogHandler {
+	c.channels = names
+	return c
 }
 
 // ServeHTTP handles GET /v1/catalog.
@@ -131,6 +145,10 @@ func (c *CatalogHandler) build(_ principal.Principal) Catalog {
 	out := Catalog{
 		Sources: []SourceSummary{}, Datasets: []DatasetSummary{},
 		Reports: []ReportSummary{}, Schedules: []ScheduleSummary{},
+		Channels: c.channels,
+	}
+	if out.Channels == nil {
+		out.Channels = []string{}
 	}
 
 	readers := map[string]int{}

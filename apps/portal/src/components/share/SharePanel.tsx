@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Button, MultiSelect, Select, Textarea, TextInput } from '@mantine/core'
 import { Field } from '../form/Field'
-import { ApiError, createShare } from '../../lib/api'
+import { ApiError, createShare, sendReport, type SendResult } from '../../lib/api'
+import { useCatalog } from '../../lib/useCatalog'
 import { Tag } from '../StatusPill'
 import {
   CHANNELS, EXPIRIES, LINK_AUDIENCES, TOKEN_HOURS, channel, invalidEmails, splitRecipients,
@@ -36,12 +37,17 @@ const FORMATS: Record<string, string> = {
  */
 export function SharePanel({ reportName, reportLabel, projectName, outputs, onClose }: Props) {
   const [tab, setTab] = useState<Tab>('send')
-  const [via, setVia] = useState<Channel>('email')
+  /* Not 'email' regardless. This defaulted to email whatever the deployment
+     had, so one with a file drop and no mail relay opened on a channel it
+     could not use, showing email's copy and email's size limit. */
+  const [via, setVia] = useState<Channel | string>('')
   const [emails, setEmails] = useState('')
   const [chats, setChats] = useState<string[]>([])
-  const [format, setFormat] = useState(outputs.includes('pdf') ? 'pdf' : 'csv')
+  const [format, setFormat] = useState('')
   const [note, setNote] = useState('')
-  const [sent, setSent] = useState(false)
+  const [sent, setSent] = useState<SendResult | null>(null)
+  const [sending, setSending] = useState(false)
+  const [sendFailed, setSendFailed] = useState('')
 
   const [audience, setAudience] = useState<LinkAudience>('project')
   const [expiry, setExpiry] = useState('7')
@@ -50,10 +56,50 @@ export function SharePanel({ reportName, reportLabel, projectName, outputs, onCl
   const [minting, setMinting] = useState(false)
   const [failed, setFailed] = useState('')
 
+  /* What this deployment can actually deliver through. Connected, the panel
+     offers those and nothing else: it offered email and Telegram whatever was
+     configured, so a deployment with neither showed two options that could
+     only fail — after somebody had typed eight addresses into one of them. */
+  const catalog = useCatalog()
+  const available = catalog.live
+    ? CHANNELS.filter((c) => (catalog.data?.channels ?? []).includes(c.id))
+    : CHANNELS
+  const extra = catalog.live
+    ? (catalog.data?.channels ?? []).filter((n) => !CHANNELS.some((c) => c.id === n))
+    : []
+
+  /* What this report can actually be sent as.
+     
+     CSV used to be appended unconditionally, on the reasoning that any table
+     can be one. It cannot: the server renders the output profiles a report
+     declares, so offering a format it has none of produces a refusal after
+     somebody has typed the recipients. */
+  const sendable = outputs
+    .filter((o) => o !== 'interactive')
+    .map((o) => ({ value: o, label: FORMATS[o] ?? o }))
+
   const spec = channel(via)
+
+  /* The first one this deployment has, once the catalogue says what that is.
+     An effect rather than an initial value because the answer arrives after
+     the first render. */
+  const first = available[0]?.id ?? extra[0]
+  useEffect(() => {
+    if (via === '' && first) setVia(first)
+  }, [via, first])
+
+  const firstFormat = sendable[0]?.value
+  useEffect(() => {
+    if (format === '' && firstFormat) setFormat(firstFormat)
+  }, [format, firstFormat])
   const bad = useMemo(() => (via === 'email' ? invalidEmails(emails) : []), [via, emails])
-  const recipients = via === 'email' ? splitRecipients(emails).length : chats.length
-  const canSend = recipients > 0 && bad.length === 0
+  const recipients = via === 'email' ? splitRecipients(emails).length
+    : via === 'telegram' ? chats.length
+      : splitRecipients(emails).length
+  /* Nothing to send it as is a real state: an interactive-only report has no
+     document, and the panel says so rather than offering a format the server
+     will refuse. */
+  const canSend = recipients > 0 && bad.length === 0 && format !== ''
 
   const chosen = LINK_AUDIENCES.find((a) => a.id === audience)!
 
@@ -63,6 +109,28 @@ export function SharePanel({ reportName, reportLabel, projectName, outputs, onCl
      bypasses the first. */
   const memberUrl = `${globalThis.location?.origin ?? ''}/reports/${reportName ?? ''}`
   const url = audience === 'project' ? memberUrl : link
+
+  /* Renders and delivers, now. The channels have existed since schedules did
+     — this tab had simply never been connected to them. */
+  async function dispatch() {
+    if (!reportName) return
+    setSending(true)
+    setSendFailed('')
+    setSent(null)
+    try {
+      setSent(await sendReport(reportName, {
+        output: format,
+        via: via,
+        to: via === 'telegram' ? chats : splitRecipients(emails),
+        subject: `${reportLabel}`,
+        note,
+      }))
+    } catch (err) {
+      setSendFailed(err instanceof ApiError ? err.message : 'Could not reach the server.')
+    } finally {
+      setSending(false)
+    }
+  }
 
   /* Recorded when they ask for it, not when the panel opens. A link that
      existed because somebody looked at this tab would be one nobody chose to
@@ -119,7 +187,7 @@ export function SharePanel({ reportName, reportLabel, projectName, outputs, onCl
         <div className="grid max-w-[560px] gap-4 p-4">
           <Field label="Where">
             <div className="grid gap-2 sm:grid-cols-2">
-              {CHANNELS.map((c) => (
+              {available.map((c) => (
                 <button key={c.id} type="button" onClick={() => setVia(c.id)}
                   data-testid={`channel-${c.id}`} aria-pressed={via === c.id}
                   className={`grid cursor-pointer gap-1 rounded-lg border bg-surface p-3
@@ -130,10 +198,44 @@ export function SharePanel({ reportName, reportLabel, projectName, outputs, onCl
                   <span className="text-caption text-ink-secondary">{c.requires}</span>
                 </button>
               ))}
+              {/* A channel this deployment has that the interface has no card
+                  for — a file drop, an S3 bucket. Offered plainly rather than
+                  hidden, because it is configured and it works. */}
+              {extra.map((name) => (
+                <button key={name} type="button" onClick={() => setVia(name as Channel)}
+                  data-testid={`channel-${name}`} aria-pressed={via === name}
+                  className={`grid cursor-pointer gap-1 rounded-lg border bg-surface p-3
+                    text-left text-ink hover:border-accent
+                    ${via === name ? 'border-accent bg-accent-wash' : 'border-line'}`}>
+                  <span aria-hidden className="text-lead leading-none text-accent">→</span>
+                  <span className="font-semibold capitalize">{name}</span>
+                  <span className="text-caption text-ink-secondary">
+                    Configured on this deployment.
+                  </span>
+                </button>
+              ))}
             </div>
           </Field>
 
-          {via === 'email' ? (
+          {sendable.length === 0 && (
+            <p data-testid="no-formats"
+              className="rounded-r-md border-l-2 border-serious bg-sunken px-4 py-3 text-small text-ink-secondary">
+              <strong className="text-ink">This report has nothing to attach.</strong>{' '}
+              It has only an interactive profile, so there is no document to send. Add a
+              PDF or spreadsheet output to it, or send a link instead.
+            </p>
+          )}
+
+          {available.length === 0 && extra.length === 0 && (
+            <p data-testid="no-channels"
+              className="rounded-r-md border-l-2 border-serious bg-sunken px-4 py-3 text-small text-ink-secondary">
+              <strong className="text-ink">This deployment cannot send anything.</strong>{' '}
+              No delivery channel is configured, so there is nowhere for a report to go.
+              A link still works.
+            </p>
+          )}
+
+          {via !== 'telegram' ? (
             <Field label="To"
               error={bad.length ? `Not an address: ${bad.join(', ')}` : undefined}
               help="Separate several with commas. They do not need a cronos account.">
@@ -162,10 +264,7 @@ export function SharePanel({ reportName, reportLabel, projectName, outputs, onCl
           <Field label="Send as">
             <Select allowDeselect={false} value={format} aria-label="Send as"
               onChange={(v) => setFormat(v ?? 'pdf')}
-              data={outputs.filter((o) => o !== 'interactive')
-                .map((o) => ({ value: o, label: FORMATS[o] ?? o }))
-                .concat([{ value: 'csv', label: FORMATS.csv! }])
-                .filter((o, i, a) => a.findIndex((x) => x.value === o.value) === i)} />
+              data={sendable} />
           </Field>
 
           <Field label="Message" required={false}>
@@ -180,15 +279,43 @@ export function SharePanel({ reportName, reportLabel, projectName, outputs, onCl
             <strong className="text-ink">This sends a snapshot of what you can see.</strong>{' '}
             It is rendered now, as you, and does not update. Recipients see your rows,
             not their own — send a link instead if they should see theirs.
-            {spec.sizeLimitMb && ` ${spec.label} rejects files over ${spec.sizeLimitMb} MB.`}
+            {spec?.sizeLimitMb ? ` ${spec.label} rejects files over ${spec.sizeLimitMb} MB.` : ''}
           </p>
 
-          <div className="flex items-center gap-2">
-            <Button disabled={!canSend} onClick={() => setSent(true)} data-testid="send-now">
-              {recipients > 1 ? `Send to ${recipients} recipients` : 'Send'}
-            </Button>
-            {sent && (
-              <span className="text-small text-delta-good">Sent. Recorded in the audit log.</span>
+          <div className="grid gap-2">
+            <div className="flex items-center gap-2">
+              <Button disabled={!canSend || !reportName} loading={sending}
+                onClick={dispatch} data-testid="send-now">
+                {recipients > 1 ? `Send to ${recipients} recipients` : 'Send'}
+              </Button>
+
+              {/* Every recipient, not "sent". A send that reached seven of
+                  eight is not a success, and the one it missed is the whole
+                  message. */}
+              {sent && sent.sent.length > 0 && (
+                <span className="text-small text-delta-good" data-testid="send-result">
+                  Sent to {sent.sent.length}
+                  {sent.sent.length === 1 ? ' recipient' : ' recipients'}. Recorded in the audit log.
+                </span>
+              )}
+            </div>
+
+            {sent && sent.failed && Object.keys(sent.failed).length > 0 && (
+              <div role="alert" data-testid="send-failed"
+                className="rounded-md border border-serious/30 bg-serious/10 px-3 py-2 text-small text-ink">
+                <b className="font-semibold">
+                  {Object.keys(sent.failed).length} did not arrive.
+                </b>{' '}
+                {Object.entries(sent.failed)
+                  .map(([who, why]) => `${who}: ${why}`).join('; ')}
+              </div>
+            )}
+
+            {sendFailed && (
+              <p role="alert" data-testid="send-error"
+                className="rounded-md border border-serious/30 bg-serious/10 px-3 py-2 text-small text-ink">
+                {sendFailed}
+              </p>
             )}
           </div>
         </div>

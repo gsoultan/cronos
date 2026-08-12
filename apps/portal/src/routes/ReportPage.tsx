@@ -18,6 +18,7 @@ import {
 import { currency } from '../lib/format'
 import { useRowWorker } from '../lib/useRowWorker'
 import { useReport } from '../lib/useReport'
+import { useCatalog } from '../lib/useCatalog'
 import { LiveReport } from '../components/LiveReport'
 
 const EMPTY: Group = { id: 'root', kind: 'group', join: 'and', children: [] }
@@ -153,6 +154,13 @@ function SampleReport({ name }: { name: string }) {
 function ServerReport({ name, query }: { name: string; query: ReturnType<typeof useReport> }) {
   const [sharing, setSharing] = useState(false)
 
+  /* The report's own outputs, not the three the format supports. Offering PDF
+     for a report that has only an interactive profile produces a refusal from
+     the server after somebody has typed the recipients — which is where this
+     was found. */
+  const catalog = useCatalog()
+  const outputs = catalog.data?.reports.find((r) => r.name === name)?.outputs ?? []
+
   if (query.isPending) {
     return <p data-testid="report-loading" className="p-8 text-center text-ink-muted">Loading…</p>
   }
@@ -195,7 +203,7 @@ function ServerReport({ name, query }: { name: string; query: ReturnType<typeof 
               the definition, and the title is what somebody renamed it to this
               morning. */}
           <SharePanel reportName={name} reportLabel={query.data.title}
-            projectName={name} outputs={['pdf', 'xlsx', 'csv']}
+            projectName={name} outputs={outputs}
             onClose={() => setSharing(false)} />
         </div>
       )}
