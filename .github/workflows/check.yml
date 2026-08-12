@@ -41,7 +41,7 @@ jobs:
           --health-interval 5s --health-timeout 5s --health-retries 10
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
@@ -85,7 +85,7 @@ jobs:
     name: duckdb
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
@@ -97,7 +97,7 @@ jobs:
     name: portal
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: oven-sh/setup-bun@v2
       - working-directory: apps/portal
         run: bun install --frozen-lockfile
@@ -119,7 +119,7 @@ jobs:
     name: embed + react
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
       - working-directory: packages/embed
@@ -131,7 +131,7 @@ jobs:
     name: browser suites
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
@@ -176,3 +176,33 @@ jobs:
         run: |
           ./scripts/live-embed.sh
           ./scripts/live-portal.sh
+
+  # The image, because the one thing it can be missing is the one thing no
+  # other job would notice: paginated output shells out to `typst`, and an
+  # image without it serves every other path correctly and fails PDF at six in
+  # the morning on the first of the month.
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: build
+        run: docker build -t cronos:ci .
+
+      - name: the typesetter is in it
+        run: docker run --rm --entrypoint typst cronos:ci --version
+
+      # And it starts, reaches its dependencies, and says so. An image that
+      # builds and cannot serve is an image that passes a build check.
+      - name: it serves
+        run: |
+          docker run -d --name cronos -p 8787:8787 \
+            -e CRONOS_SIGNING_KEY=ci-signing-key-at-least-32-bytes-long \
+            -e CRONOS_DEFINITIONS=/demo/definitions -e CRONOS_SEED=/demo/seed.sql \
+            -v "$PWD/demo:/demo:ro" cronos:ci
+          for _ in $(seq 1 30); do
+            curl -sf -o /dev/null http://localhost:8787/v1/health && break
+            sleep 1
+          done
+          curl -sf http://localhost:8787/v1/ready | tee /dev/stderr | grep -q '"status":"ok"'
+          docker logs cronos

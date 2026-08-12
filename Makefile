@@ -3,10 +3,14 @@
 PORTAL := apps/portal
 EMBED  := packages/embed
 REACT  := packages/react
+# Whichever is installed. Both build this Dockerfile; podman is what this was
+# developed against and docker is what most CI has.
+CONTAINER := $(shell command -v podman 2>/dev/null || command -v docker)
+VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 GO     := go
 
 .DEFAULT_GOAL := help
-.PHONY: help setup dev dev-web dev-api build check test xlsx-oracle duckdb pdf lint fmt boundary live ui shots clean
+.PHONY: help setup dev dev-web dev-api build check test xlsx-oracle duckdb pdf lint fmt boundary live ui shots image clean
 
 help: ## Show this help
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage: make <target>\n\n"} \
@@ -83,6 +87,11 @@ ui: ## Run every browser suite against a running portal (make dev-web first)
 
 shots: ## Drive the portal in headless Chrome and write screenshots
 	cd $(PORTAL) && bun run shots
+
+image: ## Build the container image, and prove the typesetter is in it
+	$(CONTAINER) build -t cronos:$(VERSION) .
+	@echo "--- the one thing an image can be missing and not say so ---"
+	$(CONTAINER) run --rm --entrypoint typst cronos:$(VERSION) --version
 
 clean: ## Remove build output
 	rm -rf bin $(REACT)/dist $(EMBED)/dist $(EMBED)/harness/*.js $(REACT)/harness/*.js $(PORTAL)/dist $(PORTAL)/dev-dist $(PORTAL)/shots

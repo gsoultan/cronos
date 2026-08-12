@@ -78,6 +78,10 @@ and nowhere else — not in the management API's copy, not in a log line.
 
 ## Operating it
 
+Running it is [docs/deploying.md](docs/deploying.md): the image, what has to be
+set, the probes, the alerts worth having, and a restore drill that ends by
+rendering a report rather than by the database coming back.
+
 `/v1/health` is liveness: this process is running, do not restart it.
 Unconditional on purpose — a liveness probe that fails because a database is
 unreachable restarts a healthy process and does not fix the database.

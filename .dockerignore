@@ -1,0 +1,16 @@
+# Everything the build does not need, because every file here is a layer that
+# invalidates on change and a byte in the context sent to the daemon.
+.git
+.github
+bin/
+dist/
+**/dist/
+**/dev-dist/
+**/node_modules/
+**/shots/
+graphify-out/
+.serena/
+*.db
+*.log
+Dockerfile
+.dockerignore
