@@ -1,4 +1,4 @@
-package main
+package boot
 
 import (
 	"context"
@@ -447,4 +447,16 @@ func channelNames(cfg config.Server, log *slog.Logger) []string {
 		names = append(names, c.Name())
 	}
 	return names
+}
+
+// directory records people an identity provider vouched for.
+//
+// The same store the People page reads, so somebody who signed in through Okta
+// appears there and can be turned off there — an SSO account nobody can revoke
+// is the hole this whole area exists to close.
+func directory(records *sqlstore.Store) api.Directory {
+	if records == nil {
+		return nil
+	}
+	return records
 }

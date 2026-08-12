@@ -168,3 +168,52 @@ func scanUser(row scanner) (identity.User, error) {
 	u.LastSeen = optional(seen)
 	return u, nil
 }
+
+/*
+Upsert records somebody an identity provider vouched for.
+
+Their account here, keyed by the provider's own subject rather than by their
+email — an email is something people change, and a directory that keyed on one
+would give somebody a new account and lose their history the day they married.
+
+The role is applied on first sight and not on every sign-in. An administrator
+who demoted somebody in Settings should not find the identity provider
+promoting them back at the next login; a deployment that wants the directory to
+own roles maps groups in the provider and does not change them here.
+*/
+func (s *Store) Upsert(ctx context.Context, u identity.User) (identity.User, error) {
+	existing, err := s.User(ctx, u.ID)
+	if err == nil {
+		// Known. What the provider may still refresh is what it is
+		// authoritative about: how they are addressed.
+		if _, err := s.db.ExecContext(ctx, s.sql(
+			`UPDATE cronos_users SET email = ?, name = ? WHERE id = ?`),
+			normalise(u.Email), u.Name, u.ID); err != nil {
+			return identity.User{}, err
+		}
+		if existing.Disabled {
+			// Signed in with the directory and turned off here. The directory
+			// is not the authority on whether somebody still works on this
+			// project — that is what the People page is for.
+			return identity.User{}, fmt.Errorf("%w: access is turned off", identity.ErrBadCredentials)
+		}
+		existing.Email, existing.Name = u.Email, u.Name
+		return existing, nil
+	}
+
+	// New. A password nobody knows and nobody can use: this account signs in
+	// through the provider, and leaving the column empty would make the
+	// password path a way in.
+	unusable, err := identity.Hash(identity.NewID() + identity.NewID())
+	if err != nil {
+		return identity.User{}, err
+	}
+	if _, err := s.db.ExecContext(ctx, s.sql(`
+		INSERT INTO cronos_users (id, email, name, password, org, project, role, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`),
+		u.ID, normalise(u.Email), u.Name, unusable, u.Org, u.Project, u.Role,
+		stamp(s.now())); err != nil {
+		return identity.User{}, err
+	}
+	return u, nil
+}

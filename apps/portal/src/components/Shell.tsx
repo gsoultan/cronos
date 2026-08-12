@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useState } from 'react'
 import { Outlet, useRouterState } from '@tanstack/react-router'
 import { Header } from './Header'
 import { SampleBanner } from './SampleBanner'
-import { needsSignIn, SIGNED_OUT } from '../lib/api'
+import { adoptSessionFromFragment, needsSignIn, SIGNED_OUT } from '../lib/api'
 
 /* Lazy, because the sign-in page pulls Mantine's password field and most loads
    never show it — a signed-in author, and every load in sample mode. It was
@@ -62,6 +62,12 @@ export function Shell() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [drawer])
+
+  /* A session handed back by an identity provider arrives in the URL
+     fragment. Taken before the first render decides whether anybody is signed
+     in, and removed from the address bar in the same breath. */
+  const [adopted] = useState(() => adoptSessionFromFragment())
+  void adopted
 
   /* A shared report is the page and nothing else, and before the sign-in check
      rather than after: whoever follows a share link has no account here, and

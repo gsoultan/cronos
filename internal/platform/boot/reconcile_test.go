@@ -1,4 +1,4 @@
-package main
+package boot
 
 import (
 	"context"
@@ -39,7 +39,7 @@ spec:
 `
 
 func TestAnEmptyStoreAdoptsTheDirectory(t *testing.T) {
-	dir := directory(t, fmt.Sprintf(dataset, "from the file"))
+	dir := definitionsIn(t, fmt.Sprintf(dataset, "from the file"))
 	repo := load(t, dir)
 	store := emptyStore(t)
 
@@ -59,7 +59,7 @@ func TestAnEmptyStoreAdoptsTheDirectory(t *testing.T) {
 // The property the whole rule exists for: publishing is not undone by a
 // restart, even though the file it was seeded from still says the old thing.
 func TestAPublishedEditSurvivesARestart(t *testing.T) {
-	dir := directory(t, fmt.Sprintf(dataset, "from the file"))
+	dir := definitionsIn(t, fmt.Sprintf(dataset, "from the file"))
 	store := emptyStore(t)
 
 	first := load(t, dir)
@@ -89,7 +89,7 @@ func TestAPublishedEditSurvivesARestart(t *testing.T) {
 // The other half. Consulting the directory every boot would republish the file
 // of something somebody deliberately removed.
 func TestADeletionIsNotResurrectedByItsFile(t *testing.T) {
-	dir := directory(t,
+	dir := definitionsIn(t,
 		fmt.Sprintf(dataset, "kept"),
 		strings.Replace(fmt.Sprintf(dataset, "removed"), "name: invoices", "name: drafts", 1))
 	store := emptyStore(t)
@@ -116,7 +116,7 @@ func TestADeletionIsNotResurrectedByItsFile(t *testing.T) {
 // A store-only definition runs. Nothing on disk describes it, and after the
 // first publish that is the ordinary case rather than the exotic one.
 func TestADefinitionNoFileEverHadIsLive(t *testing.T) {
-	dir := directory(t, fmt.Sprintf(dataset, "from the file"))
+	dir := definitionsIn(t, fmt.Sprintf(dataset, "from the file"))
 	store := emptyStore(t)
 	if err := reconcile(context.Background(), store, load(t, dir), "acme", "finance", quiet()); err != nil {
 		t.Fatal(err)
@@ -141,7 +141,7 @@ var deployment = principal.Principal{
 	ProjectRole: principal.ProjectEditor, Member: true,
 }
 
-func directory(t *testing.T, docs ...string) string {
+func definitionsIn(t *testing.T, docs ...string) string {
 	t.Helper()
 	dir := t.TempDir()
 	for i, doc := range docs {

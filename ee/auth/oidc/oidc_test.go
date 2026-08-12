@@ -1,0 +1,436 @@
+package oidc
+
+import (
+	"context"
+	"crypto"
+	"crypto/rand"
+	"crypto/rsa"
+	"encoding/base64"
+	"encoding/json"
+	"math/big"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/gsoultan/cronos/internal/extension"
+)
+
+/*
+Every test here is a way somebody signs in as you.
+
+A sign-in flow is code where a missing check is not a bug that shows up as a
+wrong answer — it shows up as the wrong person holding a session, indefinitely,
+with nothing in a log that looks unusual. So the fake provider below can be
+asked to lie in each of the specific ways a real attacker would, and the
+assertion is always that it is refused.
+*/
+
+func TestASignInThroughAWellBehavedProviderWorks(t *testing.T) {
+	idp := newFakeIDP(t)
+	defer idp.Close()
+
+	p := provider(t, idp)
+	redirect, state, err := p.Start(context.Background(), "/reports/billing")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// PKCE, not just state: the challenge must be sent, and it must be the
+	// S256 of a verifier this kept rather than the verifier itself.
+	sent, _ := url.Parse(redirect)
+	if sent.Query().Get("code_challenge") == "" ||
+		sent.Query().Get("code_challenge_method") != "S256" {
+		t.Fatalf("no PKCE challenge: %s", redirect)
+	}
+	if sent.Query().Get("code_challenge") == state.Data["verifier"] {
+		t.Fatal("the verifier was sent as the challenge")
+	}
+
+	// As a real provider does: the nonce from the authorization request is
+	// echoed into the token, and comparing them is what ties this answer to
+	// this request.
+	idp.nonce = state.Data["nonce"]
+
+	who, err := p.Complete(context.Background(), callback(state.ID, "any-code"), state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if who.Subject != "sub-1" || who.Email != "dewi@acme.example" {
+		t.Fatalf("got %+v", who)
+	}
+	// Carried through the round trip, so somebody who clicked a report link
+	// lands on the report rather than the front page.
+	if who.Returning != "/reports/billing" {
+		t.Fatalf("returning is %q", who.Returning)
+	}
+}
+
+/*
+The classic: a token that asks to be verified with no signature at all, or with
+the algorithm swapped for one whose key is public.
+*/
+func TestATokenThatNamesItsOwnAlgorithmIsRefused(t *testing.T) {
+	idp := newFakeIDP(t)
+	defer idp.Close()
+	p := provider(t, idp)
+
+	for _, alg := range []string{"none", "HS256", "ES256"} {
+		idp.alg = alg
+		idp.nonce = "" // re-echoed for each attempt, as a real provider would
+		_, err := signIn(t, p, idp)
+
+		if err == nil {
+			t.Fatalf("a token signed with %q was accepted", alg)
+		}
+		if !strings.Contains(err.Error(), "refusing a token signed with") {
+			t.Errorf("%q was refused for the wrong reason: %v", alg, err)
+		}
+	}
+}
+
+// A token signed by somebody else's key, presented as the provider's.
+func TestATokenSignedByAnotherKeyIsRefused(t *testing.T) {
+	idp := newFakeIDP(t)
+	defer idp.Close()
+	p := provider(t, idp)
+
+	other, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	idp.signWith = other
+
+	if _, err := signIn(t, p, idp); err == nil {
+		t.Fatal("a token signed with a key the provider does not publish was accepted")
+	}
+}
+
+/*
+A token minted for a different application at the same provider.
+
+Every tenant of a shared identity provider can obtain one of these for
+themselves. Without the audience check, any of them is a session here.
+*/
+func TestATokenForAnotherApplicationIsRefused(t *testing.T) {
+	idp := newFakeIDP(t)
+	defer idp.Close()
+	p := provider(t, idp)
+
+	idp.audience = "some-other-application"
+
+	_, err := signIn(t, p, idp)
+	if err == nil || !strings.Contains(err.Error(), "not minted for this application") {
+		t.Fatalf("got %v", err)
+	}
+}
+
+// Replaying a token captured from a different sign-in.
+func TestATokenWithTheWrongNonceIsRefused(t *testing.T) {
+	idp := newFakeIDP(t)
+	defer idp.Close()
+	p := provider(t, idp)
+
+	idp.nonce = "a nonce from somebody else's sign-in"
+	_, state, _ := p.Start(context.Background(), "/")
+
+	_, err := p.Complete(context.Background(), callback(state.ID, "code"), state)
+	if err == nil || !strings.Contains(err.Error(), "nonce") {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestAnExpiredTokenIsRefused(t *testing.T) {
+	idp := newFakeIDP(t)
+	defer idp.Close()
+	p := provider(t, idp)
+
+	idp.expiry = time.Now().Add(-2 * time.Hour)
+
+	_, err := signIn(t, p, idp)
+	if err == nil || !strings.Contains(err.Error(), "expired") {
+		t.Fatalf("got %v", err)
+	}
+}
+
+// The provider's answer belongs to a sign-in this browser did not start.
+func TestAMismatchedStateIsRefused(t *testing.T) {
+	idp := newFakeIDP(t)
+	defer idp.Close()
+	p := provider(t, idp)
+
+	_, state, _ := p.Start(context.Background(), "/")
+	_, err := p.Complete(context.Background(), callback("somebody-elses-state", "code"), state)
+	if err == nil || !strings.Contains(err.Error(), "state") {
+		t.Fatalf("got %v", err)
+	}
+}
+
+/*
+A provider that says an address is unverified is a provider where domain
+restriction means nothing: anybody can claim someone@yourcompany.example.
+*/
+func TestAnUnverifiedAddressIsRefused(t *testing.T) {
+	idp := newFakeIDP(t)
+	defer idp.Close()
+	p := provider(t, idp)
+
+	no := false
+	idp.emailVerified = &no
+
+	_, err := signIn(t, p, idp)
+	if err == nil || !strings.Contains(err.Error(), "not a verified address") {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestADomainThisDeploymentDoesNotAdmitIsRefused(t *testing.T) {
+	idp := newFakeIDP(t)
+	defer idp.Close()
+
+	cfg := config(idp)
+	cfg.AllowedDomains = []string{"acme.example"}
+	p := build(t, cfg)
+
+	idp.email = "someone@gmail.example"
+
+	_, err := signIn(t, p, idp)
+	if err == nil || !strings.Contains(err.Error(), "not a domain this deployment admits") {
+		t.Fatalf("got %v", err)
+	}
+}
+
+/*
+Discovery has to check that the document it read describes the issuer it asked
+for. Without it, anything that can answer at the well-known path names its own
+endpoints, and every later verification is against keys it chose.
+*/
+func TestADiscoveryDocumentThatNamesAnotherIssuerIsRefused(t *testing.T) {
+	idp := newFakeIDP(t)
+	defer idp.Close()
+	idp.issuer = "https://not-the-one-you-asked-for.example"
+
+	_, err := New(context.Background(), config(idp))
+	if err == nil || !strings.Contains(err.Error(), "says its issuer is") {
+		t.Fatalf("got %v", err)
+	}
+}
+
+// Somebody in two groups gets the stronger, because that is what whoever put
+// them in both meant — and the alternative depends on a directory's iteration
+// order.
+func TestTheStrongestMatchingGroupWins(t *testing.T) {
+	idp := newFakeIDP(t)
+	defer idp.Close()
+
+	cfg := config(idp)
+	cfg.Roles = map[string]string{"readers": "viewer", "owners": "admin", "authors": "editor"}
+	p := build(t, cfg)
+
+	idp.groups = []string{"readers", "owners", "authors"}
+
+	who, err := signIn(t, p, idp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if who.Role != "admin" {
+		t.Fatalf("role is %q", who.Role)
+	}
+}
+
+// And somebody in none gets the default, which is the weakest thing: a role
+// mapping that fails should give too little access rather than too much.
+func TestNoMatchingGroupIsTheDefaultRole(t *testing.T) {
+	idp := newFakeIDP(t)
+	defer idp.Close()
+
+	cfg := config(idp)
+	cfg.Roles = map[string]string{"owners": "admin"}
+	p := build(t, cfg)
+
+	idp.groups = []string{"some-unrelated-group"}
+
+	who, err := signIn(t, p, idp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if who.Role != "viewer" {
+		t.Fatalf("role is %q", who.Role)
+	}
+}
+
+/* ---------------------------------------------------------------------- *
+ * A provider that can be asked to lie.
+ * ---------------------------------------------------------------------- */
+
+type fakeIDP struct {
+	*httptest.Server
+	key *rsa.PrivateKey
+
+	// What it says, and everything that can be made wrong.
+	issuer        string
+	alg           string
+	signWith      *rsa.PrivateKey
+	audience      string
+	nonce         string
+	expiry        time.Time
+	email         string
+	emailVerified *bool
+	groups        []string
+}
+
+func newFakeIDP(t *testing.T) *fakeIDP {
+	t.Helper()
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	idp := &fakeIDP{key: key, alg: "RS256", email: "dewi@acme.example"}
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, _ *http.Request) {
+		issuer := idp.issuer
+		if issuer == "" {
+			issuer = idp.URL
+		}
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"issuer":                 issuer,
+			"authorization_endpoint": idp.URL + "/authorize",
+			"token_endpoint":         idp.URL + "/token",
+			"jwks_uri":               idp.URL + "/keys",
+		})
+	})
+
+	mux.HandleFunc("/keys", func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"keys": []map[string]string{{
+			"kty": "RSA", "use": "sig", "kid": "test-key",
+			"n": base64.RawURLEncoding.EncodeToString(key.N.Bytes()),
+			"e": base64.RawURLEncoding.EncodeToString(big.NewInt(int64(key.E)).Bytes()),
+		}}})
+	})
+
+	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		// A real provider checks this; the fake one asserts it was sent,
+		// because a flow that quietly stopped sending it would still pass
+		// every other test here.
+		if r.Form.Get("code_verifier") == "" {
+			http.Error(w, `{"error":"no code_verifier"}`, http.StatusBadRequest)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]string{"id_token": idp.mint()})
+	})
+
+	idp.Server = httptest.NewServer(mux)
+	return idp
+}
+
+// mint builds an id token, honouring whatever this fake has been told to lie
+// about.
+func (f *fakeIDP) mint() string {
+	issuer := f.issuer
+	if issuer == "" {
+		issuer = f.URL
+	}
+	aud := f.audience
+	if aud == "" {
+		aud = "cronos-test-client"
+	}
+	expiry := f.expiry
+	if expiry.IsZero() {
+		expiry = time.Now().Add(time.Hour)
+	}
+
+	head := map[string]string{"alg": f.alg, "kid": "test-key", "typ": "JWT"}
+	body := map[string]any{
+		"iss": issuer, "sub": "sub-1", "aud": aud,
+		"exp": expiry.Unix(), "iat": time.Now().Unix(),
+		"nonce": f.nonce, "email": f.email, "name": "Dewi",
+	}
+	if f.emailVerified != nil {
+		body["email_verified"] = *f.emailVerified
+	}
+	if len(f.groups) > 0 {
+		body["groups"] = f.groups
+	}
+
+	segment := func(v any) string {
+		raw, _ := json.Marshal(v)
+		return base64.RawURLEncoding.EncodeToString(raw)
+	}
+	signing := segment(head) + "." + segment(body)
+
+	// `none` is the whole point of one of the tests: no signature at all.
+	if f.alg == "none" {
+		return signing + "."
+	}
+
+	key := f.signWith
+	if key == nil {
+		key = f.key
+	}
+	hasher := crypto.SHA256.New()
+	hasher.Write([]byte(signing))
+	sig, err := rsa.SignPKCS1v15(rand.Reader, key, crypto.SHA256, hasher.Sum(nil))
+	if err != nil {
+		return signing + ".broken"
+	}
+	return signing + "." + base64.RawURLEncoding.EncodeToString(sig)
+}
+
+func config(idp *fakeIDP) Config {
+	return Config{
+		Issuer:       idp.URL,
+		ClientID:     "cronos-test-client",
+		ClientSecret: "a-secret",
+		RedirectURL:  "https://reports.example/v1/auth/sso/callback",
+		Org:          "acme", Project: "finance",
+	}
+}
+
+func provider(t *testing.T, idp *fakeIDP) *Provider {
+	t.Helper()
+	return build(t, config(idp))
+}
+
+func build(t *testing.T, cfg Config) *Provider {
+	t.Helper()
+	p, err := New(context.Background(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+// callback is the request the browser makes on the way back.
+func callback(state, code string) *http.Request {
+	return httptest.NewRequest(http.MethodGet,
+		"/v1/auth/sso/callback?state="+url.QueryEscape(state)+"&code="+url.QueryEscape(code), nil)
+}
+
+/*
+signIn runs the round trip the way it actually happens.
+
+The nonce is echoed, because that is what a real provider does: it reads the
+one in the authorization request and puts it in the token. A fake that does not
+fails the nonce check on every path — which made every other test here pass for
+the wrong reason. An alg-confusion test that is really a nonce-mismatch test
+would keep passing with the algorithm allow-list deleted.
+
+A test that means to break the nonce sets it first, and this leaves it alone.
+*/
+func signIn(t *testing.T, p *Provider, idp *fakeIDP) (extension.Identity, error) {
+	t.Helper()
+
+	_, state, err := p.Start(context.Background(), "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if idp.nonce == "" {
+		idp.nonce = state.Data["nonce"]
+	}
+	return p.Complete(context.Background(), callback(state.ID, "code"), state)
+}

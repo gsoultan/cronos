@@ -6,6 +6,7 @@ import (
 
 	"github.com/gsoultan/cronos/internal/app/publish"
 	"github.com/gsoultan/cronos/internal/app/run"
+	"github.com/gsoultan/cronos/internal/extension"
 	"github.com/gsoultan/cronos/internal/platform/token"
 )
 
@@ -54,6 +55,9 @@ type Deps struct {
 	// share panel's Send tab has nothing behind it — which is what it had
 	// since it was drawn.
 	Sends Sending
+	// Directory records people an identity provider vouched for, so they can
+	// be seen on the People page and disabled there like anybody else.
+	Directory Directory
 	// Roster is who has access. Absent, the People endpoints are not mounted
 	// and a deployment manages accounts with the CLI, which is where they were
 	// managed before this existed.
@@ -192,6 +196,22 @@ func Routes(d Deps) http.Handler {
 		mux.Handle("/v1/metrics", d.Metrics)
 	}
 
+	/*
+	   What a sign-in page needs to know before anybody has signed in.
+
+	   Unauthenticated, and it has to be: the page asking is the one nobody has
+	   a session for yet. It says which methods exist and nothing else — not
+	   the issuer, not the client id, not whether a given address has an
+	   account — because a page that renders a button is all this is for.
+	*/
+	mux.HandleFunc("/v1/auth/methods", func(w http.ResponseWriter, _ *http.Request) {
+		methods := map[string]any{"password": d.Users != nil}
+		if flow := extension.SignIn(); flow != nil {
+			methods["sso"] = map[string]string{"provider": flow.Name()}
+		}
+		send(w, http.StatusOK, methods)
+	})
+
 	// Sign-in exists only where there is somewhere to check credentials.
 	// Mounted against nothing it would refuse every attempt identically, which
 	// is indistinguishable from a wrong password and impossible to debug.
@@ -199,6 +219,22 @@ func Routes(d Deps) http.Handler {
 		mux.Handle("/v1/auth/login",
 			limited(NewAuth(d.Users, d.Signer, d.Log), NewLimit(signInRate, signInBurst),
 				"Too many sign-in attempts. Try again in a minute."))
+	}
+
+	/*
+	   Sign-in through somebody else's directory, where a provider registered
+	   one. Mounted from the seam rather than from configuration: the whole
+	   point of internal/extension is that a build decides what it can do, and
+	   a route that exists to say "no provider" is one somebody spends an
+	   afternoon probing.
+	*/
+	if flow := extension.SignIn(); flow != nil {
+		sso := NewSSO(flow, d.Signer, d.Directory, d.Log).In(d.Org, d.Project, "viewer")
+		// Limited like sign-in: it reaches an identity provider, which is
+		// somebody else's service and somebody else's rate limit.
+		mux.Handle("/v1/auth/sso/start",
+			limited(sso, NewLimit(signInRate, signInBurst), "Too many attempts. Try again in a minute."))
+		mux.Handle("/v1/auth/sso/callback", sso)
 	}
 
 	// Who has access, and the ways it changes. Only where there is somewhere

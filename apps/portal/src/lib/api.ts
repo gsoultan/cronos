@@ -200,6 +200,51 @@ export function readDefinition(kind: string, name: string) {
   }).then((r) => (r.ok ? r.text() : Promise.reject(new ApiError(r.status, 'Not found.'))))
 }
 
+export interface SignInMethods {
+  password: boolean
+  sso?: { provider: string }
+}
+
+/**
+ * Which ways this deployment lets somebody in.
+ *
+ * The one call made before anybody has a session, and the only unauthenticated
+ * one: the page asking is the sign-in page. It learns that a button should
+ * exist and nothing else — not the issuer, not whether an address has an
+ * account.
+ */
+export async function signInMethods(): Promise<SignInMethods> {
+  const base = apiBase()
+  if (!base) return { password: false }
+  const r = await fetch(`${base}/v1/auth/methods`)
+  if (!r.ok) return { password: true }
+  return r.json() as Promise<SignInMethods>
+}
+
+/** Where the browser goes to sign in through the deployment's directory. */
+export function ssoStart(returning: string): string {
+  return `${apiBase()}/v1/auth/sso/start?returning=${encodeURIComponent(returning)}`
+}
+
+/**
+ * Takes a session out of the URL fragment, if one came back there.
+ *
+ * The fragment, because a browser does not send it to any server: it reaches
+ * no proxy log and no Referer header. Removed from the address bar immediately
+ * afterwards, so it survives one render and does not sit in history.
+ */
+export function adoptSessionFromFragment(): boolean {
+  const fragment = globalThis.location?.hash ?? ''
+  if (!fragment.startsWith('#token=')) return false
+
+  const token = decodeURIComponent(fragment.slice('#token='.length))
+  if (!token) return false
+
+  globalThis.localStorage?.setItem('cronos.token', token)
+  globalThis.history?.replaceState(null, '', globalThis.location.pathname + globalThis.location.search)
+  return true
+}
+
 /** Publishes a definition. The body is YAML, exactly as the author wrote it. */
 export function publishDefinition(yaml: string) {
   const cfg = apiConfig()

@@ -234,6 +234,13 @@ echo "correct horse battery staple" | go run ./cmd/cronos-user \
   -email dewi@acme.example -name Dewi -org acme -project finance -role editor
 ```
 
+Single sign-on is in the enterprise build — OIDC, authorization code with
+PKCE, roles mapped from the groups the provider asserts. See
+[docs/sso.md](docs/sso.md). The directory is authoritative about who somebody
+is; this project stays authoritative about whether they may read it, so an
+account that signed in through Okta appears on the People page and is refused
+at the next sign-in once somebody turns it off there.
+
 A command rather than a first-run web form: a deployment that shows "create the
 first admin" to whoever reaches it is a deployment where the first visitor is
 whoever found the port. The password is read from a terminal or piped, never
