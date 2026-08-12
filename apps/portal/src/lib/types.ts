@@ -93,6 +93,25 @@ export interface Tile {
   sort?: { field: string; dir?: 'asc' | 'desc' }[]
 }
 
+/**
+ * One question a dataset accepts.
+ *
+ * The only caller-supplied input that reaches a query, and it reaches it as a
+ * bind argument — there is deliberately no parameter that substitutes SQL
+ * text. See docs/report-format.md.
+ */
+export interface Param {
+  name: string
+  type: 'string' | 'number' | 'bool' | 'date' | 'enum'
+  label?: string
+  required?: boolean
+  /** Accepts a list, bound as one — for `= ANY(…)` and `IN`. */
+  multiple?: boolean
+  /** Enum only, and required there: an enum with no values accepts anything. */
+  values?: string[]
+  default?: string
+}
+
 export interface Report {
   name: string
   label: string

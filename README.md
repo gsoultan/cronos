@@ -153,6 +153,13 @@ how the gap survived.
 
 ## Datasources
 
+A dataset's parameters are editable in the portal — name, type, whether it is
+required, a default, and for an enum the values it permits. They were carried
+through an edit before they were modelled, so a parameterised dataset survived
+being opened and saved and could only be created by editing the file, which
+made the portal a second-class way to author exactly the datasets that need the
+most care.
+
 A dataset names the sources it reads, and that is where its rows come from:
 
 ```yaml

@@ -141,6 +141,29 @@ await page.locator('[data-testid=live-report]').waitFor({ timeout: 20000 })
 ok('and the report that reads it still runs',
   (await page.locator('[data-testid=live-report]').innerText()).includes('154,651.50'))
 
+/* -- Parameters ----------------------------------------------------------
+   Carried through an edit before they were modelled, so a parameterised
+   dataset survived being opened and saved — and could only be created by
+   editing the file, which made the portal a second-class way to author
+   exactly the datasets that need the most care. */
+
+await page.goto(`${B}/data/datasets/invoices/edit`, { waitUntil: 'domcontentloaded' })
+await page.locator('button:has-text("Parameters")').waitFor({ timeout: 15000 })
+ok('a parameterised dataset says how many it has',
+  (await page.locator('button:has-text("Parameters")').innerText()).match(/\d/) !== null)
+
+await page.locator('button:has-text("Parameters")').click()
+await page.locator('[data-testid=params-editor]').waitFor({ timeout: 15000 })
+const declared = await page.locator('[data-testid=param-name]')
+  .evaluateAll((n) => n.map((e) => e.value))
+ok('and shows the ones the file declares', declared.includes('from'))
+
+/* A default the file carries, which is the part that decides whether a report
+   may omit the parameter at all. */
+const defaults = await page.locator('[data-testid=param-default]')
+  .evaluateAll((n) => n.map((e) => e.value))
+ok('with the defaults that make them optional', defaults.some((v) => v.includes('2020-01-01')))
+
 /* -- The builder shows the whole report ----------------------------------
    billing-summary has a block filter and a block sort, which the builder used
    to be unable to draw — so opening it warned that saving would drop them.

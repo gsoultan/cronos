@@ -1,5 +1,5 @@
 import { carryOver, document, fromYaml, toYaml, unmodelled, type Yaml } from './yaml'
-import type { Field } from './types'
+import type { Field, Param } from './types'
 
 /**
  * Form state to a definition document.
@@ -99,6 +99,15 @@ export interface DatasetInput {
   query: string
   fields: Field[]
   /**
+   * The questions this dataset accepts.
+   *
+   * Carried through an edit before this was modelled, so a parameterised
+   * dataset survived being opened and saved — but could only be created or
+   * changed by editing the file, which made the portal a second-class way to
+   * author exactly the datasets that need the most care.
+   */
+  params?: Param[]
+  /**
    * The row-scope predicate, as the author wrote it.
    *
    * Taken whole rather than built from a field name: the form asks for a
@@ -113,6 +122,12 @@ export function dataset(input: DatasetInput): string {
   const spec: Record<string, Yaml> = {
     sources: [{ ref: input.source }],
     query: ensureTrailingNewline(input.query),
+    // Before fields, because that is the order the format's own examples use
+    // and a file somebody reads afterwards should look like the ones they have
+    // read before.
+    params: input.params && input.params.length > 0
+      ? input.params.map(param)
+      : undefined,
     fields: input.fields.map(field),
   }
   if (input.predicate?.trim()) {
@@ -123,6 +138,20 @@ export function dataset(input: DatasetInput): string {
   }
   return document('Dataset',
     { name: input.slug, title: label(input), description: input.description }, spec)
+}
+
+function param(p: Param): Yaml {
+  return {
+    name: p.name,
+    type: p.type,
+    label: p.label || undefined,
+    required: p.required || undefined,
+    multiple: p.multiple || undefined,
+    // Enum only. Values on anything else is a constraint the engine does not
+    // apply, which reads as one that does.
+    values: p.type === 'enum' && p.values?.length ? p.values : undefined,
+    default: p.default || undefined,
+  }
 }
 
 function field(f: Field): Yaml {
@@ -422,9 +451,28 @@ export function readDataset(text: string): Loaded<DatasetInput> {
     description: str(meta.description) || undefined,
     source: str(asMap(asList(spec.sources)[0]).ref),
     query: str(spec.query),
+    // Undefined rather than an empty list, so a dataset that declares none
+    // reads back as one that declares none — and an edit does not introduce a
+    // `params: []` nobody wrote.
+    params: spec.params ? asList(spec.params).map(readParam) : undefined,
     fields: asList(spec.fields).map(readField),
     predicate: str(asMap(asList(spec.rowLevelSecurity)[0]).predicate) || undefined,
   }), dataset)
+}
+
+function readParam(v: Yaml): Param {
+  const p = asMap(v)
+  return {
+    name: str(p.name),
+    type: (str(p.type) || 'string') as Param['type'],
+    label: str(p.label) || undefined,
+    required: p.required === true,
+    multiple: p.multiple === true,
+    values: asList(p.values).map(str),
+    // Read as written. A date default is a date in the file and a string here,
+    // because the form edits text and the emitter quotes what needs quoting.
+    default: p.default == null ? undefined : String(p.default),
+  }
 }
 
 function readField(v: Yaml): Field {

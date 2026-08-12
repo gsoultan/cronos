@@ -3,7 +3,7 @@ import {
   dataset, dataSource, readDataset, readDataSource, readReport, readSchedule, report, schedule,
   withCarry,
 } from './definitions'
-import type { Field } from './types'
+import type { Field, Param } from './types'
 
 const fields: Field[] = [
   { name: 'id', type: 'string', role: 'dimension', hidden: true },
@@ -260,4 +260,45 @@ test('a block with neither writes neither', () => {
   })
   expect(emitted).not.toContain('filter')
   expect(emitted).not.toContain('sort')
+})
+
+/* Parameters were carried through an edit before they were modelled, so a
+   parameterised dataset survived being opened and saved — and could only be
+   created by editing the file, which made the portal a second-class way to
+   author exactly the datasets that need the most care. */
+
+test('parameters round trip, including what only an enum may have', () => {
+  const input = {
+    name: 'Invoices', slug: 'invoices', source: 'warehouse',
+    query: 'SELECT id FROM invoices WHERE status = {{ .params.status }}\n',
+    fields: [{ name: 'id', type: 'string', role: 'dimension', label: '', hidden: false, format: 'preformatted' }] as Field[],
+    params: [
+      { name: 'from', type: 'date', label: 'From', required: true, multiple: false, values: [], default: '2020-01-01' },
+      { name: 'status', type: 'enum', label: 'Status', required: false, multiple: true,
+        values: ['paid', 'overdue'], default: undefined },
+    ] as Param[],
+  }
+
+  const back = readDataset(dataset(input))
+  expect(back.input.params).toEqual(input.params)
+  expect(back.drops).toEqual([])
+})
+
+// Values on anything but an enum is a constraint the engine does not apply,
+// which reads as one that does.
+test('permitted values are written only for an enum', () => {
+  const emitted = dataset({
+    name: 'X', slug: 'x', source: 'warehouse', query: 'SELECT 1\n', fields: [],
+    params: [{ name: 'note', type: 'string', values: ['a', 'b'] }],
+  })
+  expect(emitted).not.toContain('values')
+})
+
+// A dataset with no parameters writes none, rather than an empty list that
+// reads as a decision somebody made.
+test('a dataset with no parameters says nothing about them', () => {
+  const emitted = dataset({
+    name: 'X', slug: 'x', source: 'warehouse', query: 'SELECT 1\n', fields: [], params: [],
+  })
+  expect(emitted).not.toContain('params')
 })

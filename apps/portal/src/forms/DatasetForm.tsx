@@ -7,6 +7,7 @@ import { FormActions } from '../components/form/FormShell'
 import { QueryBuilder } from '../components/query/QueryBuilder'
 import { SqlView } from '../components/query/SqlView'
 import { FieldsEditor } from './FieldsEditor'
+import { ParamsEditor } from './ParamsEditor'
 import { DataTable } from '../components/DataTable'
 import { emptyQuery, fieldsFromQuery, toSql, type QueryModel } from '../lib/queryModel'
 import { dataset, withCarry, type DatasetInput, type Loaded } from '../lib/definitions'
@@ -14,7 +15,7 @@ import { usePublish } from '../lib/usePublish'
 import { PublishError } from '../components/form/PublishError'
 import { UnmodelledWarning } from '../components/form/UnmodelledWarning'
 import { sampleRows } from '../lib/sampleRows'
-import type { Field as FieldDef } from '../lib/types'
+import type { Field as FieldDef, Param } from '../lib/types'
 import { required, slug, toSlug } from '../lib/validators'
 
 interface Props {
@@ -24,7 +25,7 @@ interface Props {
   initial?: Loaded<DatasetInput>
 }
 
-type Tab = 'query' | 'fields' | 'security'
+type Tab = 'query' | 'params' | 'fields' | 'security'
 type Mode = 'visual' | 'sql'
 
 const CARD = 'rounded-lg border border-line bg-surface p-5 shadow-card'
@@ -59,6 +60,7 @@ export function DatasetForm({ onDone, onCancel, initial }: Props) {
      labels somebody has already fixed. */
   const [overrides, setOverrides] = useState<Record<string, Partial<FieldDef>>>({})
   const [rls, setRls] = useState(stored?.predicate ?? '')
+  const [params, setParams] = useState<Param[]>(stored?.params ?? [])
 
   const { publish, error: publishError, busy } = usePublish()
 
@@ -71,7 +73,7 @@ export function DatasetForm({ onDone, onCancel, initial }: Props) {
       const saved = await publish(withCarry(dataset({
         name: value.name, slug: value.slug, description: value.description,
         source: value.source, query: mode === 'sql' ? rawSql : generated,
-        fields, predicate: rls,
+        fields, params, predicate: rls,
       }), initial))
       if (saved) onDone()
     },
@@ -109,6 +111,7 @@ export function DatasetForm({ onDone, onCancel, initial }: Props) {
 
   const TABS: { id: Tab; label: string; count?: number }[] = [
     { id: 'query', label: 'Query' },
+    { id: 'params', label: 'Parameters', count: params.length },
     { id: 'fields', label: 'Fields', count: fields.length },
     { id: 'security', label: 'Security' },
   ]
@@ -262,6 +265,19 @@ export function DatasetForm({ onDone, onCancel, initial }: Props) {
                     </div>
                   </div>
                 )}
+              </>
+            )}
+
+            {tab === 'params' && (
+              <>
+                <p className="text-small text-ink-secondary">
+                  What a report may ask this dataset. Each one reaches the query as a
+                  bind argument — <code className="font-mono text-caption">{'{{ .params.name }}'}</code> —
+                  never as SQL text.
+                </p>
+                <div className="mt-4">
+                  <ParamsEditor params={params} onChange={setParams} />
+                </div>
               </>
             )}
 
