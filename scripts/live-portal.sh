@@ -47,6 +47,10 @@ done
 go build -o bin/cronos-user ./cmd/cronos-user
 echo "correct horse battery staple" | ./bin/cronos-user \
   -email dewi@acme.example -name Dewi -org acme -project finance -role editor >/dev/null
+# An administrator too, because managing people is admin-only and an editor
+# cannot even read the roster — which is the behaviour being checked.
+echo "correct horse battery staple" | ./bin/cronos-user \
+  -email admin@acme.example -name Admin -org acme -project finance -role admin >/dev/null
 
 TOKEN="$(./bin/cronos-token -audience portal -role editor -org acme -project finance -subject dewi)"
 

@@ -47,6 +47,10 @@ type Deps struct {
 	Fires       Firing
 	Shares      Sharing
 	Probes      Probes
+	// Roster is who has access. Absent, the People endpoints are not mounted
+	// and a deployment manages accounts with the CLI, which is where they were
+	// managed before this existed.
+	Roster Roster
 
 	// Org and Project are the single tenant this process serves. The store is
 	// multi-tenant; the process is not, and the read fallback is gated on
@@ -106,6 +110,11 @@ func Routes(d Deps) http.Handler {
 		embed = embed.WithRevocations(rv)
 	}
 	author := NewAuthor(d.Signer, d.Admin)
+	// A portal token is checked against the account it names, so disabling
+	// somebody takes effect on their next request rather than in eight hours.
+	if standing, ok := d.Roster.(Standing); ok {
+		author = author.WithStanding(standing)
+	}
 
 	// One limiter per concern, shared by the routes that serve it: an embed
 	// render and a portal render cost the same warehouse the same, so they
@@ -175,6 +184,21 @@ func Routes(d Deps) http.Handler {
 		mux.Handle("/v1/auth/login",
 			limited(NewAuth(d.Users, d.Signer, d.Log), NewLimit(signInRate, signInBurst),
 				"Too many sign-in attempts. Try again in a minute."))
+	}
+
+	// Who has access, and the ways it changes. Only where there is somewhere
+	// to keep people: a file-backed deployment has no accounts to manage.
+	if d.Roster != nil {
+		people := NewPeople(d.Roster, author, d.Log)
+		mux.Handle("/v1/people", people)
+		mux.Handle("/v1/people/{id}", people)
+
+		// Limited like sign-in rather than like a render: it takes the current
+		// password, so an unbounded rate is an unbounded number of guesses at
+		// it from inside a borrowed session.
+		mux.Handle("/v1/auth/password",
+			limited(NewPassword(d.Roster, author, d.Log), NewLimit(signInRate, signInBurst),
+				"Too many attempts. Try again in a minute."))
 	}
 
 	// Management is open to an author with a portal token or to a pipeline

@@ -11,6 +11,10 @@ var (
 	ErrBadCredentials = errors.New("identity: email or password is wrong")
 	// ErrWeakPassword is raised where a password is set, not where it is used.
 	ErrWeakPassword = errors.New("identity: password is too short")
+	// ErrNoUser means there is no such person in this project. Deliberately
+	// distinct from ErrBadCredentials: this one answers an administrator
+	// asking about somebody, not a stranger asking whether an account exists.
+	ErrNoUser = errors.New("identity: no such person")
 	// ErrExists means that email already has an account here.
 	ErrExists = errors.New("identity: already registered")
 	// ErrNotFound means no such user.

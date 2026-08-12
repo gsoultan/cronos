@@ -385,3 +385,17 @@ func readiness(records *sqlstore.Store, engines run.Engines) []api.Check {
 	}
 	return checks
 }
+
+// roster adapts a possibly-absent store to the people port.
+//
+// Managing accounts needs somewhere to keep them, which is the definition
+// store when it is a database. A file-backed deployment has nowhere, so the
+// endpoints are not mounted rather than mounted and refusing — and accounts
+// there are managed with cronos-user, which is where they were managed before
+// any of this existed.
+func roster(records *sqlstore.Store) api.Roster {
+	if records == nil {
+		return nil
+	}
+	return records
+}

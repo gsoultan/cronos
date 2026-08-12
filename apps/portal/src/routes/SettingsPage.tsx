@@ -5,6 +5,8 @@ import { EmptyState } from '../components/EmptyState'
 import { Tag } from '../components/StatusPill'
 import { PersonRow } from '../components/settings/PersonRow'
 import { InviteMemberForm } from '../forms/InviteMemberForm'
+import { LivePeople } from '../components/LivePeople'
+import { connected } from '../lib/api'
 import { ProjectForm } from '../forms/ProjectForm'
 import { useWorkspace } from '../lib/WorkspaceContext'
 import { effectiveRole, projects } from '../lib/workspace'
@@ -89,7 +91,13 @@ export function SettingsPage() {
         ))}
       </div>
 
-      {tab === 'people' && (
+      {/* Connected, the people are the server's — one project and one role
+          each, which is what it models. The directory below describes an
+          organisation with several projects and a person in some of them, and
+          there has never been a membership table behind it. */}
+      {tab === 'people' && connected() && <LivePeople />}
+
+      {tab === 'people' && !connected() && (
         <>
           <section className={CARD} data-testid="people-list">
             <div className={HEAD}>

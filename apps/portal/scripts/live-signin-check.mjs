@@ -65,6 +65,43 @@ await page.goto(`${B}/reports/billing-summary`, { waitUntil: 'domcontentloaded' 
 await page.locator('[data-testid=sign-in]').waitFor({ timeout: 20000 })
 ok('an expired session returns to sign-in', true)
 
+/* -- Who has access, and taking it away ----------------------------------
+   Until this existed the answer to "somebody left" was a SQL statement
+   against production: the store could create a person and check a password
+   and nothing else, and the disabled column had been in the schema since the
+   first migration with nothing ever writing to it. */
+
+await page.evaluate(() => localStorage.removeItem('cronos.token'))
+await page.goto(`${B}/settings`, { waitUntil: 'domcontentloaded' })
+await page.locator('[data-testid=sign-in]').waitFor({ timeout: 20000 })
+await page.fill('input[type=email]', 'admin@acme.example')
+await page.fill('input[type=password]', 'correct horse battery staple')
+await page.click('[data-testid=sign-in] button[type=submit]')
+await page.locator('[data-testid=nav-rail], nav').first().waitFor({ timeout: 20000 })
+
+await page.goto(`${B}/settings`, { waitUntil: 'domcontentloaded' })
+await page.click('[role=tab]:has-text("People")')
+await page.locator('[data-testid=live-people]').waitFor({ timeout: 20000 })
+const roster = await page.locator('[data-testid=live-people]').innerText()
+ok('an administrator sees who has access', roster.includes('dewi@acme.example'))
+
+/* Turning it off, and the row saying so rather than only going grey. */
+const dewi = page.locator('[data-testid=person]').filter({ hasText: 'dewi@acme.example' })
+await dewi.locator('[data-testid=toggle-access]').click()
+await dewi.locator('[data-testid=person-disabled]').waitFor({ timeout: 15000 })
+ok('and can turn it off', true)
+
+/* The point of all of it: she cannot sign in any more. */
+await page.evaluate(() => localStorage.removeItem('cronos.token'))
+await page.goto(`${B}/`, { waitUntil: 'domcontentloaded' })
+await page.locator('[data-testid=sign-in]').waitFor({ timeout: 20000 })
+await page.fill('input[type=email]', 'dewi@acme.example')
+await page.fill('input[type=password]', 'correct horse battery staple')
+await page.click('[data-testid=sign-in] button[type=submit]')
+await page.waitForTimeout(1500)
+ok('and somebody whose access is off cannot sign in with the right password',
+  await page.locator('[data-testid=sign-in]').count() > 0)
+
 console.log(fails ? `\n${fails} failed` : '\nall passed')
 await browser.close()
 process.exit(fails ? 1 : 0)

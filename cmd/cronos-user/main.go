@@ -15,10 +15,8 @@ import (
 	"os"
 	"strings"
 	"syscall"
-	"time"
 
 	sqlstore "github.com/gsoultan/cronos/internal/adapter/store/sql"
-	"github.com/gsoultan/cronos/internal/core/history"
 	"github.com/gsoultan/cronos/internal/core/identity"
 	"golang.org/x/term"
 
@@ -81,7 +79,7 @@ func create(driver, dsn string, u identity.User) error {
 	if err := store.Migrate(ctx); err != nil {
 		return err
 	}
-	u.ID = history.NewID(time.Now())
+	u.ID = identity.NewID()
 	if err := store.CreateUser(ctx, u, password); err != nil {
 		return err
 	}

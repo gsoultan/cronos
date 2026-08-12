@@ -126,6 +126,7 @@ func serve(log *slog.Logger) error {
 		Fires:       firing,
 		Shares:      sharing(records, signer, repo),
 		Probes:      probing(engines),
+		Roster:      roster(records),
 
 		Ready:   readiness(records, engines),
 		Metrics: api.NewMetrics(),

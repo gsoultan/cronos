@@ -376,6 +376,61 @@ export async function readShared(token: string, report: string): Promise<ReportV
   return r.json() as Promise<ReportView>
 }
 
+/* ---------------------------------------------------------------------- *
+ * Who has access.
+ *
+ * One org, one project and one role per person — which is what the server
+ * models, and less than the sample directory shows. The sample one describes
+ * an organisation with several projects and a person in some of them; the
+ * server has never had a membership table. Rather than have the interface
+ * promise the richer shape, the connected view shows what is actually true.
+ * ---------------------------------------------------------------------- */
+
+export interface Person {
+  id: string
+  email: string
+  name?: string
+  org: string
+  project: string
+  role: 'admin' | 'editor' | 'viewer'
+  createdAt: string
+  lastSeen?: string
+  disabled?: boolean
+}
+
+export function listPeople() {
+  return call<{ people: Person[] }>('/v1/people')
+}
+
+/**
+ * Adds somebody, with a password to hand them.
+ *
+ * Not an emailed invitation: that needs a token, a delivery channel that is
+ * configured, and a set-password page that works with no session — and half of
+ * that shipped is a link that does not open.
+ */
+export function addPerson(person: {
+  email: string; name: string; role: string; password: string
+}) {
+  return call<Person>('/v1/people', { method: 'POST', body: JSON.stringify(person) })
+}
+
+/** Changes a role, or turns access off. Absent fields are left alone. */
+export function amendPerson(id: string, change: { role?: string; disabled?: boolean }) {
+  return call<void>(`/v1/people/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(change),
+  })
+}
+
+/** Changes your own password, having proved you know the current one. */
+export function changePassword(current: string, next: string) {
+  return call<void>('/v1/auth/password', {
+    method: 'POST',
+    body: JSON.stringify({ current, new: next }),
+  })
+}
+
 export function readRun(id: string) {
   return call<{ run: Run; deliveries: RunDelivery[] }>(`/v1/runs/${encodeURIComponent(id)}`)
 }

@@ -20,6 +20,13 @@ const (
 	ActionShareOpen = "share.open"
 	ActionRevoke    = "share.revoke"
 	ActionSignIn    = "auth.signin"
+	// Who has access, and every change to it. The one part of an audit that
+	// answers "how did they still have a login in March".
+	ActionPersonAdd     = "person.add"
+	ActionPersonRole    = "person.role"
+	ActionPersonDisable = "person.disable"
+	ActionPersonEnable  = "person.enable"
+	ActionPassword      = "auth.password"
 )
 
 // Results. Two, because an audit that only records what succeeded answers the

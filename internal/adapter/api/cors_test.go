@@ -22,7 +22,11 @@ func TestThePreflightNamesEveryMethodTheAPIAnswers(t *testing.T) {
 	h.ServeHTTP(rec, req)
 
 	allowed := rec.Header().Get("Access-Control-Allow-Methods")
-	for _, method := range []string{"GET", "POST", "DELETE"} {
+	/* This list grows every time a handler learns a verb, and twice now it has
+	   grown late: DELETE when definitions became deletable, PATCH when people
+	   became amendable. Both times the symptom was a request the browser
+	   refused to send, reported as an unreachable server. */
+	for _, method := range []string{"GET", "POST", "PATCH", "DELETE"} {
 		if !strings.Contains(allowed, method) {
 			t.Errorf("%s is missing from %q, so a browser will not send one", method, allowed)
 		}

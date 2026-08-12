@@ -16,6 +16,13 @@ type CORS struct {
 	next    http.Handler
 }
 
+// allowedMethods is every method any handler in this package answers.
+//
+// Kept as one string rather than assembled from the mux, because the mux
+// registers patterns and not methods — each handler decides for itself, in a
+// switch, and there is nothing to enumerate.
+const allowedMethods = "GET, POST, PATCH, DELETE, OPTIONS"
+
 // NewCORS wraps next, permitting exactly these origins.
 func NewCORS(origins []string, next http.Handler) *CORS {
 	return &CORS{origins: origins, next: next}
@@ -29,11 +36,13 @@ func (c *CORS) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// cache that misses this serves one customer's headers to another.
 		w.Header().Add("Vary", "Origin")
 		w.Header().Set("Access-Control-Allow-Headers", "authorization, content-type")
-		// Every method the API answers, not only the one it started with. A
-		// preflight that omits DELETE is a browser refusing the request before
-		// it is sent, which reaches the caller as a network failure — the same
-		// error as an unreachable server, for a server that answered fine.
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+		// Every method the API answers. Twice now a method has been added to a
+		// handler and not to this line, and the failure is the same both
+		// times: the browser refuses the request before sending it, and the
+		// caller sees a network error from a server that would have answered.
+		// Nothing in the type system connects the two, so the list is named
+		// once and asserted against in cors_test.go.
+		w.Header().Set("Access-Control-Allow-Methods", allowedMethods)
 		w.Header().Set("Access-Control-Max-Age", "600")
 	}
 

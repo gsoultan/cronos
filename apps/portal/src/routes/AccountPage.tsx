@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Button, TextInput } from '@mantine/core'
 import { PageHeader } from '../components/PageHeader'
 import { Field } from '../components/form/Field'
+import { ChangePassword } from '../components/ChangePassword'
 import { Tag } from '../components/StatusPill'
 import { TwoFactorSetup } from '../forms/TwoFactorSetup'
 import { relativeTime } from '../lib/format'
@@ -57,6 +58,19 @@ export function AccountPage() {
           </Field>
           <div><Button>Save changes</Button></div>
         </div>
+      </section>
+
+      <section className={CARD} data-testid="password">
+        <div className={HEAD}>
+          <div>
+            <h2 className="text-lead font-semibold text-ink">Password</h2>
+            <p className="mt-1 text-small text-ink-secondary">
+              Yours to change. Nobody else can change it for you, and an administrator
+              cannot read it.
+            </p>
+          </div>
+        </div>
+        <ChangePassword />
       </section>
 
       <section className={CARD} data-testid="two-factor">

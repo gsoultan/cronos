@@ -236,6 +236,20 @@ Set `CRONOS_BEHIND_PROXY=1` only where something in front sets
 `X-Forwarded-For` — believing it without a proxy keys every limit by a value
 the caller chooses, which is not a limit.
 
+Who has access is managed from Settings → People, by a project administrator
+and nobody else — the list included, because who works here and when each of
+them last signed in is a description of your organisation. Adding somebody
+means handing them a first password they then change themselves; an emailed
+invitation needs a token, a configured channel and a set-password page that
+works with no session, and half of that shipped is a link that does not open.
+
+Access is turned off rather than deleted: the row stays, so a run somebody
+started in March is still attributable to a person. And it takes effect on
+their next request rather than when their session expires — a portal token is
+checked against the account it names, cached for five seconds, because
+"revoked" that means "revoked by this evening" is not what anybody means on the
+afternoon somebody is walked out of a building.
+
 A session lasts eight hours and does not refresh; a token that renews itself is
 a permanent credential wearing an expiry. Every sign-in failure reads the same,
 and an unknown address costs the same to refuse as a known one — otherwise a
