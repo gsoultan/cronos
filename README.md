@@ -165,8 +165,21 @@ have defaults because the alternative was database/sql's — the first of which
 is unlimited. Bounding it made cronos faster, which is the ordinary result:
 measured against Postgres, throughput at sixty-four concurrent renders went
 from 889/s to 2,008/s and p50 from 62ms to 31ms, because unbounded concurrency
-against a database is congestion rather than parallelism. `make load` is the
-harness those numbers came from.
+against a database is congestion rather than parallelism.
+
+A burst's worker count follows the machine too, bounded between four and
+thirty-two: eight on every host was a fifth of the throughput unused on fifteen
+cores, and four typesetters per core on a two-core container. Measured, the
+demo's thousand statements went from 315 a second to 666.
+
+Nothing caches, and that is a finding rather than an omission. A report against
+a real Postgres is five milliseconds — a cache would save less than the hop
+that delivers it, in exchange for the one property a reporting tool cannot
+trade, which is that the number on the page is the number in the warehouse. A
+deployment whose queries are slower than that wants an index on their side or a
+materialised view in the dataset, not a stale copy on ours.
+
+`make load` is the harness all of those numbers came from.
 
 The row cap **refuses** rather than truncates. A report that quietly stopped at
 a million rows is a wrong answer presented as a right one, and the reader has
