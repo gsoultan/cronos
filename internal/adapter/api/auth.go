@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gsoultan/cronos/internal/core/identity"
+	"github.com/gsoultan/cronos/internal/core/principal"
 	"github.com/gsoultan/cronos/internal/platform/token"
 )
 
@@ -88,6 +89,10 @@ func (a *Auth) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	a.log.Info("signed in", "user", user.ID, "project", user.Org+"/"+user.Project, "role", user.Role)
+	audit(r.Context(), a.log, principal.Principal{
+		Subject: user.ID, Email: user.Email,
+		OrgID: user.Org, ProjectID: user.Project,
+	}, ActionSignIn, user.Email, Allowed, map[string]any{"role": user.Role})
 	send(w, http.StatusOK, session{
 		Token: issued, ExpiresIn: int(SessionLifetime.Seconds()), User: user,
 	})

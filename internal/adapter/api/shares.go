@@ -91,6 +91,8 @@ func (h *Shares) create(w http.ResponseWriter, r *http.Request, pr principal.Pri
 		return
 	}
 	h.log.Info("shared", "report", sh.Report, "share", sh.ID, "by", pr.Subject)
+	audit(r.Context(), h.log, pr, ActionShare, sh.Report, Allowed,
+		map[string]any{"share": sh.ID, "expires": sh.ExpiresAt, "scoped": len(sh.Scope) > 0})
 	send(w, http.StatusCreated, view(sh, h.now()))
 }
 
@@ -114,6 +116,7 @@ func (h *Shares) revoke(w http.ResponseWriter, r *http.Request, pr principal.Pri
 		return
 	}
 	h.log.Info("share revoked", "share", id, "by", pr.Subject)
+	audit(r.Context(), h.log, pr, ActionRevoke, id, Allowed, nil)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -130,6 +133,11 @@ func (h *Shares) open(w http.ResponseWriter, r *http.Request, id string) {
 	}
 	raw, sh, err := h.shares.Open(r.Context(), id)
 	if err != nil {
+		// Recorded even though nobody is signed in, and especially then: a
+		// run of failed opens against guessed ids is the shape of somebody
+		// looking for a live link, and it is invisible without this.
+		audit(r.Context(), h.log, principal.Principal{Subject: "share:" + id},
+			ActionShareOpen, id, Refused, nil)
 		// One answer for never-existed, expired and revoked. Telling them
 		// apart would let somebody holding a dead link learn that a live one
 		// had been there.
@@ -140,6 +148,11 @@ func (h *Shares) open(w http.ResponseWriter, r *http.Request, id string) {
 	// person: a share is deliberately anonymous, and inventing an identity for
 	// the log would be inventing one for the audit.
 	h.log.Info("share opened", "share", sh.ID, "report", sh.Report)
+	// Anonymous by design — a share is deliberately not a person — so the
+	// actor is the share itself, which is the most that is true.
+	audit(r.Context(), h.log, principal.Principal{
+		Subject: "share:" + sh.ID, OrgID: sh.Org, ProjectID: sh.Project, Scope: sh.Scope,
+	}, ActionShareOpen, sh.Report, Allowed, map[string]any{"share": sh.ID})
 
 	w.Header().Set("Cache-Control", "no-store")
 	send(w, http.StatusOK, map[string]any{"token": raw, "report": sh.Report})

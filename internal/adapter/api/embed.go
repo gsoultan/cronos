@@ -71,6 +71,11 @@ func (e *Embed) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// One message for every token failure. Distinguishing expired from
 		// forged tells an attacker which half of their attempt worked.
 		e.log.Info("embed token rejected", "report", name, "err", err)
+		// Recorded with no actor, because there is not one: a token that did
+		// not verify names nobody. A run of these against one report is what
+		// somebody probing looks like, and it is invisible otherwise.
+		audit(r.Context(), e.log, principal.Principal{}, ActionRead, name, Refused,
+			map[string]any{"reason": "the token did not verify"})
 		fail(w, http.StatusUnauthorized, "This report link is no longer valid.")
 		return
 	}
@@ -81,6 +86,8 @@ func (e *Embed) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !e.allowed(r.Context(), claims) {
 		e.log.Info("embed token rejected", "report", name, "share", claims.ID,
 			"err", "the share was withdrawn or has expired")
+		audit(r.Context(), e.log, claims.Principal(), ActionRead, name, Refused,
+			map[string]any{"reason": "the share was withdrawn or has expired"})
 		fail(w, http.StatusUnauthorized, "This report link is no longer valid.")
 		return
 	}
@@ -89,6 +96,8 @@ func (e *Embed) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if claims.Report != "" && claims.Report != name {
 		e.log.Info("embed token used for another report",
 			"pinned", claims.Report, "asked", name)
+		audit(r.Context(), e.log, claims.Principal(), ActionRead, name, Refused,
+			map[string]any{"reason": "the token is pinned to " + claims.Report})
 		fail(w, http.StatusForbidden, "This link does not open that report.")
 		return
 	}
@@ -128,9 +137,16 @@ func (e *Embed) renderWith(w http.ResponseWriter, r *http.Request,
 		Filters: req.Filters,
 	}, pr)
 	if err != nil {
+		// Recorded too. "Who tried to read what and was refused" is half of
+		// what an audit is for, and the half a successes-only log cannot show.
+		audit(r.Context(), e.log, pr, ActionRead, name, Refused, scopeOf(pr))
 		e.report(w, name, err)
 		return
 	}
+
+	// The event this whole product exists to be able to answer for: this
+	// person, through this token, saw these rows of this report.
+	audit(r.Context(), e.log, pr, ActionRead, name, Allowed, scopeOf(pr))
 	send(w, http.StatusOK, view)
 }
 

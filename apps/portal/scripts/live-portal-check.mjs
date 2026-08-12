@@ -5,6 +5,7 @@
  * the interface workable before a server exists — but it also means none of
  * them would notice if the API contract moved underneath. This one would.
  */
+import { readFileSync } from 'node:fs'
 import { chromium } from 'playwright'
 
 const B = process.env.BASE ?? 'http://localhost:5174'
@@ -348,6 +349,26 @@ const asReader = await fetch(`${process.env.API}/v1/datasources/warehouse/test`,
   method: 'POST', headers: { authorization: `Bearer ${process.env.VIEWER}` },
 })
 ok('a viewer may not test connections', asReader.status === 403)
+
+/* -- The audit trail -----------------------------------------------------
+   A product whose claim is governed access to somebody else's customers' data
+   has to be able to say who read what. The seam had a discarding default and
+   nothing called it, which is a compliance answer of "we could". */
+
+const trail = readFileSync('/tmp/cronosd-portal.log', 'utf8')
+  .split('\n').filter((l) => l.includes('msg=audit'))
+
+ok('reads are recorded', trail.some((l) => l.includes('action=report.read')))
+ok('and so is publishing', trail.some((l) => l.includes('action=definition.publish')))
+/* The half a successes-only log cannot show. */
+ok('and what was refused', trail.some((l) => l.includes('result=refused')))
+ok('sharing is recorded', trail.some((l) => l.includes('action=share.create')))
+/* Anonymous by design, and the entry says so rather than inventing a person. */
+ok('including an anonymous open', trail.some((l) => l.includes('action=share.open')))
+/* Every entry carries the id of the request that caused it, so the audit and
+   the request log are one story rather than two accounts of it. */
+ok('every entry joins the request that caused it',
+  trail.length > 0 && trail.every((l) => l.includes('detail.request=')))
 
 console.log(fails ? `\n${fails} failed` : '\nall passed')
 await browser.close()

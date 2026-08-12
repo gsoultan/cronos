@@ -76,6 +76,16 @@ what was missing, rather than becoming a connection error at six in the
 morning; and the resolved value exists between the resolver and `database/sql`
 and nowhere else — not in the management API's copy, not in a log line.
 
+Every read, publish, delete, share and sign-in is recorded — who, in which
+project, against what, and whether it was allowed. Refusals too: an audit that
+only shows what succeeded answers the wrong half of every question. A read
+records the row scope it ran under, because "somebody read a report" is not the
+question anybody asks; "which customer's rows went to whom" is. It goes to the
+log by default (`CRONOS_AUDIT=off` to stop it), because every deployment
+already collects, indexes and retains stdout — and a commercial sink registered
+at build time wins over it. Each entry carries the id of the request that
+caused it, so the audit and the request log are one story.
+
 The schema is versioned and forward-only. Each migration runs once, inside a
 transaction, and records itself in the same transaction — so a failure halfway
 leaves the database where it started, and a database migrated by a newer cronos

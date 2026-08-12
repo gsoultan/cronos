@@ -99,6 +99,8 @@ func (d *Definitions) publish(w http.ResponseWriter, r *http.Request, pr princip
 		return
 	}
 	d.log.Info("published", "kind", result.Kind, "name", result.Name, "version", result.Version)
+	audit(r.Context(), d.log, pr, ActionPublish, result.Kind+"/"+result.Name, Allowed,
+		map[string]any{"version": result.Version})
 	send(w, http.StatusOK, result)
 }
 
@@ -155,10 +157,13 @@ func (d *Definitions) fromLoaded(pr principal.Principal, kind, name string) ([]b
 // might be the dataset a report reads.
 func (d *Definitions) delete(w http.ResponseWriter, r *http.Request, pr principal.Principal, kind, name string) {
 	if err := d.svc.Delete(r.Context(), pr, canonicalKind(kind), name); err != nil {
+		audit(r.Context(), d.log, pr, ActionDelete, canonicalKind(kind)+"/"+name, Refused,
+			map[string]any{"reason": err.Error()})
 		d.refuse(w, err)
 		return
 	}
 	d.log.Info("deleted", "kind", kind, "name", name, "by", pr.Subject)
+	audit(r.Context(), d.log, pr, ActionDelete, canonicalKind(kind)+"/"+name, Allowed, nil)
 	w.WriteHeader(http.StatusNoContent)
 }
 

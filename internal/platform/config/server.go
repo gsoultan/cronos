@@ -15,6 +15,8 @@ type Server struct {
 	// and Kubernetes projected volumes produce. Empty means the environment
 	// alone.
 	SecretsDir string
+	// Audit is "log" or "off".
+	Audit string
 	// Driver and DSN say where rows live. "sqlite" and a path is the
 	// development answer; "postgres" and a URL is the deployed one.
 	Driver string
@@ -71,7 +73,13 @@ func Load() (Server, error) {
 		// Where ${secret:name} is looked up. Files first when a directory is
 		// given, because a mounted file is not visible in /proc to everything
 		// running as the same user and does not appear in a crash dump.
-		SecretsDir:  os.Getenv("CRONOS_SECRETS_DIR"),
+		SecretsDir: os.Getenv("CRONOS_SECRETS_DIR"),
+		// Where the audit trail goes. "log" by default rather than off: a
+		// product whose claim is governed access to somebody else's customers'
+		// data, shipping with nothing recorded unless it is switched on, has
+		// no answer to the one question an auditor asks. An operator who does
+		// not want it says so.
+		Audit:       env("CRONOS_AUDIT", "log"),
 		Org:         env("CRONOS_ORG", "default"),
 		Project:     env("CRONOS_PROJECT", "default"),
 		StoreDSN:    os.Getenv("CRONOS_STORE_DSN"),

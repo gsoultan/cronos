@@ -7,6 +7,7 @@ import (
 
 	alertemail "github.com/gsoultan/cronos/internal/adapter/alert/email"
 	"github.com/gsoultan/cronos/internal/adapter/api"
+	"github.com/gsoultan/cronos/internal/adapter/audit"
 	codec "github.com/gsoultan/cronos/internal/adapter/codec/yaml"
 	emailchannel "github.com/gsoultan/cronos/internal/adapter/deliver/email"
 	filechannel "github.com/gsoultan/cronos/internal/adapter/deliver/file"
@@ -23,6 +24,7 @@ import (
 	"github.com/gsoultan/cronos/internal/app/share"
 	"github.com/gsoultan/cronos/internal/core/definition"
 	"github.com/gsoultan/cronos/internal/core/principal"
+	"github.com/gsoultan/cronos/internal/extension"
 	"github.com/gsoultan/cronos/internal/platform/config"
 	"github.com/gsoultan/cronos/internal/platform/secret"
 	"github.com/gsoultan/cronos/internal/platform/token"
@@ -319,4 +321,21 @@ func secrets(cfg config.Server) secret.Resolver {
 		secret.Files{Dir: cfg.SecretsDir},
 		secret.Env{},
 	}
+}
+
+// auditing installs the audit sink named by the configuration.
+//
+// A commercial build registers its own from init(), and that one wins: it was
+// chosen deliberately and it durably records what a log pipeline only retains.
+// This is the default for everything else, and "off" is a decision somebody
+// has to make rather than the state they arrive in.
+func auditing(cfg config.Server, log *slog.Logger) string {
+	if extension.Audit().Name() != "discard" {
+		return extension.Audit().Name() // a commercial sink registered itself
+	}
+	if cfg.Audit == "off" {
+		return "off"
+	}
+	extension.RegisterAuditSink(audit.NewLog(log))
+	return extension.Audit().Name()
 }

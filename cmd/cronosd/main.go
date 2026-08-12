@@ -100,6 +100,11 @@ func serve(log *slog.Logger) error {
 		}()
 	}
 
+	// Before the first request can arrive, and said out loud in the line
+	// below: a deployment recording nothing should be a deployment somebody
+	// chose, not one they ended up with.
+	auditSink := auditing(cfg, log)
+
 	handler := api.Routes(api.Deps{
 		Reports: repo, Runner: runner, Signer: signer,
 		Origins: cfg.Origins, Log: log,
@@ -125,7 +130,7 @@ func serve(log *slog.Logger) error {
 		"datasets", datasets, "reports", reports, "schedules", schedules, "sources", sources,
 		"origins", cfg.Origins, "management", len(cfg.AdminKey) > 0,
 		"scheduler", cfg.Scheduler, "sign-in", records != nil,
-		"auth", extension.Auth().Name(), "audit", extension.Audit().Name())
+		"auth", extension.Auth().Name(), "audit", auditSink)
 
 	return listen(cfg.Addr, handler, log)
 }
