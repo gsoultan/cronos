@@ -24,8 +24,9 @@ Two failures make it decorative, and both are here. Enrolment that is never
 proved, and a code that works twice.
 */
 
-// The store's clock, which these tests compute codes against.
-var storeNow = time.Date(2026, 8, 11, 9, 0, 0, 0, time.UTC)
+// The store's clock, which these tests compute codes against. Defined once in
+// drivers_test.go, because both halves of a two-driver run must agree on it.
+var storeNow = StoreNow
 
 func enrolled(t *testing.T, s *store.Store, id string) string {
 	t.Helper()
@@ -131,24 +132,25 @@ this, a second factor is a password that changes every half minute — better th
 nothing, and not what it claims to be.
 */
 func TestACodeCannotBeUsedTwice(t *testing.T) {
-	s := open(t)
-	secret := enrolled(t, s, "usr_ada")
-	if err := s.Confirm(context.Background(), "usr_ada", codeAt(t, secret, storeNow)); err != nil {
-		t.Fatal(err)
-	}
+	both(t, func(t *testing.T, s *store.Store) {
+		secret := enrolled(t, s, "usr_ada")
+		if err := s.Confirm(context.Background(), "usr_ada", codeAt(t, secret, storeNow)); err != nil {
+			t.Fatal(err)
+		}
 
-	// The next step, so it is not the one enrolment already spent.
-	next := storeNow.Add(identity.Step)
-	code := codeAt(t, secret, next)
+		// The next step, so it is not the one enrolment already spent.
+		next := storeNow.Add(identity.Step)
+		code := codeAt(t, secret, next)
 
-	// The store's clock does not move, so this is checked from a moment the
-	// drift window reaches.
-	if err := s.CheckFactor(context.Background(), "usr_ada", code); err != nil {
-		t.Fatalf("a fresh code was refused: %v", err)
-	}
-	if err := s.CheckFactor(context.Background(), "usr_ada", code); !errors.Is(err, identity.ErrCodeUsed) {
-		t.Fatalf("the same code worked twice: %v", err)
-	}
+		// The store's clock does not move, so this is checked from a moment the
+		// drift window reaches.
+		if err := s.CheckFactor(context.Background(), "usr_ada", code); err != nil {
+			t.Fatalf("a fresh code was refused: %v", err)
+		}
+		if err := s.CheckFactor(context.Background(), "usr_ada", code); !errors.Is(err, identity.ErrCodeUsed) {
+			t.Fatalf("the same code worked twice: %v", err)
+		}
+	})
 }
 
 /*
@@ -158,37 +160,38 @@ Checked with a read and then written, both see a step newer than the last and
 both proceed. The condition has to be inside the write.
 */
 func TestTwoSignInsWithOneCodeLetOneIn(t *testing.T) {
-	s := open(t)
-	secret := enrolled(t, s, "usr_ada")
-	if err := s.Confirm(context.Background(), "usr_ada", codeAt(t, secret, storeNow)); err != nil {
-		t.Fatal(err)
-	}
-	code := codeAt(t, secret, storeNow.Add(identity.Step))
+	both(t, func(t *testing.T, s *store.Store) {
+		secret := enrolled(t, s, "usr_ada")
+		if err := s.Confirm(context.Background(), "usr_ada", codeAt(t, secret, storeNow)); err != nil {
+			t.Fatal(err)
+		}
+		code := codeAt(t, secret, storeNow.Add(identity.Step))
 
-	var (
-		wg    sync.WaitGroup
-		mu    sync.Mutex
-		letIn int
-	)
-	start := make(chan struct{})
-	for range 8 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			<-start
-			if err := s.CheckFactor(context.Background(), "usr_ada", code); err == nil {
-				mu.Lock()
-				letIn++
-				mu.Unlock()
-			}
-		}()
-	}
-	close(start)
-	wg.Wait()
+		var (
+			wg    sync.WaitGroup
+			mu    sync.Mutex
+			letIn int
+		)
+		start := make(chan struct{})
+		for range 8 {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				<-start
+				if err := s.CheckFactor(context.Background(), "usr_ada", code); err == nil {
+					mu.Lock()
+					letIn++
+					mu.Unlock()
+				}
+			}()
+		}
+		close(start)
+		wg.Wait()
 
-	if letIn != 1 {
-		t.Fatalf("one code let %d sign-ins through", letIn)
-	}
+		if letIn != 1 {
+			t.Fatalf("one code let %d sign-ins through", letIn)
+		}
+	})
 }
 
 // An account with no factor is not one a code opens. The sign-in path asks
@@ -328,25 +331,26 @@ Codes left behind are ten live credentials for an account with no second factor
 believes are inert.
 */
 func TestRemovingTheFactorRemovesTheCodes(t *testing.T) {
-	s := open(t)
-	secret := enrolled(t, s, "usr_ada")
-	if err := s.Confirm(context.Background(), "usr_ada", codeAt(t, secret, storeNow)); err != nil {
-		t.Fatal(err)
-	}
-	codes, hashes, _ := identity.NewRecoveryCodes()
-	if err := s.SetRecoveryCodes(context.Background(), "usr_ada", hashes); err != nil {
-		t.Fatal(err)
-	}
+	both(t, func(t *testing.T, s *store.Store) {
+		secret := enrolled(t, s, "usr_ada")
+		if err := s.Confirm(context.Background(), "usr_ada", codeAt(t, secret, storeNow)); err != nil {
+			t.Fatal(err)
+		}
+		codes, hashes, _ := identity.NewRecoveryCodes()
+		if err := s.SetRecoveryCodes(context.Background(), "usr_ada", hashes); err != nil {
+			t.Fatal(err)
+		}
 
-	if err := s.RemoveFactor(context.Background(), "usr_ada"); err != nil {
-		t.Fatal(err)
-	}
-	if s.Protected(context.Background(), "usr_ada") {
-		t.Fatal("the account is still protected")
-	}
-	if err := s.SpendRecoveryCode(context.Background(), "usr_ada", codes[0]); !errors.Is(err, identity.ErrBadCode) {
-		t.Fatal("a recovery code outlived the factor it belonged to")
-	}
+		if err := s.RemoveFactor(context.Background(), "usr_ada"); err != nil {
+			t.Fatal(err)
+		}
+		if s.Protected(context.Background(), "usr_ada") {
+			t.Fatal("the account is still protected")
+		}
+		if err := s.SpendRecoveryCode(context.Background(), "usr_ada", codes[0]); !errors.Is(err, identity.ErrBadCode) {
+			t.Fatal("a recovery code outlived the factor it belonged to")
+		}
+	})
 }
 
 // One account's factor is not another's, which a shared row or a query missing

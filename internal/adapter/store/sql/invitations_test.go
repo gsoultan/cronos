@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	store "github.com/gsoultan/cronos/internal/adapter/store/sql"
 	"github.com/gsoultan/cronos/internal/core/identity"
 )
 
@@ -34,7 +35,7 @@ func invite(t *testing.T, s interface {
 	inv := identity.Invitation{
 		ID: identity.NewInvitationID(), Email: email, Name: "Dewi",
 		Org: "acme", Project: "finance", Role: "editor", InvitedBy: "ada@acme.example",
-		Expires: time.Date(2026, 8, 11, 9, 0, 0, 0, time.UTC).Add(life),
+		Expires: StoreNow.Add(life),
 	}
 	if err := s.Invite(context.Background(), inv, hash); err != nil {
 		t.Fatal(err)
@@ -103,22 +104,23 @@ func TestTheSecretItselfIsNeverStored(t *testing.T) {
 // and a second use is either somebody replaying it or the mailbox being read by
 // somebody it does not belong to.
 func TestAnInvitationIsSpentOnUse(t *testing.T) {
-	s := open(t)
-	secret := invite(t, s, "dewi@acme.example", identity.InvitationLife)
+	both(t, func(t *testing.T, s *store.Store) {
+		secret := invite(t, s, "dewi@acme.example", identity.InvitationLife)
 
-	if _, err := s.Accept(context.Background(), secret, "a-password-they-chose"); err != nil {
-		t.Fatal(err)
-	}
+		if _, err := s.Accept(context.Background(), secret, "a-password-they-chose"); err != nil {
+			t.Fatal(err)
+		}
 
-	_, err := s.Accept(context.Background(), secret, "a-different-password")
-	if !errors.Is(err, identity.ErrInvitation) {
-		t.Fatalf("a spent invitation was accepted again: %v", err)
-	}
-	// And it is not merely refused at the end: no second account exists.
-	if _, err := s.Authenticate(context.Background(),
-		"dewi@acme.example", "a-different-password"); err == nil {
-		t.Fatal("the second acceptance changed the password")
-	}
+		_, err := s.Accept(context.Background(), secret, "a-different-password")
+		if !errors.Is(err, identity.ErrInvitation) {
+			t.Fatalf("a spent invitation was accepted again: %v", err)
+		}
+		// And it is not merely refused at the end: no second account exists.
+		if _, err := s.Authenticate(context.Background(),
+			"dewi@acme.example", "a-different-password"); err == nil {
+			t.Fatal("the second acceptance changed the password")
+		}
+	})
 }
 
 /*
@@ -137,45 +139,46 @@ attempted, where relying on the index alone would answer "already registered" �
 a race reported as somebody else's mistake.
 */
 func TestTwoAcceptancesAtOnceProduceOneAccount(t *testing.T) {
-	s := open(t)
-	secret := invite(t, s, "dewi@acme.example", identity.InvitationLife)
+	both(t, func(t *testing.T, s *store.Store) {
+		secret := invite(t, s, "dewi@acme.example", identity.InvitationLife)
 
-	const tries = 8
-	var (
-		wg       sync.WaitGroup
-		mu       sync.Mutex
-		accepted []string
-		refused  []error
-	)
-	start := make(chan struct{})
+		const tries = 8
+		var (
+			wg       sync.WaitGroup
+			mu       sync.Mutex
+			accepted []string
+			refused  []error
+		)
+		start := make(chan struct{})
 
-	for i := 0; i < tries; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			<-start
-			user, err := s.Accept(context.Background(), secret, "a-password-they-chose")
+		for i := 0; i < tries; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				<-start
+				user, err := s.Accept(context.Background(), secret, "a-password-they-chose")
 
-			mu.Lock()
-			defer mu.Unlock()
-			if err != nil {
-				refused = append(refused, err)
-				return
-			}
-			accepted = append(accepted, user.ID)
-		}()
-	}
-	close(start)
-	wg.Wait()
-
-	if len(accepted) != 1 {
-		t.Fatalf("%d of %d concurrent acceptances succeeded: %v", len(accepted), tries, accepted)
-	}
-	for _, err := range refused {
-		if !errors.Is(err, identity.ErrInvitation) {
-			t.Fatalf("a loser was turned away by the account table, not the invitation: %v", err)
+				mu.Lock()
+				defer mu.Unlock()
+				if err != nil {
+					refused = append(refused, err)
+					return
+				}
+				accepted = append(accepted, user.ID)
+			}()
 		}
-	}
+		close(start)
+		wg.Wait()
+
+		if len(accepted) != 1 {
+			t.Fatalf("%d of %d concurrent acceptances succeeded: %v", len(accepted), tries, accepted)
+		}
+		for _, err := range refused {
+			if !errors.Is(err, identity.ErrInvitation) {
+				t.Fatalf("a loser was turned away by the account table, not the invitation: %v", err)
+			}
+		}
+	})
 }
 
 /*
@@ -186,26 +189,27 @@ invitation must not be spent — otherwise a transient failure burns the link an
 the person has to be invited again, having already chosen a password.
 */
 func TestAFailedAcceptanceDoesNotBurnTheInvitation(t *testing.T) {
-	s := open(t)
-	secret := invite(t, s, "dewi@acme.example", identity.InvitationLife)
+	both(t, func(t *testing.T, s *store.Store) {
+		secret := invite(t, s, "dewi@acme.example", identity.InvitationLife)
 
-	// Somebody creates the account by another route in the meantime — the
-	// admin adds them directly, say — and the INSERT collides.
-	if err := s.CreateUser(context.Background(), identity.User{
-		ID: identity.NewID(), Email: "dewi@acme.example",
-		Org: "acme", Project: "finance", Role: "viewer",
-	}, "set-by-an-administrator"); err != nil {
-		t.Fatal(err)
-	}
+		// Somebody creates the account by another route in the meantime — the
+		// admin adds them directly, say — and the INSERT collides.
+		if err := s.CreateUser(context.Background(), identity.User{
+			ID: identity.NewID(), Email: "dewi@acme.example",
+			Org: "acme", Project: "finance", Role: "viewer",
+		}, "set-by-an-administrator"); err != nil {
+			t.Fatal(err)
+		}
 
-	if _, err := s.Accept(context.Background(), secret, "a-password-they-chose"); err == nil {
-		t.Fatal("accepting produced a second account for one address")
-	}
+		if _, err := s.Accept(context.Background(), secret, "a-password-they-chose"); err == nil {
+			t.Fatal("accepting produced a second account for one address")
+		}
 
-	// The invitation survived, because nothing happened.
-	if _, err := s.Invitation(context.Background(), secret); err != nil {
-		t.Fatalf("a failed acceptance spent the invitation: %v", err)
-	}
+		// The invitation survived, because nothing happened.
+		if _, err := s.Invitation(context.Background(), secret); err != nil {
+			t.Fatalf("a failed acceptance spent the invitation: %v", err)
+		}
+	})
 }
 
 // A week, and then it is a dead string. A link forwarded into an archive in
@@ -252,16 +256,17 @@ func TestAnUnknownSecretIsIndistinguishableFromASpentOne(t *testing.T) {
 // second. The usual reason to invite somebody again is that the first mail went
 // astray, and in that case the first link should stop working.
 func TestInvitingTwiceLeavesOneLiveLink(t *testing.T) {
-	s := open(t)
-	first := invite(t, s, "dewi@acme.example", identity.InvitationLife)
-	second := invite(t, s, "dewi@acme.example", identity.InvitationLife)
+	both(t, func(t *testing.T, s *store.Store) {
+		first := invite(t, s, "dewi@acme.example", identity.InvitationLife)
+		second := invite(t, s, "dewi@acme.example", identity.InvitationLife)
 
-	if _, err := s.Invitation(context.Background(), first); !errors.Is(err, identity.ErrInvitation) {
-		t.Fatal("the first invitation still works")
-	}
-	if _, err := s.Invitation(context.Background(), second); err != nil {
-		t.Fatalf("the second does not: %v", err)
-	}
+		if _, err := s.Invitation(context.Background(), first); !errors.Is(err, identity.ErrInvitation) {
+			t.Fatal("the first invitation still works")
+		}
+		if _, err := s.Invitation(context.Background(), second); err != nil {
+			t.Fatalf("the second does not: %v", err)
+		}
+	})
 }
 
 // Somebody who already has an account is not invited. The link would either

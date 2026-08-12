@@ -16,14 +16,20 @@ import (
 )
 
 /*
- * Run against SQLite.
+ * Run against SQLite, mostly.
  *
  * The statements use nothing outside ON CONFLICT and ordinary predicates, so
  * what is under test here — that every read carries the tenant, that versions
  * are content-addressed, that history outlives a delete — is the same logic
- * Postgres will run. What SQLite cannot prove is Postgres-specific behaviour
- * around types and concurrency, and that wants a container this repository
- * does not yet have. Said plainly rather than implied by a passing suite.
+ * Postgres will run, and SQLite runs it in a millisecond with no container.
+ *
+ * Two kinds of test are not like that, and both have somewhere else to be.
+ * Postgres-specific types and DDL are postgres_test.go, which has been there
+ * since the store's DDL turned out to be wrong for months while every test
+ * passed. Concurrency is drivers_test.go: SQLite serialises writes, so a
+ * conditional UPDATE, an ON CONFLICT and a plain read-then-write all look
+ * identical there, and every "two at once produce one" guarantee written
+ * against it was proved only on a database nobody deploys. Those run on both.
  */
 
 var opened int
@@ -42,7 +48,7 @@ func open(t *testing.T) *store.Store {
 	t.Cleanup(func() { db.Close() })
 
 	s := store.New(db, store.Question).
-		WithClock(func() time.Time { return time.Date(2026, 8, 11, 9, 0, 0, 0, time.UTC) })
+		WithClock(func() time.Time { return StoreNow })
 	if err := s.Migrate(context.Background()); err != nil {
 		t.Fatal(err)
 	}

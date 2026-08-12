@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	store "github.com/gsoultan/cronos/internal/adapter/store/sql"
 	"github.com/gsoultan/cronos/internal/core/identity"
 )
 
@@ -31,26 +32,27 @@ func person(t *testing.T, s interface {
 }
 
 func TestCuttingSessionsIsVisibleToTheStandingCheck(t *testing.T) {
-	s := open(t)
-	person(t, s, "usr_ada")
+	both(t, func(t *testing.T, s *store.Store) {
+		person(t, s, "usr_ada")
 
-	// Nothing cut yet, which is every account until somebody presses it.
-	if _, _, since := s.Active(context.Background(), "usr_ada"); !since.IsZero() {
-		t.Fatalf("an untouched account reports a cut at %s", since)
-	}
+		// Nothing cut yet, which is every account until somebody presses it.
+		if _, _, since := s.Active(context.Background(), "usr_ada"); !since.IsZero() {
+			t.Fatalf("an untouched account reports a cut at %s", since)
+		}
 
-	line, err := s.EndSessions(context.Background(), "usr_ada")
-	if err != nil {
-		t.Fatal(err)
-	}
+		line, err := s.EndSessions(context.Background(), "usr_ada")
+		if err != nil {
+			t.Fatal(err)
+		}
 
-	known, active, since := s.Active(context.Background(), "usr_ada")
-	if !known || !active {
-		t.Fatal("cutting sessions disabled the account")
-	}
-	if !since.Equal(line) {
-		t.Fatalf("the check sees %s, the cut was at %s", since, line)
-	}
+		known, active, since := s.Active(context.Background(), "usr_ada")
+		if !known || !active {
+			t.Fatal("cutting sessions disabled the account")
+		}
+		if !since.Equal(line) {
+			t.Fatalf("the check sees %s, the cut was at %s", since, line)
+		}
+	})
 }
 
 /*
@@ -76,7 +78,7 @@ func TestTheCutFallsOnASecondBoundaryAfterNow(t *testing.T) {
 	}
 	// Strictly after the store's clock, so every token minted up to and
 	// including this second is on the far side of it.
-	now := time.Date(2026, 8, 11, 9, 0, 0, 0, time.UTC) // the test store's clock
+	now := StoreNow // the test store's clock
 	if !line.After(now) {
 		t.Fatalf("the line is at %s, the clock says %s", line, now)
 	}
@@ -85,27 +87,28 @@ func TestTheCutFallsOnASecondBoundaryAfterNow(t *testing.T) {
 // Cutting again moves the line rather than adding a row, so pressing the button
 // twice is not two answers to the same question.
 func TestCuttingTwiceMovesTheLine(t *testing.T) {
-	s := open(t)
-	person(t, s, "usr_ada")
+	both(t, func(t *testing.T, s *store.Store) {
+		person(t, s, "usr_ada")
 
-	first, err := s.EndSessions(context.Background(), "usr_ada")
-	if err != nil {
-		t.Fatal(err)
-	}
-	second, err := s.EndSessions(context.Background(), "usr_ada")
-	if err != nil {
-		t.Fatalf("pressing it twice failed: %v", err)
-	}
-	if !second.Equal(first) {
-		// The test store's clock does not move, so these agree. What matters
-		// is that the second one succeeded rather than colliding on the key.
-		t.Fatalf("%s then %s", first, second)
-	}
+		first, err := s.EndSessions(context.Background(), "usr_ada")
+		if err != nil {
+			t.Fatal(err)
+		}
+		second, err := s.EndSessions(context.Background(), "usr_ada")
+		if err != nil {
+			t.Fatalf("pressing it twice failed: %v", err)
+		}
+		if !second.Equal(first) {
+			// The test store's clock does not move, so these agree. What matters
+			// is that the second one succeeded rather than colliding on the key.
+			t.Fatalf("%s then %s", first, second)
+		}
 
-	_, _, since := s.Active(context.Background(), "usr_ada")
-	if !since.Equal(second) {
-		t.Fatalf("the check sees %s after two cuts", since)
-	}
+		_, _, since := s.Active(context.Background(), "usr_ada")
+		if !since.Equal(second) {
+			t.Fatalf("the check sees %s after two cuts", since)
+		}
+	})
 }
 
 // A subject that is not an account here is a machine credential. Recording a

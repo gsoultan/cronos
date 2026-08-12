@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/gsoultan/cronos/internal/core/identity"
@@ -158,7 +157,7 @@ func (s *Store) Accept(ctx context.Context, secret, password string) (identity.U
 		user.ID, user.Email, user.Name, hash, user.Org, user.Project, user.Role,
 		stamp(now)); err != nil {
 
-		if strings.Contains(strings.ToLower(err.Error()), "unique") {
+		if duplicate(err) {
 			// An account for this address appeared between the invitation
 			// being written and it being accepted. Rolling back leaves the
 			// invitation unspent, which is right: nothing happened.

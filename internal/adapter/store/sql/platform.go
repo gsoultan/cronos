@@ -313,6 +313,13 @@ func (s *Store) FirstRun(ctx context.Context, u identity.User, password string) 
 	if _, err := tx.ExecContext(ctx, s.sql(
 		`INSERT INTO cronos_setup (id, at, by_user) VALUES (1, ?, ?)`),
 		stamp(now), email); err != nil {
+		if !duplicate(err) {
+			// A transient failure is not "somebody got here first". Reporting
+			// it as one tells the person setting up a brand-new deployment
+			// that it has already been set up, which is the one answer that
+			// makes them stop trying.
+			return err
+		}
 		return ErrAlreadySetUp
 	}
 
@@ -321,7 +328,7 @@ func (s *Store) FirstRun(ctx context.Context, u identity.User, password string) 
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`),
 		u.ID, email, u.Name, hash, u.Org, u.Project, u.Role, stamp(now)); err != nil {
 
-		if strings.Contains(strings.ToLower(err.Error()), "unique") {
+		if duplicate(err) {
 			return fmt.Errorf("%w: %s", identity.ErrExists, email)
 		}
 		return err
@@ -367,4 +374,25 @@ func (s *Store) SetUp(ctx context.Context) (bool, error) {
 	*/
 	accounts, err := s.CountAccounts(ctx)
 	return accounts > 0, err
+}
+
+/*
+duplicate reports whether an error is a uniqueness violation.
+
+By message, which is the ugly way and the portable one: the two drivers report
+it differently — "UNIQUE constraint failed" and "duplicate key value violates
+unique constraint" — and both contain the word. Matching on a pgx error code
+would be exact and would leave SQLite needing its own branch, which is two
+things to keep in step for a check with one meaning.
+
+The distinction matters because the alternative is treating every failure as a
+collision. A first run that could not reach the database would then be told the
+deployment has already been set up, and the person would stop trying.
+*/
+func duplicate(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "unique") || strings.Contains(msg, "duplicate key")
 }

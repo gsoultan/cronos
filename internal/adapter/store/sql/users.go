@@ -29,7 +29,7 @@ func (s *Store) CreateUser(ctx context.Context, u identity.User, password string
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`),
 		u.ID, email, u.Name, hash, u.Org, u.Project, u.Role, stamp(s.now()))
 
-	if err != nil && strings.Contains(strings.ToLower(err.Error()), "unique") {
+	if duplicate(err) {
 		return fmt.Errorf("%w: %s", identity.ErrExists, email)
 	}
 	return err
