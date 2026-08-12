@@ -23,10 +23,19 @@ func dialectFor(driver string) (query.Dialect, error) {
 	return nil, fmt.Errorf("registry: no dialect for driver %q", driver)
 }
 
-// sqlDriver maps a datasource's driver to the database/sql name registered by
-// whichever package the binary imported.
+/*
+sqlDriver maps a datasource's driver to the database/sql name registered by
+whichever package the binary imported.
+
+`postgres` is the name the format uses, the documentation uses and every
+operator writing a definition will use. pgx registers itself as `pgx`, and
+without this a datasource with `driver: postgres` fails to open with "unknown
+driver (forgotten import?)" — which reads like a build problem and is a naming
+one. The definition store has always done this mapping; datasources never did,
+and nothing caught it because every fixture in the repository is SQLite.
+*/
 func sqlDriver(driver string) string {
-	if driver == "pgx" {
+	if driver == "postgres" {
 		return "pgx"
 	}
 	return driver

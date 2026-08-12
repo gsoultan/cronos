@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 )
 
 func good() Dataset {
@@ -112,5 +113,47 @@ func TestLookups(t *testing.T) {
 	}
 	if _, ok := d.Field("nope"); ok {
 		t.Error("Field should report a miss")
+	}
+}
+
+// The pool's own comment said it was bounded because somebody else operates
+// that database. It was not: every setting was applied only when a definition
+// named it, so a source that said nothing got database/sql's defaults — and
+// the first of those is unlimited connections.
+func TestAPoolThatSaysNothingIsStillBounded(t *testing.T) {
+	var unset Pool
+
+	if unset.Open() != DefaultMaxOpen {
+		t.Errorf("MaxOpen is %d, want %d", unset.Open(), DefaultMaxOpen)
+	}
+	// Matched to Open rather than to database/sql's two: keeping two under
+	// load means a connection is opened and closed for almost every query — a
+	// handshake, a TLS negotiation and an authentication round trip, per block.
+	if unset.Idle() != unset.Open() {
+		t.Errorf("MaxIdle is %d, want %d", unset.Idle(), unset.Open())
+	}
+	// The one nobody thinks of until a failover hands out a dead connection.
+	if unset.LifetimeOf() != DefaultMaxLifetime {
+		t.Errorf("MaxLifetime is %s", unset.LifetimeOf())
+	}
+	if unset.IdleFor() != DefaultMaxIdleTime {
+		t.Errorf("MaxIdleTime is %s", unset.IdleFor())
+	}
+}
+
+// And a deployment that owns the database it reads can say so.
+func TestAPoolThatSaysSomethingIsHonoured(t *testing.T) {
+	set := Pool{
+		MaxOpen:     64,
+		MaxIdle:     8,
+		MaxIdleTime: Duration(90 * time.Second),
+		MaxLifetime: Duration(2 * time.Hour),
+	}
+
+	if set.Open() != 64 || set.Idle() != 8 {
+		t.Errorf("open %d idle %d", set.Open(), set.Idle())
+	}
+	if set.IdleFor() != 90*time.Second || set.LifetimeOf() != 2*time.Hour {
+		t.Errorf("idle for %s, lifetime %s", set.IdleFor(), set.LifetimeOf())
 	}
 }

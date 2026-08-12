@@ -1,6 +1,8 @@
 package api
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"net"
 	"net/http"
 	"strconv"
@@ -115,14 +117,24 @@ func (l *Limit) sweep(now time.Time) {
 /*
 Limited wraps a handler with a limit, keyed by who is asking.
 
-By address, because on these routes there is nothing else: sign-in has no
-identity until it succeeds, and opening a share never has one. That means a
-NAT shares an allowance, which is why the allowances are generous enough for
-an office and small enough that a script is stopped.
+By identity where there is one, and by address otherwise.
+
+The address alone was wrong and the load harness proved it in its first run:
+eighty of a hundred renders refused at a concurrency of one, because an office
+behind one NAT — or anything behind one load balancer without CRONOS_BEHIND_PROXY
+— shares a single allowance between everybody in it. That is a limit that
+throttles a real team and gets reported as "the reports are broken sometimes".
+
+A token's subject is the right key for a render: an embed token belongs to one
+end customer, a portal token to one author, and limiting each of them
+separately is the thing the limit was for. Sign-in and share-open have no
+identity by construction, so they keep the address.
 */
 type Limited struct {
 	next  http.Handler
 	limit *Limit
+	// by names the caller. Nil means the address.
+	by func(*http.Request) string
 	// message is what a refused caller is told. Per route, because "too many
 	// sign-in attempts" and "too many requests" send somebody to different
 	// places.
@@ -145,8 +157,41 @@ func (h *Limited) BehindProxy(trusted bool) *Limited {
 	return h
 }
 
+// By keys the limit on something other than the address.
+func (h *Limited) By(key func(*http.Request) string) *Limited {
+	h.by = key
+	return h
+}
+
+/*
+ByBearer keys a limit on the token presented, falling back to the address.
+
+The token rather than anything inside it: reading a subject out means verifying
+a signature, and a rate limiter that does public-key work before deciding
+whether to do work is one an attacker can spend. Hashing the bearer is enough —
+two requests with the same token are the same caller, which is the whole
+question — and it costs nothing on the path that refuses.
+
+Hashed rather than kept, because this is a map key that lives in memory for
+minutes and a token is a credential.
+*/
+func ByBearer(r *http.Request) string {
+	token := bearer(r)
+	if token == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(token))
+	return "t:" + hex.EncodeToString(sum[:8])
+}
+
 func (h *Limited) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	caller := callerOf(r, h.trusted)
+	caller := ""
+	if h.by != nil {
+		caller = h.by(r)
+	}
+	if caller == "" {
+		caller = callerOf(r, h.trusted)
+	}
 	if !h.limit.Allow(caller) {
 		// Retry-After, because a client that is told to slow down and not told
 		// by how much retries immediately.

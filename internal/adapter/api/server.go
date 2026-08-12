@@ -87,9 +87,11 @@ var (
 	// a minute is more than any reader needs and far less than a script wants.
 	shareRate, shareBurst = 30.0 / 60, 20.0
 	// Rendering: each one executes SQL against somebody else's warehouse,
-	// where the cost of a request is not ours to spend. Two a second sustained
-	// is well above an interactive reader and below a loop.
-	renderRate, renderBurst = 2.0, 30.0
+	// where the cost of a request is not ours to spend. Per token rather than
+	// per address — see Limited — so this is what one reader may do, not what
+	// everyone behind one NAT may do between them. Twenty a second sustained
+	// is far above anybody clicking and far below a loop.
+	renderRate, renderBurst = 20.0, 120.0
 )
 
 // Routes builds the HTTP surface.
@@ -112,17 +114,20 @@ func Routes(d Deps) http.Handler {
 	limited := func(h http.Handler, l *Limit, message string) http.Handler {
 		return NewLimited(h, l, message).BehindProxy(d.BehindProxy)
 	}
+	// Renders are keyed by the token, so one reader's loop does not throttle
+	// the colleague sitting next to them.
+	perReader := func(h http.Handler) http.Handler {
+		return NewLimited(h, renders, "Too many requests. Try again shortly.").
+			BehindProxy(d.BehindProxy).By(ByBearer)
+	}
 
 	mux := http.NewServeMux()
-	mux.Handle("/v1/embed/reports/{name}",
-		limited(embed, renders, "Too many requests. Try again shortly."))
+	mux.Handle("/v1/embed/reports/{name}", perReader(embed))
 	// The portal's own read. A separate path from the embed one because the
 	// two have different callers and different audiences, and the audience
 	// check should be the first thing a handler does rather than a branch
 	// inside it.
-	mux.Handle("/v1/reports/{name}",
-		limited(NewPortalReports(embed, author, d.Log), renders,
-			"Too many requests. Try again shortly."))
+	mux.Handle("/v1/reports/{name}", perReader(NewPortalReports(embed, author, d.Log)))
 
 	// What the project contains, in one request. A browsing interface asking
 	// for the names and then once per name is a page that loads in a hundred

@@ -95,13 +95,14 @@ func open(def definition.DataSource, secrets secret.Resolver) (*source, error) {
 
 	// The pool is bounded because somebody else operates this database. A
 	// reporting tool that opens two hundred connections during a burst is a
-	// reporting tool their DBA turns off.
-	if def.Pool.MaxOpen > 0 {
-		db.SetMaxOpenConns(def.Pool.MaxOpen)
-	}
-	if def.Pool.MaxIdleTime > 0 {
-		db.SetConnMaxIdleTime(time.Duration(def.Pool.MaxIdleTime))
-	}
+	// reporting tool their DBA turns off — which this said before it was true:
+	// each of these was applied only when a definition set it, so a source
+	// that said nothing got database/sql's defaults, and the first of those is
+	// unlimited.
+	db.SetMaxOpenConns(def.Pool.Open())
+	db.SetMaxIdleConns(def.Pool.Idle())
+	db.SetConnMaxIdleTime(def.Pool.IdleFor())
+	db.SetConnMaxLifetime(def.Pool.LifetimeOf())
 	return &source{def: def, db: db, dialect: dialect}, nil
 }
 

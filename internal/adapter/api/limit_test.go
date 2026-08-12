@@ -3,6 +3,7 @@ package api_test
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gsoultan/cronos/internal/adapter/api"
@@ -105,4 +106,63 @@ func request(from string) *http.Request {
 	r := httptest.NewRequest(http.MethodPost, "/v1/auth/login", nil)
 	r.RemoteAddr = from + ":54321"
 	return r
+}
+
+/*
+The finding the load harness made on its first run.
+
+Eighty of a hundred renders were refused at a concurrency of one, because the
+limit was keyed by address and everybody behind one NAT — or one load balancer
+without CRONOS_BEHIND_PROXY — shared a single allowance. That is a limit that
+throttles a real team and gets reported as "the reports are broken sometimes".
+*/
+func TestRendersAreLimitedPerReaderNotPerOffice(t *testing.T) {
+	h := api.NewLimited(ok(), api.NewLimit(1, 1), "Too many.").By(api.ByBearer)
+
+	// Two readers, one address, as an office is.
+	for _, token := range []string{"reader-one", "reader-two"} {
+		rec := httptest.NewRecorder()
+		req := request("10.0.0.1")
+		req.Header.Set("Authorization", "Bearer "+token)
+		h.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s was refused for a colleague's spending", token)
+		}
+	}
+
+	// And one reader looping is still stopped.
+	rec := httptest.NewRecorder()
+	req := request("10.0.0.1")
+	req.Header.Set("Authorization", "Bearer reader-one")
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("one reader's second request was %d", rec.Code)
+	}
+}
+
+// With no token there is nothing to key on but the address, and that is the
+// right answer rather than an unlimited one.
+func TestWithoutATokenTheAddressIsStillTheKey(t *testing.T) {
+	h := api.NewLimited(ok(), api.NewLimit(1, 1), "Too many.").By(api.ByBearer)
+
+	first := httptest.NewRecorder()
+	h.ServeHTTP(first, request("10.0.0.1"))
+	second := httptest.NewRecorder()
+	h.ServeHTTP(second, request("10.0.0.1"))
+
+	if second.Code != http.StatusTooManyRequests {
+		t.Fatalf("an anonymous caller was not limited: %d", second.Code)
+	}
+}
+
+// The key is a hash. A map of live credentials held in memory for minutes is
+// a credential store nobody meant to build.
+func TestTheKeyIsNotTheToken(t *testing.T) {
+	req := request("10.0.0.1")
+	req.Header.Set("Authorization", "Bearer a-real-looking-token")
+
+	if key := api.ByBearer(req); strings.Contains(key, "a-real-looking-token") {
+		t.Fatalf("the key holds the token: %q", key)
+	}
 }
