@@ -311,7 +311,7 @@ func Routes(d Deps) http.Handler {
 		   closes itself the moment an account exists — but so that a machine
 		   asking a thousand times a second cannot make the answer expensive.
 		*/
-		setup := NewSetup(d.Roster, d.Platform, d.Accounts, d.Signer, d.Log)
+		setup := NewSetup(d.Accounts, d.Signer, d.Log)
 		// A single-project deployment can be told what it is called; one
 		// configured to serve several already was.
 		if one, ok := d.Projects.(*One); ok {

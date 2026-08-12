@@ -53,19 +53,10 @@ sql() { go run "$work/sql.go" "$1"; }
 logged() { podman logs cronos-mssql 2>&1 || true; }
 ready() { case "$(logged)" in *"ready for client connections"*) return 0 ;; esac; return 1; }
 
-say "SQL Server"
-if [ -z "$(podman ps --filter name=cronos-mssql --format '{{.Names}}' 2>/dev/null || true)" ]; then
-	started_db=yes
-	podman rm -f cronos-mssql >/dev/null 2>&1 || true
-	podman run -d --name cronos-mssql -p 1433:1433 \
-		-e ACCEPT_EULA=1 -e "MSSQL_SA_PASSWORD=$SA_PASSWORD" \
-		mcr.microsoft.com/azure-sql-edge:latest >/dev/null
-fi
-for _ in $(seq 1 60); do
-	ready && break
-	sleep 5
-done
-ready || die "never came up"
+# Asking the server itself, for when there is no container to read a log from.
+# It is also the better question: a log line says the process started, and this
+# says it will answer a query.
+answers() { [ -n "$(sql 'SELECT 1' 2>/dev/null || true)" ]; }
 
 cat >"$work/sql.go" <<'GO'
 //go:build ignore
@@ -132,6 +123,40 @@ func main() {
 GO
 
 export DSN="sqlserver://sa:$SA_PASSWORD@localhost:1433?encrypt=disable"
+
+say "SQL Server"
+
+# Somebody else's server, or one of ours.
+#
+# CI supplies it as a service container — mcr.microsoft.com/mssql/server, which
+# is the real thing and runs on the amd64 runners. Locally that image segfaults
+# on arm64 under emulation, so this starts Azure SQL Edge instead: the same
+# engine, and the only member of the family that runs on an Apple laptop.
+#
+# Set CRONOS_SQLSERVER_RUNNING when something else is managing it. Then this
+# waits on the port rather than on a container's log, because there is no
+# container here to read the log of.
+if [ -n "${CRONOS_SQLSERVER_RUNNING:-}" ]; then
+	for _ in $(seq 1 60); do
+		answers && break
+		sleep 5
+	done
+	answers || die "nothing is answering on 1433"
+else
+	if [ -z "$(podman ps --filter name=cronos-mssql --format '{{.Names}}' 2>/dev/null || true)" ]; then
+		started_db=yes
+		podman rm -f cronos-mssql >/dev/null 2>&1 || true
+		podman run -d --name cronos-mssql -p 1433:1433 \
+			-e ACCEPT_EULA=1 -e "MSSQL_SA_PASSWORD=$SA_PASSWORD" \
+			mcr.microsoft.com/azure-sql-edge:latest >/dev/null
+	fi
+	for _ in $(seq 1 60); do
+		ready && break
+		sleep 5
+	done
+	ready || die "never came up"
+fi
+
 
 case "$(sql "SELECT @@VERSION")" in *SQL*) ;; *) die "cannot query it" ;; esac
 ok "running and answering"

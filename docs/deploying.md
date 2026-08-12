@@ -380,3 +380,32 @@ whole decision.
 ```bash
 ./scripts/live-require-2fa.sh
 ```
+
+## The live checks
+
+`scripts/live-*.sh` drive a running cronos the way a person or a browser would.
+Between them they have found around a dozen defects no unit test could: a QR code
+that encoded nothing, a session cut that spared the phone it was meant to end, a
+chart that compiled to `GROUP BY 1` against a database that reads the `1` as a
+constant, an enrolment wizard rendering inside the account page.
+
+| Script | What it drives | Needs |
+|---|---|---|
+| `live-setup.sh` | first run, platform administration, the CLI recovery path | go |
+| `live-sessions.sh` | ending every other session | go |
+| `live-2fa.sh` | enrolment and sign-in, with codes computed in Python | go, python3 |
+| `live-require-2fa.sh` | turning the requirement on, and the enrolment-only session | go, python3 |
+| `live-invite.sh` | inviting somebody and reading the mail | a mail server |
+| `live-sso.sh` | a whole OIDC sign-in and single log-out | Keycloak |
+| `live-sqlserver.sh` | a report against SQL Server | SQL Server |
+| `live-portal-2fa.sh` | the same enrolment, through a browser | bun, chromium |
+
+The first five run in CI on every push, in about a minute; SQL Server is its own
+job because the image is 1.7 GB and nothing else should wait for it. The two that
+want a Keycloak or a browser are still run by hand.
+
+A script that finds a server already listening uses it and leaves it alone, so
+CI's service containers work without the script knowing it is CI. The exception
+is `live-sqlserver.sh`, which needs telling: set `CRONOS_SQLSERVER_RUNNING=1`.
+Locally it starts Azure SQL Edge instead, because `mssql/server:2022` is amd64
+and segfaults on an arm64 laptop under emulation — the same engine either way.

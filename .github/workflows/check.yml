@@ -93,6 +93,73 @@ jobs:
       - run: go build -tags duckdb ./...
       - run: go test -tags duckdb ./internal/adapter/driver/duckdb/
 
+  live:
+    name: live checks
+    runs-on: ubuntu-latest
+
+    # The scripts under scripts/live-*.sh drive a running cronos the way a
+    # person or a browser would, and between them they have found around a
+    # dozen defects that no unit test could: a QR code that encoded nothing, a
+    # session cut that spared the phone it was meant to end, a chart that
+    # compiled to `GROUP BY 1` on a database that reads the 1 as a constant, an
+    # enrolment wizard rendering inside the account page.
+    #
+    # None of them ran anywhere but on the machine of whoever remembered. This
+    # job runs the ones that need nothing but the toolchain; the ones wanting a
+    # Keycloak or a SQL Server are their own job below, so a slow image pull is
+    # never the reason a typo takes ten minutes to fail.
+    services:
+      mailhog:
+        image: mailhog/mailhog
+        ports: ['1025:1025', '8025:8025']
+
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # Each on its own step, so a failure names the check rather than "the
+      # live job". They are quick — the longest waits half a minute for a rate
+      # limit to refill, which is the limiter working.
+      - name: first run, and administering the deployment
+        run: ./scripts/live-setup.sh
+      - name: ending every other session
+        run: ./scripts/live-sessions.sh
+      - name: two-factor, against codes computed independently
+        run: ./scripts/live-2fa.sh
+      - name: requiring a second factor of everyone
+        run: ./scripts/live-require-2fa.sh
+      - name: inviting somebody, and reading the mail
+        run: ./scripts/live-invite.sh
+
+  live-databases:
+    name: live checks (databases)
+    runs-on: ubuntu-latest
+
+    # SQL Server, in its own job because the image is 1.7 GB and everything
+    # else in this workflow should be able to fail in under two minutes.
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: 'Y'
+          MSSQL_SA_PASSWORD: 'A-Strong-Passw0rd!'
+          MSSQL_PID: Developer
+        ports: ['1433:1433']
+
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: a report against a real SQL Server
+        env:
+          CRONOS_SQLSERVER_RUNNING: '1'
+        run: ./scripts/live-sqlserver.sh
+
   portal:
     name: portal
     runs-on: ubuntu-latest

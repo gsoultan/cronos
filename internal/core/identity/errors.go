@@ -17,8 +17,6 @@ var (
 	ErrNoUser = errors.New("identity: no such person")
 	// ErrExists means that email already has an account here.
 	ErrExists = errors.New("identity: already registered")
-	// ErrNotFound means no such user.
-	ErrNotFound = errors.New("identity: no such user")
 
 	// ErrNoFactor means this account has no confirmed second factor.
 	ErrNoFactor = errors.New("identity: no second factor")

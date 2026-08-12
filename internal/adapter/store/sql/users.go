@@ -101,7 +101,7 @@ func (s *Store) User(ctx context.Context, id string) (identity.User, error) {
 		FROM cronos_users WHERE id = ?`), id).
 		Scan(&u.ID, &u.Email, &u.Name, &u.Org, &u.Project, &u.Role, &created, &seen, &u.Disabled)
 	if err != nil {
-		return identity.User{}, fmt.Errorf("%w: %s", identity.ErrNotFound, id)
+		return identity.User{}, fmt.Errorf("%w: %s", identity.ErrNoUser, id)
 	}
 
 	u.CreatedAt, _ = time.Parse(time.RFC3339, created)

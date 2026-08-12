@@ -43,8 +43,10 @@ that can be reopened is an endpoint somebody reopens.
 
 // Setup is the first-run bootstrap.
 type Setup struct {
-	roster   Roster
-	platform Platform
+	// accounts does the whole of it: FirstRun is one transaction, so there is
+	// nothing here for a roster or a platform store to do separately. Both were
+	// fields until that moved into the store, and a struct that still held them
+	// would read as though something used them.
 	accounts Accounts
 	signer   *token.Signer
 	// serving is the single-project deployment this is setting up, so it can
@@ -74,8 +76,8 @@ type Accounts interface {
 }
 
 // NewSetup wires the handler.
-func NewSetup(r Roster, p Platform, a Accounts, s *token.Signer, log *slog.Logger) *Setup {
-	return &Setup{roster: r, platform: p, accounts: a, signer: s, log: log}
+func NewSetup(a Accounts, s *token.Signer, log *slog.Logger) *Setup {
+	return &Setup{accounts: a, signer: s, log: log}
 }
 
 // Serving names the deployment this sets up, so a first run can tell it what it

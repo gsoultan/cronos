@@ -140,7 +140,7 @@ func firstRun(t *testing.T) (*empty, *api.Setup, *token.Signer) {
 		t.Fatal(err)
 	}
 	rows := newEmpty()
-	return rows, api.NewSetup(rows, rows, rows, signer, quiet()), signer
+	return rows, api.NewSetup(rows, signer, quiet()), signer
 }
 
 func setUp(h *api.Setup, body map[string]string) *httptest.ResponseRecorder {
@@ -384,11 +384,11 @@ func TestTheFirstPasswordIsHeldToTheSameRule(t *testing.T) {
 func TestAFileBackedDeploymentIsNotOfferedSetup(t *testing.T) {
 	signer, _ := token.NewSigner([]byte("0123456789abcdef0123456789abcdef"))
 
-	if api.NewSetup(nil, nil, nil, signer, quiet()).Available() {
+	if api.NewSetup(nil, signer, quiet()).Available() {
 		t.Fatal("a deployment with no store offers setup")
 	}
 	rows := newEmpty()
-	if !api.NewSetup(rows, rows, rows, signer, quiet()).Available() {
+	if !api.NewSetup(rows, signer, quiet()).Available() {
 		t.Fatal("a deployment with a store does not")
 	}
 }

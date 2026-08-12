@@ -63,6 +63,9 @@ func (s *Store) EveryPerson(ctx context.Context) ([]identity.User, error) {
 // is worth seeing rather than hiding.
 func (s *Store) Tenants(ctx context.Context) ([]identity.Tenant, error) {
 	rows, err := s.db.QueryContext(ctx, s.sql(`
+		-- The SUM needs no COALESCE, unlike its neighbour in policy.go: a
+		-- GROUP BY only produces a row where there is at least one to sum, so
+		-- it is never NULL here.
 		SELECT org, project, COUNT(*), SUM(CASE WHEN disabled THEN 1 ELSE 0 END)
 		FROM cronos_users
 		GROUP BY org, project

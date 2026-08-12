@@ -71,10 +71,22 @@ a surprise — and with the enrolment-only session nobody is locked out either
 way, so this is information rather than a warning.
 */
 func (s *Store) Covered(ctx context.Context, pr principal.Principal) (with, without int, err error) {
+	/*
+	   COALESCE, because SUM over no rows is NULL rather than zero.
+
+	   On both drivers, and it scans into an int as "converting NULL to int is
+	   unsupported" — a 500 from the panel that decides whether to require a
+	   second factor. Reachable two ways: a project whose people have all been
+	   turned off, and a machine credential, which carries an organisation and a
+	   project and has no account row anywhere.
+
+	   COUNT(*) would not need this and cannot express "how many of them have
+	   one", which is the question.
+	*/
 	err = s.db.QueryRowContext(ctx, s.sql(`
 		SELECT
-		  SUM(CASE WHEN f.confirmed_at IS NOT NULL THEN 1 ELSE 0 END),
-		  SUM(CASE WHEN f.confirmed_at IS NULL THEN 1 ELSE 0 END)
+		  COALESCE(SUM(CASE WHEN f.confirmed_at IS NOT NULL THEN 1 ELSE 0 END), 0),
+		  COALESCE(SUM(CASE WHEN f.confirmed_at IS NULL THEN 1 ELSE 0 END), 0)
 		FROM cronos_users u
 		LEFT JOIN cronos_factors f ON f.user_id = u.id
 		WHERE u.org = ? AND u.project = ? AND NOT u.disabled`),
