@@ -233,6 +233,7 @@ func (a *Auth) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	issued, err := a.signer.Mint(token.Claims{
 		Audience: token.Portal, Role: user.Role,
 		Org: user.Org, Project: user.Project, Subject: user.ID,
+		Platform: user.Platform,
 	}, SessionLifetime)
 	if err != nil {
 		a.log.Error("could not mint a session", "err", err)

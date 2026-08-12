@@ -160,6 +160,36 @@ CREATE TABLE IF NOT EXISTS cronos_recovery_codes (
   PRIMARY KEY (user_id, code_hash)
 );`,
 	},
+	{
+		ID:   6,
+		Name: "platform administrators",
+		/*
+		   A tier above organisations, for whoever runs the deployment: adding
+		   accounts, moving people between projects, seeing which tenants a
+		   process serves. Until this there was none, so a fresh install had no
+		   way in except the CLI on the machine.
+
+		   Administration only. Nothing here grants access to a project's data —
+		   reading a report still needs membership. A platform administrator who
+		   could also read every project is one credential away from every
+		   customer at once; one who cannot is a control-plane problem, which is
+		   bad and is not the same thing.
+
+		   Its own table rather than a column, for the reason migration 4 gives:
+		   Schema() is every migration concatenated and a fresh install applies
+		   all of it, so ALTER TABLE ADD COLUMN breaks adopting a database that
+		   already exists.
+		*/
+		SQL: `
+CREATE TABLE IF NOT EXISTS cronos_platform_admins (
+  user_id    TEXT PRIMARY KEY,
+  granted_at TEXT NOT NULL,
+  -- Who granted it. The audit log has this too; keeping it here means the
+  -- answer survives a log rotation, and "who made this person a platform
+  -- administrator" is a question asked months later.
+  granted_by TEXT NOT NULL DEFAULT ''
+);`,
+	},
 }
 
 // migrationTable records what has run. Created outside the ordered list,

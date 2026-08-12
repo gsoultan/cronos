@@ -30,6 +30,9 @@ import (
 	"github.com/gsoultan/cronos/internal/platform/token"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
+	// Pure Go, so it costs a binary a megabyte and no cgo. DuckDB is behind a
+	// build tag because it is not; this does not need to be.
+	_ "github.com/microsoft/go-mssqldb"
 	_ "modernc.org/sqlite"
 )
 
@@ -132,6 +135,8 @@ func Serve(log *slog.Logger) error {
 		Directory: directory(records),
 
 		Factors:     factors(records),
+		Platform:    platform(records),
+		Accounts:    accounts(records),
 		Invitations: invitations(records),
 		Post:        postman(cfg, log),
 		Portal:      cfg.Portal,

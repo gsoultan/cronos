@@ -69,6 +69,28 @@ spec:
     maxRows: 1000000
 ```
 
+`driver` is one of `postgres`, `mysql`, `sqlserver`, `sqlite`, `duckdb` or
+`object-store`. `mssql` is accepted as another name for `sqlserver`.
+
+SQL Server takes an ordinary connection string:
+
+```yaml
+spec:
+  driver: sqlserver
+  dsn: ${secret:erp_dsn}   # sqlserver://reader:…@sql.acme.internal:1433?database=erp
+```
+
+Two things about it differ from the others, and both are deliberate:
+
+- **Weekly grouping is refused.** `DATEDIFF(week, …)` counts Sunday boundaries
+  whatever `SET DATEFIRST` says, so the same report grouped by week would give
+  one answer here and another on Postgres, where a week begins on Monday. A
+  chart that is quietly a day out is not read as an error by anybody, so the
+  engine says so instead. Day, month, quarter and year all work.
+- **Dates are truncated with `DATEADD`/`DATEDIFF` rather than `DATETRUNC`.**
+  `DATETRUNC` is SQL Server 2022 and later, and a great many of the servers a
+  reporting tool meets are 2016 and 2019 — they are what sits behind an ERP.
+
 Object storage and files use the same kind, which is how one report reaches SQL,
 big data and CSV without a second concept:
 

@@ -500,3 +500,22 @@ func factors(records *sqlstore.Store) api.Factors {
 	}
 	return records
 }
+
+// platform administers the deployment across tenants.
+//
+// Nil for a file-backed deployment, which has no accounts anywhere and so
+// nothing to administer.
+func platform(records *sqlstore.Store) api.Platform {
+	if records == nil {
+		return nil
+	}
+	return records
+}
+
+// accounts counts them, for the first-run check.
+func accounts(records *sqlstore.Store) api.Accounts {
+	if records == nil {
+		return nil
+	}
+	return records
+}

@@ -67,6 +67,11 @@ type Deps struct {
 	// Factors is second factors. Absent — a file-backed deployment — sign-in
 	// is the password alone, because there is nowhere to record one.
 	Factors Factors
+	// Platform administers the deployment across tenants. Absent for a
+	// file-backed deployment, which has no accounts to administer.
+	Platform Platform
+	// Accounts counts them, for the first-run check.
+	Accounts Accounts
 	// Invitations holds places for people who have not arrived. Absent — a
 	// file-backed deployment — adding somebody still means choosing their
 	// password, because there is nowhere to record the invitation.
@@ -282,6 +287,46 @@ func Routes(d Deps) http.Handler {
 		// idempotent, it takes nothing to guess at, and it is pressed by
 		// somebody whose laptop has just been taken.
 		mux.Handle("/v1/auth/profile", NewProfile(d.Roster, author, d.Log))
+
+		/*
+		   Administering the deployment rather than a project.
+
+		   Mounted beside the rest, and the only thing keeping one customer's
+		   administrator out of another's accounts is the check at the top of
+		   this handler — every other route in this API is scoped by the
+		   caller's own organisation and project, and these deliberately are
+		   not. Somebody without the permission is answered 404 rather than 403,
+		   so probing does not confirm the tier exists.
+		*/
+		/*
+		   The first run.
+
+		   Mounted outside the sign-in requirement because on a fresh install
+		   there is nobody to sign in as, and rate limited per address because
+		   it is unauthenticated: not to protect the deployment — the endpoint
+		   closes itself the moment an account exists — but so that a machine
+		   asking a thousand times a second cannot make the answer expensive.
+		*/
+		setup := NewSetup(d.Roster, d.Platform, d.Accounts, d.Signer, d.Log)
+		// A single-project deployment can be told what it is called; one
+		// configured to serve several already was.
+		if one, ok := d.Projects.(*One); ok {
+			setup = setup.Serving(one)
+		}
+		if setup.Available() {
+			mux.Handle("/v1/setup", limited(setup, NewLimit(signInRate, signInBurst),
+				"Too many attempts. Try again in a minute."))
+		}
+
+		if d.Platform != nil {
+			platform := NewPlatformAPI(d.Platform, author, d.Log)
+			for _, path := range []string{
+				"/v1/platform/tenants", "/v1/platform/people", "/v1/platform/people/{id}",
+				"/v1/platform/admins", "/v1/platform/admins/{id}",
+			} {
+				mux.Handle(path, platform)
+			}
+		}
 		mux.Handle("/v1/auth/sessions/end", NewSessions(d.Roster, author, d.Signer, d.Log))
 
 		/*

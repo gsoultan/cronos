@@ -90,11 +90,27 @@ export async function signIn(email: string, password: string, code?: string) {
   }
   globalThis.localStorage?.setItem('cronos.token', session.token)
   globalThis.localStorage?.setItem('cronos.user', JSON.stringify(session.user))
+  announceSignIn()
   return { token: session.token, expiresIn: session.expiresIn ?? 0, user: session.user }
 }
 
 /** The event the shell listens for, so a session ending is not silent. */
 export const SIGNED_OUT = 'cronos:signed-out'
+
+/**
+ * And its opposite.
+ *
+ * Anything holding a copy of who is signed in has to be told when that changes,
+ * and until this only the ending was announced. The workspace read the sample
+ * directory because it was built before anybody signed in and never looked
+ * again — so a connected portal showed somebody's demo organisation, which is
+ * plausible enough that nobody questions it.
+ */
+export const SIGNED_IN = 'cronos:signed-in'
+
+function announceSignIn() {
+  globalThis.dispatchEvent?.(new Event(SIGNED_IN))
+}
 
 /**
  * Forgets the session, and says so.
@@ -307,6 +323,7 @@ export function adoptSessionFromFragment(): boolean {
 
   globalThis.localStorage?.setItem('cronos.token', token)
   globalThis.history?.replaceState(null, '', globalThis.location.pathname + globalThis.location.search)
+  announceSignIn()
   return true
 }
 
@@ -623,6 +640,7 @@ export async function acceptInvitation(secret: string, password: string) {
   if (out.token) {
     globalThis.localStorage?.setItem('cronos.token', out.token)
     globalThis.localStorage?.setItem('cronos.user', JSON.stringify(out.user))
+    announceSignIn()
   }
   return out
 }
@@ -655,6 +673,115 @@ export async function endOtherSessions(): Promise<void> {
   if (replacement?.token) {
     globalThis.localStorage?.setItem('cronos.token', replacement.token)
   }
+}
+
+/**
+ * Whether this deployment still needs its first run.
+ *
+ * Asked without a session, and safely: on a deployment that has been set up the
+ * answer is `false` and nothing else. On one that has not, there is nothing to
+ * protect yet — the whole point is that no credential exists.
+ */
+export async function setupNeeded(): Promise<boolean> {
+  const base = apiBase()
+  if (!base) return false
+  try {
+    const res = await fetch(base + '/v1/setup')
+    if (!res.ok) return false
+    return ((await res.json()) as { needed?: boolean }).needed === true
+  } catch {
+    // Unreachable server. Offering to set up a deployment nobody can talk to
+    // ends in a form that fails on submit, so the answer is no.
+    return false
+  }
+}
+
+/**
+ * Creates the first account and signs in as it.
+ *
+ * The one call in this module that both needs no session and hands one back.
+ * It works exactly once per deployment: the endpoint closes the moment any
+ * account exists, and nothing reopens it.
+ */
+export async function setUp(first: {
+  email: string; name: string; password: string; org: string; project: string
+}) {
+  const base = apiBase()
+  if (!base) throw new ApiError(0, 'This portal is not connected to a server.')
+
+  const res = await fetch(base + '/v1/setup', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(first),
+  })
+  if (!res.ok) throw new ApiError(res.status, await serverMessage(res))
+
+  const out = (await res.json()) as { token?: string; user: SignedInUser }
+  if (out.token) {
+    globalThis.localStorage?.setItem('cronos.token', out.token)
+    globalThis.localStorage?.setItem('cronos.user', JSON.stringify(out.user))
+    announceSignIn()
+  }
+  return out
+}
+
+/* -- Administering the deployment ------------------------------------------
+ *
+ * Every call below reaches across tenants and needs the platform permission.
+ * A caller without it is answered 404 rather than 403, so a portal that shows
+ * these to the wrong person shows them empty rather than an error that admits
+ * the tier exists.
+ *
+ * None of them reads a project's data. Opening a report still needs membership
+ * in that project — see docs/tenancy.md.
+ */
+
+/** Which organisations and projects have people in them. */
+export function tenants() {
+  return call<{ tenants: Tenant[] }>('/v1/platform/tenants')
+}
+
+export interface Tenant {
+  org: string
+  project: string
+  people: number
+  disabled: number
+}
+
+/** Every account, in every project. */
+export function everyPerson() {
+  return call<{ people: Person[] }>('/v1/platform/people')
+}
+
+/** Moves somebody to another project, or turns their access off. */
+export function amendAnywhere(id: string, change: {
+  org?: string; project?: string; role?: string; disabled?: boolean
+}) {
+  return call<void>(`/v1/platform/people/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(change),
+  })
+}
+
+/** Who administers the deployment. */
+export function platformAdmins() {
+  return call<{ admins: Person[] }>('/v1/platform/admins')
+}
+
+export function grantPlatform(id: string) {
+  return call<void>(`/v1/platform/admins/${encodeURIComponent(id)}`, { method: 'POST' })
+}
+
+/**
+ * Takes it away, and signs that account out.
+ *
+ * The permission is carried in their token, so it would otherwise outlive the
+ * revocation by up to eight hours. The server ends their sessions in the same
+ * transaction; refusing the last administrator is its own answer, because a
+ * deployment with none cannot make another except from the command line.
+ */
+export function revokePlatform(id: string) {
+  return call<void>(`/v1/platform/admins/${encodeURIComponent(id)}`, { method: 'DELETE' })
 }
 
 /**

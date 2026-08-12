@@ -186,7 +186,7 @@ func projectsFor(runtimes map[tenant]*runtime, several bool) api.Projects {
 			// process that served its definitions to a principal from another
 			// organisation would be the same leak as a multi-tenant one
 			// resolving the wrong runtime; the narrowness is not the check.
-			return api.One{Org: t.org, ProjectID: t.project, Only: rt.project}
+			return &api.One{Org: t.org, ProjectID: t.project, Only: rt.project}
 		}
 	}
 	many := api.NewMany()

@@ -159,6 +159,11 @@ func (h *SSO) complete(w http.ResponseWriter, r *http.Request) {
 	issued, err := h.signer.Mint(token.Claims{
 		Audience: token.Portal, Role: user.Role,
 		Org: user.Org, Project: user.Project, Subject: user.ID,
+		// Set by the directory, not by the provider. A deployment
+		// administrator who signs in through their company's SSO is the same
+		// account as one who signs in with a password, and a claim that
+		// depended on which door they used would be a surprise nobody enjoys.
+		Platform: user.Platform,
 	}, SessionLifetime)
 	if err != nil {
 		h.log.Error("could not mint a session", "err", err)

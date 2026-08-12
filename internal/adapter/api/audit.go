@@ -23,8 +23,19 @@ const (
 	ActionSignOut       = "auth.signout"
 	ActionSessionsEnd   = "auth.sessions.end"
 	ActionProfileRename = "auth.profile.rename"
-	ActionFactorAdd     = "auth.factor.add"
-	ActionFactorCodes   = "auth.factor.codes"
+
+	// Platform administration. Their own prefix, because these are the entries
+	// somebody reads when asking "who reached across tenants, and when" — and
+	// mixed in with ordinary project administration they are impossible to
+	// find.
+	ActionPlatformMove    = "platform.person.move"
+	ActionPlatformDisable = "platform.person.disable"
+	ActionPlatformEnable  = "platform.person.enable"
+	ActionPlatformGrant   = "platform.admin.grant"
+	ActionPlatformRevoke  = "platform.admin.revoke"
+	ActionSetup           = "platform.setup"
+	ActionFactorAdd       = "auth.factor.add"
+	ActionFactorCodes     = "auth.factor.codes"
 	// Removing a second factor is the one worth a warning in the log: it is
 	// what a social-engineering call asks for, and it is invisible afterwards.
 	ActionFactorRemove = "auth.factor.remove"

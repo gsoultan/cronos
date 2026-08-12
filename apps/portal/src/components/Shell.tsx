@@ -2,13 +2,16 @@ import { lazy, Suspense, useEffect, useState } from 'react'
 import { Outlet, useRouterState } from '@tanstack/react-router'
 import { Header } from './Header'
 import { SampleBanner } from './SampleBanner'
-import { adoptSessionFromFragment, needsSignIn, SIGNED_OUT } from '../lib/api'
+import { adoptSessionFromFragment, needsSignIn, setupNeeded, SIGNED_OUT } from '../lib/api'
 
 /* Lazy, because the sign-in page pulls Mantine's password field and most loads
    never show it — a signed-in author, and every load in sample mode. It was
    ten kilobytes in the eager bundle for a page shown once a day. */
 const SignInPage = lazy(() =>
   import('../routes/SignInPage').then((m) => ({ default: m.SignInPage })))
+
+const SetupPage = lazy(() =>
+  import('../routes/SetupPage').then((m) => ({ default: m.SetupPage })))
 import { NavRail } from './NavRail'
 import { WorkspaceSwitcher } from './WorkspaceSwitcher'
 import { useWorkspace } from '../lib/WorkspaceContext'
@@ -69,6 +72,18 @@ export function Shell() {
   const [adopted] = useState(() => adoptSessionFromFragment())
   void adopted
 
+  /* Undefined until the server has answered. */
+  const [setupWanted, setSetupWanted] = useState<boolean | undefined>(undefined)
+  useEffect(() => {
+    if (!needsSignIn()) {
+      setSetupWanted(false)
+      return
+    }
+    let live = true
+    void setupNeeded().then((yes) => { if (live) setSetupWanted(yes) })
+    return () => { live = false }
+  }, [session])
+
   /* Two pages stand on their own, before the sign-in check rather than after.
      A shared report, because whoever follows the link has no account here and
      asking them to sign in to read something they were deliberately given
@@ -89,9 +104,20 @@ export function Shell() {
      never reaches here, which is what keeps the interface workable before a
      server exists. */
   if (needsSignIn()) {
+    /* A deployment with no accounts at all shows setup instead of a sign-in
+       form nobody can pass. Asked of the server rather than guessed, and the
+       answer is only ever "yes" while it is true — the endpoint closes itself
+       the moment an account exists. Undecided means the question is still in
+       flight, and neither page is shown, because flashing a sign-in form and
+       replacing it is worse than a blank moment. */
+    if (setupWanted === undefined) {
+      return <main className="min-h-screen bg-canvas" />
+    }
     return (
       <Suspense fallback={<main className="min-h-screen bg-canvas" />}>
-        <SignInPage onSignedIn={() => setSession((n) => n + 1)} />
+        {setupWanted
+          ? <SetupPage onDone={() => { setSetupWanted(false); setSession((n) => n + 1) }} />
+          : <SignInPage onSignedIn={() => setSession((n) => n + 1)} />}
       </Suspense>
     )
   }

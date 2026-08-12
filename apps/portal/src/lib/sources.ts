@@ -8,7 +8,7 @@
  */
 
 export type SourceKind =
-  | 'postgres' | 'mysql' | 'clickhouse' | 'bigquery'
+  | 'postgres' | 'mysql' | 'sqlserver' | 'clickhouse' | 'bigquery'
   | 'objectstore' | 'api' | 'excel'
 
 export type Shape = 'sql' | 'object' | 'api' | 'file'
@@ -41,6 +41,12 @@ export const SOURCE_KINDS: SourceSpec[] = [
   {
     id: 'mysql', label: 'MySQL', hint: 'Or MariaDB', icon: '🐬', shape: 'sql',
     connectHint: 'A read-only user is enough — cronos never writes to your database.',
+    ...FULL,
+  },
+  {
+    id: 'sqlserver', label: 'SQL Server', hint: 'Or Azure SQL', icon: '🗃', shape: 'sql',
+    connectHint: 'A read-only login is enough — cronos never writes to your database. '
+      + 'Port 1433 unless somebody changed it.',
     ...FULL,
   },
   {
@@ -77,3 +83,25 @@ export const SOURCE_KINDS: SourceSpec[] = [
     pushdownHint: 'The whole sheet is read, then filtered. Fine for thousands of rows, not millions.',
   },
 ]
+
+/**
+ * What a source kind is called in a definition's `driver` field.
+ *
+ * Mostly the same word, and deliberately not always: the wire name for SQL
+ * Server is `sqlserver`, which is what the driver registers as, while the label
+ * people read is "SQL Server". `mssql` is accepted by the engine too, because
+ * it is what half the world types.
+ */
+export function driverFor(kind: SourceKind): string {
+  return kind
+}
+
+/** Which grains a kind can bucket a date by. */
+export function grainsFor(kind: SourceKind): string[] {
+  // SQL Server counts week boundaries from Sunday whatever the session says,
+  // so the same report bucketed weekly would disagree with every other source.
+  // The engine refuses it; saying so here means somebody finds out while
+  // building the report rather than when it runs.
+  if (kind === 'sqlserver') return ['day', 'month', 'quarter', 'year']
+  return ['day', 'week', 'month', 'quarter', 'year']
+}

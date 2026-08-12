@@ -181,5 +181,9 @@ func (c Claims) Principal() principal.Principal {
 		// Only a portal token. An embed token belongs to an end customer, and
 		// the exemption is the one thing it must never be able to claim.
 		Member: c.Audience == Portal,
+		// The same rule, for the same reason. An embed token is minted by a
+		// host application for one of its customers; a claim it could raise to
+		// deployment administrator would make every one of them one.
+		Platform: c.Audience == Portal && c.Platform,
 	}
 }

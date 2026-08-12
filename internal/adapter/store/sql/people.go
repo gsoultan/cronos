@@ -266,6 +266,7 @@ func (s *Store) Upsert(ctx context.Context, u identity.User) (identity.User, err
 			return identity.User{}, fmt.Errorf("%w: access is turned off", identity.ErrBadCredentials)
 		}
 		existing.Email, existing.Name = u.Email, u.Name
+		existing.Platform = s.IsPlatformAdmin(ctx, existing.ID)
 		return existing, nil
 	}
 
@@ -283,6 +284,10 @@ func (s *Store) Upsert(ctx context.Context, u identity.User) (identity.User, err
 		stamp(s.now())); err != nil {
 		return identity.User{}, err
 	}
+	// Set on the way out, like Authenticate does, so a deployment
+	// administrator who signs in through their company's directory carries the
+	// same claim as one who signs in with a password.
+	u.Platform = s.IsPlatformAdmin(ctx, u.ID)
 	return u, nil
 }
 

@@ -69,6 +69,10 @@ func (s *Store) Authenticate(ctx context.Context, email, password string) (ident
 	}
 
 	u.CreatedAt, _ = time.Parse(time.RFC3339, created)
+	// Read here so the session can carry it, rather than asked on every
+	// request. Taking it away cuts their sessions, so the claim never outlives
+	// the grant by more than the moment between the two writes.
+	u.Platform = s.IsPlatformAdmin(ctx, u.ID)
 	return u, s.seen(ctx, u.ID)
 }
 

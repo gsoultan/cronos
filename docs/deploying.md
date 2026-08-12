@@ -261,3 +261,65 @@ while the enrolment wizard was rendering *inside* the account page, between the
 password and the sessions, with two sets of Back/Continue on screen; and while
 two sibling panels were keyed by the same counter, so React was quietly
 discarding one. Neither is a thing any of those tools can see.
+
+## The first run
+
+A fresh install has a database, a server and no accounts. Until there was a
+`/setup`, the only way to create the first one was `cronos-user` on the machine —
+fine for somebody with shell access, impossible for anybody handed a URL.
+
+Open the portal. It offers to set the deployment up, takes an email, a password
+and the names of the first organisation and project, and signs you in as an
+account that administers both the deployment and that project.
+
+It is the most dangerous endpoint in the product, so:
+
+- It is open only while **no account exists at all** — not "no administrator",
+  no account, anywhere. The first success closes it and nothing reopens it short
+  of emptying the users table.
+- The check happens inside the write, so two people sent the same URL create one
+  administrator rather than two.
+- It needs a store. A file-backed deployment has nowhere to keep an account, so
+  the page is not offered rather than offered and broken.
+- There is no token in the log and no environment variable to unlock it. Both
+  are things people leave switched on.
+
+The names you type become identifiers — "Acme Logistics" is stored as
+`acme-logistics` — because they are half of every tenancy check and part of a
+path when definitions live on disk. A single-project process adopts the name it
+is given at that moment; one told what to serve by `CRONOS_PROJECTS` keeps what
+it was told, and says so in the log if a first run names something else.
+
+```bash
+./scripts/live-setup.sh
+```
+
+## Administering the deployment
+
+A tier above organisations, for whoever runs the servers. **Settings →
+Deployment**, visible only to an account that holds it.
+
+It can list every tenant and every account, move somebody from one organisation
+to another, turn access off anywhere, and grant or revoke itself.
+
+It **cannot read any project's data**. Opening a report, running a query or
+seeing a dataset still requires membership in that project — `Principal.Platform`
+is deliberately absent from `CanRead`, `CanEdit`, `CanAdminProject` and
+`CanAdminOrg`, and there is no route under `/v1/platform` that returns a row of
+anybody's warehouse. That is what makes a leaked platform credential a
+control-plane problem rather than every customer's data at once. Support that
+needs to see what a customer sees adds itself to that project, and the audit log
+records that it did.
+
+Somebody without the permission is answered **404**, not 403: a "you may not"
+would confirm to anybody probing that the tier exists and that some account
+holds it.
+
+The last administrator cannot be revoked. A deployment with none cannot make
+another, because the endpoints that grant it require the permission being
+granted — the only way back is `cronos-user` on the machine. Revoking anybody
+else ends their sessions in the same transaction, because the permission travels
+in the token and would otherwise outlive the revocation by up to eight hours.
+
+Every cross-tenant action is audited under its own `platform.*` prefix, so "who
+reached across tenants, and when" is a question the log answers directly.

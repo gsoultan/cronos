@@ -23,6 +23,19 @@ type Claims struct {
 	// never sees their user table; this is whatever they chose to put here,
 	// and it exists so a run record can be traced back.
 	Subject string `json:"sub"`
+	/*
+	   Platform marks a deployment administrator.
+
+	   Carried in the token so every request does not have to ask the database,
+	   and honoured only for a portal audience — an embed token belongs to an
+	   end customer of our customer, and this is the one claim that must never
+	   be reachable from there.
+
+	   It grants nothing inside any project. Taking it away ends that account's
+	   sessions rather than waiting for this claim to expire, because a
+	   revocation that takes eight hours is not a revocation.
+	*/
+	Platform bool `json:"plt,omitempty"`
 	// Report pins the token to one report. Empty means any report in the
 	// project, which is a decision the minting host makes rather than a
 	// default we impose.

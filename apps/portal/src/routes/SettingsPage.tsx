@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { Button, TextInput } from '@mantine/core'
 import { PageHeader } from '../components/PageHeader'
@@ -19,8 +19,10 @@ import { relativeTime } from '../lib/format'
 import { SecurityPolicy } from '../components/settings/SecurityPolicy'
 import { ChannelsPanel } from '../components/settings/ChannelsPanel'
 import { OrganizationPanel } from '../components/settings/OrganizationPanel'
+import { LivePlatform } from '../components/LivePlatform'
+import { platformAdmins, profile } from '../lib/api'
 
-type Tab = 'organization' | 'people' | 'projects' | 'security' | 'channels'
+type Tab = 'organization' | 'people' | 'projects' | 'security' | 'channels' | 'platform'
 type Panel = 'none' | 'invite' | 'new-project'
 
 const CARD = 'mb-4 overflow-hidden rounded-lg border border-line bg-surface shadow-card'
@@ -37,6 +39,18 @@ const HEAD = 'flex flex-wrap items-center justify-between gap-4 border-b border-
  */
 export function SettingsPage() {
   const [tab, setTab] = useState<Tab>('organization')
+  /* Null until asked, and null for ever on a deployment where this account does
+     not administer the platform — the server answers 404 rather than 403 to
+     anybody else, so an ordinary administrator simply never sees the tab. */
+  const [platform, setPlatform] = useState<string | null>(null)
+  useEffect(() => {
+    if (!connected()) return
+    let live = true
+    void profile()
+      .then((me) => platformAdmins().then(() => { if (live) setPlatform(me.id) }))
+      .catch(() => { /* not a platform administrator, or no server. */ })
+    return () => { live = false }
+  }, [])
   const [panel, setPanel] = useState<Panel>('none')
   const [query, setQuery] = useState('')
   const [directory, setDirectory] = useState<Person[]>(seedPeople)
@@ -76,14 +90,18 @@ export function SettingsPage() {
       <PageHeader title="Settings" description="Who can reach what, at both levels." />
 
       <div className="mb-4 flex gap-1 overflow-x-auto border-b border-line" role="tablist">
-        {([['organization', 'Organization'], ['people', 'People'], ['projects', 'Projects'], ['security', 'Security'], ['channels', 'Channels']] as const).map(([id, label]) => (
+        {(tabs(platform !== null)).map(([id, label]) => (
           <button key={id} type="button" role="tab" aria-selected={tab === id}
             onClick={() => setTab(id)}
             className={`shrink-0 cursor-pointer border-b-2 px-3 py-2.5 text-small font-medium ${
               tab === id ? 'border-accent text-ink'
                 : 'border-transparent text-ink-secondary hover:text-ink'}`}>
             {label}
-            {(id === 'people' || id === 'projects') && (
+            {/* The counts come from the sample directory, so on a connected
+                deployment they described somebody's demo data — "People 6"
+                beside a project with one person in it. Shown only where
+                everything else is samples and announced as such. */}
+            {!connected() && (id === 'people' || id === 'projects') && (
               <span className="ml-1.5 text-caption text-ink-muted">
                 {id === 'people' ? members.length : projects.filter((p) => p.orgId === org.id).length}
               </span>
@@ -201,6 +219,8 @@ export function SettingsPage() {
 
       {tab === 'security' && connected() && <LiveSecurity />}
 
+      {tab === 'platform' && platform !== null && <LivePlatform me={platform} />}
+
       {tab === 'projects' && (
         <section className={CARD}>
           <div className={HEAD}>
@@ -295,4 +315,22 @@ function LiveSecurity() {
       </div>
     </section>
   )
+}
+
+/**
+ * The tabs, with the platform one only where it applies.
+ *
+ * Hidden rather than disabled: a tab that exists and refuses is a tab that says
+ * there is a deployment-administration tier and this account is not in it,
+ * which is exactly what the server's 404 declines to say.
+ */
+function tabs(isPlatformAdmin: boolean): (readonly [Tab, string])[] {
+  const always: (readonly [Tab, string])[] = [
+    ['organization', 'Organization'],
+    ['people', 'People'],
+    ['projects', 'Projects'],
+    ['security', 'Security'],
+    ['channels', 'Channels'],
+  ]
+  return isPlatformAdmin ? [...always, ['platform', 'Deployment'] as const] : always
 }

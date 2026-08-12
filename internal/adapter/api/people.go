@@ -538,6 +538,10 @@ func (h *Sessions) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Mint(token.Claims{
 			Audience: token.Portal, Role: string(pr.ProjectRole),
 			Org: pr.OrgID, Project: pr.ProjectID, Subject: pr.Subject,
+			// Carried across, or pressing "sign out everywhere else" quietly
+			// demotes whoever pressed it — and the only way back is another
+			// administrator, which on a deployment with one is nobody.
+			Platform: pr.Platform,
 		}, SessionLifetime)
 	if err != nil {
 		// The sessions did end — that write already happened. This browser is
