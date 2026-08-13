@@ -2,6 +2,7 @@ apiVersion: cronos.dev/v1
 kind: Dataset
 metadata:
   name: active-customers
+  title: Active customers
   description: Who receives a statement.
 spec:
   sources:

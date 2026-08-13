@@ -2,6 +2,7 @@ apiVersion: cronos.dev/v1
 kind: Dataset
 metadata:
   name: statement-lines
+  title: Statement lines
   description: One customer's invoices, for a burst to fan out over.
 spec:
   sources:

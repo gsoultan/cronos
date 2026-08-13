@@ -2,6 +2,7 @@ apiVersion: cronos.dev/v1
 kind: Dataset
 metadata:
   name: customer-list
+  title: Customer list
   description: Every customer, with what they have been billed.
 spec:
   sources:

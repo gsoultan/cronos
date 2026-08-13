@@ -187,7 +187,18 @@ while :; do
 				reported_api=1
 				printf '%s│%s %sapi exited%s — check the output above.\n' \
 					"$C_DIM" "$C_OFF" "$C_ERR" "$C_OFF"
-				note '  the portal is still running; it uses mock data until the engine exists.'
+				# What the portal actually does now, which is not what this
+				# said. It said the portal falls back to sample data — true
+				# when it talked to nothing, and false since it was pointed at
+				# this API. A connected portal whose server has gone shows
+				# failed requests on every page, and somebody reading this line
+				# would go looking for the bug in the portal.
+				if [ "$CONNECTED" = 1 ]; then
+					note '  the portal is still running, and every page it loads will fail:'
+					note "  it is pointed at http://localhost:$API_PORT, which is now nothing."
+				else
+					note '  the portal is still running on sample data, which needs no API.'
+				fi
 			fi
 			if [ "${PID_web:-}" = "$pid" ] && [ "$reported_web" = 0 ]; then
 				reported_web=1

@@ -2,6 +2,7 @@ apiVersion: cronos.dev/v1
 kind: DataSource
 metadata:
   name: warehouse
+  title: Demo warehouse
   description: The demo database, seeded from demo/seed.sql.
 spec:
   driver: sqlite
