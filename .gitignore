@@ -9,3 +9,6 @@ packages/*/harness/*.js
 .env.local
 
 .DS_Store
+
+# A development deployment: accounts, and the database they live in.
+.dev/

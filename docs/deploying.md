@@ -409,3 +409,33 @@ CI's service containers work without the script knowing it is CI. The exception
 is `live-sqlserver.sh`, which needs telling: set `CRONOS_SQLSERVER_RUNNING=1`.
 Locally it starts Azure SQL Edge instead, because `mssql/server:2022` is amd64
 and segfaults on an arm64 laptop under emulation — the same engine either way.
+
+## Development
+
+```bash
+./scripts/dev.sh
+```
+
+The API on 8080 and the portal on 5173, **connected**, with accounts in
+`.dev/cronos.db`. On a fresh clone the first thing the browser shows is the
+first-run setup; after that it is the sign-in page. Delete `.dev/` to start over.
+
+It did not used to connect. The script started both halves and never told the
+portal where the API was, so it ran on sample data beside a server nobody was
+talking to — and every part of cronos that needs an account was invisible in
+development: signing in, signing out, setup, invitations, second factors, the
+people list, the deployment tab. `CRONOS_ORIGINS` had always allowed the portal
+to call the API; nothing ever told the portal to.
+
+That is worth naming as the cause rather than a detail. It is how a two-factor
+wizard that accepted any six digits and a device list invented in the browser
+both survived: anybody running the development command saw the sample portal,
+where neither was ever shown.
+
+```bash
+./scripts/dev.sh --samples
+```
+
+Sample data and no server, which is what the browser suites exercise and what
+makes the interface workable before a server exists. Still available, no longer
+the default.
