@@ -73,6 +73,10 @@ type Accounts interface {
 	// FirstRun creates the first account and makes it a deployment
 	// administrator, or refuses because one already exists.
 	FirstRun(ctx context.Context, u identity.User, password string) error
+	// Rekey moves what the placeholder tenancy holds to the name this run gave
+	// it — the definitions a fresh install loaded before anybody had been asked
+	// what to call the place.
+	Rekey(ctx context.Context, fromOrg, fromProject, toOrg, toProject string) error
 }
 
 // NewSetup wires the handler.
@@ -234,9 +238,31 @@ func (h *Setup) create(w http.ResponseWriter, r *http.Request) {
 	   just made is in the wrong place — which is worth saying rather than
 	   silently overriding one of the two.
 	*/
-	if h.serving != nil && !h.serving.Adopt(user.Org, user.Project) {
-		h.log.Warn("first run named a project this process does not serve",
-			"named", user.Org+"/"+user.Project)
+	if h.serving != nil {
+		was, wasProject := h.serving.Org, h.serving.ProjectID
+		if !h.serving.Adopt(user.Org, user.Project) {
+			h.log.Warn("first run named a project this process does not serve",
+				"named", user.Org+"/"+user.Project)
+		} else if err := h.accounts.Rekey(
+			r.Context(), was, wasProject, user.Org, user.Project); err != nil {
+
+			/*
+			   And what the placeholder was already holding moves with it.
+
+			   A fresh install reconciles its definitions into the store under
+			   whatever CRONOS_ORG defaults to, before anybody has been asked
+			   what to call the place. Without this the first page after setup
+			   says "No reports yet" beside ten definitions the server loaded a
+			   second earlier — which is what running the development server
+			   showed the moment it started talking to its own API.
+
+			   Logged rather than failed: the account exists and works, and a
+			   deployment whose demo definitions stayed under the old name is a
+			   worse first impression than an error, not a broken install.
+			*/
+			h.log.Error("could not move what the placeholder project held",
+				"from", was+"/"+wasProject, "to", user.Org+"/"+user.Project, "err", err)
+		}
 	}
 
 	issued, err := h.signer.Mint(token.Claims{

@@ -18,10 +18,23 @@ interface Props {
 const TOGGLE = `grid size-8 cursor-pointer place-items-center rounded-md text-ink-secondary
                 hover:bg-hover hover:text-ink`
 
+/*
+ * What the breadcrumb calls each page.
+ *
+ * One entry per route in router.tsx. Activity was missing, so its breadcrumb
+ * read "acme / finance" and stopped — visible in a screenshot beside five pages
+ * that name themselves, and invisible in sample mode for the same reason
+ * everything else was.
+ *
+ * The editing routes fall through to the pattern below rather than being listed:
+ * they carry a name in the path, and a fixed title would say "Report" over a
+ * page editing a specific one.
+ */
 const TITLES: Record<string, string> = {
   '/': 'Reports',
   '/data': 'Data',
   '/schedules': 'Schedules',
+  '/activity': 'Activity',
   '/settings': 'Settings',
   '/account': 'Your account',
   '/reports/new': 'New report',

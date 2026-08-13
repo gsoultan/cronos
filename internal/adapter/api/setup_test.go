@@ -33,7 +33,8 @@ type empty struct {
 	admins  map[string]bool
 	created []string
 	// setUp is the marker row: one deployment is configured once.
-	setUp bool
+	setUp   bool
+	rekeyed []string
 }
 
 func newEmpty() *empty { return &empty{admins: map[string]bool{}} }
@@ -116,6 +117,13 @@ func (e *empty) EndSessions(context.Context, string) (time.Time, error) {
 }
 func (e *empty) EveryPerson(context.Context) ([]identity.User, error) { return e.people, nil }
 func (e *empty) Tenants(context.Context) ([]identity.Tenant, error)   { return nil, nil }
+func (e *empty) Rekey(_ context.Context, fromOrg, fromProject, toOrg, toProject string) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.rekeyed = append(e.rekeyed, fromOrg+"/"+fromProject+" -> "+toOrg+"/"+toProject)
+	return nil
+}
+
 func (e *empty) AddPerson(_ context.Context, u identity.User, _ string) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()

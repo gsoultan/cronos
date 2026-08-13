@@ -419,3 +419,61 @@ func duplicate(err error) bool {
 	msg := strings.ToLower(err.Error())
 	return strings.Contains(msg, "unique") || strings.Contains(msg, "duplicate key")
 }
+
+/*
+Rekey moves everything a placeholder tenancy holds to the name a first run gave.
+
+A fresh install serves whatever CRONOS_ORG and CRONOS_PROJECT default to, because
+nothing else exists yet, and it reconciles its definitions into the store under
+that name before anybody has been asked what to call it. Then somebody opens
+/setup, types "Acme", and lands in an empty portal — the definitions the
+deployment shipped with are all filed under default/default, and every read is
+scoped by the tenancy they are not in.
+
+Found by running the development server the way somebody would after it started
+connecting to its own API: set up, and the first page says "No reports in finance
+yet" beside ten definitions the server had just loaded.
+
+Called by the first run and by nothing else. Two guards make that safe: it moves
+rows only from the tenancy the process booted with, and the caller has already
+proved this deployment had never been set up.
+*/
+func (s *Store) Rekey(ctx context.Context, fromOrg, fromProject, toOrg, toProject string) error {
+	if fromOrg == toOrg && fromProject == toProject {
+		return nil
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	/*
+	   Every table keyed by a tenant, named rather than discovered.
+
+	   A loop over the schema would find them automatically and would also find
+	   the next one somebody adds — which sounds like the point and is the
+	   danger: a table added for a reason this function has never heard of would
+	   be silently rewritten. Listing them means adding one is a decision.
+
+	   cronos_users is deliberately absent. The only account that exists at this
+	   moment is the one the first run just created, and it was created under
+	   the new name already.
+	*/
+	for _, table := range []string{
+		"cronos_definitions",
+		"cronos_definition_versions",
+		"cronos_runs",
+		"cronos_shares",
+		"cronos_invitations",
+		"cronos_policies",
+	} {
+		if _, err := tx.ExecContext(ctx, s.sql(
+			`UPDATE `+table+` SET org = ?, project = ? WHERE org = ? AND project = ?`),
+			toOrg, toProject, fromOrg, fromProject); err != nil {
+			return fmt.Errorf("rekeying %s: %w", table, err)
+		}
+	}
+	return tx.Commit()
+}

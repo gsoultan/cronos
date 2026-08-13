@@ -439,3 +439,13 @@ where neither was ever shown.
 Sample data and no server, which is what the browser suites exercise and what
 makes the interface workable before a server exists. Still available, no longer
 the default.
+
+```bash
+bun run --cwd apps/portal walk
+```
+
+Walks every page of a connected portal, reporting console errors and any API
+call that did not answer 2xx. The first time it ran it found that the Reports
+page — the landing page of the product — had no live path at all.
+
+

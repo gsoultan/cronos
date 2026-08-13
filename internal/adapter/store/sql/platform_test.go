@@ -8,6 +8,7 @@ import (
 
 	store "github.com/gsoultan/cronos/internal/adapter/store/sql"
 	"github.com/gsoultan/cronos/internal/core/identity"
+	"github.com/gsoultan/cronos/internal/core/principal"
 )
 
 /*
@@ -215,5 +216,86 @@ func TestAFailedFirstRunIsNotReportedAsASecondOne(t *testing.T) {
 	// And nothing was written, because the transaction rolled back.
 	if n, _ := s.CountAccounts(context.Background()); n != 0 {
 		t.Fatalf("a failed first run left %d accounts", n)
+	}
+}
+
+/*
+What a fresh install already holds moves to the name it is given.
+
+A new deployment serves whatever CRONOS_ORG defaults to and reconciles its
+definitions into the store under that name, before anybody has been asked what to
+call the place. Then somebody sets it up as "Acme" and lands in an empty portal.
+
+Found by running the development server after it started talking to its own API:
+"No reports in finance yet", beside ten definitions the server had loaded a
+second earlier.
+*/
+func TestAFirstRunTakesTheDefinitionsWithIt(t *testing.T) {
+	both(t, func(t *testing.T, s *store.Store) {
+		ctx := context.Background()
+		placeholder := who("default", "default")
+
+		// What boot reconciles into the store before anybody has named the
+		// place.
+		if _, err := s.Put(ctx, placeholder, "Dataset", "invoices", doc("invoices")); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := s.Rekey(ctx, "default", "default", "acme", "finance"); err != nil {
+			t.Fatal(err)
+		}
+
+		// The named project has it.
+		if _, err := s.Get(ctx, who("acme", "finance"), "Dataset", "invoices"); err != nil {
+			t.Fatalf("the definition did not move: %v", err)
+		}
+		// And the placeholder does not, or the same thing exists twice under
+		// two names and a later reconcile would disagree with itself.
+		if _, err := s.Get(ctx, placeholder, "Dataset", "invoices"); err == nil {
+			t.Fatal("the definition is still under the placeholder as well")
+		}
+	})
+}
+
+// Renaming to the same thing is a no-op rather than an UPDATE that touches every
+// row of a deployment that had no placeholder to begin with.
+func TestRekeyingToTheSameNameChangesNothing(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+
+	if _, err := s.Put(ctx, who("acme", "finance"), "Dataset", "invoices", doc("invoices")); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Rekey(ctx, "acme", "finance", "acme", "finance"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Get(ctx, who("acme", "finance"), "Dataset", "invoices"); err != nil {
+		t.Fatalf("the definition went missing: %v", err)
+	}
+}
+
+/*
+And it moves only what the placeholder held.
+
+Another tenant's rows are not the first run's to rewrite. This cannot happen on
+a genuinely fresh deployment — there is nothing else in the store — and the
+guard is what stops a future caller using this for something it was not written
+for.
+*/
+func TestRekeyLeavesOtherTenantsAlone(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+
+	for _, pr := range []principal.Principal{who("default", "default"), who("globex", "ops")} {
+		if _, err := s.Put(ctx, pr, "Dataset", "invoices", doc("invoices")); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := s.Rekey(ctx, "default", "default", "acme", "finance"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Get(ctx, who("globex", "ops"), "Dataset", "invoices"); err != nil {
+		t.Fatalf("another tenant's definition was moved: %v", err)
 	}
 }

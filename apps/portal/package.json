@@ -23,7 +23,8 @@
     "size": "vite build && node scripts/check-bundle-size.mjs",
     "test": "bun test",
     "verify": "node scripts/verify.mjs",
-    "e2e": "node e2e/two-factor.mjs"
+    "e2e": "node e2e/two-factor.mjs",
+    "walk": "node e2e/walk.mjs"
   },
   "dependencies": {
     "@mantine/core": "^9.5.1",
