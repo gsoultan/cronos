@@ -11,7 +11,7 @@ import { BlockPalette, PALETTE } from '../components/builder/BlockPalette'
 import { LayoutCanvas } from '../components/builder/LayoutCanvas'
 import { BlockInspector } from '../components/builder/BlockInspector'
 import { OutputPicker } from './OutputPicker'
-import { datasets } from '../lib/mock'
+import { useDatasets } from '../lib/useDatasets'
 import type { Dataset, Tile, TileKind } from '../lib/types'
 import type { Template } from '../lib/templates'
 import { required, slug, toSlug } from '../lib/validators'
@@ -75,6 +75,10 @@ export function ReportForm({ onDone, onCancel, initial }: Props) {
   /* Collapse the app rail while the editor is open — the canvas needs the
      184px more than the navigation does. The preference itself is untouched. */
   useFocusMode()
+
+  /* The project's own datasets, not a fixture. See useDatasets — the builder
+     read two invented ones for as long as the portal talked to nothing. */
+  const { datasets } = useDatasets()
 
   const [blocks, setBlocks] = useState<Tile[]>(() => tiles(stored?.blocks ?? []))
   const [outputs, setOutputs] = useState<string[]>(['interactive'])

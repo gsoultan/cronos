@@ -8,10 +8,19 @@
  */
 
 export type SourceKind =
-  | 'postgres' | 'mysql' | 'sqlserver' | 'clickhouse' | 'bigquery'
+  | 'postgres' | 'mysql' | 'sqlserver' | 'sqlite' | 'clickhouse' | 'bigquery'
   | 'objectstore' | 'api' | 'excel'
 
-export type Shape = 'sql' | 'object' | 'api' | 'file'
+/*
+ * How a source is connected to, which decides what the form asks for.
+ *
+ * `dsn` is one field: the connection string, as written. It exists because
+ * `sql` asks for a host, a port, a database and a user, and there are sources
+ * that have none of those — SQLite is a path, and a driver this build has no
+ * screen for is whatever its own documentation says. Asking for a port to
+ * connect to a file is not a smaller mistake than asking for nothing.
+ */
+export type Shape = 'sql' | 'dsn' | 'object' | 'api' | 'file'
 export type Pushdown = 'full' | 'partial' | 'none' | 'declared'
 
 export interface SourceSpec {
@@ -47,6 +56,13 @@ export const SOURCE_KINDS: SourceSpec[] = [
     id: 'sqlserver', label: 'SQL Server', hint: 'Or Azure SQL', icon: '🗃', shape: 'sql',
     connectHint: 'A read-only login is enough — cronos never writes to your database. '
       + 'Port 1433 unless somebody changed it.',
+    ...FULL,
+  },
+  {
+    id: 'sqlite', label: 'SQLite', hint: 'A file on disk', icon: '🪶', shape: 'dsn',
+    connectHint: 'A path, or file:… — cronos opens it read-only. '
+      + 'Fine for a small deployment and for the demo; a file cannot be read by '
+      + 'two servers at once.',
     ...FULL,
   },
   {

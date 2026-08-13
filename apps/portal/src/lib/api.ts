@@ -1004,6 +1004,36 @@ export interface DatasetSummary {
   measures: number
   params: number
   rowScoped: boolean
+  /**
+   * The fields themselves, for the builder.
+   *
+   * `fields` above is a count, which is what a browsing list wants. The report
+   * builder wants the columns, because every control it draws is a choice among
+   * them — and until the server sent them it read a fixture instead.
+   */
+  columns?: CatalogColumn[]
+  /** What the dataset takes, so a report can supply it. */
+  parameters?: CatalogParameter[]
+}
+
+export interface CatalogColumn {
+  name: string
+  label?: string
+  type: string
+  role: string
+  format?: string
+  hidden?: boolean
+}
+
+export interface CatalogParameter {
+  name: string
+  label?: string
+  type: string
+  required?: boolean
+  multiple?: boolean
+  values?: string[]
+  /** Rendered as text, because that is what a control holds. */
+  default?: string
 }
 
 export interface ReportSummary {

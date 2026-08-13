@@ -244,20 +244,44 @@ wiring.go, and this is only the part that says whose.
 // Each has its own datasets to check a report against and its own engines to
 // prove a block will run, so publishing into the wrong one would accept a
 // report naming a dataset this project does not have.
-type publishingFor map[tenant]*runtime
+/*
+publishingFor resolves through the same object every other route does.
 
-func (p publishingFor) of(pr principal.Principal) (*publish.Service, error) {
-	rt, ok := p[tenant{org: pr.OrgID, project: pr.ProjectID}]
-	if !ok {
+It used to key its own map by the caller's organisation and project, and that is
+the bug a first run exposed. A fresh install serves whatever CRONOS_ORG defaults
+to; somebody sets it up as "acme/finance"; api.One adopts the name so reads work
+— and this map, built at boot, still had one entry under default/default. Every
+publish, send and share answered "no such project here". A deployment set up
+through the browser could read its reports and change nothing.
+
+Three helpers had their own copy of "which tenant is this", so the fix is not to
+teach three maps about adoption. It is to have one thing decide, which is what
+api.Projects already is, and to key these by the runtime it hands back.
+*/
+type publishingFor struct {
+	projects api.Projects
+	// byProject maps the resolved runtime to its publisher. Keyed by pointer
+	// identity rather than by name, so nothing here has an opinion about
+	// tenancy at all.
+	byProject map[*api.Project]*publish.Service
+}
+
+func (p publishingFor) of(ctx context.Context, pr principal.Principal) (*publish.Service, error) {
+	project, err := p.projects.Project(ctx, pr)
+	if err != nil {
 		return nil, fmt.Errorf("%w: no such project here", publish.ErrForbidden)
 	}
-	return rt.publish, nil
+	svc, ok := p.byProject[project]
+	if !ok {
+		return nil, fmt.Errorf("%w: nothing publishes here", publish.ErrForbidden)
+	}
+	return svc, nil
 }
 
 func (p publishingFor) Publish(ctx context.Context, raw []byte,
 	pr principal.Principal) (publish.Result, error) {
 
-	svc, err := p.of(pr)
+	svc, err := p.of(ctx, pr)
 	if err != nil {
 		return publish.Result{}, err
 	}
@@ -265,7 +289,7 @@ func (p publishingFor) Publish(ctx context.Context, raw []byte,
 }
 
 func (p publishingFor) Delete(ctx context.Context, pr principal.Principal, kind, name string) error {
-	svc, err := p.of(pr)
+	svc, err := p.of(ctx, pr)
 	if err != nil {
 		return err
 	}
@@ -276,18 +300,24 @@ func (p publishingFor) Delete(ctx context.Context, pr principal.Principal, kind,
 //
 // The report a link names must exist in the project the sharer acts in, which
 // is what stops a link to a name that happens to exist somewhere else.
+// sharingFor resolves the same way, so a link minted after a first run names a
+// report in the project the caller is actually in.
 func sharingFor(records *sqlstore.Store, signer *token.Signer,
-	runtimes map[tenant]*runtime) api.Sharing {
+	projects api.Projects, runtimes map[tenant]*runtime) api.Sharing {
 
 	if records == nil {
 		return nil
 	}
-	reports := map[tenant]*file.Repository{}
-	for t, rt := range runtimes {
-		reports[t] = rt.repo
+	reports := map[*api.Project]*file.Repository{}
+	for _, rt := range runtimes {
+		reports[rt.project] = rt.repo
 	}
 	return share.NewPerProject(records, signer, func(pr principal.Principal) share.Reports {
-		if repo, ok := reports[tenant{org: pr.OrgID, project: pr.ProjectID}]; ok {
+		project, err := projects.Project(context.Background(), pr)
+		if err != nil {
+			return nil
+		}
+		if repo, ok := reports[project]; ok {
 			return repo
 		}
 		return nil
@@ -295,26 +325,48 @@ func sharingFor(records *sqlstore.Store, signer *token.Signer,
 }
 
 // sendingFor renders and delivers from the caller's own project.
-func sendingFor(cfg config.Server, runtimes map[tenant]*runtime, log *slog.Logger) api.Sending {
+func sendingFor(cfg config.Server, projects api.Projects,
+	runtimes map[tenant]*runtime, log *slog.Logger) api.Sending {
+
 	chans, err := channels(cfg, log)
 	if err != nil || len(chans) == 0 {
 		return nil
 	}
-	services := map[tenant]*send.Service{}
-	for t, rt := range runtimes {
-		services[t] = send.New(rt.repo, documents(rt.project.Runner), chans...)
+	services := map[*api.Project]*send.Service{}
+	for _, rt := range runtimes {
+		services[rt.project] = send.New(rt.repo, documents(rt.project.Runner), chans...)
 	}
-	return sendPerProject(services)
+	return sendPerProject{projects: projects, byProject: services}
 }
 
-type sendPerProject map[tenant]*send.Service
+// sendPerProject resolves the same way publishingFor does, and for the same
+// reason: its own map of tenants was a second place for "which project is this"
+// to be answered, and a first run made the two disagree.
+type sendPerProject struct {
+	projects  api.Projects
+	byProject map[*api.Project]*send.Service
+}
 
 func (s sendPerProject) Send(ctx context.Context, req send.Request,
 	pr principal.Principal) (send.Result, error) {
 
-	svc, ok := s[tenant{org: pr.OrgID, project: pr.ProjectID}]
+	/*
+	   Forbidden rather than invalid, which publishingFor next door has always
+	   said and this said until now.
+
+	   The request is well formed; the caller is somewhere else. Saying "not a
+	   send" makes it a 400, which tells somebody their request was malformed
+	   when the truth is that they are in the wrong project — and it made the
+	   two sentinels indistinguishable to a caller trying to tell a bad request
+	   from a tenancy refusal.
+	*/
+	project, err := s.projects.Project(ctx, pr)
+	if err != nil {
+		return send.Result{}, fmt.Errorf("%w: no such project here", send.ErrForbidden)
+	}
+	svc, ok := s.byProject[project]
 	if !ok {
-		return send.Result{}, fmt.Errorf("%w: no such project here", send.ErrInvalid)
+		return send.Result{}, fmt.Errorf("%w: nothing sends here", send.ErrForbidden)
 	}
 	return svc.Send(ctx, req, pr)
 }
@@ -344,4 +396,13 @@ func readinessFor(records *sqlstore.Store, runtimes map[tenant]*runtime) []api.C
 		}
 	}
 	return checks
+}
+
+// publishing builds the resolver, once the projects are known.
+func publishingBy(projects api.Projects, runtimes map[tenant]*runtime) api.Publishing {
+	byProject := map[*api.Project]*publish.Service{}
+	for _, rt := range runtimes {
+		byProject[rt.project] = rt.publish
+	}
+	return publishingFor{projects: projects, byProject: byProject}
 }

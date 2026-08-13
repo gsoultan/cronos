@@ -143,6 +143,29 @@ func (s *Service) Publish(ctx context.Context, raw []byte, pr principal.Principa
 // path would silently store one definition under another's name.
 func (s *Service) check(ctx context.Context, kind string, raw []byte) (string, error) {
 	switch kind {
+	case codec.KindDataSource:
+		/*
+		   A datasource, which this switch did not mention until now.
+
+		   The portal has had a four-step wizard for connecting one since before
+		   there was a server to publish to, and every Save it ever made was
+		   answered "unsupported kind" — a 400 from a screen that had just told
+		   somebody their connection test passed. The codec has the kind, the
+		   loader parses one, the file store keeps them; only this was missing.
+
+		   The loader runs definition.Validate, which is what checks the driver
+		   is one this build can open and that a connection string is present.
+		   Deliberately no attempt to connect: that is what the test endpoint is
+		   for, and a publish that fails because a warehouse is down at four in
+		   the afternoon is a definition somebody cannot save for a reason that
+		   has nothing to do with it.
+		*/
+		src, err := codec.Loader{}.DataSource(raw)
+		if err != nil {
+			return "", err
+		}
+		return src.Name, nil
+
 	case codec.KindDataset:
 		// The loader already ran definition.Validate.
 		ds, err := codec.Loader{}.Dataset(raw)

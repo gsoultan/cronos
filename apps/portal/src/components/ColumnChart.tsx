@@ -1,13 +1,14 @@
 import { useState } from 'react'
 import { ChartFrame } from './ChartFrame'
 import { ChartTooltip, TooltipRow } from './ChartTooltip'
-import { axisTick, currency, monthLabel } from '../lib/format'
+import { axisTick, currency } from '../lib/format'
 import { SERIES } from '../theme/theme'
 import { useMeasure } from '../lib/useMeasure'
 import { niceTicks } from '../lib/scale'
 
 export interface ColumnDatum {
-  month: string
+  /** What the band is called. A month, a customer, a status — the caller says. */
+  label: string
   [series: string]: string | number
 }
 
@@ -17,6 +18,24 @@ interface Props {
   data: ColumnDatum[]
   series: readonly string[]
   format?: (n: number) => string
+  /*
+     How to write a band's label.
+
+     Identity by default, and that is the important half. This axis used to run
+     every label through monthLabel — the datum's key was `month`, so a bar
+     chart was assumed to be over time. Group a real report by customer and the
+     labels arrive as "c-1", "c-2", "c-3"; `new Date("c-1")` is not an error in
+     JavaScript, it is the 1st of January 2001. So the chart quietly relabelled
+     three customers as three months and drew it with a straight face.
+
+     Anything a lenient parser accepts was at risk: "12" became December, and a
+     status or a region survived only because it happened to be unparseable.
+
+     A live report needs no formatter at all — the engine already wrote "May
+     2026", because it is the thing that knew the grain. Only the sample view,
+     whose fixture holds ISO dates, asks for one.
+  */
+  labelText?: (label: string) => string
 }
 
 const H = 280
@@ -26,7 +45,8 @@ const GAP = 2        // surface gap between stacked segments
 const CAP = 4        // rounded data-end, square at the baseline
 
 /** Stacked columns: part-to-whole over time. */
-export function ColumnChart({ title, subtitle, data, series, format = currency }: Props) {
+export function ColumnChart({ title, subtitle, data, series, format = currency,
+  labelText = (l) => l }: Props) {
   const [ref, width] = useMeasure<HTMLDivElement>()
   const [hover, setHover] = useState<number | null>(null)
 
@@ -66,7 +86,7 @@ export function ColumnChart({ title, subtitle, data, series, format = currency }
                 return { k, si, y0, y1: y(acc), top: si === series.length - 1 }
               })
               return (
-                <g key={d.month} onMouseEnter={() => setHover(i)}
+                <g key={d.label} onMouseEnter={() => setHover(i)}
                   opacity={hover === null || hover === i ? 1 : 0.4}>
                   <rect x={PAD.left + band * i} y={PAD.top} width={band} height={plotH}
                     fill="transparent" />
@@ -75,7 +95,7 @@ export function ColumnChart({ title, subtitle, data, series, format = currency }
                       d={roundedTop(cx(i) - barW / 2, y1, barW, Math.max(0, y0 - y1 - GAP), top ? CAP : 0)} />
                   ))}
                   <text x={cx(i)} y={H - 12} textAnchor="middle" className="chart-axis-text">
-                    {monthLabel(d.month)}
+                    {labelText(d.label)}
                   </text>
                 </g>
               )
@@ -85,7 +105,7 @@ export function ColumnChart({ title, subtitle, data, series, format = currency }
 
         {hover !== null && width > 0 && (
           <ChartTooltip x={cx(hover)} y={y(totals[hover]!) - 12}
-            heading={monthLabel(data[hover]!.month)}>
+            heading={labelText(data[hover]!.label)}>
             {series.map((k, si) => (
               <TooltipRow key={k} color={SERIES[si]} label={k}
                 value={format(data[hover]![k] as number)} />

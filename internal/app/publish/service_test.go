@@ -168,10 +168,19 @@ func TestPublishRefuses(t *testing.T) {
 				"{field: profit, aggregate: sum}\n        - kind: chart", 1),
 			query.ErrBadTemplate, `"profit" is not a field`},
 
-		// Datasources are read by the driver registry, not stored here.
+		/*
+		   A kind nothing in this build has ever heard of.
+
+		   This case used to say DataSource, on the reasoning that datasources
+		   were "read by the driver registry, not stored here" — which was true
+		   of the file store and false of the SQL one, and meant the portal's
+		   wizard for connecting a database ended in a 400 every time somebody
+		   used it. Both stores hold the kind now; what stays refused is a
+		   document naming something that does not exist.
+		*/
 		{"a kind this build does not store",
-			strings.Replace(dataset, "kind: Dataset", "kind: DataSource", 1),
-			publish.ErrUnsupported, "DataSource"},
+			strings.Replace(dataset, "kind: Dataset", "kind: Notebook", 1),
+			publish.ErrUnsupported, "Notebook"},
 	}
 
 	for _, c := range cases {
@@ -274,5 +283,60 @@ func TestAScheduleRunningAReportNobodyHasIsRefused(t *testing.T) {
 		[]byte(strings.Replace(schedule, "report: billing", "report: ghost", 1)), admin())
 	if !errors.Is(err, publish.ErrNotFound) {
 		t.Fatalf("got %v, want ErrNotFound", err)
+	}
+}
+
+/*
+A datasource can be published.
+
+The switch that decides what this service accepts listed Dataset, Report and
+Schedule and not DataSource — while the codec had the kind, the loader parsed
+one, and the file store kept them. So the portal's four-step wizard for
+connecting a database ended, every time, in a 400 saying "unsupported kind",
+one screen after telling somebody their connection test had passed.
+
+Found by driving the editor against a real server, which is also the only way it
+could have been: nothing in the portal's own suites publishes, and no fixture
+here had ever offered this kind.
+*/
+func TestADataSourceCanBePublished(t *testing.T) {
+	svc, _, _ := setup(t)
+
+	out, err := svc.Publish(context.Background(), []byte(`apiVersion: cronos.dev/v1
+kind: DataSource
+metadata:
+  name: warehouse
+spec:
+  driver: sqlite
+  dsn: "file:demo.db"
+`), admin())
+	if err != nil {
+		t.Fatalf("publishing a datasource: %v", err)
+	}
+	if out.Kind != "DataSource" || out.Name != "warehouse" {
+		t.Fatalf("stored as %s/%s", out.Kind, out.Name)
+	}
+}
+
+// And a bad one is still refused, by the same validation every other path uses.
+// Accepting the kind must not mean accepting anything wearing it.
+func TestABadDataSourceIsStillRefused(t *testing.T) {
+	svc, _, _ := setup(t)
+
+	for _, bad := range []string{
+		// A driver this build cannot open.
+		"driver: cassandra\n  dsn: \"x\"",
+		// No connection string at all.
+		"driver: sqlite",
+	} {
+		_, err := svc.Publish(context.Background(), []byte(`apiVersion: cronos.dev/v1
+kind: DataSource
+metadata:
+  name: warehouse
+spec:
+  `+bad+"\n"), admin())
+		if err == nil {
+			t.Fatalf("accepted %q", bad)
+		}
 	}
 }

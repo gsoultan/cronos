@@ -124,13 +124,13 @@ func Serve(log *slog.Logger) error {
 		Projects: projects, Signer: signer,
 		Origins: cfg.Origins, Log: log,
 
-		Publish: publishingFor(runtimes),
+		Publish: publishingBy(projects, runtimes),
 		Store:   defs,
 		Admin:   api.NewAdminKey(cfg.AdminKey, cfg.Org, cfg.Project),
 
 		Runs:      history(records),
 		Users:     users(records),
-		Shares:    sharingFor(records, signer, runtimes),
+		Shares:    sharingFor(records, signer, projects, runtimes),
 		Roster:    roster(records),
 		Directory: directory(records),
 
@@ -141,7 +141,7 @@ func Serve(log *slog.Logger) error {
 		Invitations: invitations(records),
 		Post:        postman(cfg, log),
 		Portal:      cfg.Portal,
-		Sends:       sendingFor(cfg, runtimes, log),
+		Sends:       sendingFor(cfg, projects, runtimes, log),
 		Channels:    channelNames(cfg, log),
 
 		Ready:   readinessFor(records, runtimes),

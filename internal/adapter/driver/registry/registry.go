@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -103,7 +104,46 @@ func open(def definition.DataSource, secrets secret.Resolver) (*source, error) {
 	db.SetMaxIdleConns(def.Pool.Idle())
 	db.SetConnMaxIdleTime(def.Pool.IdleFor())
 	db.SetConnMaxLifetime(def.Pool.LifetimeOf())
+
+	/*
+	   An in-memory database lives exactly as long as a connection to it.
+
+	   SQLite destroys a `mode=memory` database when its last connection closes,
+	   and the pool above is built to close connections: a few minutes idle and
+	   every one of them is reaped. The next query then opens a *new*, empty
+	   database and the report fails with "no such table" — against a source
+	   whose Test button still passes, because connecting is not the problem.
+
+	   The demo warehouse is exactly this, so the symptom is somebody opening
+	   the demo, reading a report, coming back after lunch and finding every
+	   report broken with no error anybody caused. Which is what happened here,
+	   between one screenshot and the next.
+
+	   Pinning the pool is the whole fix: one connection that is never idle-timed
+	   and never aged out keeps the database alive for the life of the process.
+	   It costs one connection to a database that is in this process's own
+	   memory, and it applies to nothing else — a file or a server survives an
+	   idle pool perfectly well, and their operators are the reason the limits
+	   above exist.
+	*/
+	if memoryDatabase(dsn) {
+		db.SetConnMaxIdleTime(0)
+		db.SetConnMaxLifetime(0)
+		if def.Pool.Idle() < 1 {
+			db.SetMaxIdleConns(1)
+		}
+	}
 	return &source{def: def, db: db, dialect: dialect}, nil
+}
+
+// memoryDatabase reports whether a DSN names a database that exists only while
+// something is connected to it.
+//
+// Matched on the parameter rather than on the driver: `mode=memory` is how
+// SQLite spells it, `:memory:` is the older form, and a source that says
+// neither is on disk or on a server either way.
+func memoryDatabase(dsn string) bool {
+	return strings.Contains(dsn, "mode=memory") || strings.Contains(dsn, ":memory:")
 }
 
 // Engine resolves how to compile and run queries for a dataset.

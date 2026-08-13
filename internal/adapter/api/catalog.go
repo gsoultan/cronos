@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
@@ -58,6 +59,64 @@ type DatasetSummary struct {
 	// The one property of a dataset somebody should not have to open the file
 	// to learn.
 	RowScoped bool `json:"rowScoped"`
+	/*
+	   Columns is the field list, for the one caller that needs it.
+
+	   The counts above are what a browsing interface wants; the report builder
+	   wants the fields themselves, because every block editor it draws is a
+	   choice among them. Until now it had no way to ask, so it read a fixture
+	   of two datasets with invented columns — which is why a project holding
+	   five offered a choice of two, and why picking one gave you the fixture's
+	   columns rather than your own.
+
+	   Carried here rather than behind a second endpoint because the caller has
+	   already made this request: a builder that fetched per dataset would fetch
+	   on every change of the picker, to draw a control that has to be complete
+	   before it is opened.
+
+	   Datasets in a project are tens and their fields are tens, so this is a
+	   few kilobytes on a request the portal makes once a minute. A deployment
+	   where that is not true has a catalogue nobody can browse either.
+	*/
+	Columns []Column `json:"columns,omitempty"`
+	// Parameters are what a dataset takes, so a report can supply them and a
+	// schedule can bind them. Same argument as Columns: the caller choosing
+	// them is choosing among a known set.
+	Parameters []Parameter `json:"parameters,omitempty"`
+}
+
+/*
+Column is a field as an interface needs to offer it.
+
+definition.Field with the parts that only mean something to the engine left
+out — an aggregate is how a measure is computed, not something to show
+somebody choosing what to chart, and CurrencyField names another column rather
+than describing this one.
+*/
+type Column struct {
+	Name  string `json:"name"`
+	Label string `json:"label,omitempty"`
+	Type  string `json:"type"`
+	Role  string `json:"role"`
+	// Format is how the value is rendered, and matters here because a builder
+	// showing "Amount" beside "Days late" should not offer to sum them the
+	// same way.
+	Format string `json:"format,omitempty"`
+	// Hidden fields stay out of a builder and remain available to row scope
+	// predicates and joins. Reported rather than dropped, so the one interface
+	// that needs them — a filter over an id nobody charts — can have them.
+	Hidden bool `json:"hidden,omitempty"`
+}
+
+// Parameter is a dataset's input, as something to bind.
+type Parameter struct {
+	Name     string   `json:"name"`
+	Label    string   `json:"label,omitempty"`
+	Type     string   `json:"type"`
+	Required bool     `json:"required,omitempty"`
+	Multiple bool     `json:"multiple,omitempty"`
+	Values   []string `json:"values,omitempty"`
+	Default  string   `json:"default,omitempty"`
 }
 
 type ReportSummary struct {
@@ -165,15 +224,31 @@ func (c *CatalogHandler) build(project *Project) Catalog {
 			readers[s.Ref]++
 		}
 		measures := 0
+		columns := make([]Column, 0, len(ds.Fields))
 		for _, f := range ds.Fields {
 			if f.Role == definition.Measure {
 				measures++
 			}
+			columns = append(columns, Column{
+				Name: f.Name, Label: f.Label, Type: f.Type,
+				Role: string(f.Role), Format: f.Format, Hidden: f.Hidden,
+			})
+		}
+		params := make([]Parameter, 0, len(ds.Params))
+		for _, p := range ds.Params {
+			params = append(params, Parameter{
+				Name: p.Name, Label: p.Label, Type: string(p.Type),
+				Required: p.Required, Multiple: p.Multiple, Values: p.Values,
+				// A default reaches a browser as text, because that is what a
+				// control holds. Its type is already stated beside it.
+				Default: defaultText(p.Default),
+			})
 		}
 		out.Datasets = append(out.Datasets, DatasetSummary{
 			Name: ds.Name, Title: ds.Title, Description: ds.Description, Sources: names,
 			Fields: len(ds.Fields), Measures: measures, Params: len(ds.Params),
 			RowScoped: len(ds.RowLevelSecurity) > 0,
+			Columns:   columns, Parameters: params,
 		})
 	}
 
@@ -235,4 +310,17 @@ func channels(s definition.Schedule) []string {
 		out = append(out, d.Via)
 	}
 	return out
+}
+
+// defaultText renders a param's default as the text a control holds.
+//
+// fmt.Sprint rather than a type switch: a default is whatever YAML decoded,
+// and the alternative is a switch that has to be extended every time somebody
+// writes `default: 30` where the last person wrote `default: "30"`. A nil
+// default is the empty string, which is how "there isn't one" reaches a form.
+func defaultText(v any) string {
+	if v == nil {
+		return ""
+	}
+	return fmt.Sprint(v)
 }

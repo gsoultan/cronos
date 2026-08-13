@@ -4,7 +4,7 @@ import { ColumnChart } from '../ColumnChart'
 import { LineChart } from '../LineChart'
 import { DataTable } from '../DataTable'
 import { sampleRows } from '../../lib/sampleRows'
-import { currency } from '../../lib/format'
+import { currency, monthLabel } from '../../lib/format'
 import type { Field, Tile } from '../../lib/types'
 
 /**
@@ -48,7 +48,8 @@ export function BlockPreview({ block, fields }: { block: Tile; fields: Field[] }
       return (
         <ColumnChart title={block.title}
           subtitle={group ? `By ${group.label.toLowerCase()}` : undefined}
-          data={series.map((s) => ({ month: s.month, Value: s.value }))}
+          data={series.map((s) => ({ label: s.month, Value: s.value }))}
+          labelText={monthLabel}
           series={['Value']} />
       )
 

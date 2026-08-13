@@ -75,7 +75,7 @@ function Block({ block, view, applied }: {
       <div>
         <ColumnChart
           title={block.title}
-          data={block.series.map((s) => ({ month: s.label, value: s.value }))}
+          data={bands(block.series)}
           series={['value']}
           format={(n) => formatted(block, n)}
         />
@@ -108,6 +108,23 @@ function Block({ block, view, applied }: {
       <p className="p-4 text-ink-secondary">{block.value}</p>
     </Panel>
   )
+}
+
+/**
+ * A chart's bands, keeping the server's label exactly as written.
+ *
+ * Exported because this one line is the whole guarantee and it is worth a test.
+ * The engine wrote the label — it knew whether the axis was a month or a
+ * customer, and what to call it in either case. The portal's job is to draw it.
+ *
+ * It did not, for as long as the datum's key was called `month`: the axis ran
+ * every label through a date formatter, so a report grouped by customer came
+ * back as "c-1", "c-2", "c-3" and was drawn as January, February and March
+ * 2001. JavaScript parses "c-1" as a date rather than refusing it, so there was
+ * no error anywhere — just three customers wearing three months.
+ */
+export function bands(series: NonNullable<ReportBlock['series']>): { label: string; value: number }[] {
+  return series.map((s) => ({ label: s.label, value: s.value }))
 }
 
 /**

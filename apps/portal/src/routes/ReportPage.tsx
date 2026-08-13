@@ -15,7 +15,7 @@ import {
   billedByMonth, collectionsTrend, datasets, invoiceRows, outstandingTrend,
   overdueCountTrend, reports, STATUSES,
 } from '../lib/mock'
-import { currency } from '../lib/format'
+import { currency, monthLabel } from '../lib/format'
 import { useRowWorker } from '../lib/useRowWorker'
 import { useReport } from '../lib/useReport'
 import type { RunFilters } from '../lib/api'
@@ -134,7 +134,7 @@ function SampleReport({ name }: { name: string }) {
 
           <div className="mb-6 grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(min(400px,100%),1fr))]">
             <ColumnChart title="Billed by month" subtitle="Split by invoice status"
-              data={billedByMonth} series={STATUSES} />
+              data={billedByMonth} series={STATUSES} labelText={monthLabel} />
             <LineChart title="Collection rate" subtitle="Share of invoices paid within terms"
               data={collectionsTrend} target={{ value: 93, label: 'Target' }} />
           </div>

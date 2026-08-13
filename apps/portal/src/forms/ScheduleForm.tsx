@@ -9,7 +9,7 @@ import { NumberInput, Select, Switch, TextInput } from '@mantine/core'
 import { Field, fieldError } from '../components/form/Field'
 import { FormActions, FormSection } from '../components/form/FormShell'
 import { CRON_PRESETS, cronToText } from '../lib/cronText'
-import { datasets, reports } from '../lib/mock'
+import { useDatasets, useReportChoices } from '../lib/useDatasets'
 import { all, cron as cronRule, email, required } from '../lib/validators'
 
 interface Props {
@@ -65,6 +65,11 @@ export function ScheduleForm({ onDone, onCancel, initial }: Props) {
   })
 
   const v = useStore(form.store, (s) => s.values)
+  /* The project's own reports and datasets. Both pickers listed a fixture's
+     two entries until the portal was connected to its own API — see
+     useDatasets. */
+  const { datasets } = useDatasets()
+  const { reports } = useReportChoices()
   const burstDataset = datasets.find((d) => d.name === v.burstDataset)
   const recipients = burst ? 812 : 1
   const ready = v.report !== '' && (burst ? !!v.burstDataset && !!v.recipientField : !!v.to)

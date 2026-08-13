@@ -400,7 +400,20 @@ function str(v: Yaml): string { return typeof v === 'string' ? v : v == null ? '
 function num(v: Yaml): number | undefined { return typeof v === 'number' ? v : undefined }
 
 /** What the portal's picker calls a driver. Several kinds share one. */
-const KINDS: Record<string, string> = { postgres: 'postgres', mysql: 'mysql', 'object-store': 'objectstore' }
+/*
+KINDS maps a stored driver back to the card the picker shows.
+
+Only the names that differ need an entry — everything else falls through as
+itself, which is why `sqlserver` works without one. What that fallthrough cannot
+do is invent a card for a driver the picker has none for: `sqlite` landed as the
+kind `sqlite`, matched nothing, and the connect step rendered blank with three
+ticks above it and Continue greyed out. See DataSourceForm.
+*/
+const KINDS: Record<string, string> = {
+  postgres: 'postgres', mysql: 'mysql', 'object-store': 'objectstore',
+  // Both spellings of the same product, as the engine accepts.
+  mssql: 'sqlserver',
+}
 
 /**
  * A datasource.
