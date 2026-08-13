@@ -18,8 +18,10 @@ import {
 import { currency } from '../lib/format'
 import { useRowWorker } from '../lib/useRowWorker'
 import { useReport } from '../lib/useReport'
+import type { RunFilters } from '../lib/api'
 import { useCatalog } from '../lib/useCatalog'
 import { LiveReport } from '../components/LiveReport'
+import { ReportFilters } from '../components/ReportFilters'
 
 const EMPTY: Group = { id: 'root', kind: 'group', join: 'and', children: [] }
 
@@ -34,9 +36,14 @@ const EMPTY: Group = { id: 'root', kind: 'group', join: 'and', children: [] }
  */
 export function ReportPage() {
   const { name } = useParams({ from: '/reports/$name' })
-  const live = useReport(name)
+  /* The applied filters live here rather than in ServerReport, because the
+     query is keyed on them and the hook has to run before the branch. */
+  const [filters, setFilters] = useState<RunFilters>({})
+  const live = useReport(name, filters)
 
-  if (live.live) return <ServerReport name={name} query={live} />
+  if (live.live) {
+    return <ServerReport name={name} filters={filters} onFilter={setFilters} query={live} />
+  }
   return <SampleReport name={name} />
 }
 
@@ -151,7 +158,12 @@ function SampleReport({ name }: { name: string }) {
 }
 
 /** A report as the server computed it, with the states a request can be in. */
-function ServerReport({ name, query }: { name: string; query: ReturnType<typeof useReport> }) {
+function ServerReport({ name, filters, onFilter, query }: {
+  name: string
+  filters: RunFilters
+  onFilter: (next: RunFilters) => void
+  query: ReturnType<typeof useReport>
+}) {
   const [sharing, setSharing] = useState(false)
 
   /* The report's own outputs, not the three the format supports. Offering PDF
@@ -207,7 +219,12 @@ function ServerReport({ name, query }: { name: string; query: ReturnType<typeof 
             onClose={() => setSharing(false)} />
         </div>
       )}
-      <LiveReport view={query.data} />
+      {/* The filters the report declares. Present here for the first time:
+          the server has always returned them and always accepted values, and
+          the connected portal never drew a control. */}
+      <ReportFilters filters={query.data.filters ?? []} value={filters} onApply={onFilter} />
+
+      <LiveReport view={query.data} applied={Object.keys(filters)} />
     </>
   )
 }

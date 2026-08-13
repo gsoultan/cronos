@@ -378,8 +378,21 @@ export function deleteDefinition(kind: string, name: string) {
 export interface ReportView {
   title: string
   description?: string
-  filters?: { name: string; label: string; type: string }[]
+  filters?: ReportFilter[]
   blocks: ReportBlock[]
+}
+
+/**
+ * One control on a report's filter bar, as the server declares it.
+ *
+ * `values` is enum only, and is what lets the interface offer a picker rather
+ * than a text box somebody has to guess the spelling for.
+ */
+export interface ReportFilter {
+  name: string
+  label: string
+  type: string
+  values?: string[]
 }
 
 export interface ReportBlock {

@@ -19,7 +19,19 @@ import type { Field } from '../lib/types'
  * renderings of a stat tile would drift, and the one nobody looks at would be
  * the one a customer sees.
  */
-export function LiveReport({ view }: { view: ReportView }) {
+export function LiveReport({ view, applied = [] }: {
+  view: ReportView
+  /*
+     Which filters the reader has actually set.
+
+     The coverage hint below is a property of the report — this block does not
+     read that filter — and it is only *information* once somebody has filtered
+     and a number has not moved. Shown unconditionally it was four identical
+     captions on an unfiltered screen, naming a filter the page did not even
+     offer a control for.
+  */
+  applied?: string[]
+}) {
   const stats = view.blocks.filter((b) => b.kind === 'stat')
   const rest = view.blocks.filter((b) => b.kind !== 'stat')
 
@@ -30,19 +42,23 @@ export function LiveReport({ view }: { view: ReportView }) {
           {stats.map((b, i) => (
             <div key={b.title + i}>
               <StatTile label={b.title} value={b.value ?? '—'} hero={i === 0} />
-              <Unaffected block={b} view={view} />
+              <Unaffected block={b} view={view} applied={applied} />
             </div>
           ))}
         </div>
       )}
       {rest.map((b, i) => (
-        <Block key={b.title + i} block={b} view={view} />
+        <Block key={b.title + i} block={b} view={view} applied={applied} />
       ))}
     </div>
   )
 }
 
-function Block({ block, view }: { block: ReportBlock; view: ReportView }) {
+function Block({ block, view, applied }: {
+  block: ReportBlock
+  view: ReportView
+  applied: string[]
+}) {
   if (block.kind === 'chart') {
     if (block.chart !== 'bar' || !block.series?.length) {
       // A chart type this build does not draw is a normal condition once the
@@ -63,7 +79,7 @@ function Block({ block, view }: { block: ReportBlock; view: ReportView }) {
           series={['value']}
           format={(n) => formatted(block, n)}
         />
-        <Unaffected block={block} view={view} />
+        <Unaffected block={block} view={view} applied={applied} />
       </div>
     )
   }
@@ -82,7 +98,7 @@ function Block({ block, view }: { block: ReportBlock; view: ReportView }) {
           meta={<span>{(block.total ?? block.rows.length).toLocaleString('en')} rows</span>}>
           <DataTable fields={fieldsOf(block)} rows={rowObjects(block)} height={420} />
         </Panel>
-        <Unaffected block={block} view={view} />
+        <Unaffected block={block} view={view} applied={applied} />
       </div>
     )
   }
@@ -103,8 +119,16 @@ function Block({ block, view }: { block: ReportBlock; view: ReportView }) {
  * a filtered screen cannot tell which numbers moved, and will trust the ones
  * that did not.
  */
-function Unaffected({ block, view }: { block: ReportBlock; view: ReportView }) {
-  const ignored = block.coverage?.ignored ?? []
+function Unaffected({ block, view, applied }: {
+  block: ReportBlock
+  view: ReportView
+  applied: string[]
+}) {
+  // Only the ones somebody set. "Not affected by Region" above a screen nobody
+  // has filtered is a fact about the report, and the reader has no question it
+  // answers; the same words after they filter by Region are the difference
+  // between trusting a number and misreading it.
+  const ignored = (block.coverage?.ignored ?? []).filter((n) => applied.includes(n))
   if (ignored.length === 0) return null
 
   const labels = ignored.map((n) => view.filters?.find((f) => f.name === n)?.label ?? n)
