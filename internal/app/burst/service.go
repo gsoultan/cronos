@@ -49,10 +49,16 @@ type StatementResult struct {
 // Result is what a burst reports when it finishes.
 type Result struct {
 	// ID is the run record, so a caller can look up what went where.
-	ID         string   `json:"id,omitempty"`
-	Recipients int      `json:"recipients"`
-	Delivered  int      `json:"delivered"`
-	Failed     []string `json:"failed,omitempty"`
+	ID         string `json:"id,omitempty"`
+	Recipients int    `json:"recipients"`
+	// Delivered is how many recipients have their document, not how many this
+	// attempt sent — the question a run record answers is whether the period
+	// reached everybody.
+	Delivered int `json:"delivered"`
+	// Skipped is how many of those already had it when this attempt started,
+	// which is the difference between a fresh burst and a resumed one.
+	Skipped int      `json:"skipped,omitempty"`
+	Failed  []string `json:"failed,omitempty"`
 }
 
 // Service runs bursts.
@@ -121,6 +127,32 @@ func (b *Service) WithSleep(f func(context.Context, time.Duration) error) *Servi
 func (b *Service) Run(ctx context.Context, s definition.Schedule, run Run,
 	pr principal.Principal) (Result, error) {
 
+	return b.Resume(ctx, s, run, pr, nil)
+}
+
+/*
+Resume runs a burst again, leaving out whoever already has their document.
+
+A burst is one document per recipient, and it can stop halfway: the process was
+deployed over, the grace expired, a warehouse went away, a mail relay refused
+for ten minutes. What is left is the state nobody can reconcile — some customers
+have their statement and some do not, and the only recovery available was to run
+the whole thing again and send a second copy to everyone who already had one.
+
+`done` is keyed by channel and destination together, not by recipient, because
+those are different questions. A customer whose email arrived and whose file
+delivery failed needs the file and not another email, and a burst that treated
+them as one would either send nothing or send both.
+
+The rows nobody needs are skipped before rendering, not after. Resuming eight
+hundred where twenty are outstanding should typeset twenty documents; deciding
+at the delivery step would typeset eight hundred and throw seven hundred and
+eighty away, which on a paginated report is most of the cost of the burst that
+just failed.
+*/
+func (b *Service) Resume(ctx context.Context, s definition.Schedule, run Run,
+	pr principal.Principal, done map[string]bool) (Result, error) {
+
 	record := history.Run{
 		ID: history.NewID(b.now()), Org: pr.OrgID, Project: pr.ProjectID,
 		Schedule: s.Name, Report: s.Report, Output: s.Output,
@@ -141,7 +173,7 @@ func (b *Service) Run(ctx context.Context, s definition.Schedule, run Run,
 		// One document for everybody. Still a burst of one, so the same
 		// rendering and delivery path runs — a second code path here is a
 		// second place for delivery to be subtly different.
-		return b.finish(ctx, record, b.fan(ctx, s, report, []Row{{}}, run, record.ID, pr)), nil
+		return b.finish(ctx, record, b.fan(ctx, s, report, []Row{{}}, run, record.ID, pr, done)), nil
 	}
 
 	rows, err := b.recipient.Rows(ctx, s.Burst.Over.Dataset, s.Params, pr)
@@ -152,7 +184,7 @@ func (b *Service) Run(ctx context.Context, s definition.Schedule, run Run,
 		return Result{}, b.abandon(ctx, record,
 			fmt.Errorf("%w: %q returned no rows", ErrNoRecipients, s.Burst.Over.Dataset))
 	}
-	return b.finish(ctx, record, b.fan(ctx, s, report, rows, run, record.ID, pr)), nil
+	return b.finish(ctx, record, b.fan(ctx, s, report, rows, run, record.ID, pr, done)), nil
 }
 
 // record writes a run, and never fails a burst for it.
@@ -204,7 +236,7 @@ func (b *Service) finish(ctx context.Context, r history.Run, result Result) Resu
 // farm: five thousand recipients eight at a time is a steady process, and five
 // thousand at once is a machine that stops.
 func (b *Service) fan(ctx context.Context, s definition.Schedule, report definition.Report,
-	rows []Row, run Run, runID string, pr principal.Principal) Result {
+	rows []Row, run Run, runID string, pr principal.Principal, done map[string]bool) Result {
 
 	workers := definition.DefaultConcurrency()
 	if s.Burst != nil {
@@ -225,7 +257,7 @@ func (b *Service) fan(ctx context.Context, s definition.Schedule, report definit
 			defer wg.Done()
 			defer func() { <-sem }()
 
-			err := b.one(ctx, s, report, row, run, runID, pr)
+			sent, err := b.one(ctx, s, report, row, run, runID, pr, done)
 
 			mu.Lock()
 			defer mu.Unlock()
@@ -238,34 +270,84 @@ func (b *Service) fan(ctx context.Context, s definition.Schedule, report definit
 				result.Failed = append(result.Failed, err.Error())
 				return
 			}
+			// Counted as delivered either way, because they are: the question
+			// the run record answers is whether this period reached everybody,
+			// not how much work this particular attempt did. Skipped is
+			// reported alongside so the difference is still legible.
 			result.Delivered++
+			if !sent {
+				result.Skipped++
+			}
 		}(i, row)
 	}
 	wg.Wait()
 	return result
 }
 
-// one renders and delivers a single recipient.
+// one renders and delivers a single recipient, and says whether it sent
+// anything — a row whose deliveries all happened already is left alone.
 func (b *Service) one(ctx context.Context, s definition.Schedule, report definition.Report,
-	row Row, run Run, runID string, pr principal.Principal) error {
+	row Row, run Run, runID string, pr principal.Principal, done map[string]bool) (bool, error) {
+
+	specs, err := b.outstanding(s, row, run, done)
+	if err != nil {
+		return false, err
+	}
+	if len(specs) == 0 {
+		// Everything this row needed has already arrived. Nothing is rendered,
+		// nothing is sent, and no delivery row is written — so the audit trail
+		// says exactly which attempt delivered what.
+		return false, nil
+	}
 
 	params, err := b.bind(s, row, run)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	rendered, err := b.documents.Statement(ctx, report, s.Output, params, pr)
 	if err != nil {
-		return fmt.Errorf("render: %w", err)
+		return false, fmt.Errorf("render: %w", err)
 	}
 
-	for _, spec := range s.Deliver {
+	for _, spec := range specs {
 		if err := b.deliver(ctx, s, spec, rendered.Document, row, run, runID); err != nil {
-			return err
+			return true, err
 		}
 	}
-	return nil
+	return true, nil
 }
+
+/*
+outstanding is the deliveries this row still needs.
+
+Resolved before rendering, which is the point: `to` is a template over the row,
+so knowing whether a document is needed costs a string substitution, and
+producing one costs a typesetter.
+*/
+func (b *Service) outstanding(s definition.Schedule, row Row, run Run,
+	done map[string]bool) ([]definition.DeliverSpec, error) {
+
+	if len(done) == 0 {
+		return s.Deliver, nil
+	}
+	out := make([]definition.DeliverSpec, 0, len(s.Deliver))
+	for _, spec := range s.Deliver {
+		to, err := resolve(spec.To, row, run)
+		if err != nil {
+			return nil, Fatal(err)
+		}
+		if done[DeliveredKey(spec.Via, to)] {
+			continue
+		}
+		out = append(out, spec)
+	}
+	return out, nil
+}
+
+// DeliveredKey is history.DeliveredKey, re-exported so a caller assembling a
+// resume does not have to know which package owns the shape of the key.
+func DeliveredKey(via, to string) string { return history.DeliveredKey(via, to) }
 
 // bind resolves the schedule's parameters for this row.
 func (b *Service) bind(s definition.Schedule, row Row, run Run) (map[string]any, error) {

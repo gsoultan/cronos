@@ -26,7 +26,10 @@ type Project struct {
 	Definitions Repository
 	Due         Due
 	Fires       Firing
-	Probes      Probes
+	// Resumes re-sends a period to whoever did not get it. Absent where no
+	// scheduler is armed here, the same as Fires.
+	Resumes Resuming
+	Probes  Probes
 }
 
 /*
@@ -94,6 +97,23 @@ func (o *One) Adopt(org, project string) bool {
 	o.adopted, o.adoptOrg, o.adoptPrj = true, org, project
 	return true
 }
+
+/*
+Serving is the tenancy this process answers for, after any first run.
+
+Exported because the scheduler needs it. A schedule runs as a project member,
+and which project that is was captured from configuration at boot — so a
+deployment set up through /setup recorded every scheduled run under the tenancy
+it had before somebody named it. Those runs are then invisible in the run
+history, because the history is read as the caller's tenant and the caller is in
+the adopted one, and a burst that stopped halfway cannot be resumed because
+nothing can find it.
+
+The same fault publishingFor had, one layer down and quieter: publishing failed
+loudly with "no such project here", and this succeeded and filed the record
+where nobody would look.
+*/
+func (o *One) Serving() (org, project string) { return o.serving() }
 
 // serving is the tenancy this process answers for.
 func (o *One) serving() (string, string) {

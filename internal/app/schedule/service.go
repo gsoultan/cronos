@@ -16,6 +16,10 @@ import (
 type Runner interface {
 	Run(ctx context.Context, s definition.Schedule, run burst.Run,
 		pr principal.Principal) (burst.Result, error)
+	// Resume runs one again, leaving out whoever already has their document.
+	// See Service.Resume.
+	Resume(ctx context.Context, s definition.Schedule, run burst.Run,
+		pr principal.Principal, done map[string]bool) (burst.Result, error)
 }
 
 // Source supplies the schedules to arm.
@@ -513,4 +517,84 @@ func (s *Service) unhold(name string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.running[name] = false
+}
+
+/*
+Resume sends a period's documents to whoever did not get one.
+
+A burst can stop halfway: the process was deployed over, the grace expired, a
+mail relay refused for ten minutes. What that leaves is the state nobody can
+reconcile — some customers have their statement and some do not — and the only
+recovery available was to run the whole thing again, which sends a second copy
+to everybody who already had one. On an invoice that is worse than the gap.
+
+The period comes from the run being resumed rather than from the clock. That is
+the whole point: re-running now would produce this month's statement, and what
+is outstanding is last month's.
+
+`done` is supplied by the caller, which reads it from every attempt at this
+period rather than from the run being resumed. A burst that was cut, resumed,
+and cut again has two sets of deliveries, and a third attempt that saw only one
+of them would send a duplicate to whoever the other reached.
+*/
+func (s *Service) Resume(ctx context.Context, name, periodStart, periodEnd string,
+	done map[string]bool, pr principal.Principal) error {
+
+	var found definition.Schedule
+	for _, sched := range s.source.Schedules() {
+		if sched.Name == name {
+			found = sched
+			break
+		}
+	}
+	if found.Name == "" {
+		return fmt.Errorf("%w: %q", ErrNoSchedule, name)
+	}
+
+	// The same lock a firing takes. Two attempts at one period racing each
+	// other is exactly the double delivery this exists to prevent, and the
+	// skip cannot help — neither has recorded anything the other can see yet.
+	if !s.hold(name) {
+		return fmt.Errorf("%w: %q is already running", ErrRunning, name)
+	}
+	defer s.unhold(name)
+
+	start, err := time.Parse(time.DateOnly, periodStart)
+	if err != nil {
+		return fmt.Errorf("resume: period start %q: %w", periodStart, err)
+	}
+	end, err := time.Parse(time.DateOnly, periodEnd)
+	if err != nil {
+		return fmt.Errorf("resume: period end %q: %w", periodEnd, err)
+	}
+
+	// The same values a firing binds, so a resumed document is the document
+	// that was missed rather than one that merely resembles it — the period in
+	// its heading, the period in its filename, the period in its subject line.
+	run := burst.Run{
+		"periodStart": periodStart,
+		"periodEnd":   periodEnd,
+		"periodLabel": Label(start, end),
+		"period":      Label(start, end),
+		// When this attempt happened, not when the original did. It is the one
+		// value that honestly differs, and a run record claiming otherwise
+		// would make the history unreadable.
+		"firedAt": s.now().Format(time.RFC3339),
+	}
+
+	result, err := s.runner.Resume(ctx, found, run, s.owner.Owner(found), done)
+	if err != nil {
+		s.log.Error("resume failed", "schedule", name, "period", run["periodLabel"], "err", err)
+		return err
+	}
+	s.log.Info("resumed", "schedule", name, "period", run["periodLabel"],
+		"recipients", result.Recipients, "sent", result.Delivered-result.Skipped,
+		"already had theirs", result.Skipped, "failed", len(result.Failed))
+	if len(result.Failed) > 0 {
+		s.alert(ctx, found, run["periodLabel"], Alert{
+			Recipients: result.Recipients, Delivered: result.Delivered,
+			Failures: result.Failed,
+		}, true)
+	}
+	return nil
 }

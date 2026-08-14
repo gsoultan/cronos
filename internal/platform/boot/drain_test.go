@@ -90,7 +90,7 @@ that cancels and does not wait.
 func TestStoppingSchedulersAlsoWaitsForThem(t *testing.T) {
 	// No scheduler configured, so this exercises the returned stop itself
 	// rather than any project's loop: it must still be safe and immediate.
-	stop, err := startSchedulers(config.Server{Scheduler: false}, nil, nil, nil, quietLog())
+	stop, err := startSchedulers(config.Server{Scheduler: false}, nil, nil, nil, nil, quietLog())
 	if err != nil {
 		t.Fatal(err)
 	}

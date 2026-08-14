@@ -75,8 +75,9 @@ func channels(cfg config.Server, log *slog.Logger) ([]burst.Channel, error) {
 }
 
 // scheduler wires the burst pipeline behind a cron loop.
-func scheduler(cfg config.Server, org, project string, repo *file.Repository,
-	runner *run.Service, records *sqlstore.Store, log *slog.Logger) (*schedule.Service, error) {
+func scheduler(cfg config.Server, org, project string, serving func() (string, string),
+	repo *file.Repository, runner *run.Service, records *sqlstore.Store,
+	log *slog.Logger) (*schedule.Service, error) {
 
 	chans, err := channels(cfg, log)
 	if err != nil {
@@ -92,7 +93,7 @@ func scheduler(cfg config.Server, org, project string, repo *file.Repository,
 		bursts = bursts.WithHistory(records)
 	}
 
-	sched := schedule.New(repo, bursts, owner{org: org, project: project}, log)
+	sched := schedule.New(repo, bursts, owner{org: org, project: project, serving: serving}, log)
 	if cfg.SchedulerTick > 0 {
 		sched = sched.WithTick(cfg.SchedulerTick)
 	}
@@ -137,13 +138,32 @@ func mailer(chans []burst.Channel) alertemail.Sender {
 // The project is carried rather than read from configuration: a process may
 // serve several, and a schedule that ran as the wrong one would read the wrong
 // warehouse and mail the result to the wrong customers.
-type owner struct{ org, project string }
+/*
+owner is who a scheduled run acts as.
+
+The tenancy is asked for rather than remembered, because it can change once: a
+deployment that starts as default/default and is named through /setup is a
+different project afterwards, and a scheduler still holding the old name files
+every run where the people who own it will never see one.
+
+serving is nil for a deployment that named itself in configuration, which is
+every deployment that cannot be adopted — there the two are the same and asking
+would only be a slower way to get the same answer.
+*/
+type owner struct {
+	org, project string
+	serving      func() (string, string)
+}
 
 func (o owner) Owner(s definition.Schedule) principal.Principal {
+	org, project := o.org, o.project
+	if o.serving != nil {
+		org, project = o.serving()
+	}
 	return principal.Principal{
 		Subject:     "schedule:" + s.Name,
-		OrgID:       o.org,
-		ProjectID:   o.project,
+		OrgID:       org,
+		ProjectID:   project,
 		ProjectRole: principal.ProjectEditor,
 		// A schedule runs as a project member. docs/tenancy.md is explicit
 		// that burst targets rely on membership alone.

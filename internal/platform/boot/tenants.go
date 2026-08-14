@@ -15,6 +15,7 @@ import (
 	sqlstore "github.com/gsoultan/cronos/internal/adapter/store/sql"
 	"github.com/gsoultan/cronos/internal/app/publish"
 	"github.com/gsoultan/cronos/internal/app/run"
+	"github.com/gsoultan/cronos/internal/app/schedule"
 	"github.com/gsoultan/cronos/internal/app/send"
 	"github.com/gsoultan/cronos/internal/app/share"
 	"github.com/gsoultan/cronos/internal/core/principal"
@@ -175,7 +176,8 @@ a customer list receives a document while the other half does not — the state
 that is worst to reconcile, because nobody can tell from outside which half.
 */
 func startSchedulers(cfg config.Server, runtimes map[tenant]*runtime,
-	records *sqlstore.Store, watch *api.Metrics, log *slog.Logger) (stop func(), err error) {
+	records *sqlstore.Store, watch *api.Metrics, projects api.Projects,
+	log *slog.Logger) (stop func(), err error) {
 
 	/*
 	   One thing to call, and it both cancels and waits.
@@ -200,15 +202,46 @@ func startSchedulers(cfg config.Server, runtimes map[tenant]*runtime,
 		}
 	}
 
-	if !cfg.Scheduler {
-		return stop, nil
+	/*
+	   Where the tenancy can change, the scheduler asks rather than remembers.
+
+	   Only api.One can be adopted — a multi-project deployment names each of
+	   them in configuration and none of those can be renamed by a request. So
+	   this is nil for Many, where asking would be a slower way to get the same
+	   answer.
+	*/
+	var serving func() (string, string)
+	if one, ok := projects.(*api.One); ok {
+		serving = one.Serving
 	}
+
 	for t, rt := range runtimes {
-		sched, err := scheduler(cfg, t.org, t.project, rt.repo, rt.project.Runner, records, log)
+		sched, err := scheduler(cfg, t.org, t.project, serving, rt.repo, rt.project.Runner, records, log)
 		if err != nil {
 			// The schedulers already started keep running until the caller
 			// stops them; returning stop alongside the error means it can.
 			return stop, fmt.Errorf("%s: %w", t, err)
+		}
+
+		/*
+		   Resuming works whether or not this process schedules.
+
+		   Built before the CRONOS_SCHEDULER check on purpose. Repairing a
+		   partly-delivered burst is an operator action, and making it work only
+		   on the replica that happens to be leading would mean hunting for that
+		   replica during the incident. A deployment that has turned scheduling
+		   off entirely — often because something went wrong — still has the
+		   partial runs to repair.
+
+		   Nothing fires by itself here: the loop below is what does that, and
+		   it only starts when asked.
+		*/
+		if records != nil {
+			rt.project.Resumes = resumer{records: records, sched: sched}
+		}
+
+		if !cfg.Scheduler {
+			continue
 		}
 		/*
 		   Leadership, where the store can arbitrate it.
@@ -506,4 +539,43 @@ func publishingBy(projects api.Projects, runtimes map[tenant]*runtime) api.Publi
 		byProject[rt.project] = rt.publish
 	}
 	return publishingFor{projects: projects, byProject: byProject}
+}
+
+/*
+resumer re-sends a period to whoever did not get it.
+
+Here rather than in the API package because it is the only place that holds all
+three pieces: the store that knows what was delivered, the scheduler that knows
+the schedule, and the burst runner that does the sending. The API knows none of
+them and asks through a port.
+
+Absent without a store, which is a file-backed deployment: there is no run
+history to resume from, and the endpoint answers 404 like any other run.
+*/
+type resumer struct {
+	records *sqlstore.Store
+	sched   *schedule.Service
+}
+
+func (r resumer) Resume(ctx context.Context, pr principal.Principal, runID string) error {
+	// Tenant-scoped, so a run id from another project reads as absent rather
+	// than as forbidden — the difference tells a caller it exists.
+	run, _, err := r.records.Run(ctx, pr, runID)
+	if err != nil {
+		return err
+	}
+
+	/*
+	   Every attempt at this period, not just the run being resumed.
+
+	   A burst that was cut, resumed, and cut again has two sets of deliveries.
+	   A third attempt reading only the run it was pointed at would send a
+	   duplicate to everybody the other attempt reached — which is the failure
+	   this whole path exists to prevent, arrived at by resuming twice.
+	*/
+	done, err := r.records.DeliveredFor(ctx, pr, run.Schedule, run.PeriodStart, run.PeriodEnd)
+	if err != nil {
+		return err
+	}
+	return r.sched.Resume(ctx, run.Schedule, run.PeriodStart, run.PeriodEnd, done, pr)
 }

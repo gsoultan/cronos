@@ -53,7 +53,8 @@ const (
 	ActionPassword      = "auth.password"
 	// Sending a report to somebody by name. Recorded with every recipient:
 	// "who was this emailed to" is a question an audit exists to answer.
-	ActionSend = "report.send"
+	ActionSend   = "report.send"
+	ActionResume = "run.resume"
 )
 
 // Results. Two, because an audit that only records what succeeded answers the

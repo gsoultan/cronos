@@ -112,13 +112,21 @@ func Serve(log *slog.Logger) error {
 	   stopping the schedulers first would fail the run the drain exists to let
 	   finish.
 	*/
-	stopSchedulers, err := startSchedulers(cfg, runtimes, records, metrics, log)
+	/*
+	   Before the schedulers, because they ask it who they are.
+
+	   A schedule runs as a project member, and which project that is can change
+	   once — a deployment named through /setup is a different tenancy
+	   afterwards. Built here so the scheduler reads the answer rather than
+	   remembering the one it was born with.
+	*/
+	projects := projectsFor(runtimes, several)
+
+	stopSchedulers, err := startSchedulers(cfg, runtimes, records, metrics, projects, log)
 	defer stopSchedulers()
 	if err != nil {
 		return err
 	}
-
-	projects := projectsFor(runtimes, several)
 
 	// Before the first request can arrive, and said out loud in the line
 	// below: a deployment recording nothing should be a deployment somebody

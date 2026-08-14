@@ -397,9 +397,12 @@ func Routes(d Deps) http.Handler {
 		// Behind the admin key and never the embed token: a run record names
 		// every recipient of a burst.
 		if d.Runs != nil {
-			h := NewRuns(d.Runs, author, d.Log)
+			h := NewRuns(d.Runs, author, d.Log).WithProjects(d.Projects)
 			mux.Handle("/v1/runs", h)
 			mux.Handle("/v1/runs/{id}", h)
+			// The recovery for a burst that stopped halfway: re-send the
+			// period to whoever did not get it, and to nobody else.
+			mux.Handle("/v1/runs/{id}/resume", h)
 		}
 	}
 

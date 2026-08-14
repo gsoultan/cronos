@@ -111,6 +111,14 @@ jobs:
           CRONOS_POSTGRES_DSN: postgres://cronos:cronos@localhost:5432/cronos?sslmode=disable
         run: ./scripts/live-leader.sh
 
+      # A burst that stopped halfway, resumed. Both directions: the customers
+      # who were missed get theirs, and the ones who already had one are not
+      # sent a second.
+      - name: resuming a partly delivered burst
+        env:
+          CRONOS_POSTGRES_DSN: postgres://cronos:cronos@localhost:5432/cronos?sslmode=disable
+        run: ./scripts/live-resume.sh
+
   # Federation needs cgo and a 460 MB module download, so it is its own job:
   # every other check should not wait for it, and it should not be the reason
   # a typo in a comment takes six minutes to fail.

@@ -177,6 +177,27 @@ If that happens often the schedule is too big for one instance, rather than the
 grace being too short — raising it past the orchestrator's patience only adds
 confusion before the same `SIGKILL`.
 
+### Repairing a burst that stopped halfway
+
+Whatever cut it — the grace, a warehouse, a mail relay refusing for ten minutes
+— the run is recorded as `partial` and names how many were reached. Resume it:
+
+```
+POST /v1/runs/{id}/resume
+```
+
+It sends the same period's documents to whoever does not have one, and to
+nobody else. The skip is read from every attempt at that period rather than from
+the run you point at, so a burst that was cut, resumed and cut again can be
+resumed a third time without anybody receiving two.
+
+Only the deliveries that worked count as done: a failed one is exactly what a
+resume exists to retry. Rows nobody needs are skipped before rendering, so
+resuming eight hundred where twenty are outstanding typesets twenty documents.
+
+Available on any replica with run history, not only the one that schedules —
+during an incident, hunting for the leader is the last thing anybody needs.
+
 ## Dependencies
 
 `govulncheck` and `bun audit` run in CI and fail a build. govulncheck traces
@@ -535,6 +556,7 @@ constant, an enrolment wizard rendering inside the account page.
 | `live-disconnect.sh` | hanging up on a slow report, watched from `pg_stat_activity` | go, Postgres, psql |
 | `live-scheduler-stalls.sh` | a scheduler that stops inside a process that stays healthy | go |
 | `live-leader.sh` | three replicas all armed, one scheduling, and failover | go, typst, Postgres |
+| `live-resume.sh` | resuming a partly delivered burst, without sending anybody two | go, typst, Postgres |
 | `live-sso.sh` | a whole OIDC sign-in and single log-out | Keycloak |
 | `live-sqlserver.sh` | a report against SQL Server | SQL Server |
 | `live-portal-2fa.sh` | the same enrolment, through a browser | bun, chrome |

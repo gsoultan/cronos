@@ -110,11 +110,24 @@ type runner struct {
 	block  chan struct{}
 	result burst.Result
 	err    error
+	// resumedWith is the skip set the last Resume was given.
+	resumedWith map[string]bool
 	// watch reports what the run's context said a moment after it started.
 	// A runner blocked on a channel is not a runner whose context was
 	// cancelled, which is how a shutdown that cancelled every in-flight render
 	// passed a test that only ever blocked one.
 	watch chan error
+}
+
+// Resume records what it was told is already done, so a test can assert the
+// skip set reached the runner rather than that it was merely computed.
+func (r *runner) Resume(ctx context.Context, s definition.Schedule, run burst.Run,
+	pr principal.Principal, done map[string]bool) (burst.Result, error) {
+
+	r.mu.Lock()
+	r.resumedWith = done
+	r.mu.Unlock()
+	return r.Run(ctx, s, run, pr)
 }
 
 func (r *runner) Run(ctx context.Context, _ definition.Schedule, run burst.Run,
