@@ -78,6 +78,17 @@ jobs:
       - name: licence boundary
         run: ./scripts/check-license-boundary.sh
 
+      # A browser tab closed on a slow dashboard must not leave a query running
+      # on somebody else's warehouse. The chain from request context to the
+      # wire is long and every unit test along it owns both ends; Postgres is
+      # the only party that can say whether the statement is still there.
+      - name: hanging up on a slow report
+        env:
+          CRONOS_POSTGRES_DSN: postgres://cronos:cronos@localhost:5432/cronos?sslmode=disable
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
+          ./scripts/live-disconnect.sh
+
   # Federation needs cgo and a 460 MB module download, so it is its own job:
   # every other check should not wait for it, and it should not be the reason
   # a typo in a comment takes six minutes to fail.

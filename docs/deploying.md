@@ -434,12 +434,14 @@ constant, an enrolment wizard rendering inside the account page.
 | `live-require-2fa.sh` | turning the requirement on, and the enrolment-only session | go, python3 |
 | `live-invite.sh` | inviting somebody and reading the mail | a mail server |
 | `live-drain.sh` | SIGTERM in the middle of a burst of eight hundred | go, typst |
+| `live-disconnect.sh` | hanging up on a slow report, watched from `pg_stat_activity` | go, Postgres, psql |
 | `live-sso.sh` | a whole OIDC sign-in and single log-out | Keycloak |
 | `live-sqlserver.sh` | a report against SQL Server | SQL Server |
 | `live-portal-2fa.sh` | the same enrolment, through a browser | bun, chrome |
 
-All of them run in CI on every push. The first six share a job and take about a
-minute; SQL Server, Keycloak and the browser suites have their own, because a
+All of them run in CI on every push. Six share a job and take about a minute,
+`live-disconnect.sh` runs beside the Go tests because it wants the same
+Postgres; SQL Server, Keycloak and the browser suites have their own, because a
 1.7 GB image or a two-minute realm setup should never be the reason a typo takes
 ten minutes to fail.
 

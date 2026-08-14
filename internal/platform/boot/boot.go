@@ -191,9 +191,55 @@ func seed(db *sql.DB, path string, log *slog.Logger) error {
 // half happened, which is worse to reconcile than one that did not start.
 func listen(addr string, h http.Handler, log *slog.Logger) error {
 	srv := &http.Server{
-		Addr:              addr,
-		Handler:           h,
+		Addr:    addr,
+		Handler: h,
+
+		// Headers, so a connection that opens and says nothing cannot hold a
+		// goroutine for ever. The classic slow-loris.
 		ReadHeaderTimeout: 10 * time.Second,
+
+		/*
+		   The body too, which the header timeout does not cover.
+
+		   Every handler bounds how large a body may be; none of them bounds how
+		   long it may take to arrive. A client sending four kilobytes at a byte
+		   a second holds a goroutine and a connection for over an hour, and a
+		   thousand of them cost nothing to open.
+
+		   A minute is generous for the largest thing this API accepts, which is
+		   a definition somebody typed.
+		*/
+		ReadTimeout: time.Minute,
+
+		/*
+		   And a keep-alive connection nobody is using is closed.
+
+		   This is the one whose absence is invisible: with ReadTimeout unset,
+		   IdleTimeout falls back to it, and both were zero — so a connection
+		   that finished its request and went quiet was held until the operating
+		   system noticed, which for a client that simply vanished is never.
+		   Behind a load balancer that opens a pool per instance, the count only
+		   goes up.
+
+		   Two minutes, above the 60-second idle most proxies use, so the proxy
+		   is the one that closes and no request lands on a connection this side
+		   is retiring.
+		*/
+		IdleTimeout: 2 * time.Minute,
+
+		/*
+		   WriteTimeout is deliberately not set.
+
+		   It bounds the whole exchange, not just the write, so any value would
+		   be a cap on how long a report may take — and a report is a query
+		   against somebody's warehouse followed by a typesetter. A monthly
+		   statement over a large customer legitimately takes longer than
+		   anything that could be defended as a default here.
+
+		   What bounds the work is bounded where the work is: the executor
+		   carries the datasource's own statement timeout, and the client's
+		   disconnect cancels the query.
+		*/
 	}
 
 	stop := make(chan os.Signal, 1)
