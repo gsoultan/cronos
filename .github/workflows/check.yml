@@ -119,6 +119,14 @@ jobs:
           CRONOS_POSTGRES_DSN: postgres://cronos:cronos@localhost:5432/cronos?sslmode=disable
         run: ./scripts/live-resume.sh
 
+      # The restore drill from docs/deploying.md, run rather than described. A
+      # backup nobody has restored is a hypothesis, and what breaks one is a
+      # schema change — which the forward path never notices.
+      - name: restoring a backup, and serving from it
+        env:
+          CRONOS_POSTGRES_DSN: postgres://cronos:cronos@localhost:5432/cronos?sslmode=disable
+        run: ./scripts/live-restore.sh
+
   # Federation needs cgo and a 460 MB module download, so it is its own job:
   # every other check should not wait for it, and it should not be the reason
   # a typo in a comment takes six minutes to fail.

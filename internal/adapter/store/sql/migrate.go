@@ -252,6 +252,40 @@ CREATE TABLE IF NOT EXISTS cronos_policies (
   PRIMARY KEY (org, project)
 );`,
 	},
+	{
+		ID:   9,
+		Name: "the tenancy a first run named",
+		/*
+		   What a deployment calls itself, once somebody has told it.
+
+		   /setup adopted a name in memory and nowhere else, so the deployment
+		   forgot it on the next restart. The store had already been re-keyed to
+		   the new tenancy, and the process came back believing it served the
+		   configured one — which meant an empty store for its tenant, the
+		   definitions directory adopted a second time under the old name, and
+		   an administrator whose token said acme/finance reading "you do not
+		   have access to this project" on a deployment that had been working
+		   ten seconds earlier.
+
+		   Every deployment set up through the browser broke on its first
+		   restart. Nothing caught it because nothing restarted one: every check
+		   here set a deployment up and then used it.
+
+		   One row or none, like cronos_setup beside it. A separate table rather
+		   than two columns on that one because migrations are append-only and
+		   every one of them has to be idempotent — ALTER TABLE ADD COLUMN is
+		   not, since Schema() is the concatenation of all of them.
+		*/
+		SQL: `
+CREATE TABLE IF NOT EXISTS cronos_tenancy (
+  -- Always 1. The table holds one row or none, and which of those it is is
+  -- the whole of the state.
+  id      INTEGER PRIMARY KEY,
+  org     TEXT NOT NULL,
+  project TEXT NOT NULL,
+  at      TEXT NOT NULL
+);`,
+	},
 }
 
 // migrationTable records what has run. Created outside the ordered list,

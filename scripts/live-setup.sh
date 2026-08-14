@@ -244,4 +244,64 @@ ok "and they can sign in"
 	die "an ordinary administrator created an account in another organisation"
 ok "and an ordinary administrator cannot do the same"
 
+# -- And it is still that deployment tomorrow ---------------------------------
+#
+# The one thing nothing here ever did: restart.
+#
+# /setup adopted the tenancy in memory and nowhere else, so the process came
+# back believing it served whatever CRONOS_ORG said — found an empty store for
+# that tenant, adopted the definitions directory a second time under the old
+# name, and answered "you do not have access to this project" to the
+# administrator who had set it up. Every deployment set up through the browser
+# broke on its first restart, and every check in this file passed, because each
+# one sets a deployment up and then uses it inside the window where it works.
+
+say "And after a restart"
+
+# Somebody who is still in the project the first run named. The administrator
+# who created it is moved to another project by the platform steps above —
+# which is what those steps are for, and makes them the wrong person to ask.
+[ "$(code POST /v1/platform/people '{"email":"stay@acme.example","org":"acme-logistics","project":"finance","role":"admin","password":"a-password-for-them"}' -H "Authorization: Bearer $rescued")" = 201 ] ||
+	die "could not add somebody to the project the first run named"
+
+kill "$srv" 2>/dev/null || true
+wait "$srv" 2>/dev/null || true
+
+CRONOS_ADDR=":$PORT" CRONOS_DEFINITIONS="$work/defs" \
+	CRONOS_STORE_DRIVER=sqlite CRONOS_STORE_DSN="file:$work/c.db" \
+	CRONOS_SIGNING_KEY=0123456789abcdef0123456789abcdef \
+	./bin/cronosd >>"$work/log2" 2>&1 &
+srv=$!
+for _ in $(seq 1 40); do
+	curl -sf "$API/v1/health" >/dev/null 2>&1 && break
+	sleep 0.25
+done
+curl -sf "$API/v1/health" >/dev/null || { tail -10 "$work/log2"; die "it did not come back"; }
+ok "it came back"
+
+again=$(curl -s "$API/v1/auth/login" -H 'content-type: application/json' \
+	-d '{"email":"stay@acme.example","password":"a-password-for-them"}' | token)
+# A real token, not whatever the sed left behind: `token` is a substitution, so
+# an error body comes back through it unchanged and reads as non-empty.
+case "$again" in
+v1.*) ;;
+*) die "the administrator cannot sign in after a restart" ;;
+esac
+ok "somebody in that project can still sign in"
+
+# The question that was answered "you do not have access to this project".
+say2=$(curl -s -H "Authorization: Bearer $again" "$API/v1/catalog" | head -c 120)
+printf '  catalog says: %s
+' "$say2" >&2
+printf '  token claims: %s
+' "$(printf %s "${again#v1.}" | cut -d. -f1 | base64 -d 2>/dev/null || true)" >&2
+[ "$(code GET /v1/catalog '' -H "Authorization: Bearer $again")" = 200 ] ||
+	die "they cannot read the project this deployment was set up as — it forgot what it is called"
+ok "and can read the project they set up"
+
+# And it does not offer itself to the next visitor.
+[ "$(code POST /v1/setup '{"email":"eve@evil.example","name":"Eve","password":"a-password-for-eve","org":"Evil","project":"Everything"}')" = 409 ] ||
+	die "a restarted deployment offered a stranger an administrator"
+ok "and does not offer a stranger an administrator"
+
 say "All of it worked."

@@ -35,6 +35,7 @@ type empty struct {
 	// setUp is the marker row: one deployment is configured once.
 	setUp   bool
 	rekeyed []string
+	adopted string
 }
 
 func newEmpty() *empty { return &empty{admins: map[string]bool{}} }
@@ -117,6 +118,16 @@ func (e *empty) EndSessions(context.Context, string) (time.Time, error) {
 }
 func (e *empty) EveryPerson(context.Context) ([]identity.User, error) { return e.people, nil }
 func (e *empty) Tenants(context.Context) ([]identity.Tenant, error)   { return nil, nil }
+
+// Adopted records what the deployment was named, which is what makes a restart
+// remember it. See TestAFirstRunWritesDownWhatItNamedTheDeployment.
+func (e *empty) Adopted(_ context.Context, org, project string) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.adopted = org + "/" + project
+	return nil
+}
+
 func (e *empty) Rekey(_ context.Context, fromOrg, fromProject, toOrg, toProject string) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -412,5 +423,40 @@ func TestTheFirstRunBodyIsStrict(t *testing.T) {
 		if w := setUp(h, body); w.Code != http.StatusBadRequest {
 			t.Fatalf("a body naming %q was accepted: %d %s", extra, w.Code, w.Body)
 		}
+	}
+}
+
+/*
+A first run writes down what it named the deployment.
+
+The adoption was in memory and nowhere else, so the deployment forgot it on the
+next restart: the process came back believing it served whatever CRONOS_ORG
+said, found an empty store for that tenant, adopted the definitions directory a
+second time under the old name, and answered "you do not have access to this
+project" to the administrator who had set it up ten seconds earlier.
+
+Every deployment set up through the browser broke on its first restart. Nothing
+caught it because nothing ever restarted one — every check in this repository
+sets a deployment up and then uses it, which is exactly the window in which it
+works.
+*/
+func TestAFirstRunWritesDownWhatItNamedTheDeployment(t *testing.T) {
+	rows, h, _ := firstRun(t)
+	h = h.Serving(&api.One{Org: "default", ProjectID: "default", Only: &api.Project{}})
+
+	w := setUp(h, map[string]string{
+		"email": "ada@acme.example", "name": "Ada",
+		"password": "an-administrators-password",
+		"org":      "Acme", "project": "Finance",
+	})
+	if w.Code != http.StatusCreated {
+		t.Fatalf("%d: %s", w.Code, w.Body)
+	}
+
+	rows.mu.Lock()
+	defer rows.mu.Unlock()
+	if rows.adopted != "acme/finance" {
+		t.Fatalf("the deployment recorded %q as its name, so a restart will not remember it",
+			rows.adopted)
 	}
 }

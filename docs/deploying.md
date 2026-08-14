@@ -278,6 +278,14 @@ Step 4 is the one that matters. A database that restores and a product that
 serves are different claims, and only the second is the one anybody is asking
 about.
 
+`scripts/live-restore.sh` runs all four on every push, against a real Postgres:
+it stands a deployment up, backs it up, **drops the original**, restores into an
+empty schema, and renders the same report out of it — comparing the number, not
+just the status code. A drill nobody runs is a drill that drifts, and what
+drifts is the schema: a migration that adds a NOT NULL column with no default
+breaks a restore and nothing else, because the forward path keeps working
+perfectly and the failure waits for the day the backup is the only copy left.
+
 ## Adding people
 
 Two ways, and the first is the one to use.
@@ -557,6 +565,7 @@ constant, an enrolment wizard rendering inside the account page.
 | `live-scheduler-stalls.sh` | a scheduler that stops inside a process that stays healthy | go |
 | `live-leader.sh` | three replicas all armed, one scheduling, and failover | go, typst, Postgres |
 | `live-resume.sh` | resuming a partly delivered burst, without sending anybody two | go, typst, Postgres |
+| `live-restore.sh` | the restore drill below, end to end | go, Postgres, pg_dump |
 | `live-sso.sh` | a whole OIDC sign-in and single log-out | Keycloak |
 | `live-sqlserver.sh` | a report against SQL Server | SQL Server |
 | `live-portal-2fa.sh` | the same enrolment, through a browser | bun, chrome |

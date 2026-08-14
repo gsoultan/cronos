@@ -77,6 +77,9 @@ type Accounts interface {
 	// it — the definitions a fresh install loaded before anybody had been asked
 	// what to call the place.
 	Rekey(ctx context.Context, fromOrg, fromProject, toOrg, toProject string) error
+	// Adopted records the name for the next start. Without it the adoption
+	// lives in memory and the deployment forgets it on restart — see Adopted.
+	Adopted(ctx context.Context, org, project string) error
 }
 
 // NewSetup wires the handler.
@@ -262,6 +265,29 @@ func (h *Setup) create(w http.ResponseWriter, r *http.Request) {
 			*/
 			h.log.Error("could not move what the placeholder project held",
 				"from", was+"/"+wasProject, "to", user.Org+"/"+user.Project, "err", err)
+		}
+
+		/*
+		   And written down, so the next start knows.
+
+		   The adoption above is in memory. Without this the process comes back
+		   believing it serves what it was configured with, finds an empty store
+		   for that tenant, adopts the definitions directory a second time under
+		   the old name, and answers "you do not have access to this project" to
+		   the administrator who set it up — on a deployment that was working
+		   ten seconds before it restarted.
+
+		   Every deployment set up through the browser broke this way, and
+		   nothing caught it because nothing ever restarted one: every check
+		   here sets a deployment up and then uses it.
+		*/
+		if err := h.accounts.Adopted(r.Context(), user.Org, user.Project); err != nil {
+			// Loud, because the deployment works now and will not after a
+			// restart. There is nothing to unwind — the account is real and the
+			// definitions have moved — so what is left is to say so clearly.
+			h.log.Error("the deployment could not record what it is called; "+
+				"it will not remember this after a restart",
+				"project", user.Org+"/"+user.Project, "err", err)
 		}
 	}
 

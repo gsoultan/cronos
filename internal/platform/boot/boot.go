@@ -92,6 +92,34 @@ func Serve(log *slog.Logger) error {
 				"a definitions directory holds one", len(which))
 	}
 
+	/*
+	   The name a first run gave this deployment, before anything uses one.
+
+	   /setup adopts a tenancy in memory and records it; this is where the
+	   memory is restored. Without it the process comes back believing it serves
+	   what CRONOS_ORG says, finds an empty store for that tenant, adopts the
+	   definitions directory a second time under the old name, and answers "you
+	   do not have access to this project" to the administrator who set it up —
+	   on a deployment that was working before it restarted.
+
+	   Before the reconcile below, because that is the step that would adopt the
+	   directory again. Only for a single-project deployment: a process told to
+	   serve three cannot be renamed by anybody, and there is no first run to do
+	   it.
+	*/
+	if records != nil && !several {
+		org, project, err := records.Tenancy(ctx)
+		if err != nil {
+			return fmt.Errorf("reading what this deployment is called: %w", err)
+		}
+		if org != "" && (org != cfg.Org || project != cfg.Project) {
+			log.Info("adopted", "project", org+"/"+project,
+				"configured", cfg.Org+"/"+cfg.Project)
+			cfg.Org, cfg.Project = org, project
+			runtimes = renamed(runtimes, tenant{org: org, project: project})
+		}
+	}
+
 	for _, rt := range runtimes {
 		if err := finish(ctx, cfg, rt, defs, records, log); err != nil {
 			return err

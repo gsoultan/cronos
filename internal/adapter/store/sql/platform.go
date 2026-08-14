@@ -477,3 +477,46 @@ func (s *Store) Rekey(ctx context.Context, fromOrg, fromProject, toOrg, toProjec
 	}
 	return tx.Commit()
 }
+
+/*
+Adopted records the tenancy a first run named, so a restart remembers it.
+
+/setup adopted a name in memory and nowhere else. The store was re-keyed to the
+new tenancy and the process came back believing it served the configured one, so
+it found an empty store for its own tenant, adopted the definitions directory a
+second time under the old name, and answered "you do not have access to this
+project" to the administrator who had set it up ten seconds earlier.
+
+Written in the same transaction as nothing else, deliberately: it is a fact
+about the deployment rather than about the account, and a first run that
+succeeded and then failed to record its name would leave a deployment that works
+until its next restart — which is the failure being fixed, arrived at from the
+other side.
+*/
+func (s *Store) Adopted(ctx context.Context, org, project string) error {
+	_, err := s.db.ExecContext(ctx, s.sql(`
+		INSERT INTO cronos_tenancy (id, org, project, at) VALUES (1, ?, ?, ?)
+		ON CONFLICT (id) DO UPDATE SET
+			org = excluded.org, project = excluded.project, at = excluded.at`),
+		org, project, stamp(s.now().UTC()))
+	return err
+}
+
+/*
+Tenancy is the name a first run gave this deployment, if one did.
+
+Empty strings where nothing has been adopted, which is every deployment that was
+told what it serves in configuration — there is nothing to remember, and the
+configured value is the answer.
+*/
+func (s *Store) Tenancy(ctx context.Context) (org, project string, err error) {
+	row := s.db.QueryRowContext(ctx, s.sql(
+		`SELECT org, project FROM cronos_tenancy WHERE id = 1`))
+	switch err := row.Scan(&org, &project); {
+	case errors.Is(err, sql.ErrNoRows):
+		return "", "", nil
+	case err != nil:
+		return "", "", err
+	}
+	return org, project, nil
+}

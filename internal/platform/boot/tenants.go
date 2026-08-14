@@ -579,3 +579,20 @@ func (r resumer) Resume(ctx context.Context, pr principal.Principal, runID strin
 	}
 	return r.sched.Resume(ctx, run.Schedule, run.PeriodStart, run.PeriodEnd, done, pr)
 }
+
+/*
+renamed re-keys the single runtime a deployment has, after a first run named it.
+
+Only ever one, which the caller has already established: a deployment serving
+several was told each of their names in configuration, and none of those can be
+renamed by a request. Written as a rebuild rather than a mutation because the
+map is keyed by the very thing that changes.
+*/
+func renamed(runtimes map[tenant]*runtime, to tenant) map[tenant]*runtime {
+	out := make(map[tenant]*runtime, len(runtimes))
+	for _, rt := range runtimes {
+		rt.tenant = to
+		out[to] = rt
+	}
+	return out
+}
