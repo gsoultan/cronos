@@ -142,15 +142,38 @@ func (h *Factor) start(w http.ResponseWriter, r *http.Request, pr principal.Prin
 		return
 	}
 
-	secret, err := identity.NewTOTPSecret()
-	if err != nil {
-		h.log.Error("could not mint a factor secret", "err", err)
-		fail(w, http.StatusInternalServerError, "Could not start enrolment.")
-		return
-	}
-	if err := h.factors.Enrol(r.Context(), pr.Subject, secret, "Authenticator app"); err != nil {
-		h.refuse(w, err, "Could not start enrolment.")
-		return
+	/*
+	   An enrolment already under way is returned as it stands.
+
+	   This used to mint a new secret every time, and the second call silently
+	   replaced the first — so two starts left the page showing a QR code the
+	   server had already thrown away. Whoever had scanned it was then told
+	   "that code is not right" for every code their app would ever produce,
+	   with nothing on screen to suggest why.
+
+	   Two starts is not exotic. React runs an effect twice in development by
+	   design; a component that remounts, a page somebody refreshes half way
+	   through, a request the browser retries — each is one. The browser check
+	   found it because a development server does it every single time.
+
+	   Idempotent is also the kinder behaviour: somebody who reloads mid-
+	   enrolment keeps the QR they already scanned rather than having to scan
+	   again and wonder which entry in their app is the real one. Nothing is
+	   protected until /confirm, so an unconfirmed secret being handed back is
+	   the same credential to the same authenticated person.
+	*/
+	secret, err := h.factors.Enrolling(r.Context(), pr.Subject)
+	if err != nil || secret == "" {
+		secret, err = identity.NewTOTPSecret()
+		if err != nil {
+			h.log.Error("could not mint a factor secret", "err", err)
+			fail(w, http.StatusInternalServerError, "Could not start enrolment.")
+			return
+		}
+		if err := h.factors.Enrol(r.Context(), pr.Subject, secret, "Authenticator app"); err != nil {
+			h.refuse(w, err, "Could not start enrolment.")
+			return
+		}
 	}
 
 	send(w, http.StatusOK, map[string]string{

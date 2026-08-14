@@ -441,3 +441,74 @@ func confirmFactor(t *testing.T, rows *guarded, h *api.Factor, session string) [
 	}
 	return out.RecoveryCodes
 }
+
+/*
+Starting an enrolment twice does not throw away the first secret.
+
+This minted a fresh secret every call, and the second silently replaced the
+first — so a page that had asked twice was showing a QR code the server no
+longer had. Whoever scanned it was told "that code is not right" for every code
+their app would ever produce, with nothing on screen to suggest why, and no way
+out but to guess at starting again.
+
+Two starts is not exotic. React runs an effect twice in development by design;
+a component that remounts, a page reloaded half way through, a request the
+browser retried — each is one. The browser check found it because a development
+server does it every single time, and the same check had been passing until the
+account page changed shape and it stopped running at all.
+
+Nothing is protected until /confirm, so handing the same unconfirmed secret
+back to the same authenticated person gives away nothing they were not already
+looking at.
+*/
+func TestStartingAnEnrolmentTwiceKeepsTheFirstSecret(t *testing.T) {
+	_, h, mine := factorHandler(t)
+
+	secret := func() string {
+		t.Helper()
+		w := ask(h, http.MethodPost, "/v1/auth/factor/start", mine, nil)
+		if w.Code != http.StatusOK {
+			t.Fatalf("%d: %s", w.Code, w.Body)
+		}
+		var out struct{ Secret, URI string }
+		if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+			t.Fatal(err)
+		}
+		return out.Secret
+	}
+
+	first := secret()
+	if first == "" {
+		t.Fatal("no secret at all")
+	}
+	if second := secret(); second != first {
+		t.Fatalf("the second start replaced the secret the page is showing:\n"+
+			" shown  %s\n stored %s", first, second)
+	}
+}
+
+// And the URI matches, because the QR is built from the secret and a mismatch
+// there is the same failure wearing a different shape: the app scans one thing
+// and the manual key says another.
+func TestTheQRAndTheKeyAgreeAcrossTwoStarts(t *testing.T) {
+	_, h, mine := factorHandler(t)
+
+	both := func() (string, string) {
+		t.Helper()
+		w := ask(h, http.MethodPost, "/v1/auth/factor/start", mine, nil)
+		var out struct{ Secret, URI string }
+		if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+			t.Fatal(err)
+		}
+		return out.Secret, out.URI
+	}
+
+	s1, u1 := both()
+	_, u2 := both()
+	if !strings.Contains(u1, s1) {
+		t.Fatalf("the QR does not encode the key beside it: %s", u1)
+	}
+	if u1 != u2 {
+		t.Fatalf("the QR changed between two starts:\n %s\n %s", u1, u2)
+	}
+}

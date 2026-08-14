@@ -72,13 +72,54 @@ export function ReportsPage() {
   const editable = canEdit(org, project)
   const newReport = <Button component={Link} to="/reports/new">New report</Button>
 
+  const header = (
+    <PageHeader
+      title="Reports"
+      description="Dashboards, statements and exports — all reports, differing only in what they output."
+      actions={editable ? newReport : undefined}
+    />
+  )
+
+  /*
+    A project that could not be read is not a project with no reports.
+
+    This page said "No reports in finance yet" whenever the catalogue query
+    failed, because a failed query and an empty one both arrive here as an
+    empty list — and then invited somebody to build their first report, with a
+    button leading to a builder that could not reach the server either.
+
+    Which is the worst answer available. Somebody whose API is down for a deploy
+    opens this page to check on their reports and is told they have none. Data
+    and Activity have always said "could not read"; this page and Schedules said
+    nothing was there.
+
+    Checked before pending, deliberately: a query that has failed and is
+    retrying is both, and a spinner over a server that is not coming back is
+    something nobody can act on.
+  */
+  if (catalog.live && catalog.error) {
+    return (
+      <>
+        {header}
+        <EmptyState title="Could not read this project"
+          description={catalog.error instanceof Error
+            ? catalog.error.message
+            : 'The server did not answer. Nothing has been changed.'} />
+      </>
+    )
+  }
+  if (catalog.live && catalog.isPending) {
+    return (
+      <>
+        {header}
+        <p className="p-8 text-center text-ink-muted">Loading…</p>
+      </>
+    )
+  }
+
   return (
     <>
-      <PageHeader
-        title="Reports"
-        description="Dashboards, statements and exports — all reports, differing only in what they output."
-        actions={editable ? newReport : undefined}
-      />
+      {header}
 
       {visible.length > 0 && (
         <TextInput placeholder="Search reports…" value={q} aria-label="Search reports"

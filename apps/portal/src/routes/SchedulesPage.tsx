@@ -30,6 +30,30 @@ export function SchedulesPage() {
   const editable = canEdit(org, project)
 
   if (catalog.live && !adding) {
+    /*
+      A project that could not be read is not a project with nothing scheduled.
+
+      The same fault the Reports page had: the query failing and the project
+      being empty both arrive as an empty list, so a deploy with the API down
+      told somebody nothing was scheduled — on the page they opened to find out
+      whether tomorrow's statements would go.
+
+      Before the pending branch, because a query that has failed and is
+      retrying is both, and a spinner over a server that is not coming back is
+      not something anybody can act on.
+    */
+    if (catalog.error) {
+      return (
+        <>
+          <PageHeader title="Schedules"
+            description="What goes out, when, and to whom." />
+          <EmptyState title="Could not read this project"
+            description={catalog.error instanceof Error
+              ? catalog.error.message
+              : 'The server did not answer. Nothing has been changed.'} />
+        </>
+      )
+    }
     if (catalog.isPending) {
       return <p className="p-8 text-center text-ink-muted">Loading…</p>
     }

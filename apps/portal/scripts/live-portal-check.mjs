@@ -31,11 +31,18 @@ const body = await page.locator('[data-testid=live-report]').innerText()
 ok('an author sees the whole project (154,651.50)', body.includes('154,651.50'))
 ok('a block filter narrows one tile only (24,720.75 outstanding)',
   body.includes('24,720.75'))
-/* The chart shortens a month for an axis, and the table uppercases a heading
-   in CSS — innerText returns what is rendered, so both assertions read the
-   text a person sees rather than the string the server sent. */
-ok('the chart labels months rather than truncated dates',
-  body.includes("Jul \u201926") && !body.includes('2026-07-01'))
+/* The axis says exactly what the engine wrote.
+
+   It used to say "Jul \u201926" — the portal reformatting a label the server had
+   already formatted, which is a second opinion from the side with less
+   information. The engine knew the grain; the chart does not. Worse, the
+   datum's key was `month`, so a report grouped by anything else went through a
+   date formatter too, and three customers came out as three months of 2001.
+
+   The table still uppercases its heading in CSS, so both assertions read
+   innerText — the text a person sees rather than the string that was sent. */
+ok('the chart axis is the label the engine wrote',
+  body.includes('Jul 2026') && !body.includes('2026-07-01'))
 ok('table headings come from the dataset labels',
   body.includes('ISSUED') && body.includes('AMOUNT'))
 
@@ -47,6 +54,15 @@ ok('amounts are not reformatted into NaN', !body.includes('NaN'))
 ok('the sample figures are gone', !body.includes('49.9M'))
 
 /* -- The report format's promise, computed by the server ------------------ */
+
+/* Set the filter first, because the hint is only information once somebody
+   has filtered and a number has not moved. Shown unconditionally it was four
+   identical captions on an unfiltered screen, naming a filter the page did not
+   even offer a control for — so this now drives the control a reader would. */
+await page.locator('[data-testid=filter-region]').fill('North')
+await page.locator('[data-testid=apply-filters]').click()
+await page.locator('[data-testid=unaffected]').first().waitFor({ timeout: 30000 })
+
 ok('a block says the filter that misses it does not apply',
   (await page.locator('[data-testid=unaffected]').first().innerText()).includes('Region'))
 
@@ -59,8 +75,12 @@ await page.goto(`${B}/data`, { waitUntil: 'domcontentloaded' })
 await page.locator('[data-testid=datasets-card]').waitFor({ timeout: 15000 })
 const data = await page.locator('body').innerText()
 
+/* By the name the author gave them, not the identifier. A definition may carry
+   a title, and the whole point of one is that the interface uses it — a page
+   headed "statement-lines" is showing somebody a primary key. */
 ok('the data page lists the datasets the server has',
-  data.includes('invoices') && data.includes('active-customers') && data.includes('statement-lines'))
+  data.includes('Invoices') && data.includes('Active customers')
+  && data.includes('Statement lines'))
 ok('and the source they read', data.includes('warehouse'))
 /* The limits are what nobody opens the file for: what one query may spend, and
    how much it may hand back. */
@@ -73,7 +93,7 @@ ok('the sample sources are gone', !data.includes('Northwind'))
 await page.goto(`${B}/schedules`, { waitUntil: 'domcontentloaded' })
 await page.locator('[data-testid=schedules-card]').waitFor({ timeout: 15000 })
 const schedules = await page.locator('body').innerText()
-ok('the schedules page lists the real schedule', schedules.includes('monthly-statements'))
+ok('the schedules page lists the real schedule', schedules.includes('Monthly statements'))
 /* Computed from the cron expression in its own timezone, by the loop that will
    honour it — which is the one column a fixture cannot have. */
 ok('and when it next fires',
@@ -429,5 +449,39 @@ const delivered = readdirSync(process.env.DELIVERIES ?? '/tmp', { recursive: tru
 ok('and a document was delivered', delivered.length > 0)
 
 console.log(fails ? `\n${fails} failed` : '\nall passed')
+
+/*
+ * And what every page says when the server is not there.
+ *
+ * A failed query and an empty project arrive at these pages identically — as
+ * an empty list — so the Reports page told somebody "No reports in finance
+ * yet" whenever the API was unreachable, and offered to help them build their
+ * first one. On the page they had opened to check on their reports, during a
+ * deploy. Schedules said nothing was scheduled, on the page somebody opens to
+ * find out whether tomorrow's statements will go.
+ *
+ * Only reproducible against a real server: sample mode never queries, so no
+ * suite that runs on fixtures can see it, and a unit test would have to invent
+ * the failure it is checking for.
+ */
+await page.route('**/v1/**', (route) => route.abort('connectionrefused'))
+
+for (const [path, name] of [
+  ['/', 'reports'],
+  ['/data', 'data'],
+  ['/schedules', 'schedules'],
+  ['/activity', 'activity'],
+]) {
+  await page.goto(`${B}${path}`, { waitUntil: 'domcontentloaded' })
+  // Long enough for the query to fail and retry once.
+  await page.waitForTimeout(3000)
+  const text = (await page.locator('body').innerText()).replace(/\s+/g, ' ')
+
+  ok(`${name} says it could not read rather than that there is nothing`,
+    /could not read/i.test(text))
+  ok(`${name} does not claim the project is empty`,
+    !/No reports in|Nothing is scheduled|build your first/i.test(text))
+}
+
 await browser.close()
 process.exit(fails ? 1 : 0)

@@ -65,6 +65,23 @@ await page.waitForTimeout(1200)
 
 await page.goto(PORTAL + '/account', { waitUntil: 'networkidle' })
 await page.waitForTimeout(800)
+
+/*
+ * What the page offers before anything is set up.
+ *
+ * These assertions used to live in scripts/security-check.mjs, which ran
+ * against sample data and typed "123456" at the verification step — possible
+ * only because nothing checked it. When the account page learned to say "this
+ * is the sample portal" rather than render four panels about an account that
+ * does not exist, that suite stopped being able to see the card at all, and
+ * had been failing in CI ever since. Here they run against a real server, in
+ * front of the enrolment below that computes a genuine code.
+ */
+must((await page.getByTestId('two-factor-state').innerText()).trim() === 'Off',
+  'two-factor starts off')
+must(await page.locator('button:has-text("SMS")').count() === 0,
+  'SMS is not offered — a code by text is a code an operator can be talked into')
+
 await page.getByTestId('turn-on-2fa').click()
 await page.locator('svg[role="img"] path').first().waitFor({ timeout: 15_000 })
 
