@@ -277,6 +277,35 @@ one that has already added a column and an old one that writes without it is
 how a row goes missing a field nobody notices for a week.
 */
 func (s *Store) Migrate(ctx context.Context) error {
+	/*
+	   One instance migrates at a time, and the others wait.
+
+	   Every migration already runs in its own transaction, which makes each one
+	   all-or-nothing and does nothing about two processes doing it at once —
+	   and two processes starting at once is precisely what a rolling deploy is.
+	   Four instances against a fresh Postgres left three unable to start:
+
+	     sql: recording migrations: ERROR: duplicate key value violates unique
+	     constraint "pg_type_typname_nsp_index"
+
+	   from the very first statement, because `CREATE TABLE IF NOT EXISTS` is
+	   not concurrency-safe in Postgres: two sessions both pass the existence
+	   check and one loses the race in the catalogue. An orchestrator retries,
+	   so a deployment converges — after a CrashLoopBackOff on every deploy that
+	   carries a migration, which is the kind of noise that trains people to
+	   ignore a restarting pod.
+
+	   Held across the whole function rather than per migration, so the read of
+	   what has been applied is inside it too. Without that an instance could
+	   see nine applied, wait for the lock, and then apply the tenth a second
+	   time.
+	*/
+	unlock, err := s.lockMigrations(ctx)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+
 	if _, err := s.db.ExecContext(ctx, migrationTable); err != nil {
 		return fmt.Errorf("sql: recording migrations: %w", err)
 	}
@@ -402,4 +431,67 @@ func last(ms []Migration) int {
 		return 0
 	}
 	return ms[len(ms)-1].ID
+}
+
+/*
+migrationLock is the advisory lock every instance takes before migrating.
+
+An arbitrary constant, and it only has to be the same one in every build: a
+Postgres advisory lock is a number in a namespace shared by the whole database,
+so the only real requirement is that nothing else picks it. This is "cronosdb"
+in ASCII, which nothing else will.
+*/
+const migrationLock = 0x63726F6E6F736462
+
+// migrationWait bounds how long to wait for another instance to finish.
+//
+// Generous, because a large migration on a large table legitimately takes
+// minutes and an instance that gave up would be the second failure. Bounded,
+// because an instance that waits for ever on a lock somebody left behind never
+// reports anything at all, and a readiness probe that hangs is harder to
+// diagnose than one that fails with a sentence.
+const migrationWait = 5 * time.Minute
+
+/*
+lockMigrations serialises startup against the database itself.
+
+Postgres only. SQLite is one file with one writer, and a deployment on it is one
+process by construction — there is nothing to serialise against and no advisory
+lock to do it with.
+
+The lock is taken on a connection of its own, because a session advisory lock
+belongs to the session: taken through the pool it could be released on a
+different connection, or never, depending on which one the pool handed back.
+Closing that connection releases it too, which is what makes the returned
+function safe to call after an error.
+*/
+func (s *Store) lockMigrations(ctx context.Context) (func(), error) {
+	if s.driver != "postgres" && s.driver != "pgx" {
+		return func() {}, nil
+	}
+
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("sql: connecting to migrate: %w", err)
+	}
+
+	waiting, cancel := context.WithTimeout(ctx, migrationWait)
+	defer cancel()
+
+	if _, err := conn.ExecContext(waiting, "SELECT pg_advisory_lock($1)", int64(migrationLock)); err != nil {
+		conn.Close() //nolint:errcheck // the error below is the one worth reporting
+		return nil, fmt.Errorf(
+			"sql: waited %s for another instance to finish migrating: %w", migrationWait, err)
+	}
+
+	return func() {
+		// Not the caller's context: it may already be cancelled by whatever
+		// made migration stop, and releasing the lock is the one thing that
+		// must still happen. Closing the connection would release it anyway;
+		// this makes it prompt and says so out loud in the query log.
+		release, done := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+		defer done()
+		_, _ = conn.ExecContext(release, "SELECT pg_advisory_unlock($1)", int64(migrationLock))
+		conn.Close() //nolint:errcheck // released above, and closing releases it regardless
+	}, nil
 }

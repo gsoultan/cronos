@@ -112,9 +112,16 @@ Migrations are forward-only and run at startup, each in a transaction. A
 database at a schema newer than the binary is refused rather than written to,
 so a rollback needs the old data and a restore, not a downgrade.
 
-Roll one instance at a time. Two versions against one database is ordinary
-during a deploy; what is not is an old binary writing to a schema a new one has
-already changed, which is what the refusal prevents.
+Instances starting together is fine. On Postgres, one takes an advisory lock and
+migrates while the rest wait — up to five minutes, which is a large migration on
+a large table rather than a number worth tuning. Without it, four instances
+against a fresh database left three unable to start, and not at some exotic
+migration: `CREATE TABLE IF NOT EXISTS` is not concurrency-safe in Postgres, so
+they collided on the very first statement.
+
+Two versions against one database is ordinary during a deploy; what is not is an
+old binary writing to a schema a new one has already changed, which is what the
+refusal above prevents. So roll forward normally, and roll back by restoring.
 
 ## Backing up
 
