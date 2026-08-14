@@ -42,8 +42,8 @@ jar="$work/cookies"
 # trap and leaves the rest of the cleanup undone.
 cleanup() {
 	rm -rf "$work" || true
-	[ -n "${server:-}" ] && kill "$server" 2>/dev/null
-	[ -n "${portal:-}" ] && kill "$portal" 2>/dev/null
+	[ -n "${server:-}" ] && { kill "$server" 2>/dev/null || true; }
+	[ -n "${portal:-}" ] && { kill "$portal" 2>/dev/null || true; }
 	# Only if this run started it. Keycloak takes two minutes to come up, and
 	# tearing down one somebody else was using makes the next run of this
 	# script slower for no reason.

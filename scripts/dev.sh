@@ -94,7 +94,7 @@ stop() {
 	# Vite and `go run` both spawn children that do not die with the parent.
 	for port in "$API_PORT" "$WEB_PORT"; do
 		owner="$(port_owner "$port")"
-		[ -n "$owner" ] && kill "$owner" 2>/dev/null
+		[ -n "$owner" ] && { kill "$owner" 2>/dev/null || true; }
 	done
 	wait 2>/dev/null
 	note 'stopped'

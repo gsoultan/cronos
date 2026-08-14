@@ -25,8 +25,8 @@ PORTAL="http://localhost:$PORTAL_PORT"
 
 work=$(mktemp -d)
 cleanup() {
-	[ -n "${server:-}" ] && kill "$server" 2>/dev/null
-	[ -n "${portal:-}" ] && kill "$portal" 2>/dev/null
+	[ -n "${server:-}" ] && { kill "$server" 2>/dev/null || true; }
+	[ -n "${portal:-}" ] && { kill "$portal" 2>/dev/null || true; }
 	# The dev server forks; the port is the only reliable handle on it.
 	freeport "$PORTAL_PORT"
 	rm -rf "$work" || true
@@ -43,7 +43,7 @@ say() { printf '\n\033[1m%s\033[0m\n' "$*"; }
 freeport() {
 	local pids
 	pids=$(lsof -ti ":$1" 2>/dev/null || true)
-	[ -n "$pids" ] && kill $pids 2>/dev/null
+	[ -n "$pids" ] && { kill $pids 2>/dev/null || true; }
 	return 0
 }
 

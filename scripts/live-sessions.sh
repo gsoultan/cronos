@@ -14,7 +14,7 @@
 cd "$(dirname "$0")/.."
 PORT=8795; API="http://localhost:$PORT"
 work=$(mktemp -d)
-trap 'rm -rf "$work"; [ -n "${srv:-}" ] && kill "$srv" 2>/dev/null; true' EXIT
+trap 'rm -rf "$work"; [ -n "${srv:-}" ] && { kill "$srv" 2>/dev/null || true; }; true' EXIT
 ok(){ printf '  \033[32mok\033[0m %s\n' "$*"; }
 die(){ printf '  \033[31mFAILED\033[0m %s\n' "$*" >&2; exit 1; }
 

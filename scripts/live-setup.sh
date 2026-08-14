@@ -23,7 +23,7 @@ API="http://localhost:$PORT"
 
 work=$(mktemp -d)
 cleanup() {
-	[ -n "${srv:-}" ] && kill "$srv" 2>/dev/null
+	[ -n "${srv:-}" ] && { kill "$srv" 2>/dev/null || true; }
 	rm -rf "$work" || true
 	return 0
 }

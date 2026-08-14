@@ -27,7 +27,7 @@ MAIL_HTTP=8025
 work=$(mktemp -d)
 cleanup() {
 	rm -rf "$work" || true
-	[ -n "${server:-}" ] && kill "$server" 2>/dev/null
+	[ -n "${server:-}" ] && { kill "$server" 2>/dev/null || true; }
 	[ -n "${started_mail:-}" ] && podman rm -f cronos-mail >/dev/null 2>&1
 	return 0
 }

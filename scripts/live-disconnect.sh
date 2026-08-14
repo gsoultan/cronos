@@ -24,7 +24,23 @@ DSN="${CRONOS_POSTGRES_DSN:-}"
 
 PORT=8793; API="http://localhost:$PORT"
 work=$(mktemp -d)
-trap 'rm -rf "$work"; [ -n "${srv:-}" ] && kill -9 "$srv" 2>/dev/null; true' EXIT
+# Every step guarded, because a trap runs under `set -e` too: killing a server
+# that has already exited returns non-zero, which aborts the trap and takes the
+# script's exit status with it — a check that passed every assertion and then
+# reported failure. live-sso.sh has carried this warning for a while; these two
+# were written without reading it.
+cleanup() {
+	rm -rf "$work" || true
+	# `|| true` on the kill itself, not on the list.
+	#
+	# `[ -n "$srv" ] && kill ...` looks guarded and is not: under `set -e` the
+	# last command of an AND list is still fatal, so killing a server that has
+	# already exited aborts the trap — and the script that passed every
+	# assertion reports failure. Which is what this did.
+	[ -n "${srv:-}" ] && { kill -9 "$srv" 2>/dev/null || true; }
+	return 0
+}
+trap cleanup EXIT
 ok(){ printf '  \033[32mok\033[0m %s\n' "$*"; }
 die(){ printf '  \033[31mFAILED\033[0m %s\n' "$*" >&2; [ -f "$work/log" ] && tail -20 "$work/log" >&2; exit 1; }
 

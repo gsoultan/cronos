@@ -25,7 +25,7 @@ PORT=8802
 API="http://localhost:$PORT"
 
 work=$(mktemp -d)
-cleanup() { [ -n "${srv:-}" ] && kill "$srv" 2>/dev/null; rm -rf "$work" || true; return 0; }
+cleanup() { [ -n "${srv:-}" ] && { kill "$srv" 2>/dev/null || true; }; rm -rf "$work" || true; return 0; }
 trap 'cleanup 2>/dev/null' EXIT
 
 say() { printf '\n\033[1m%s\033[0m\n' "$*"; }

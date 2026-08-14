@@ -25,7 +25,7 @@ SA_PASSWORD='A-Strong-Passw0rd!'
 
 work=$(mktemp -d)
 cleanup() {
-	[ -n "${srv:-}" ] && kill "$srv" 2>/dev/null
+	[ -n "${srv:-}" ] && { kill "$srv" 2>/dev/null || true; }
 	[ -n "${started_db:-}" ] && podman rm -f cronos-mssql >/dev/null 2>&1
 	rm -rf "$work" || true
 	return 0
