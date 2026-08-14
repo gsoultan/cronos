@@ -48,6 +48,9 @@ type Service struct {
 	due     map[string]time.Time
 	alerter Alerter
 	alerts  *alerts
+	// grace is how long a burst already under way gets after the loop is told
+	// to stop. See fireDue.
+	grace time.Duration
 }
 
 // Tick is how often the loop looks for work.
@@ -56,11 +59,28 @@ type Service struct {
 // loop asking the same question; anything coarser can miss a firing.
 const Tick = time.Minute
 
+/*
+Grace is how long a burst already under way gets after the loop is told to stop.
+
+Bounded, because the process is trying to exit and an orchestrator that sent
+SIGTERM will send SIGKILL — thirty seconds later, by default. A grace longer
+than the drain waiting on it is a grace that is never honoured.
+
+Twenty seconds is one render and one delivery per remaining recipient at a rate
+a deployment can be asked to sustain. A burst too large to finish in it is cut,
+and the run record says so — which is the point: the record is the thing
+somebody reconciles from.
+*/
+const Grace = 20 * time.Second
+
+// WithGrace bounds how long in-flight bursts get after a stop.
+func (s *Service) WithGrace(d time.Duration) *Service { s.grace = d; return s }
+
 // New wires a Service.
 func New(src Source, r Runner, o Owner, log *slog.Logger) *Service {
 	return &Service{
 		source: src, runner: r, owner: o, log: log,
-		now: time.Now, tick: Tick,
+		now: time.Now, tick: Tick, grace: Grace,
 		running: map[string]bool{},
 		due:     map[string]time.Time{},
 		alerts:  newAlerts(),
@@ -154,7 +174,32 @@ func (s *Service) fireDue(ctx context.Context, wg *sync.WaitGroup) {
 			// which is the catch-up this is supposed not to do. It also means a
 			// run that overran its own interval does not immediately requeue.
 			defer func() { s.release(p.Schedule.Name, p.Next(s.now())) }()
-			s.fire(ctx, p, at)
+
+			/*
+			   A run does not inherit the loop's cancellation.
+
+			   This is the whole of the shutdown guarantee, and it was the half
+			   that was missing. Start blocks on these goroutines when the
+			   context is cancelled — but every run was a child of that same
+			   context, so cancelling to stop the loop also cancelled the work
+			   the wait exists to protect. The wait then completed promptly,
+			   because there was nothing left to wait for: eight hundred
+			   recipients failed with "context canceled" in seventy
+			   milliseconds, and twenty of them had a document.
+
+			   Worse, the run record is written at the end and through the same
+			   context, so it failed too. A burst that delivered to a fifth of a
+			   customer list left no record of having run at all — which is
+			   exactly the state nobody can reconcile, arrived at by the code
+			   written to prevent it.
+
+			   Bounded rather than detached: the process is exiting and the
+			   grace must expire before the orchestrator's patience does. A
+			   burst too large to finish is cut, and the record says so.
+			*/
+			runCtx, done := context.WithTimeout(context.WithoutCancel(ctx), s.grace)
+			defer done()
+			s.fire(runCtx, p, at)
 		}(plan, when)
 	}
 }

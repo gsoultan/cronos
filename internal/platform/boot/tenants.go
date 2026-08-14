@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/gsoultan/cronos/internal/adapter/api"
 	"github.com/gsoultan/cronos/internal/adapter/driver/registry"
@@ -150,33 +152,99 @@ func finish(ctx context.Context, cfg config.Server, rt *runtime,
 	return nil
 }
 
-// startSchedulers arms a scheduler per project and returns how to stop them.
-//
-// One each rather than one over all of them: a schedule runs as its project's
-// owner, against its project's datasources, and a single loop would need to
-// resolve both per firing — which is the same resolution done once here, where
-// it can be read.
-func startSchedulers(ctx context.Context, cfg config.Server, runtimes map[tenant]*runtime,
-	records *sqlstore.Store, log *slog.Logger) error {
+/*
+startSchedulers arms a scheduler per project and returns a wait for them.
+
+One each rather than one over all of them: a schedule runs as its project's
+owner, against its project's datasources, and a single loop would need to
+resolve both per firing — which is the same resolution done once here, where it
+can be read.
+
+The wait is the point, and it did not exist. Every scheduler's Start already
+holds a WaitGroup over its in-flight runs and blocks on it when the context is
+cancelled — so a burst mid-delivery finishes rather than being abandoned. That
+guarantee was unreachable: nothing kept a handle on these goroutines, so the
+process cancelled them and returned, and the runtime tore down the goroutine
+that was waiting.
+
+The effect was the one the drain exists to prevent, on the path that matters
+most. cronos is a report scheduler; the work it exists to do happens in these
+goroutines, not in an HTTP handler. A rolling deploy at six in the morning on
+the first of the month lands exactly on the monthly statements burst, and half
+a customer list receives a document while the other half does not — the state
+that is worst to reconcile, because nobody can tell from outside which half.
+*/
+func startSchedulers(cfg config.Server, runtimes map[tenant]*runtime,
+	records *sqlstore.Store, log *slog.Logger) (stop func(), err error) {
+
+	/*
+	   One thing to call, and it both cancels and waits.
+
+	   Two — a cancel and a separate wait — is what this was, and the wait was
+	   the one that went missing: boot cancelled, returned, and the runtime tore
+	   down the goroutine doing the waiting. Returning a single stop makes that
+	   particular mistake unwritable, and it is deferred beside the start rather
+	   than called sixty lines below, where a `return` added later would skip it.
+	*/
+	ctx, cancel := context.WithCancel(context.Background())
+	var wg sync.WaitGroup
+	stop = func() {
+		cancel()
+		drain(wg.Wait, log)
+	}
 
 	if !cfg.Scheduler {
-		return nil
+		return stop, nil
 	}
 	for t, rt := range runtimes {
 		sched, err := scheduler(cfg, t.org, t.project, rt.repo, rt.project.Runner, records, log)
 		if err != nil {
-			return fmt.Errorf("%s: %w", t, err)
+			// The schedulers already started keep running until the caller
+			// stops them; returning stop alongside the error means it can.
+			return stop, fmt.Errorf("%s: %w", t, err)
 		}
 		rt.project.Due, rt.project.Fires = sched, sched
 
+		wg.Add(1)
 		go func(t tenant, sched interface{ Start(context.Context) error }) {
+			defer wg.Done()
 			if err := sched.Start(ctx); err != nil {
 				log.Error("scheduler stopped", "project", t.String(), "err", err)
 			}
 		}(t, sched)
 	}
-	return nil
+	return stop, nil
 }
+
+/*
+drain waits for in-flight scheduled runs, up to a bound.
+
+The bound is longer than the HTTP drain because the work is longer: a burst is
+one render per recipient and one delivery each, where a request is one render.
+It is shorter than the grace period an orchestrator gives by default —
+Kubernetes allows thirty seconds before SIGKILL, and a drain that outlives that
+never completes. It is only a way to be killed mid-burst with an extra half
+minute of confusion first.
+*/
+func drain(wait func(), log *slog.Logger) {
+	if wait == nil {
+		return
+	}
+	done := make(chan struct{})
+	go func() { wait(); close(done) }()
+
+	select {
+	case <-done:
+	case <-time.After(schedulerDrain):
+		// Said out loud rather than swallowed. A burst that did not finish is
+		// a delivery somebody has to reconcile, and the log is where they will
+		// look for the reason.
+		log.Warn("scheduled runs did not finish before shutdown", "waited", schedulerDrain)
+	}
+}
+
+// schedulerDrain is how long in-flight scheduled runs get after SIGTERM.
+const schedulerDrain = 25 * time.Second
 
 // projectsFor turns the assembled runtimes into what the API resolves against.
 func projectsFor(runtimes map[tenant]*runtime, several bool) api.Projects {

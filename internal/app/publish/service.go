@@ -276,7 +276,7 @@ func (s *Service) checkReport(ctx context.Context, rep definition.Report) error 
 	if err := query.CheckFilters(rep.Filters, known); err != nil {
 		return err
 	}
-	return s.checkBlocks(rep, sets)
+	return s.checkBlocks(ctx, rep, sets)
 }
 
 // checkBlocks compiles every block, which is the only way to know they will.
@@ -284,7 +284,8 @@ func (s *Service) checkReport(ctx context.Context, rep definition.Report) error 
 // Compiling is cheaper than being wrong: it catches a field the dataset does
 // not publish, an aggregate nobody implements, and a grain the dialect cannot
 // express — all of which are otherwise found by whoever opens the report.
-func (s *Service) checkBlocks(rep definition.Report, sets map[string]definition.Dataset) error {
+func (s *Service) checkBlocks(ctx context.Context, rep definition.Report,
+	sets map[string]definition.Dataset) error {
 	// Postgres, because it supports every grain: a check that used a narrower
 	// dialect would pass definitions the eventual database cannot run, and one
 	// that used a narrower one still would reject definitions that are fine.
@@ -300,7 +301,7 @@ func (s *Service) checkBlocks(rep definition.Report, sets map[string]definition.
 			if _, _, err := builder.BuildBlock(ds, blk, defaults(ds), filters, checker(ds)); err != nil {
 				return fmt.Errorf("%w: output %q block %d: %v", query.ErrBadTemplate, out.Name, i, err)
 			}
-			if err := s.provable(rep, out.Name, i, ds, blk, filters); err != nil {
+			if err := s.provable(ctx, rep, out.Name, i, ds, blk, filters); err != nil {
 				return err
 			}
 		}
@@ -320,13 +321,27 @@ whole. A warehouse that is unreachable is not the definition's fault and is not
 a reason to refuse a publish — a deployment whose database is down should still
 be able to fix the report that is waiting for it.
 */
-func (s *Service) provable(rep definition.Report, output string, i int,
+func (s *Service) provable(ctx context.Context, rep definition.Report, output string, i int,
 	ds definition.Dataset, blk definition.Block, filters query.Filters) error {
 
 	if s.engines == nil {
 		return nil
 	}
-	ctx := context.Background()
+	/*
+	   The caller's context, which this used to discard for a fresh Background.
+
+	   Every other step of a publish is cancellable and this one is not, which
+	   is backwards: it is the only step that talks to a database somebody else
+	   operates. A report with four outputs of six blocks prepares twenty-four
+	   statements against their warehouse, and a browser tab closed halfway
+	   through left all of them to run to their own timeout with nobody waiting
+	   for the answer.
+
+	   The statement timeout below still bounds each prepare, so this was never
+	   unbounded — it was work continuing after the only party who wanted it had
+	   gone, which on a warehouse with a connection limit is somebody else's
+	   incident.
+	*/
 	engine, err := s.engines.Engine(ctx, ds)
 	if err != nil {
 		return nil // no engine for it here; the render will say so

@@ -110,16 +110,27 @@ type runner struct {
 	block  chan struct{}
 	result burst.Result
 	err    error
+	// watch reports what the run's context said a moment after it started.
+	// A runner blocked on a channel is not a runner whose context was
+	// cancelled, which is how a shutdown that cancelled every in-flight render
+	// passed a test that only ever blocked one.
+	watch chan error
 }
 
-func (r *runner) Run(_ context.Context, _ definition.Schedule, run burst.Run,
+func (r *runner) Run(ctx context.Context, _ definition.Schedule, run burst.Run,
 	_ principal.Principal) (burst.Result, error) {
 
 	r.mu.Lock()
 	r.runs = append(r.runs, run)
-	block := r.block
+	block, watch := r.block, r.watch
 	r.mu.Unlock()
 
+	if watch != nil {
+		// Long enough for a stop to have happened, short enough not to slow
+		// the suite. What is asserted is the context, not the timing.
+		time.Sleep(80 * time.Millisecond)
+		watch <- ctx.Err()
+	}
 	if block != nil {
 		<-block
 	}

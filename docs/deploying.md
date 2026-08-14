@@ -49,6 +49,8 @@ And what should be:
 | `CRONOS_AUDIT` | `log` by default, `off` to stop it. |
 | `CRONOS_SMTP_HOST`, `CRONOS_SMTP_FROM` | A mail relay. Needed to deliver a schedule by email, and to invite anybody. |
 | `CRONOS_PORTAL_URL` | Where the portal is served, for links in email. Without it, invitations are not offered — there would be nothing to put in the link. |
+| `CRONOS_SCHEDULER=1` | Arms schedules. Off by default, and it must be on for exactly one instance — see Stopping. |
+| `CRONOS_SCHEDULER_TICK` | e.g. `10s`. How often armed schedules are checked; a minute by default, which is cron's own resolution. Lower it if "06:00" has to mean 06:00 rather than some time in the minute after. |
 
 ## Probes
 
@@ -68,6 +70,41 @@ The alerts worth having, in order of how much they cost when missed:
 3. `/v1/ready` returning `degraded` for longer than a deploy takes.
 4. `cronos_request_duration_seconds` at the 99th percentile crossing whatever
    your customers' patience is.
+
+## Stopping
+
+On `SIGTERM`, in this order:
+
+1. The listener stops accepting, and requests already in flight finish. Up to
+   20 seconds.
+2. The schedulers stop starting new runs. A burst already delivering keeps
+   going, with its own 20-second grace, and shutdown waits up to 25 seconds for
+   it.
+3. The process exits.
+
+So allow at least 50 seconds before anything sends `SIGKILL`. Kubernetes
+defaults to 30, which cuts the burst:
+
+```yaml
+spec:
+  terminationGracePeriodSeconds: 60
+```
+
+The order matters and is deliberate. HTTP drains first because a scheduled run
+may call this deployment's own API; stopping the schedulers first would fail the
+run the drain exists to let finish.
+
+What this buys is worth stating plainly, because the failure it prevents is
+quiet. A burst is one document per recipient. Killed halfway, half a customer
+list has a statement and half does not — and the run record, which is the only
+thing that could say which half, is written at the end.
+`scripts/live-drain.sh` interrupts a burst of eight hundred and counts what
+arrived; two defects lived under it that no unit test could see.
+
+A burst too large to finish inside the grace is cut, and the run record says so.
+If that happens often the schedule is too big for one instance, rather than the
+grace being too short — raising it past the orchestrator's patience only adds
+confusion before the same `SIGKILL`.
 
 ## Upgrading
 
@@ -396,13 +433,21 @@ constant, an enrolment wizard rendering inside the account page.
 | `live-2fa.sh` | enrolment and sign-in, with codes computed in Python | go, python3 |
 | `live-require-2fa.sh` | turning the requirement on, and the enrolment-only session | go, python3 |
 | `live-invite.sh` | inviting somebody and reading the mail | a mail server |
+| `live-drain.sh` | SIGTERM in the middle of a burst of eight hundred | go, typst |
 | `live-sso.sh` | a whole OIDC sign-in and single log-out | Keycloak |
 | `live-sqlserver.sh` | a report against SQL Server | SQL Server |
-| `live-portal-2fa.sh` | the same enrolment, through a browser | bun, chromium |
+| `live-portal-2fa.sh` | the same enrolment, through a browser | bun, chrome |
 
-The first five run in CI on every push, in about a minute; SQL Server is its own
-job because the image is 1.7 GB and nothing else should wait for it. The two that
-want a Keycloak or a browser are still run by hand.
+All of them run in CI on every push. The first six share a job and take about a
+minute; SQL Server, Keycloak and the browser suites have their own, because a
+1.7 GB image or a two-minute realm setup should never be the reason a typo takes
+ten minutes to fail.
+
+Two of them ran nowhere but on the machine of whoever remembered, for a while,
+which is how `live-sso.sh` came to be asserting things about a stale Python
+server left behind by an earlier run. It now refuses to start if anything is
+already listening on its ports — a check that quietly talks to the wrong server
+is worse than one that stops.
 
 A script that finds a server already listening uses it and leaves it alone, so
 CI's service containers work without the script knowing it is CI. The exception

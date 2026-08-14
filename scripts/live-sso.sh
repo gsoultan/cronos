@@ -107,10 +107,25 @@ ok "publishes end_session_endpoint"
 say "cronos"
 go build -o bin/cronosd-ee ./cmd/cronosd-ee || die "build"
 
+# Nobody else's server, on either port. A leftover from a crashed run answers
+# on the same port and is not this stub — which is how this check spent a while
+# asserting things about somebody else's 404. Named rather than worked around:
+# a check that quietly talks to the wrong server is worse than one that stops.
+for port in "$PORT" "$PORTAL_PORT"; do
+	if curl -s -o /dev/null --max-time 1 "http://localhost:$port/" 2>/dev/null; then
+		die "something is already listening on $port — stop it and run this again"
+	fi
+done
+
 mkdir -p "$work/portal"
 printf '<!doctype html><title>cronos</title><h1>Signed out</h1>' >"$work/portal/index.html"
-(cd "$work/portal" && python3 -m http.server "$PORTAL_PORT" >/dev/null 2>&1) &
+# --directory rather than a subshell that cds: the subshell's pid is what the
+# cleanup would hold, and killing it leaves python orphaned on the port for
+# every run after this one.
+python3 -m http.server "$PORTAL_PORT" --directory "$work/portal" >/dev/null 2>&1 &
 portal=$!
+for _ in $(seq 1 40); do curl -sf -o /dev/null "$PORTAL/" && break; sleep 0.25; done
+curl -sf -o /dev/null "$PORTAL/" || die "the portal stub did not come up"
 
 mkdir -p "$work/defs"
 CRONOS_ADDR=":$PORT" \
@@ -225,7 +240,10 @@ where=${ended#* }
 
 case "$code" in
 200 | 204) ok "the provider accepted it ($code)" ;;
-*) head -30 "$work/logout.html"; die "the provider refused the logout: $code" ;;
+# Named with where it ended up. A status on its own cannot distinguish the
+# provider refusing the request from the portal stub not serving the page it
+# was sent back to, and those are opposite problems.
+*) head -30 "$work/logout.html"; die "logout ended at $where with $code" ;;
 esac
 if grep -qi 'invalid\|error' "$work/logout.html"; then
 	head -20 "$work/logout.html"

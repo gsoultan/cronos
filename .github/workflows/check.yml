@@ -120,6 +120,13 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      # The drain check bursts a real report per recipient, and a burst
+      # attaches a document.
+      - name: install typst
+        run: |
+          curl -fsSL https://github.com/typst/typst/releases/download/v0.15.1/typst-x86_64-unknown-linux-musl.tar.xz \
+            | tar -xJ --strip-components=1 -C /usr/local/bin typst-x86_64-unknown-linux-musl/typst
+
       # Each on its own step, so a failure names the check rather than "the
       # live job". They are quick — the longest waits half a minute for a rate
       # limit to refill, which is the limiter working.
@@ -133,6 +140,13 @@ jobs:
         run: ./scripts/live-require-2fa.sh
       - name: inviting somebody, and reading the mail
         run: ./scripts/live-invite.sh
+      # SIGTERM in the middle of a burst of eight hundred. Two defects lived
+      # here that no unit test could see: nothing waited for the schedulers,
+      # and cancelling them cancelled the very renders the wait existed to
+      # protect — so a burst that had delivered to twenty of eight hundred
+      # left no run record at all.
+      - name: interrupting a burst
+        run: ./scripts/live-drain.sh
 
   live-databases:
     name: live checks (databases)
@@ -159,6 +173,26 @@ jobs:
         env:
           CRONOS_SQLSERVER_RUNNING: '1'
         run: ./scripts/live-sqlserver.sh
+
+  live-sso:
+    name: live checks (sso)
+    runs-on: ubuntu-latest
+
+    # Keycloak in its own job for the same reason SQL Server is: the image is
+    # large and the realm setup takes a minute, and neither should be why a
+    # typo takes ten minutes to fail. The script starts and removes its own
+    # container, so nothing is declared here.
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      # OIDC sign-in against a real provider: the discovery document, the
+      # callback, the claims, and single log-out. A mock provider agrees with
+      # whatever the client believes, which is the one thing worth checking.
+      - name: sign in through a real identity provider
+        run: ./scripts/live-sso.sh
 
   portal:
     name: portal
@@ -243,6 +277,12 @@ jobs:
         run: |
           ./scripts/live-embed.sh
           ./scripts/live-portal.sh
+
+      # Enrolment through the browser: a QR code that encodes a real secret, a
+      # code computed from it, and a wizard that renders where it should. The
+      # QR encoded nothing for a while and every server-side test passed.
+      - name: enrolling a second factor in a browser
+        run: ./scripts/live-portal-2fa.sh
 
   # The image, because the one thing it can be missing is the one thing no
   # other job would notice: paginated output shells out to `typst`, and an

@@ -51,7 +51,17 @@ type Server struct {
 	// deciding which one schedules is a deployment decision rather than a
 	// default.
 	Scheduler bool
-	SMTP      SMTP
+	/*
+	   SchedulerTick is how often armed schedules are checked. Zero is a minute.
+
+	   Cron resolves to the minute, so a tick of a minute means a schedule due
+	   at 06:00 fires somewhere in the minute after — wherever the process
+	   happened to start within it. A deployment that wants statements out at
+	   06:00 rather than "some time past six" sets this lower and pays for it in
+	   wake-ups, which is the trade to make deliberately rather than to inherit.
+	*/
+	SchedulerTick time.Duration
+	SMTP          SMTP
 	// Portal is where the portal is served, for links in email. A separate
 	// origin from the API in every real deployment — the portal is a static
 	// build behind a CDN — so it cannot be derived from the listen address.
@@ -105,13 +115,14 @@ func Load() (Server, error) {
 		// The projects one process serves, as org/project pairs. Empty is the
 		// ordinary deployment: the single project named above, with its
 		// definitions where they have always been.
-		Projects:    os.Getenv("CRONOS_PROJECTS"),
-		Project:     env("CRONOS_PROJECT", "default"),
-		StoreDSN:    os.Getenv("CRONOS_STORE_DSN"),
-		StoreDriver: env("CRONOS_STORE_DRIVER", "postgres"),
-		Deliveries:  env("CRONOS_DELIVERIES", "deliveries"),
-		Scheduler:   os.Getenv("CRONOS_SCHEDULER") == "1",
-		Portal:      strings.TrimRight(os.Getenv("CRONOS_PORTAL_URL"), "/"),
+		Projects:      os.Getenv("CRONOS_PROJECTS"),
+		Project:       env("CRONOS_PROJECT", "default"),
+		StoreDSN:      os.Getenv("CRONOS_STORE_DSN"),
+		StoreDriver:   env("CRONOS_STORE_DRIVER", "postgres"),
+		Deliveries:    env("CRONOS_DELIVERIES", "deliveries"),
+		Scheduler:     os.Getenv("CRONOS_SCHEDULER") == "1",
+		SchedulerTick: duration("CRONOS_SCHEDULER_TICK"),
+		Portal:        strings.TrimRight(os.Getenv("CRONOS_PORTAL_URL"), "/"),
 		SMTP: SMTP{
 			Host: os.Getenv("CRONOS_SMTP_HOST"), From: os.Getenv("CRONOS_SMTP_FROM"),
 			Username: os.Getenv("CRONOS_SMTP_USER"), Password: os.Getenv("CRONOS_SMTP_PASSWORD"),

@@ -98,9 +98,17 @@ func Serve(log *slog.Logger) error {
 		defer rt.close() //nolint:errcheck // closing pools on the way out
 	}
 
-	schedules, stopSchedulers := context.WithCancel(context.Background())
+	/*
+	   Deferred beside the start, and it both cancels and waits.
+
+	   The order matters and this is the order: listen below drains HTTP first,
+	   then this runs. A scheduled run may reach this deployment's own API, so
+	   stopping the schedulers first would fail the run the drain exists to let
+	   finish.
+	*/
+	stopSchedulers, err := startSchedulers(cfg, runtimes, records, log)
 	defer stopSchedulers()
-	if err := startSchedulers(schedules, cfg, runtimes, records, log); err != nil {
+	if err != nil {
 		return err
 	}
 

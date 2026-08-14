@@ -93,6 +93,9 @@ func scheduler(cfg config.Server, org, project string, repo *file.Repository,
 	}
 
 	sched := schedule.New(repo, bursts, owner{org: org, project: project}, log)
+	if cfg.SchedulerTick > 0 {
+		sched = sched.WithTick(cfg.SchedulerTick)
+	}
 	if mail := mailer(chans); mail != nil {
 		sched = sched.WithAlerts(alertemail.New(mail))
 	} else {
