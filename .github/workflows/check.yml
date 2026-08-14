@@ -78,6 +78,19 @@ jobs:
       - name: licence boundary
         run: ./scripts/check-license-boundary.sh
 
+      # Known vulnerabilities, and only the ones this code can actually reach.
+      #
+      # govulncheck traces from our call graph rather than listing everything
+      # a dependency ever shipped, so what it reports is what an attacker could
+      # get to — which is the difference between a gate people act on and a
+      # weekly list they stop reading.
+      #
+      # It found six open against the standard library the first time it ran:
+      # the toolchain was a patch behind, and nothing in this repository was
+      # looking. go.mod names the patch now, and so does the Dockerfile.
+      - name: known vulnerabilities
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
       # A browser tab closed on a slow dashboard must not leave a query running
       # on somebody else's warehouse. The chain from request context to the
       # wire is long and every unit test along it owns both ends; Postgres is
@@ -227,6 +240,12 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - working-directory: apps/portal
         run: bun install --frozen-lockfile
+      # The other half of the supply chain. The portal ships to a browser, so a
+      # vulnerable dependency here is one served to every reader of every
+      # report — including an ISV's end customers, through the embed.
+      - name: known vulnerabilities
+        working-directory: apps/portal
+        run: bun audit --audit-level=high
       - working-directory: apps/portal
         run: bunx tsc --noEmit
       - working-directory: apps/portal

@@ -1,0 +1,46 @@
+# Keeps the things a scan would eventually shout about current.
+#
+# The scanners in check.yml are the gate: they fail a build on a vulnerability
+# this code can actually reach. This is the other half — the pull requests that
+# mean the gate is rarely the first anybody hears of it.
+#
+# Weekly rather than daily, and grouped rather than one per dependency. A stream
+# of individual bumps is a stream nobody reviews, and an unreviewed dependency
+# bump is the supply-chain risk it was meant to reduce.
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      go:
+        patterns: ['*']
+
+  # The portal ships to a browser, so a vulnerable dependency here is one served
+  # to every reader of every report — including an ISV's end customers.
+  - package-ecosystem: npm
+    directory: /apps/portal
+    schedule:
+      interval: weekly
+    groups:
+      portal:
+        patterns: ['*']
+
+  # The embed bundle and its wrappers, which land in somebody else's page.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      packages:
+        patterns: ['*']
+
+  # The actions themselves run with a token against this repository.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ['*']

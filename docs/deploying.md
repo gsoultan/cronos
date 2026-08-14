@@ -177,6 +177,26 @@ If that happens often the schedule is too big for one instance, rather than the
 grace being too short — raising it past the orchestrator's patience only adds
 confusion before the same `SIGKILL`.
 
+## Dependencies
+
+`govulncheck` and `bun audit` run in CI and fail a build. govulncheck traces
+from this code's own call graph rather than listing everything a dependency ever
+shipped, so what it reports is what an attacker could actually reach — which is
+the difference between a gate people act on and a weekly list they stop reading.
+
+It found six open against the standard library the first time it ran: the
+toolchain was one patch behind and nothing was looking. `go.mod` names the patch
+now, and the Dockerfile's builder names the same one, so the two cannot drift.
+
+Two remain, and neither is reachable from this code: an out-of-bounds read in
+`klauspost/compress/s2`, and `x/crypto/openpgp` being unmaintained. Both arrive
+through the S3 client. They are reported and not called, so the gate stays
+green; if either becomes reachable it will fail the build that makes it so.
+
+Dependabot proposes the updates weekly, grouped rather than one pull request per
+dependency — a stream of individual bumps is a stream nobody reviews, and an
+unreviewed dependency bump is the risk it was meant to reduce.
+
 ## Upgrading
 
 Migrations are forward-only and run at startup, each in a transaction. A

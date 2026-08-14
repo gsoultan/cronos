@@ -22,7 +22,13 @@ ARG VITE_CRONOS_API=""
 RUN cd apps/portal && bun run build
 
 # --- The server -------------------------------------------------------------
-FROM golang:1.26-alpine AS server
+# Pinned to the patch, not the minor.
+#
+# `golang:1.26-alpine` is whatever 1.26.x Docker Hub last built, which is the
+# right thing right up until it is behind: six standard-library advisories were
+# open against 1.26.5, and a tag that floats gives no way to say which one an
+# image was built with. go.mod names the same version, so the two cannot drift.
+FROM golang:1.26.6-alpine AS server
 WORKDIR /src
 
 COPY go.mod go.sum ./

@@ -1,6 +1,6 @@
 module github.com/gsoultan/cronos
 
-go 1.26
+go 1.26.6
 
 require (
 	github.com/jackc/pgx/v5 v5.10.0
