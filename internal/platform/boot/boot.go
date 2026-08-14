@@ -99,6 +99,11 @@ func Serve(log *slog.Logger) error {
 		defer rt.close() //nolint:errcheck // closing pools on the way out
 	}
 
+	// One recorder, however it is served: the counting happens in the handler
+	// chain either way, and only where it can be read changes. Built before the
+	// schedulers so each can register itself as it arms.
+	metrics := api.NewMetrics()
+
 	/*
 	   Deferred beside the start, and it both cancels and waits.
 
@@ -107,7 +112,7 @@ func Serve(log *slog.Logger) error {
 	   stopping the schedulers first would fail the run the drain exists to let
 	   finish.
 	*/
-	stopSchedulers, err := startSchedulers(cfg, runtimes, records, log)
+	stopSchedulers, err := startSchedulers(cfg, runtimes, records, metrics, log)
 	defer stopSchedulers()
 	if err != nil {
 		return err
@@ -128,10 +133,6 @@ func Serve(log *slog.Logger) error {
 	// Whatever the history retention, an expired invitation is dead weight
 	// holding an address and the hash of a credential.
 	sweepInvitations(retention, records, log)
-
-	// One recorder, however it is served: the counting happens in the handler
-	// chain either way, and only where it can be read changes.
-	metrics := api.NewMetrics()
 
 	handler := api.Routes(api.Deps{
 		Projects: projects, Signer: signer,

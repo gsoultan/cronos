@@ -158,3 +158,38 @@ func TestTheRunGraceIsBounded(t *testing.T) {
 		t.Fatalf("the grace (%s) outlives a default SIGKILL", schedule.Grace)
 	}
 }
+
+/*
+The loop says it is going round.
+
+The one signal with no substitute. A process can serve every request, answer
+health and readiness, and run nobody's schedules — because the flag was never
+set, because Start returned early, because the goroutine died. All three look
+identical from outside, and all three look identical to every counter this
+product had, because a scheduler that is not running produces no runs to count.
+
+Recorded when a pass finishes rather than when one begins, so a loop wedged
+inside a firing is caught rather than reported as healthy.
+*/
+func TestTheLoopRecordsItsPasses(t *testing.T) {
+	c := &clock{t: at("2026-07-15T12:00:00Z")}
+	svc := schedule.New(source{monthly()}, &runner{}, owner{}, quiet()).
+		WithClock(c.now).WithTick(5 * time.Millisecond)
+
+	if !svc.LastTick().IsZero() {
+		t.Fatal("a scheduler that has never started claims to have ticked")
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	stopped := make(chan struct{})
+	go func() { defer close(stopped); _ = svc.Start(ctx) }()
+	t.Cleanup(func() { cancel(); <-stopped })
+
+	waitFor(t, func() bool { return !svc.LastTick().IsZero() }, "the first pass")
+
+	// And it keeps saying so. A clock that only moves when the test moves it
+	// makes this exact rather than approximate.
+	first := svc.LastTick()
+	c.set(at("2026-07-15T12:00:30Z"))
+	waitFor(t, func() bool { return svc.LastTick().After(first) }, "a later pass")
+}

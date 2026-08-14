@@ -37,20 +37,30 @@ type Owner interface {
 
 // Service arms schedules and fires them when due.
 type Service struct {
-	source  Source
-	runner  Runner
-	owner   Owner
-	log     *slog.Logger
-	now     func() time.Time
-	tick    time.Duration
-	mu      sync.Mutex
-	running map[string]bool
-	due     map[string]time.Time
-	alerter Alerter
-	alerts  *alerts
+	source    Source
+	runner    Runner
+	owner     Owner
+	log       *slog.Logger
+	now       func() time.Time
+	tickEvery time.Duration
+	mu        sync.Mutex
+	running   map[string]bool
+	due       map[string]time.Time
+	alerter   Alerter
+	alerts    *alerts
 	// grace is how long a burst already under way gets after the loop is told
 	// to stop. See fireDue.
 	grace time.Duration
+	/*
+	   ticked is when the loop last completed a pass.
+
+	   The only evidence that this scheduler is working. Everything else a
+	   deployment can measure counts things that happened — runs, deliveries,
+	   failures — and a scheduler that has stopped produces none of them. Zero
+	   failures is what a perfect night looks like and also what a dead loop
+	   looks like, and no alert written against a counter can tell them apart.
+	*/
+	ticked time.Time
 }
 
 // Tick is how often the loop looks for work.
@@ -80,7 +90,7 @@ func (s *Service) WithGrace(d time.Duration) *Service { s.grace = d; return s }
 func New(src Source, r Runner, o Owner, log *slog.Logger) *Service {
 	return &Service{
 		source: src, runner: r, owner: o, log: log,
-		now: time.Now, tick: Tick, grace: Grace,
+		now: time.Now, tickEvery: Tick, grace: Grace,
 		running: map[string]bool{},
 		due:     map[string]time.Time{},
 		alerts:  newAlerts(),
@@ -96,7 +106,7 @@ func (s *Service) WithAlerts(a Alerter) *Service { s.alerter = a; return s }
 // WithClock and WithTick make the loop testable without waiting for a minute
 // of real time to pass.
 func (s *Service) WithClock(now func() time.Time) *Service { s.now = now; return s }
-func (s *Service) WithTick(d time.Duration) *Service       { s.tick = d; return s }
+func (s *Service) WithTick(d time.Duration) *Service       { s.tickEvery = d; return s }
 
 // Start runs until the context is cancelled.
 //
@@ -104,9 +114,12 @@ func (s *Service) WithTick(d time.Duration) *Service       { s.tick = d; return 
 // happened, which is worse to reconcile than one that did not start.
 func (s *Service) Start(ctx context.Context) error {
 	s.arm(s.now())
-	s.log.Info("scheduler started", "schedules", len(s.due), "tick", s.tick)
+	// Before the first tick, so a scheduler that has just started does not look
+	// like one that has been stuck since the epoch.
+	s.tick()
+	s.log.Info("scheduler started", "schedules", len(s.due), "tick", s.tickEvery)
 
-	ticker := time.NewTicker(s.tick)
+	ticker := time.NewTicker(s.tickEvery)
 	defer ticker.Stop()
 
 	var wg sync.WaitGroup
@@ -119,6 +132,7 @@ func (s *Service) Start(ctx context.Context) error {
 			return nil
 		case <-ticker.C:
 			s.fireDue(ctx, &wg)
+			s.tick()
 		}
 	}
 }
@@ -309,6 +323,34 @@ func (s *Service) Due() map[string]time.Time {
 		out[name] = when
 	}
 	return out
+}
+
+/*
+tick records that the loop completed a pass.
+
+LastTick below is what a deployment alerts on. The recording is here rather
+than at the top of the loop so it means "a pass finished", not "a pass began" —
+a loop wedged inside fireDue is exactly the case worth catching.
+*/
+func (s *Service) tick() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ticked = s.now()
+}
+
+/*
+LastTick is when this scheduler last completed a pass, or the zero time if it
+has never run.
+
+The signal that has no substitute. A process can serve every request, answer
+health and readiness, and not be running anybody's schedules — because the flag
+was never set, because Start returned early, because the goroutine died. From
+outside, all three look like a quiet night.
+*/
+func (s *Service) LastTick() time.Time {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.ticked
 }
 
 // Check parses every schedule and reports the ones that will not arm.

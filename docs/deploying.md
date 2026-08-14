@@ -73,11 +73,39 @@ And what should be:
   Not the admin key, deliberately: that credential can publish definitions, and
   a Prometheus scraper should not hold one.
 
-The alerts worth having, in order of how much they cost when missed:
+### Alert on the scheduler stopping
+
+The first three of these are about *absence*, and they are the ones with no
+substitute. Every other alert here counts something that happened — runs,
+deliveries, failures — and a scheduler that is not running produces none of
+them. Zero failures is what a perfect night looks like and also what a dead loop
+looks like, so no alert written against a counter can tell them apart.
+
+The process stays healthy the whole time. `/v1/health` is 200, `/v1/ready` is
+ok, every request is served. The first person to notice is a customer who did
+not get an invoice.
+
+```promql
+# 1. Nobody is scheduling. Across the fleet, no instance is armed —
+#    CRONOS_SCHEDULER is off everywhere, which is its default.
+max(cronos_scheduler_armed) == 0
+
+# 2. Armed, and the loop has stopped going round. Above a few times
+#    CRONOS_SCHEDULER_TICK, which is a minute unless you lowered it.
+cronos_scheduler_seconds_since_tick > 180
+
+# 3. Going round, and behind: something was due and has not run. Small values
+#    are ordinary — a run takes time. Growing ones are a burst that cannot
+#    finish inside its own interval.
+cronos_schedule_overdue_seconds > 900
+```
+
+Then the ones that count what happened, in order of how much they cost when
+missed:
 
 1. `cronos_deliveries_total{result="failed"}` rising. Somebody's invoice did
    not arrive, and nothing else will tell you.
-2. `cronos_runs_total{result="failed"}` — a schedule that did not run at all.
+2. `cronos_runs_total{result="failed"}` — a schedule that ran and did not work.
 3. `/v1/ready` returning `degraded` for longer than a deploy takes.
 4. `cronos_request_duration_seconds` at the 99th percentile crossing whatever
    your customers' patience is.
@@ -453,6 +481,7 @@ constant, an enrolment wizard rendering inside the account page.
 | `live-invite.sh` | inviting somebody and reading the mail | a mail server |
 | `live-drain.sh` | SIGTERM in the middle of a burst of eight hundred | go, typst |
 | `live-disconnect.sh` | hanging up on a slow report, watched from `pg_stat_activity` | go, Postgres, psql |
+| `live-scheduler-stalls.sh` | a scheduler that stops inside a process that stays healthy | go |
 | `live-sso.sh` | a whole OIDC sign-in and single log-out | Keycloak |
 | `live-sqlserver.sh` | a report against SQL Server | SQL Server |
 | `live-portal-2fa.sh` | the same enrolment, through a browser | bun, chrome |

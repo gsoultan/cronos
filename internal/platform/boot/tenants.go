@@ -175,7 +175,7 @@ a customer list receives a document while the other half does not — the state
 that is worst to reconcile, because nobody can tell from outside which half.
 */
 func startSchedulers(cfg config.Server, runtimes map[tenant]*runtime,
-	records *sqlstore.Store, log *slog.Logger) (stop func(), err error) {
+	records *sqlstore.Store, watch *api.Metrics, log *slog.Logger) (stop func(), err error) {
 
 	/*
 	   One thing to call, and it both cancels and waits.
@@ -204,6 +204,13 @@ func startSchedulers(cfg config.Server, runtimes map[tenant]*runtime,
 			return stop, fmt.Errorf("%s: %w", t, err)
 		}
 		rt.project.Due, rt.project.Fires = sched, sched
+		if watch != nil {
+			// Registered only for a scheduler that was actually armed, so no
+			// watcher at all is itself the signal that this process schedules
+			// nothing — ordinary for a replica, an incident when it is true of
+			// every replica at once.
+			watch.WatchScheduler(t.String(), sched)
+		}
 
 		wg.Add(1)
 		go func(t tenant, sched interface{ Start(context.Context) error }) {

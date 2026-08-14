@@ -43,6 +43,23 @@ type Metrics struct {
 	deliveries map[string]int64 // by result
 	started    time.Time
 	now        func() time.Time
+
+	// schedulers are read at scrape time rather than pushed to. A gauge whose
+	// job is to say "nothing has happened for a while" cannot be maintained by
+	// the thing that has stopped happening.
+	schedulers map[string]SchedulerState
+}
+
+/*
+SchedulerState is what a scheduler can be asked at scrape time.
+
+Both halves are needed and neither is sufficient. Due says what is armed and
+when it fires, which catches a deployment that armed nothing. LastTick says the
+loop is still going round, which catches one that armed everything and stopped.
+*/
+type SchedulerState interface {
+	Due() map[string]time.Time
+	LastTick() time.Time
 }
 
 type requestKey2 struct {
@@ -60,7 +77,30 @@ func NewMetrics() *Metrics {
 		deliveries: map[string]int64{},
 		started:    now(),
 		now:        now,
+		schedulers: map[string]SchedulerState{},
 	}
+}
+
+// WithClock fixes the clock, so a test can be a stopped scheduler rather than
+// wait to become one.
+func (m *Metrics) WithClock(now func() time.Time) *Metrics {
+	m.now = now
+	m.started = now()
+	return m
+}
+
+/*
+WatchScheduler reports on one project's scheduler.
+
+Called only for a scheduler that was actually armed, so the absence of any
+watcher is itself the signal that this process schedules nothing — which is a
+correct and common state for a replica, and an incident when it is true of
+every replica at once.
+*/
+func (m *Metrics) WatchScheduler(project string, s SchedulerState) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.schedulers[project] = s
 }
 
 // Request records one served request.
@@ -121,6 +161,8 @@ func (m *Metrics) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 	for _, result := range sortedCounts(m.deliveries) {
 		fmt.Fprintf(&out, "cronos_deliveries_total{result=%q} %d\n", result, m.deliveries[result])
 	}
+
+	m.writeSchedulers(&out)
 
 	out.WriteString("# HELP cronos_uptime_seconds How long this process has been serving.\n")
 	out.WriteString("# TYPE cronos_uptime_seconds gauge\n")
@@ -199,4 +241,95 @@ func sortedCounts(in map[string]int64) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+/*
+writeSchedulers is the answer to "is anybody running the schedules".
+
+Three gauges, because there are three ways for the answer to be no and a
+deployment has to be able to tell them apart:
+
+  - nothing armed anywhere: the flag was never set on any replica, so every
+    schedule in every project is simply not running. `cronos_scheduler_armed`
+    is 0 on every instance, and no counter anywhere is non-zero, because
+    nothing has happened at all.
+
+  - armed and stuck: the loop stopped going round. Seconds since the last pass
+    grows without bound, and this is the one nothing else can see — the process
+    serves every request, answers health and readiness, and quietly does not
+    fire. Alert on it above a few times the tick.
+
+  - going round and behind: a schedule is past its firing time and has not run,
+    usually because the previous run of the same schedule is still going. Small
+    values are ordinary; growing ones are a burst that cannot finish inside its
+    own interval.
+
+Labelled by project because a deployment serving three of them wants to know
+which one is stuck, and the label is bounded by configuration rather than by
+data — three projects is three series, not one per customer.
+*/
+func (m *Metrics) writeSchedulers(out *strings.Builder) {
+	now := m.now()
+
+	out.WriteString("# HELP cronos_scheduler_armed Whether this process runs schedules.\n")
+	out.WriteString("# TYPE cronos_scheduler_armed gauge\n")
+	armed := 0
+	if len(m.schedulers) > 0 {
+		armed = 1
+	}
+	fmt.Fprintf(out, "cronos_scheduler_armed %d\n", armed)
+
+	if len(m.schedulers) == 0 {
+		return
+	}
+
+	projects := make([]string, 0, len(m.schedulers))
+	for p := range m.schedulers {
+		projects = append(projects, p)
+	}
+	sort.Strings(projects)
+
+	out.WriteString("# HELP cronos_schedules_armed Schedules with a next firing, by project.\n")
+	out.WriteString("# TYPE cronos_schedules_armed gauge\n")
+	for _, p := range projects {
+		fmt.Fprintf(out, "cronos_schedules_armed{project=%q} %d\n", p, len(m.schedulers[p].Due()))
+	}
+
+	out.WriteString("# HELP cronos_scheduler_seconds_since_tick " +
+		"How long since the scheduler loop last completed a pass.\n")
+	out.WriteString("# TYPE cronos_scheduler_seconds_since_tick gauge\n")
+	for _, p := range projects {
+		last := m.schedulers[p].LastTick()
+		if last.IsZero() {
+			// Never ran. Reported as the uptime rather than as a number since
+			// the epoch, which would be true and would also make every
+			// dashboard unreadable.
+			fmt.Fprintf(out, "cronos_scheduler_seconds_since_tick{project=%q} %.0f\n",
+				p, now.Sub(m.started).Seconds())
+			continue
+		}
+		fmt.Fprintf(out, "cronos_scheduler_seconds_since_tick{project=%q} %.0f\n",
+			p, now.Sub(last).Seconds())
+	}
+
+	out.WriteString("# HELP cronos_schedule_overdue_seconds " +
+		"How far past its firing time the most overdue schedule is.\n")
+	out.WriteString("# TYPE cronos_schedule_overdue_seconds gauge\n")
+	for _, p := range projects {
+		fmt.Fprintf(out, "cronos_schedule_overdue_seconds{project=%q} %.0f\n",
+			p, overdue(m.schedulers[p].Due(), now))
+	}
+}
+
+// overdue is how long the most overdue schedule has been waiting, or zero when
+// none is. Zero rather than a negative time-until-next: an alert reads more
+// clearly as "greater than five minutes" than as "less than minus five".
+func overdue(due map[string]time.Time, now time.Time) float64 {
+	worst := 0.0
+	for _, when := range due {
+		if late := now.Sub(when).Seconds(); late > worst {
+			worst = late
+		}
+	}
+	return worst
 }

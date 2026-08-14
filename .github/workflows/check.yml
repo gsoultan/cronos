@@ -158,6 +158,11 @@ jobs:
       # left no run record at all.
       - name: interrupting a burst
         run: ./scripts/live-drain.sh
+      # The failure with no signal: a scheduler that stops inside a process that
+      # keeps answering health, readiness and every request. Nothing counted it,
+      # because a scheduler that is not running produces nothing to count.
+      - name: a scheduler that stops is visible
+        run: ./scripts/live-scheduler-stalls.sh
 
   live-databases:
     name: live checks (databases)
