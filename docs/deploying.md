@@ -49,7 +49,7 @@ And what should be:
 | `CRONOS_AUDIT` | `log` by default, `off` to stop it. |
 | `CRONOS_SMTP_HOST`, `CRONOS_SMTP_FROM` | A mail relay. Needed to deliver a schedule by email, and to invite anybody. |
 | `CRONOS_PORTAL_URL` | Where the portal is served, for links in email. Without it, invitations are not offered — there would be nothing to put in the link. |
-| `CRONOS_SCHEDULER=1` | Arms schedules. Off by default, and it must be on for exactly one instance — see Stopping. |
+| `CRONOS_SCHEDULER=1` | Arms schedules. Off by default. Safe to set on every replica — see Running several. |
 | `CRONOS_SCHEDULER_TICK` | e.g. `10s`. How often armed schedules are checked; a minute by default, which is cron's own resolution. Lower it if "06:00" has to mean 06:00 rather than some time in the minute after. |
 | `CRONOS_METRICS_ADDR` | e.g. `127.0.0.1:9090`. Serves the exposition there and nowhere else — see Probes. |
 
@@ -109,6 +109,38 @@ missed:
 3. `/v1/ready` returning `degraded` for longer than a deploy takes.
 4. `cronos_request_duration_seconds` at the 99th percentile crossing whatever
    your customers' patience is.
+
+## Running several
+
+Set `CRONOS_SCHEDULER=1` on every replica. They elect one leader per project
+through a Postgres advisory lock, and only the leader fires; the others arm
+nothing and wait. If the leader goes away — a deploy, a crash, a node — another
+takes over on its next tick.
+
+This used to be a rule you held in your head: on for exactly one instance. Set
+it twice and every customer got two copies of their statement; forget it and
+nobody got one. Both are quiet, because the only party who notices either is the
+recipient.
+
+```promql
+# Nobody is leading. The one alert that matters here — with several replicas
+# armed, this should never be true for longer than a hand-over.
+max(cronos_scheduler_leader) == 0
+```
+
+The lock is held on a session, so it is released when that session ends —
+including when the process holding it is killed, because the socket closes and
+Postgres notices. There is no lease to expire and no clock to agree on, and two
+instances cannot both hold it.
+
+What it does not give is instant failover in every case. A host that freezes
+without closing its sockets keeps the lock until Postgres' keepalives give up,
+which is minutes. That is the safe direction — nobody schedules for a while
+rather than two instances scheduling at once — and the gauge above makes the gap
+visible while it lasts.
+
+On SQLite there is no election and none is needed: that deployment is one
+process by construction, and it leads unconditionally.
 
 ## Stopping
 
@@ -482,6 +514,7 @@ constant, an enrolment wizard rendering inside the account page.
 | `live-drain.sh` | SIGTERM in the middle of a burst of eight hundred | go, typst |
 | `live-disconnect.sh` | hanging up on a slow report, watched from `pg_stat_activity` | go, Postgres, psql |
 | `live-scheduler-stalls.sh` | a scheduler that stops inside a process that stays healthy | go |
+| `live-leader.sh` | three replicas all armed, one scheduling, and failover | go, typst, Postgres |
 | `live-sso.sh` | a whole OIDC sign-in and single log-out | Keycloak |
 | `live-sqlserver.sh` | a report against SQL Server | SQL Server |
 | `live-portal-2fa.sh` | the same enrolment, through a browser | bun, chrome |

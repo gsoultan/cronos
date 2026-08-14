@@ -193,3 +193,75 @@ func TestTheLoopRecordsItsPasses(t *testing.T) {
 	c.set(at("2026-07-15T12:00:30Z"))
 	waitFor(t, func() bool { return svc.LastTick().After(first) }, "a later pass")
 }
+
+/*
+A follower fires nothing, and arms nothing either.
+
+Half of this is obvious — a replica that is not leading must not deliver. The
+other half is what keeps the alerting honest: a follower that armed its
+schedules would report them as armed and, once their firing time passed without
+it firing, as overdue. Every follower in the fleet would then trip the alert
+written for a stuck leader, and an alert that fires on healthy replicas is an
+alert somebody turns off.
+*/
+type follower struct{}
+
+func (follower) Leading(context.Context) bool { return false }
+
+func TestAFollowerFiresNothing(t *testing.T) {
+	c := &clock{t: at("2026-07-15T12:00:00Z")}
+	r := &runner{}
+
+	svc := schedule.New(source{monthly()}, r, owner{}, quiet()).
+		WithClock(c.now).WithTick(5 * time.Millisecond).
+		WithElection(follower{})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	stopped := make(chan struct{})
+	go func() { defer close(stopped); _ = svc.Start(ctx) }()
+	t.Cleanup(func() { cancel(); <-stopped })
+
+	// Well past a firing.
+	c.set(at("2026-08-01T05:00:00Z"))
+	waitFor(t, func() bool { return !svc.LastTick().IsZero() }, "a pass")
+	time.Sleep(150 * time.Millisecond)
+
+	if r.count() != 0 {
+		t.Fatalf("a follower delivered %d times — every replica would send a copy", r.count())
+	}
+	if n := len(svc.Due()); n != 0 {
+		t.Errorf("a follower armed %d schedules, so it will report itself overdue "+
+			"and trip the alert meant for a stuck leader", n)
+	}
+	if svc.Leading() {
+		t.Error("a follower reports itself as the leader")
+	}
+}
+
+// And a leader does fire, so the election is not simply switching everything
+// off — which would pass the test above perfectly.
+func TestALeaderStillFires(t *testing.T) {
+	c := &clock{t: at("2026-07-15T12:00:00Z")}
+	r := &runner{}
+
+	svc := schedule.New(source{monthly()}, r, owner{}, quiet()).
+		WithClock(c.now).WithTick(5 * time.Millisecond).
+		WithElection(leader{})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	stopped := make(chan struct{})
+	go func() { defer close(stopped); _ = svc.Start(ctx) }()
+	t.Cleanup(func() { cancel(); <-stopped })
+
+	armed(t, svc, 1)
+	c.set(at("2026-08-01T05:00:00Z"))
+	waitFor(t, func() bool { return r.count() == 1 }, "the leader to fire")
+
+	if !svc.Leading() {
+		t.Error("the leader does not report itself as one")
+	}
+}
+
+type leader struct{}
+
+func (leader) Leading(context.Context) bool { return true }

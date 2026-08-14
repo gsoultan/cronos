@@ -28,12 +28,14 @@ expensive to miss.
 
 // stuck is a scheduler that armed some schedules and then stopped going round.
 type stuck struct {
-	due  map[string]time.Time
-	last time.Time
+	due    map[string]time.Time
+	last   time.Time
+	demote bool
 }
 
 func (s stuck) Due() map[string]time.Time { return s.due }
 func (s stuck) LastTick() time.Time       { return s.last }
+func (s stuck) Leading() bool             { return !s.demote }
 
 func scrape(t *testing.T, m *api.Metrics) string {
 	t.Helper()

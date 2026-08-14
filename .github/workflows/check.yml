@@ -89,6 +89,15 @@ jobs:
           sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
           ./scripts/live-disconnect.sh
 
+      # Three replicas, all armed, one scheduling — and the schedule surviving
+      # the loss of that one. Before this, CRONOS_SCHEDULER had to be set on
+      # exactly one instance: a rule held in somebody's head, where setting it
+      # twice sends every customer two statements.
+      - name: several replicas, one scheduler
+        env:
+          CRONOS_POSTGRES_DSN: postgres://cronos:cronos@localhost:5432/cronos?sslmode=disable
+        run: ./scripts/live-leader.sh
+
   # Federation needs cgo and a 460 MB module download, so it is its own job:
   # every other check should not wait for it, and it should not be the reason
   # a typo in a comment takes six minutes to fail.

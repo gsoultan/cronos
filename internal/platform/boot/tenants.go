@@ -188,9 +188,16 @@ func startSchedulers(cfg config.Server, runtimes map[tenant]*runtime,
 	*/
 	ctx, cancel := context.WithCancel(context.Background())
 	var wg sync.WaitGroup
+	var leases []*sqlstore.Lease
 	stop = func() {
 		cancel()
 		drain(wg.Wait, log)
+		// After the drain, not before: a burst finishing is still this
+		// instance's work, and handing leadership over while it delivers would
+		// let a replacement start the same schedule beside it.
+		for _, l := range leases {
+			l.Release()
+		}
 	}
 
 	if !cfg.Scheduler {
@@ -203,6 +210,25 @@ func startSchedulers(cfg config.Server, runtimes map[tenant]*runtime,
 			// stops them; returning stop alongside the error means it can.
 			return stop, fmt.Errorf("%s: %w", t, err)
 		}
+		/*
+		   Leadership, where the store can arbitrate it.
+
+		   Every replica may now run with CRONOS_SCHEDULER=1 and exactly one
+		   fires. Before this, that was a rule a deployment held in its head:
+		   set it twice and every customer gets two statements, forget it and
+		   nobody gets one — and both are quiet, because the only party who
+		   notices is the recipient.
+
+		   Nil for a file-backed or SQLite deployment, which is one process by
+		   construction and leads unconditionally.
+		*/
+		if records != nil {
+			if lease := records.Lease("scheduler:" + t.String()); lease != nil {
+				sched = sched.WithElection(lease)
+				leases = append(leases, lease)
+			}
+		}
+
 		rt.project.Due, rt.project.Fires = sched, sched
 		if watch != nil {
 			// Registered only for a scheduler that was actually armed, so no

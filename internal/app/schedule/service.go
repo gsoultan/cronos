@@ -61,6 +61,28 @@ type Service struct {
 	   looks like, and no alert written against a counter can tell them apart.
 	*/
 	ticked time.Time
+	/*
+	   elector decides whether this process is the one that fires.
+
+	   Absent means yes, which is every deployment that has not asked for
+	   several replicas — and the file-backed one, which is a single process by
+	   construction.
+	*/
+	elector Elector
+	// leading is what the last election said, for the gauge. Cached rather
+	// than asked at scrape time: a scrape should not open a database session.
+	leading bool
+}
+
+/*
+Elector says whether this process should be the one firing schedules.
+
+A port rather than a mechanism, because the mechanism is the store's: leadership
+is a Postgres advisory lock, and its liveness is the database's business rather
+than this loop's. See sqlstore.Lease.
+*/
+type Elector interface {
+	Leading(ctx context.Context) bool
 }
 
 // Tick is how often the loop looks for work.
@@ -97,6 +119,24 @@ func New(src Source, r Runner, o Owner, log *slog.Logger) *Service {
 	}
 }
 
+/*
+WithElection makes this one of several replicas, of which one fires.
+
+Without it a scheduler fires whatever else is running, which is correct for one
+process and is why CRONOS_SCHEDULER had to be set on exactly one instance — a
+rule held in somebody's head, where setting it twice double-sends to every
+customer and forgetting it sends to nobody.
+*/
+func (s *Service) WithElection(e Elector) *Service { s.elector = e; return s }
+
+// Leading reports what the last election said, for the gauge that tells a
+// deployment which replica is doing the work — and whether any is.
+func (s *Service) Leading() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.leading
+}
+
 // WithAlerts tells somebody when a run does not work.
 //
 // Optional, and absent means the failure reaches a log and no human — which is
@@ -113,11 +153,10 @@ func (s *Service) WithTick(d time.Duration) *Service       { s.tickEvery = d; re
 // In-flight bursts finish. Killing one mid-render leaves a delivery that half
 // happened, which is worse to reconcile than one that did not start.
 func (s *Service) Start(ctx context.Context) error {
-	s.arm(s.now())
 	// Before the first tick, so a scheduler that has just started does not look
 	// like one that has been stuck since the epoch.
 	s.tick()
-	s.log.Info("scheduler started", "schedules", len(s.due), "tick", s.tickEvery)
+	s.log.Info("scheduler started", "tick", s.tickEvery, "electing", s.elector != nil)
 
 	ticker := time.NewTicker(s.tickEvery)
 	defer ticker.Stop()
@@ -131,6 +170,24 @@ func (s *Service) Start(ctx context.Context) error {
 			s.log.Info("scheduler draining")
 			return nil
 		case <-ticker.C:
+			/*
+			   Elected on every pass, not once at startup.
+
+			   Leadership is not a thing a process is given; it is a thing it
+			   keeps having, and it can lose it — the database restarted, a
+			   proxy dropped the session, this replica was partitioned away.
+			   Asking each time is what makes a hand-over take one tick rather
+			   than a deploy.
+			*/
+			if !s.elected(ctx) {
+				// A follower arms nothing. Its Due() is empty, so the gauges
+				// report zero schedules armed and nothing overdue — which is
+				// the truth about a replica that is not scheduling, and stops
+				// every follower firing the alert meant for a stuck leader.
+				s.standDown()
+				s.tick()
+				continue
+			}
 			s.fireDue(ctx, &wg)
 			s.tick()
 		}
@@ -323,6 +380,41 @@ func (s *Service) Due() map[string]time.Time {
 		out[name] = when
 	}
 	return out
+}
+
+/*
+elected asks whether this process should be firing, and says so when it changes.
+
+Logged on the edge rather than every pass: a hand-over is worth a line and a
+follower saying "still not me" once a minute is not.
+*/
+func (s *Service) elected(ctx context.Context) bool {
+	now := true
+	if s.elector != nil {
+		now = s.elector.Leading(ctx)
+	}
+
+	s.mu.Lock()
+	was := s.leading
+	s.leading = now
+	s.mu.Unlock()
+
+	switch {
+	case now && !was:
+		s.log.Info("scheduling here now", "schedules", len(s.source.Schedules()))
+	case !now && was:
+		s.log.Info("another instance is scheduling")
+	}
+	return now
+}
+
+// standDown forgets what was armed, so a follower reports nothing armed and
+// nothing overdue. What it was waiting for is recomputed from the schedules the
+// moment it leads again — arm() is a pure function of now and the definitions.
+func (s *Service) standDown() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.due = map[string]time.Time{}
 }
 
 /*

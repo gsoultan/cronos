@@ -60,6 +60,9 @@ loop is still going round, which catches one that armed everything and stopped.
 type SchedulerState interface {
 	Due() map[string]time.Time
 	LastTick() time.Time
+	// Leading says whether this replica is the one firing. Always true where
+	// nothing arbitrates, which is a single-process deployment.
+	Leading() bool
 }
 
 type requestKey2 struct {
@@ -288,6 +291,17 @@ func (m *Metrics) writeSchedulers(out *strings.Builder) {
 		projects = append(projects, p)
 	}
 	sort.Strings(projects)
+
+	out.WriteString("# HELP cronos_scheduler_leader " +
+		"Whether this replica is the one firing schedules, by project.\n")
+	out.WriteString("# TYPE cronos_scheduler_leader gauge\n")
+	for _, p := range projects {
+		lead := 0
+		if m.schedulers[p].Leading() {
+			lead = 1
+		}
+		fmt.Fprintf(out, "cronos_scheduler_leader{project=%q} %d\n", p, lead)
+	}
 
 	out.WriteString("# HELP cronos_schedules_armed Schedules with a next firing, by project.\n")
 	out.WriteString("# TYPE cronos_schedules_armed gauge\n")

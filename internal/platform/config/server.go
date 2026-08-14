@@ -46,10 +46,21 @@ type Server struct {
 	StoreDriver string
 	// Deliveries is where the file channel writes. Empty disables it.
 	Deliveries string
-	// Scheduler arms schedules when true. Off by default: two instances both
-	// running the same bursts deliver every customer two documents, and
-	// deciding which one schedules is a deployment decision rather than a
-	// default.
+	/*
+	   Scheduler arms schedules when true.
+
+	   Off by default, because a deployment should choose to send things on a
+	   timer rather than discover that it does. Safe on every replica: they
+	   elect one leader per project through the store, and the others arm
+	   nothing and wait.
+
+	   It was not safe, and the comment here used to say so — two instances both
+	   running the same bursts deliver every customer two documents, so which
+	   one schedules was "a deployment decision". That is a rule held in
+	   somebody's head, and the two ways to get it wrong are both quiet: set it
+	   twice and the recipient notices, forget it and the recipient notices a
+	   month later.
+	*/
 	Scheduler bool
 	/*
 	   SchedulerTick is how often armed schedules are checked. Zero is a minute.
