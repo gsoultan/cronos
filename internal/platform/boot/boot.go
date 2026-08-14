@@ -18,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -128,6 +129,10 @@ func Serve(log *slog.Logger) error {
 	// holding an address and the hash of a credential.
 	sweepInvitations(retention, records, log)
 
+	// One recorder, however it is served: the counting happens in the handler
+	// chain either way, and only where it can be read changes.
+	metrics := api.NewMetrics()
+
 	handler := api.Routes(api.Deps{
 		Projects: projects, Signer: signer,
 		Origins: cfg.Origins, Log: log,
@@ -153,7 +158,7 @@ func Serve(log *slog.Logger) error {
 		Channels:    channelNames(cfg, log),
 
 		Ready:   readinessFor(records, runtimes),
-		Metrics: api.NewMetrics(),
+		Metrics: metrics, MetricsElsewhere: cfg.MetricsAddr != "",
 
 		Org: cfg.Org, Project: cfg.Project,
 		BehindProxy: cfg.BehindProxy,
@@ -166,7 +171,63 @@ func Serve(log *slog.Logger) error {
 		"scheduler", cfg.Scheduler, "sign-in", records != nil,
 		"auth", extension.Auth().Name(), "audit", auditSink)
 
+	/*
+	   Metrics on an address of their own, when asked for.
+
+	   Started before the API rather than after, so a deployment that cannot
+	   bind the metrics address finds out at startup instead of discovering an
+	   unscraped instance later. Drained on the way out by the same defer that
+	   closes everything else.
+	*/
+	if cfg.MetricsAddr != "" {
+		stopMetrics, err := serveMetrics(cfg.MetricsAddr, metrics, log)
+		if err != nil {
+			return err
+		}
+		defer stopMetrics()
+	}
+
 	return listen(cfg.Addr, handler, log)
+}
+
+/*
+serveMetrics puts the exposition on its own listener.
+
+A second server rather than a path on the first, because what it answers is not
+for the same audience: the API is reached by browsers and by an ISV's
+application, and the exposition is scraped by something on the operator's own
+network. Binding it to 127.0.0.1 or to a private interface is then a deployment
+decision rather than an ingress rule somebody has to remember.
+
+No timeouts to speak of and no drain worth naming: this serves one route to one
+scraper, and a request in flight at shutdown is a scrape that will happen again
+in fifteen seconds.
+*/
+func serveMetrics(addr string, h http.Handler, log *slog.Logger) (func(), error) {
+	mux := http.NewServeMux()
+	mux.Handle("/v1/metrics", h)
+	// The same path as on the main listener, so moving it is one environment
+	// variable rather than a change to every scrape config.
+	mux.Handle("/metrics", h)
+
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return nil, fmt.Errorf("metrics: %w", err)
+	}
+	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
+
+	go func() {
+		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Error("metrics listener stopped", "err", err)
+		}
+	}()
+	log.Info("metrics", "addr", addr, "onTheApi", false)
+
+	return func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(ctx)
+	}, nil
 }
 
 // seed applies a .sql file, for a development database that starts empty.

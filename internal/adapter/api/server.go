@@ -99,6 +99,14 @@ type Deps struct {
 	// is not mounted — a deployment that scrapes nothing should not be serving
 	// an endpoint that lists its routes and their volumes.
 	Metrics *Metrics
+	/*
+	   MetricsElsewhere keeps /v1/metrics off this mux.
+
+	   For a deployment serving them on an address of its own — see
+	   CRONOS_METRICS_ADDR. The counting still happens either way; this decides
+	   only whether the public API is where anybody can read it.
+	*/
+	MetricsElsewhere bool
 
 	// BehindProxy says something in front terminates the connection, so the
 	// caller's address arrives in X-Forwarded-For. Off by default: reading it
@@ -216,7 +224,7 @@ func Routes(d Deps) http.Handler {
 	// Readiness: send it work. This one asks.
 	mux.Handle("/v1/ready", NewReady(d.Log, d.Ready...))
 
-	if d.Metrics != nil {
+	if d.Metrics != nil && !d.MetricsElsewhere {
 		mux.Handle("/v1/metrics", d.Metrics)
 	}
 

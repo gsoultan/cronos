@@ -51,6 +51,7 @@ And what should be:
 | `CRONOS_PORTAL_URL` | Where the portal is served, for links in email. Without it, invitations are not offered — there would be nothing to put in the link. |
 | `CRONOS_SCHEDULER=1` | Arms schedules. Off by default, and it must be on for exactly one instance — see Stopping. |
 | `CRONOS_SCHEDULER_TICK` | e.g. `10s`. How often armed schedules are checked; a minute by default, which is cron's own resolution. Lower it if "06:00" has to mean 06:00 rather than some time in the minute after. |
+| `CRONOS_METRICS_ADDR` | e.g. `127.0.0.1:9090`. Serves the exposition there and nowhere else — see Probes. |
 
 ## Probes
 
@@ -60,7 +61,17 @@ And what should be:
 - `/v1/ready` — readiness, which asks. 503 when the store is unreachable or at
   a schema this build does not know; 200 and `degraded` when a datasource is
   down, because the reports that do not read it still work.
-- `/v1/metrics` — Prometheus exposition.
+- `/v1/metrics` — Prometheus exposition. On the API listener by default, which
+  means anybody who can reach the API can read it. It carries no customer data
+  and no report names, but it is a running commentary on the business: which
+  routes are used and how often, how many scheduled runs failed, how many
+  deliveries did not arrive. Set `CRONOS_METRICS_ADDR` to serve it on an address
+  of its own — `127.0.0.1:9090`, or a private interface — and it comes off the
+  public listener entirely. Both `/v1/metrics` and `/metrics` answer there, so
+  moving it is one variable rather than a change to every scrape config.
+
+  Not the admin key, deliberately: that credential can publish definitions, and
+  a Prometheus scraper should not hold one.
 
 The alerts worth having, in order of how much they cost when missed:
 

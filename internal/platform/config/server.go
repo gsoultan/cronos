@@ -61,7 +61,22 @@ type Server struct {
 	   wake-ups, which is the trade to make deliberately rather than to inherit.
 	*/
 	SchedulerTick time.Duration
-	SMTP          SMTP
+	/*
+	   MetricsAddr moves /v1/metrics to an address of its own.
+
+	   Empty serves it on the main listener, which is where it has always been
+	   and what every existing scrape config expects. Set — "127.0.0.1:9090",
+	   say — it is served there and nowhere else.
+
+	   Worth having because the exposition is not nothing: route names, request
+	   volumes by status, and how many scheduled runs and deliveries failed.
+	   No customer data and no report names, but on a public API it is a running
+	   commentary on somebody's business. The admin key is the wrong answer —
+	   that credential can publish definitions, and a Prometheus scraper should
+	   not hold one.
+	*/
+	MetricsAddr string
+	SMTP        SMTP
 	// Portal is where the portal is served, for links in email. A separate
 	// origin from the API in every real deployment — the portal is a static
 	// build behind a CDN — so it cannot be derived from the listen address.
@@ -122,6 +137,7 @@ func Load() (Server, error) {
 		Deliveries:    env("CRONOS_DELIVERIES", "deliveries"),
 		Scheduler:     os.Getenv("CRONOS_SCHEDULER") == "1",
 		SchedulerTick: duration("CRONOS_SCHEDULER_TICK"),
+		MetricsAddr:   os.Getenv("CRONOS_METRICS_ADDR"),
 		Portal:        strings.TrimRight(os.Getenv("CRONOS_PORTAL_URL"), "/"),
 		SMTP: SMTP{
 			Host: os.Getenv("CRONOS_SMTP_HOST"), From: os.Getenv("CRONOS_SMTP_FROM"),

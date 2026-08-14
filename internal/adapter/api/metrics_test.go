@@ -92,3 +92,54 @@ func TestAnUnmatchedPathDoesNotBecomeItsOwnSeries(t *testing.T) {
 		}
 	}
 }
+
+/*
+Metrics can be kept off the public API.
+
+The exposition is not customer data — no report names, no addresses — but it is
+a running commentary on somebody's business: which routes are used and how
+often, how many scheduled runs failed, how many deliveries did not arrive. On an
+API that browsers and an ISV's application reach by design, that is readable by
+anybody who can reach it, which was everybody.
+
+The admin key would be the wrong answer: it can publish definitions, and a
+Prometheus scraper should not hold a credential that can. So the control is an
+address of its own — see CRONOS_METRICS_ADDR — and this is the half of it that
+lives here: the route comes off this mux when the deployment says so.
+*/
+func TestMetricsCanBeServedElsewhere(t *testing.T) {
+	for _, elsewhere := range []bool{false, true} {
+		h := api.Routes(api.Deps{
+			Log: quiet(), Metrics: api.NewMetrics(), MetricsElsewhere: elsewhere,
+			Org: "acme", Project: "finance",
+		})
+		r := httptest.NewRequest(http.MethodGet, "/v1/metrics", nil)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+
+		if elsewhere && w.Code != http.StatusNotFound {
+			t.Errorf("metrics were still on the api: %d", w.Code)
+		}
+		if !elsewhere && w.Code != http.StatusOK {
+			t.Errorf("metrics were not served at all: %d", w.Code)
+		}
+	}
+}
+
+// And the counting happens either way — moving where they are read must not
+// stop them being recorded, or an operator who moves them gets a working
+// endpoint that answers zero.
+func TestMovingMetricsDoesNotStopTheCounting(t *testing.T) {
+	m := api.NewMetrics()
+	h := api.Routes(api.Deps{
+		Log: quiet(), Metrics: m, MetricsElsewhere: true,
+		Org: "acme", Project: "finance",
+	})
+	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/v1/health", nil))
+
+	w := httptest.NewRecorder()
+	m.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/v1/metrics", nil))
+	if !strings.Contains(w.Body.String(), `route="/v1/health"`) {
+		t.Fatalf("the request was not counted:\n%s", w.Body.String())
+	}
+}
