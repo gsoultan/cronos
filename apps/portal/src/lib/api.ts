@@ -264,12 +264,42 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
     // what makes the next render show the sign-in page instead of an error
     // nobody can act on — a portal that says "unauthorised" and offers no way
     // to fix it is a portal somebody reloads until it works.
-    signOut()
+    //
+    // Except where the 401 is about the code somebody just typed rather than
+    // the session they typed it in. The second-factor routes answer 401 for a
+    // wrong or already-used code, with a sentence written to be read — "That
+    // code is not right. Check the app is showing the current one." — and
+    // signing out here threw the page away before it could be shown. Mistype a
+    // digit while enrolling and you were back at the sign-in form with no
+    // explanation and the enrolment abandoned; the same for a code that
+    // expired between reading it off a phone and pressing the button, which is
+    // the ordinary way to be a second late.
+    if (!provesACode(path)) signOut()
     throw new ApiError(401, await serverMessage(res))
   }
   if (!res.ok) throw new ApiError(res.status, await serverMessage(res))
   if (res.status === 204) return undefined as T
   return (await res.json()) as T
+}
+
+/**
+ * Whether a 401 from this route is about a credential rather than the session.
+ *
+ * The second-factor routes take a code and check it, so their 401 means the
+ * code was wrong — the session that carried it is fine, and ending it is both
+ * the wrong conclusion and an unrecoverable one.
+ *
+ * A list rather than something read off the response, because the server sends
+ * the two cases as prose and matching on prose is a translation away from
+ * breaking. It is short and it is where the routes are declared, a few lines
+ * from the functions that call them.
+ *
+ * When a factor route 401s because the session really has ended, the page says
+ * the code was wrong, which is untrue and harmless: the next call to anything
+ * else signs out properly. That is the better way round.
+ */
+function provesACode(path: string): boolean {
+  return path.startsWith('/v1/auth/factor')
 }
 
 /**

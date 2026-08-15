@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Button, TextInput } from '@mantine/core'
 import { Field } from '../components/form/Field'
 import { QrCode } from '../components/QrCode'
@@ -47,12 +47,40 @@ export function TwoFactorSetup({ onDone, onCancel }: Props) {
   const [saved, setSaved] = useState(false)
   const [copied, setCopied] = useState(false)
 
-  /* Started as the page opens, because the QR cannot be drawn without it. An
-     enrolment that is begun and abandoned leaves an unconfirmed row that
-     protects nothing and is replaced by the next attempt. */
+  /*
+   * Started as the page opens, because the QR cannot be drawn without it. An
+   * enrolment that is begun and abandoned leaves an unconfirmed row that
+   * protects nothing and is replaced by the next attempt.
+   *
+   * Started *once*, which the `live` flag alone did not achieve. Beginning an
+   * enrolment is not an idempotent thing to do: each call replaces the pending
+   * secret. StrictMode runs an effect twice on purpose to find exactly this,
+   * and two starts in flight at once race — the server keeps whichever it
+   * finishes last, the page shows whichever it is allowed to set, and about
+   * half the time those are different secrets. Then every code from the QR
+   * just scanned is refused as wrong, with no way to tell why.
+   *
+   * What is held is the promise, not a flag saying one was sent. A flag is the
+   * obvious version and it is wrong in a way that takes a while to see: the
+   * first mount sends the request and its cleanup marks itself dead, the second
+   * mount finds the flag set and sends nothing, and so nobody is left listening
+   * for the answer. The QR never appears at all. Sharing the promise means one
+   * request and whichever mount is alive when it lands sets the state.
+   *
+   * The `live` flag is still needed and does a different job: it stops a
+   * response arriving after the wizard has closed from setting state on
+   * something that is gone.
+   *
+   * The other fix would be for /v1/auth/factor/start to hand back the pending
+   * secret it already has instead of minting a new one, which is also better
+   * for somebody who refreshes the page mid-enrolment. That is a change to what
+   * a route means and is not made here.
+   */
+  const started = useRef<ReturnType<typeof startFactor> | null>(null)
   useEffect(() => {
     let live = true
-    startFactor()
+    started.current ??= startFactor()
+    started.current
       .then((out) => { if (live) setEnrolment(out) })
       .catch((err: unknown) => {
         if (live) setError(err instanceof ApiError ? err.message : 'Could not start enrolment.')

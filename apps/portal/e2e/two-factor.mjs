@@ -55,7 +55,13 @@ const browser = await chromium.launch()
 const page = await browser.newPage({ viewport: { width: 1280, height: 1100 } })
 const problems = []
 page.on('pageerror', (e) => problems.push('pageerror: ' + e.message))
-page.on('console', (m) => { if (m.type() === 'error') problems.push('console: ' + m.text().slice(0, 120)) })
+page.on('console', (m) => {
+  // The wrong code below is refused on purpose, and a browser logs a 401 as a
+  // console error. Named exactly, so a 401 from anywhere else still counts.
+  if (m.type() === 'error' && /401/.test(m.text()) && expecting401) return
+  if (m.type() === 'error') problems.push('console: ' + m.text().slice(0, 120))
+})
+let expecting401 = false
 
 await page.goto(PORTAL + '/', { waitUntil: 'networkidle' })
 await page.getByTestId('email').fill('ada@acme.example')
@@ -91,6 +97,37 @@ must(await page.locator('svg[role="img"] path').count() > 0, 'a QR code was draw
 
 await page.getByRole('button', { name: 'Continue' }).click()
 await page.waitForTimeout(500)
+
+/*
+ * A wrong code first, because getting one wrong is the ordinary case.
+ *
+ * A code lives thirty seconds and reading six digits off a phone spends some of
+ * them, so the question worth asking is not what a correct code does — it is
+ * whether an incorrect one leaves somebody where they can try again. It did
+ * not. The server answers 401 for a wrong code, the portal took every 401 as a
+ * session that had ended, and one mistyped digit put you back at the sign-in
+ * form with the enrolment abandoned and nothing on screen saying why.
+ *
+ * This check had been finding that by accident, about half the time, whenever
+ * the code it computed expired before it was submitted — and reporting it as
+ * "no recovery codes", which points at the wrong thing entirely.
+ */
+expecting401 = true
+await page.getByTestId('factor-verify').fill('000000')
+await page.getByRole('button', { name: 'Verify' }).click()
+await page.waitForTimeout(1500)
+
+must(await page.getByTestId('factor-verify').count() === 1,
+  'a wrong code leaves you on the enrolment step, not at the sign-in page')
+must(/not right|already been used/.test(
+  (await page.locator('[role="alert"], .text-danger').allInnerTexts()).join(' ')),
+  'and says why, in the server\'s own words')
+
+expecting401 = false
+/* And the right one still works afterwards, which is the half that was
+   broken by something else entirely: the enrolment effect ran twice, so two
+   secrets were minted and the one on screen was not always the one the server
+   kept. See TwoFactorSetup. */
 await page.getByTestId('factor-verify').fill(totp(shown))
 await page.getByRole('button', { name: 'Verify' }).click()
 
