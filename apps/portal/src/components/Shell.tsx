@@ -51,6 +51,18 @@ export function Shell() {
     root.dataset.mantineColorScheme = theme
   }, [theme])
 
+  /*
+     The Mantine styles no first screen renders, fetched once the first one has.
+
+     Every one of them belongs to a lazily-loaded route — the editors, the
+     builder, the settings panels — and shipping their CSS with the sign-in form
+     was thirty-odd kilobytes nobody had asked for. Started on mount, so it is
+     in flight long before anybody can navigate anywhere, and joining a cascade
+     layer theme/index.css has already declared, so arriving late does not
+     change what wins.
+  */
+  useEffect(() => { void import('../theme/mantine-deferred.css') }, [])
+
   /* Navigating closes the drawer. It sits on top of the page it just took you
      to, so leaving it open hides the result of the tap that opened it. */
   useEffect(() => { setDrawer(false) }, [path])

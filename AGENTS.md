@@ -192,6 +192,12 @@ Enforced in CI on every PR; a build over budget fails.
 Lazy-loaded, never in an initial chunk: charting library, PDF viewer, report builder,
 spreadsheet export.
 
+The same rule applies to CSS, and it is the one that drifts, because a stylesheet
+imported once covers every route for ever. `theme/mantine.css` is what the first
+screen renders — TextInput, PasswordInput, Button — and `theme/mantine-deferred.css`
+is everything else, fetched by Shell on mount. Adding a Mantine component means
+choosing between them, and the question is: does the sign-in form render it?
+
 ### Performance rules
 
 - Every table is virtualised. A report can return a million rows; the DOM cannot.
