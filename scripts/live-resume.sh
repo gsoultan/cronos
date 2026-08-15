@@ -130,7 +130,22 @@ PSQL_DSN="${CRONOS_PSQL_DSN:-$DSN}"
 
 # Scoped in the query rather than with a SET: `psql -tAc "SET ...; SELECT"`
 # prints the SET's own output too, which lands in the number.
-q() { $PSQL "$PSQL_DSN" -tAc "$1" 2>/dev/null | tr -d ' \n'; }
+#
+# The failure is reported rather than discarded. `psql … 2>/dev/null | tr` under
+# `set -e` and `pipefail` ends the script the moment psql is unhappy — silently,
+# because the failure is a pipeline rather than a command and its complaint has
+# just been thrown away. This exited 1 after one green tick with not a word
+# about why, which is the third time this shape has cost an afternoon here; see
+# the note on `freeport` in live-portal-2fa.sh for the second.
+q() {
+	local out
+	if ! out=$($PSQL "$PSQL_DSN" -tAc "$1" 2>&1); then
+		printf '  \033[31mFAILED\033[0m the database would not answer:\n    %s\n    %s\n' \
+			"$(printf %s "$1" | tr -s ' \n' ' ')" "$out" >&2
+		exit 1
+	fi
+	printf %s "$out" | tr -d ' \n'
+}
 reached() {
 	q "SELECT count(DISTINCT destination) FROM $schema.cronos_deliveries
 		WHERE status = 'delivered'"
@@ -142,9 +157,16 @@ twice() {
 	) AS x"
 }
 
-# Notices to /dev/null too: a cascade drop lists every table it takes, and
-# that noise buries whatever this check actually reports.
-$PSQL "$PSQL_DSN" -tAc "DROP SCHEMA IF EXISTS $schema CASCADE; CREATE SCHEMA $schema" >/dev/null 2>&1
+# Notices are dropped — a cascade drop lists every table it takes, and that
+# noise buries whatever this check actually reports — but a failure is not.
+# This is the first thing that talks to the database, so when it was
+# `>/dev/null 2>&1` under `set -e` a wrong DSN ended the run here with no
+# output at all, before a single line had been printed.
+if ! setup_out=$($PSQL "$PSQL_DSN" -tAc \
+	"DROP SCHEMA IF EXISTS $schema CASCADE; CREATE SCHEMA $schema" 2>&1); then
+	printf '  \033[31mFAILED\033[0m could not prepare %s:\n    %s\n' "$schema" "$setup_out" >&2
+	exit 1
+fi
 scoped="$DSN&options=-csearch_path%3D$schema"
 
 env CRONOS_ADDR=":$PORT" CRONOS_DEFINITIONS="$work/defs" \
