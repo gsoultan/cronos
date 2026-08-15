@@ -184,6 +184,13 @@ jobs:
       # somebody edited, another organisation, a viewer, a share link.
       - name: the boundaries hold
         run: ./scripts/live-boundaries.sh
+      # A database failover is an ordinary Tuesday and the classic reason a
+      # service needs restarting afterwards. It also pins the property worth
+      # having: an outage of cronos's own store does not stop anybody reading a
+      # report, because definitions are in memory and the warehouse is
+      # elsewhere.
+      - name: the store goes away and comes back
+        run: ./scripts/live-failover.sh
       - name: first run, and administering the deployment
         run: ./scripts/live-setup.sh
       - name: ending every other session

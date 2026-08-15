@@ -61,6 +61,16 @@ And what should be:
 - `/v1/ready` — readiness, which asks. 503 when the store is unreachable or at
   a schema this build does not know; 200 and `degraded` when a datasource is
   down, because the reports that do not read it still work.
+What survives an outage of cronos's own database is worth knowing before one
+happens: **reports keep rendering.** Definitions are held in memory and the
+warehouse is a different database entirely, so a store outage takes out sign-in,
+the run history and publishing, and leaves every reader — including an ISV's
+embedded end customers — reading reports as normal. Readiness says 503 so an
+instance can be routed around; liveness stays 200 so nothing restarts a process
+that is perfectly healthy; and when the store comes back it recovers by itself
+in about a second, with no restart. `scripts/live-failover.sh` stops a real
+Postgres and starts it again to keep all of that true.
+
 - `/v1/metrics` — Prometheus exposition. On the API listener by default, which
   means anybody who can reach the API can read it. It carries no customer data
   and no report names, but it is a running commentary on the business: which
@@ -626,6 +636,7 @@ constant, an enrolment wizard rendering inside the account page.
 | `live-resume.sh` | resuming a partly delivered burst, without sending anybody two | go, typst, Postgres |
 | `live-restore.sh` | the restore drill below, end to end | go, Postgres, pg_dump |
 | `live-boundaries.sh` | row scope, audiences, tenancy, forged tokens, share links | go |
+| `live-failover.sh` | the definition store going away and coming back | go, podman |
 | `live-sso.sh` | a whole OIDC sign-in and single log-out | Keycloak |
 | `live-sqlserver.sh` | a report against SQL Server | SQL Server |
 | `live-portal-2fa.sh` | the same enrolment, through a browser | bun, chrome |
