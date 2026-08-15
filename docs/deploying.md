@@ -30,6 +30,16 @@ its own image from a base with the runtime.
 is a local claim. A container with no zoneinfo resolves every timezone to UTC,
 which is a statement dated an hour early in the wrong month.
 
+Being a local claim, it meets the two days a year a clock is not a clock. When
+the clocks go back, the hour happens twice — a schedule whose time falls inside
+it used to fire in both, so everybody on the list was sent a second copy an
+hour after the first. It now fires once, the same rule Vixie cron has had for
+decades, while a schedule on a cadence still fires at every occurrence, because
+a 25-hour day has 25 hours in it. When the clocks go forward, the missing hour
+takes any firing inside it: that run is a day late, and the run that follows
+covers both days and is labelled with both dates rather than pretending to be
+one. Pick a time outside 01:00–03:00 local and neither applies to you.
+
 ## What has to be set
 
 | Variable | Why |

@@ -263,7 +263,12 @@ func (s *Service) fireDue(ctx context.Context, wg *sync.WaitGroup) {
 			// month in a loop — three months of downtime became three bursts,
 			// which is the catch-up this is supposed not to do. It also means a
 			// run that overran its own interval does not immediately requeue.
-			defer func() { s.release(p.Schedule.Name, p.Next(s.now())) }()
+			//
+			// The firing goes in too, because "now" is not enough to know what
+			// has already been sent: when a zone puts its clocks back, the time
+			// that just fired comes round again an hour later and is still
+			// ahead of now. See Plan.NextAfter.
+			defer func() { s.release(p.Schedule.Name, p.NextAfter(at, s.now())) }()
 
 			/*
 			   A run does not inherit the loop's cancellation.
