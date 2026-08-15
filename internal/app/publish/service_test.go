@@ -340,3 +340,94 @@ spec:
 		}
 	}
 }
+
+/*
+Two editors, and the second one is told rather than winning silently.
+
+Two people editing one report is a Monday, not an exotic race. Until now the
+second save discarded the first without a word: the author saw their change
+land, and the other author found theirs gone the next time they opened the page.
+The version history means the lost work is recoverable, which sounds like a
+mitigation and is not — nobody knows to look, because nothing said anything.
+*/
+func TestASaveBuiltOnAReplacedVersionIsRefused(t *testing.T) {
+	svc, _, _ := setup(t)
+	mustPublish(t, svc, dataset)
+
+	// Both open it, and both see the same version.
+	first := mustPublish(t, svc, report)
+
+	// One of them saves.
+	edited := strings.Replace(report, "label: Total", "label: Total billed", 1)
+	if _, err := svc.PublishIf(context.Background(), []byte(edited), admin(), first.Version); err != nil {
+		t.Fatalf("the first editor could not save: %v", err)
+	}
+
+	// The other saves what they were working on, which started from the version
+	// that is no longer there.
+	theirs := strings.Replace(report, "label: Total", "label: Amount due", 1)
+	_, err := svc.PublishIf(context.Background(), []byte(theirs), admin(), first.Version)
+	if !errors.Is(err, publish.ErrStale) {
+		t.Fatalf("the second save was accepted, so the first edit is gone: %v", err)
+	}
+	// And the message says what happened, because "conflict" on its own is how
+	// somebody re-applies their edit on top of whatever just replaced it.
+	if !strings.Contains(err.Error(), "somebody else saved it") {
+		t.Errorf("the refusal does not say why: %v", err)
+	}
+}
+
+// The first editor's save is what is stored. A check that refused both would
+// pass the test above and be useless.
+func TestTheFirstSaveIsTheOneThatStands(t *testing.T) {
+	svc, repo, _ := setup(t)
+	mustPublish(t, svc, dataset)
+	first := mustPublish(t, svc, report)
+
+	edited := strings.Replace(report, "label: Total", "label: Total billed", 1)
+	if _, err := svc.PublishIf(context.Background(), []byte(edited), admin(), first.Version); err != nil {
+		t.Fatal(err)
+	}
+	// Read back from the running view, which is what a reader would see.
+	if got := repo.Reports()[0].Outputs[0].Layout[0].Label; got != "Total billed" {
+		t.Fatalf("the report reads %q, so the accepted save did not land", got)
+	}
+}
+
+/*
+Publishing without an expectation is unconditional, which is the deployment
+pipeline's case.
+
+It publishes from a git repository that is the source of truth, and refusing it
+because the running copy differs would refuse the deploy for doing its job.
+*/
+func TestPublishingWithoutAnExpectationOverwrites(t *testing.T) {
+	svc, _, _ := setup(t)
+	mustPublish(t, svc, dataset)
+	mustPublish(t, svc, report)
+
+	edited := strings.Replace(report, "label: Total", "label: From the pipeline", 1)
+	if _, err := svc.Publish(context.Background(), []byte(edited), admin()); err != nil {
+		t.Fatalf("an unconditional publish was refused: %v", err)
+	}
+}
+
+// Editing something that has been deleted is a conflict too, and a pointed one:
+// storing it would bring the definition back without anybody deciding to.
+func TestEditingSomethingThatWasDeletedIsAConflict(t *testing.T) {
+	svc, _, _ := setup(t)
+	mustPublish(t, svc, dataset)
+	first := mustPublish(t, svc, report)
+
+	if err := svc.Delete(context.Background(), admin(), "Report", "billing"); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := svc.PublishIf(context.Background(), []byte(report), admin(), first.Version)
+	if !errors.Is(err, publish.ErrStale) {
+		t.Fatalf("a definition that was deleted was quietly recreated: %v", err)
+	}
+	if !strings.Contains(err.Error(), "deleted while you were editing") {
+		t.Errorf("the refusal does not say it was deleted: %v", err)
+	}
+}

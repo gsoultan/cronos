@@ -157,10 +157,25 @@ func (s *Service) WithTick(d time.Duration) *Service       { s.tickEvery = d; re
 // In-flight bursts finish. Killing one mid-render leaves a delivery that half
 // happened, which is worse to reconcile than one that did not start.
 func (s *Service) Start(ctx context.Context) error {
+	/*
+	   Armed before the first tick, where this process is the one scheduling.
+
+	   The loop below arms on every pass, so leaving it to the first tick would
+	   work — a minute later. For that minute Due() is empty, which means the
+	   catalogue shows no next firing for any schedule and the armed gauge reads
+	   zero on a scheduler that is perfectly healthy. A browser check caught it;
+	   the unit tests did not, because they run with a five-millisecond tick.
+
+	   A follower arms nothing, here as in the loop.
+	*/
+	if s.elected(ctx) {
+		s.arm(s.now())
+	}
 	// Before the first tick, so a scheduler that has just started does not look
 	// like one that has been stuck since the epoch.
 	s.tick()
-	s.log.Info("scheduler started", "tick", s.tickEvery, "electing", s.elector != nil)
+	s.log.Info("scheduler started", "schedules", len(s.due),
+		"tick", s.tickEvery, "electing", s.elector != nil)
 
 	ticker := time.NewTicker(s.tickEvery)
 	defer ticker.Stop()

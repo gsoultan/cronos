@@ -89,7 +89,7 @@ export function DataSourceForm({ onDone, onCancel, initial }: Props) {
            SQLite DSN has no host. What was missing was any way to see or change
            it, so a SQLite source opened a form asking for a port. */
         dsn: value.dsn || (untouched(value) ? stored?.dsn : undefined),
-      }), initial))
+      }), initial), initial?.version)
       if (saved) onDone()
     },
   })

@@ -59,7 +59,7 @@ export function ScheduleForm({ onDone, onCancel, initial }: Props) {
         recipientField: burst ? value.recipientField : undefined,
         to: value.to, subject: value.subject, filename: stored?.filename,
         concurrency: value.concurrency, retries: value.retries, alert: value.alert,
-      }), initial))
+      }), initial), initial?.version)
       if (saved) onDone()
     },
   })

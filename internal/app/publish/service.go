@@ -2,6 +2,7 @@ package publish
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -102,8 +103,38 @@ func (s *Service) WithReports(r Reports) *Service {
 	return s
 }
 
-// Publish validates raw and stores it.
+// Publish validates raw and stores it, whatever is there now.
 func (s *Service) Publish(ctx context.Context, raw []byte, pr principal.Principal) (Result, error) {
+	return s.PublishIf(ctx, raw, pr, "")
+}
+
+/*
+PublishIf stores raw only if the definition is still at the version the caller
+read.
+
+Two people editing one report is not exotic — it is a Monday — and until now the
+second save silently discarded the first. The version history means the lost
+work is recoverable, which sounds like a mitigation and is not: nobody knows to
+look, because nothing said anything. The author sees their change land and the
+other author's disappear the next time they open the page.
+
+An empty expectation stores unconditionally, which is deliberate and is what
+every existing caller does. A deployment pipeline publishing from a git
+repository *is* the source of truth and must not be refused because the running
+copy differs — that difference is the point of the deploy. It is the editor,
+which read a specific version and is proposing a change to it, that has
+something to be stale about.
+
+The window this closes is the one that matters and not the only one. Two saves
+milliseconds apart can still both read the same current version and both
+succeed; two people editing for ten minutes cannot. Closing the smaller window
+means a conditional write in each store, which is worth doing when anybody has
+ever hit it — and nobody has, because it needs two people to press a button in
+the same instant on the same definition.
+*/
+func (s *Service) PublishIf(ctx context.Context, raw []byte, pr principal.Principal,
+	expect string) (Result, error) {
+
 	if !pr.CanEdit() {
 		return Result{}, fmt.Errorf("%w: %s may not change definitions", ErrForbidden, pr.ProjectRole)
 	}
@@ -116,6 +147,12 @@ func (s *Service) Publish(ctx context.Context, raw []byte, pr principal.Principa
 	name, err := s.check(ctx, kind, raw)
 	if err != nil {
 		return Result{}, err
+	}
+
+	if expect != "" {
+		if err := s.unchanged(ctx, pr, kind, name, expect); err != nil {
+			return Result{}, err
+		}
 	}
 
 	version, err := s.store.Put(ctx, pr, kind, name, raw)
@@ -466,4 +503,35 @@ func checker(ds definition.Dataset) principal.Principal {
 		}
 	}
 	return principal.Principal{Subject: "publish-check", ProjectRole: principal.ProjectViewer, Scope: scope}
+}
+
+/*
+unchanged refuses a save built on a version somebody has already replaced.
+
+Reads what is stored and compares its content address. The alternative — asking
+the store to compare — would be a conditional write and a wider port; this is
+one Get against a definition, on a path that already does several.
+
+A definition that has been deleted is a conflict too, and a pointed one: the
+caller is editing something that no longer exists, and storing theirs would
+bring it back without anybody deciding to.
+*/
+func (s *Service) unchanged(ctx context.Context, pr principal.Principal,
+	kind, name, expect string) error {
+
+	current, err := s.store.Get(ctx, pr, kind, name)
+	switch {
+	case errors.Is(err, ErrNotFound):
+		return fmt.Errorf("%w: %s %q was deleted while you were editing it",
+			ErrStale, kind, name)
+	case err != nil:
+		return err
+	}
+
+	if got := Version(current); got != expect {
+		return fmt.Errorf(
+			"%w: %s %q is at %s and you started from %s — somebody else saved it",
+			ErrStale, kind, name, got, expect)
+	}
+	return nil
 }

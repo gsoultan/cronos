@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 
 	codec "github.com/gsoultan/cronos/internal/adapter/codec/yaml"
@@ -42,6 +43,10 @@ it directly, which is what a one-project deployment passes.
 */
 type Publishing interface {
 	Publish(ctx context.Context, raw []byte, pr principal.Principal) (publish.Result, error)
+	// PublishIf stores only if the definition is still at the version the
+	// caller read, so two editors do not silently overwrite each other.
+	PublishIf(ctx context.Context, raw []byte, pr principal.Principal,
+		expect string) (publish.Result, error)
 	Delete(ctx context.Context, pr principal.Principal, kind, name string) error
 }
 
@@ -111,7 +116,25 @@ func (d *Definitions) publish(w http.ResponseWriter, r *http.Request, pr princip
 		return
 	}
 
-	result, err := d.svc.Publish(r.Context(), raw, pr)
+	/*
+	   If-Match, where the caller offered one.
+
+	   Absent means unconditional, which is what a deployment pipeline wants: it
+	   publishes from a git repository that *is* the source of truth, and being
+	   refused because the running copy differs would refuse the deploy for
+	   doing its job. An editor is the other case — it read a specific version
+	   and is proposing a change to that one.
+
+	   Only the first, because a definition has one version and a list of
+	   alternatives has no meaning here. `*` is the HTTP spelling of "as long as
+	   it exists", which is not a question this endpoint needs asked.
+	*/
+	expect := strings.Trim(strings.TrimSpace(r.Header.Get("If-Match")), `"`)
+	if expect == "*" {
+		expect = ""
+	}
+
+	result, err := d.svc.PublishIf(r.Context(), raw, pr, expect)
 	if err != nil {
 		d.refuse(w, err)
 		return
@@ -156,6 +179,16 @@ func (d *Definitions) get(w http.ResponseWriter, r *http.Request, pr principal.P
 	}
 	w.Header().Set("Content-Type", "application/yaml; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
+	/*
+	   The version, so an editor can say what it started from.
+
+	   A content address rather than a counter, which is what makes it work
+	   across the two stores and across a restore: the same bytes are the same
+	   version wherever they are. An editor sends it back as If-Match and a save
+	   built on somebody else's replaced copy is refused rather than silently
+	   discarding theirs.
+	*/
+	w.Header().Set("ETag", strconv.Quote(publish.Version(raw)))
 	_, _ = w.Write(raw)
 }
 
@@ -209,6 +242,12 @@ func (d *Definitions) refuse(w http.ResponseWriter, err error) {
 	// Conflict, not a bad request: nothing about what was asked is malformed,
 	// and the sentence names what would break so somebody can go and fix it.
 	case errors.Is(err, publish.ErrInUse):
+		fail(w, http.StatusConflict, err.Error())
+	// Also a conflict, and the one an editor will actually meet: somebody else
+	// saved this while they were working on it. The sentence carries both
+	// versions, because "try again" without saying what changed is how people
+	// re-apply an edit on top of the thing that just replaced it.
+	case errors.Is(err, publish.ErrStale):
 		fail(w, http.StatusConflict, err.Error())
 	case errors.Is(err, publish.ErrNotFound):
 		fail(w, http.StatusNotFound, err.Error())

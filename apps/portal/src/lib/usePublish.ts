@@ -20,13 +20,13 @@ export function usePublish() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  async function publish(yaml: string): Promise<boolean> {
+  async function publish(yaml: string, expect?: string): Promise<boolean> {
     if (!connected()) return true
 
     setBusy(true)
     setError(null)
     try {
-      await publishDefinition(yaml)
+      await publishDefinition(yaml, expect)
       // The catalogue and every report are now stale. Invalidating rather than
       // refetching means a page nobody is looking at does not run a query.
       await queries.invalidateQueries()

@@ -2,9 +2,7 @@ package sql
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"fmt"
 	"strings"
 	"time"
@@ -61,10 +59,7 @@ func stripComments(stmt string) string {
 }
 
 // Version is the content address of a document.
-func Version(raw []byte) string {
-	sum := sha256.Sum256(raw)
-	return "sha256:" + hex.EncodeToString(sum[:])[:12]
-}
+func Version(raw []byte) string { return publish.Version(raw) }
 
 // Put stores a definition and keeps the previous content addressable.
 func (s *Store) Put(ctx context.Context, pr principal.Principal,

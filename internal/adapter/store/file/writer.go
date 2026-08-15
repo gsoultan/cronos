@@ -69,10 +69,7 @@ func (w *Writer) tenant(pr principal.Principal) error {
 // Truncated to twelve hex characters, which is a collision every 2^24
 // documents in one project and short enough to appear in a run record someone
 // reads. The full digest is the file's name in the version directory.
-func Version(raw []byte) string {
-	sum := sha256.Sum256(raw)
-	return "sha256:" + hex.EncodeToString(sum[:])[:12]
-}
+func Version(raw []byte) string { return publish.Version(raw) }
 
 // Put writes a definition and keeps the previous content addressable.
 func (w *Writer) Put(_ context.Context, pr principal.Principal, kind, name string, raw []byte) (string, error) {

@@ -25,7 +25,11 @@ export function useDefinition<T>(
 
   const query = useQuery<Loaded<T>>({
     queryKey: ['definition', kind, name],
-    queryFn: () => readDefinition(kind, name ?? '').then(read),
+    // The version comes back with the bytes and is folded into the loaded
+    // value, so a save two screens later can say what it started from without
+    // anything in between having to carry it.
+    queryFn: () =>
+      readDefinition(kind, name ?? '').then((d) => ({ ...read(d.yaml), version: d.version })),
     enabled: live && !!name,
     refetchOnWindowFocus: false,
     // Never stale while a form is open. A refetch behind an author mid-edit

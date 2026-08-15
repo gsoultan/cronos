@@ -103,7 +103,7 @@ export function ReportForm({ onDone, onCancel, initial }: Props) {
           field: b.field, groupBy: b.groupBy, aggregate: b.aggregate,
           columns: b.columns, filter: b.filter, sort: b.sort,
         })),
-      }), initial))
+      }), initial), initial?.version)
       if (saved) onDone()
     },
   })

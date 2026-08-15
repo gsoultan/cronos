@@ -362,6 +362,18 @@ export interface Loaded<T> {
   /** Paths present in the stored file that saving this form would not write. */
   drops: string[]
   /**
+   * The version this was read at, so a save can say what it started from.
+   *
+   * Travels with the document rather than beside it, for the same reason
+   * `drops` does: a save needs both, and a caller holding one without the
+   * other has something it cannot use.
+   *
+   * Empty where nothing was loaded from a server — sample mode, or a form
+   * creating something new — which is also what says "store this
+   * unconditionally".
+   */
+  version?: string
+  /**
    * The stored document, kept so a save can fold back the keys the form does
    * not model. Opaque to the form: it is handed to `withCarry` and nothing
    * else ever reads it.

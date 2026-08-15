@@ -303,12 +303,34 @@ export function listDefinitions() {
   return call<{ definitions: DefinitionEntry[] }>('/v1/definitions')
 }
 
-export function readDefinition(kind: string, name: string) {
+/**
+ * A stored definition, and the version it is at.
+ *
+ * The version comes back so a save can say what it started from. Without it two
+ * people editing one report is a Monday where the second save silently discards
+ * the first — the author sees their change land and the other finds theirs gone
+ * the next time they open the page.
+ */
+export interface StoredDefinition {
+  yaml: string
+  /** The ETag, or empty where a server predates it. */
+  version: string
+}
+
+export function readDefinition(kind: string, name: string): Promise<StoredDefinition> {
   const cfg = apiConfig()
   if (!cfg) throw new ApiError(0, 'Not connected to a cronos server.')
   return fetch(`${cfg.base}/v1/definitions/${kind}/${name}`, {
     headers: { authorization: `Bearer ${cfg.token}` },
-  }).then((r) => (r.ok ? r.text() : Promise.reject(new ApiError(r.status, 'Not found.'))))
+  }).then(async (r) => {
+    if (!r.ok) throw new ApiError(r.status, 'Not found.')
+    return {
+      yaml: await r.text(),
+      // Unquoted: the header is a quoted string and what the server compares
+      // is the value inside it.
+      version: (r.headers.get('ETag') ?? '').replace(/"/g, ''),
+    }
+  })
 }
 
 export interface SignInMethods {
@@ -358,12 +380,23 @@ export function adoptSessionFromFragment(): boolean {
 }
 
 /** Publishes a definition. The body is YAML, exactly as the author wrote it. */
-export function publishDefinition(yaml: string) {
+/**
+ * Stores a definition, optionally only if it is still at the version read.
+ *
+ * `expect` absent means unconditionally, which is what creating something new
+ * is. An editor passes what it loaded, and a save built on a version somebody
+ * else has already replaced comes back 409 with a sentence naming both.
+ */
+export function publishDefinition(yaml: string, expect?: string) {
   const cfg = apiConfig()
   if (!cfg) throw new ApiError(0, 'Not connected to a cronos server.')
   return fetch(`${cfg.base}/v1/definitions`, {
     method: 'POST',
-    headers: { authorization: `Bearer ${cfg.token}`, 'content-type': 'application/yaml' },
+    headers: {
+      authorization: `Bearer ${cfg.token}`,
+      'content-type': 'application/yaml',
+      ...(expect ? { 'if-match': `"${expect}"` } : {}),
+    },
     body: yaml,
   }).then(async (r) => {
     if (!r.ok) throw new ApiError(r.status, await serverMessage(r))

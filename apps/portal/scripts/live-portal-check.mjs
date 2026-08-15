@@ -483,5 +483,61 @@ for (const [path, name] of [
     !/No reports in|Nothing is scheduled|build your first/i.test(text))
 }
 
+
+/*
+ * Two editors, and the second is told rather than winning silently.
+ *
+ * Two people editing one report is a Monday, and until now the second save
+ * discarded the first without a word: the author saw their change land and the
+ * other found theirs gone the next time they opened the page. The version
+ * history means the lost work is recoverable, which sounds like a mitigation
+ * and is not — nobody knows to look, because nothing said anything.
+ *
+ * Driven through the API rather than the browser because what is under test is
+ * the contract: an ETag on the read, an If-Match on the write, and a 409 that
+ * says what happened. The editors send it; this proves the server enforces it.
+ */
+const api = process.env.API ?? 'http://localhost:8081'
+const token = process.env.TOKEN ?? ''
+
+if (token) {
+  const read = await fetch(`${api}/v1/definitions/Report/billing-summary`, {
+    headers: { authorization: `Bearer ${token}` },
+  })
+  const yaml = await read.text()
+  const version = (read.headers.get('ETag') ?? '').replace(/"/g, '')
+
+  ok('reading a definition says what version it is at', /^sha256:[0-9a-f]{12}$/.test(version))
+
+  const save = (body, expect) =>
+    fetch(`${api}/v1/definitions`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/yaml',
+        ...(expect ? { 'if-match': `"${expect}"` } : {}),
+      },
+      body,
+    })
+
+  // One of them saves.
+  const mine = yaml.replace('title: Billing summary', 'title: Billing summary, mine')
+  const first = await save(mine, version)
+  ok('the first editor saves', first.status === 200)
+
+  // The other saves what they were working on, from the version that is gone.
+  const theirs = yaml.replace('title: Billing summary', 'title: Billing summary, theirs')
+  const second = await save(theirs, version)
+  ok('the second is refused rather than overwriting', second.status === 409)
+
+  const said = (await second.json()).error ?? ''
+  ok('and is told somebody else saved it', /somebody else saved it/.test(said))
+  ok('and which version it is at now', /sha256:/.test(said))
+
+  // The deployment pipeline's case: no expectation, stored unconditionally.
+  const pipeline = await save(theirs)
+  ok('a publish with no expectation still overwrites', pipeline.status === 200)
+}
+
 await browser.close()
 process.exit(fails ? 1 : 0)

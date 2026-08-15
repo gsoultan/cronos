@@ -422,6 +422,18 @@ func (p publishingFor) Publish(ctx context.Context, raw []byte,
 	return svc.Publish(ctx, raw, pr)
 }
 
+// PublishIf resolves the same way, and refuses a save built on a version
+// somebody else has already replaced.
+func (p publishingFor) PublishIf(ctx context.Context, raw []byte,
+	pr principal.Principal, expect string) (publish.Result, error) {
+
+	svc, err := p.of(ctx, pr)
+	if err != nil {
+		return publish.Result{}, err
+	}
+	return svc.PublishIf(ctx, raw, pr, expect)
+}
+
 func (p publishingFor) Delete(ctx context.Context, pr principal.Principal, kind, name string) error {
 	svc, err := p.of(ctx, pr)
 	if err != nil {

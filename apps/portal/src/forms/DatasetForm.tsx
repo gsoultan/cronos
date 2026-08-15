@@ -74,7 +74,7 @@ export function DatasetForm({ onDone, onCancel, initial }: Props) {
         name: value.name, slug: value.slug, description: value.description,
         source: value.source, query: mode === 'sql' ? rawSql : generated,
         fields, params, predicate: rls,
-      }), initial))
+      }), initial), initial?.version)
       if (saved) onDone()
     },
   })

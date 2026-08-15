@@ -198,6 +198,28 @@ resuming eight hundred where twenty are outstanding typesets twenty documents.
 Available on any replica with run history, not only the one that schedules —
 during an incident, hunting for the leader is the last thing anybody needs.
 
+## Editing the same thing twice
+
+Two people editing one report is a Monday. `GET /v1/definitions/{kind}/{name}`
+returns an `ETag`; send it back as `If-Match` on the publish and a save built on
+a version somebody else has already replaced is refused:
+
+```
+409  publish: changed since you read it: Report "billing-summary" is at
+     sha256:85574a696982 and you started from sha256:a1d5787e332b —
+     somebody else saved it
+```
+
+The portal's editors do this already. Without an `If-Match` the publish is
+unconditional, which is what a deployment pipeline needs: it publishes from a
+git repository that *is* the source of truth, and refusing it because the
+running copy differs would refuse the deploy for doing its job.
+
+What this closes is the window that matters — two people editing for ten
+minutes — and not every window. Two saves landing milliseconds apart can still
+both read the same current version and both succeed. Closing that needs a
+conditional write in each store, which is worth doing when somebody has hit it.
+
 ## Dependencies
 
 `govulncheck` and `bun audit` run in CI and fail a build. govulncheck traces
