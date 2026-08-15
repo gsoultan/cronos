@@ -198,6 +198,43 @@ resuming eight hundred where twenty are outstanding typesets twenty documents.
 Available on any replica with run history, not only the one that schedules —
 during an incident, hunting for the leader is the last thing anybody needs.
 
+## What one instance does
+
+`scripts/load.sh` generates a corpus, stands a cronosd up against a real
+Postgres, and measures. These are four runs of it, and the ranges are the point:
+
+| In flight | p50 | p99 | requests/s |
+|---|---|---|---|
+| 1 | 6–9 ms | 121–173 ms | 71–126 |
+| 4 | 6–13 ms | 17–202 ms | 219–690 |
+| 16 | 12–26 ms | 36–233 ms | 406–1,247 |
+| 64 | 48–93 ms | 121–224 ms | 616–1,156 |
+
+Bursting: **300–420 PDFs per second**, so five thousand statements is under half
+a minute of wall clock. Each is about 19 KB.
+
+The report is the demo's `billing-summary` over a thousand customers and five
+thousand invoices. The machine is a laptop with the database in a virtual
+machine, which is why the ranges are two to three times wide, and why **you
+should run this on your own hardware rather than size anything from this table**.
+What it is good for is the shape:
+
+- Throughput climbs steeply to about sixteen in flight and then flattens. The
+  connection pool is the ceiling — the harness reports `conns 16` at both 16 and
+  64 in flight — so `maxOpen` on the datasource is the lever, not the instance
+  count.
+- The p99 at one in flight is twenty times its p50. That is the first request
+  against a cold pool and a cold plan cache, not a tail under load.
+- A burst is bounded by the typesetter, not by the warehouse: it is one render
+  per recipient, and the query behind each is small.
+
+One caveat about the harness itself, because it bit: the render limit is per
+bearer, so load sent as one reader measures the rate limiter. An earlier run of
+this table was 57% HTTP 429 and reported throughput five times higher than the
+real figure, because a refusal is fast. `load.sh` mints sixty-four readers and
+spreads requests across them, which is also the truer shape — one token
+hammering is what the limiter exists to stop.
+
 ## Editing the same thing twice
 
 Two people editing one report is a Monday. `GET /v1/definitions/{kind}/{name}`

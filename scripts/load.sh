@@ -26,7 +26,10 @@ PORT="${PORT:-8783}"
 WORK="$(mktemp -d)"
 trap 'kill %1 2>/dev/null || true; rm -rf "$WORK"' EXIT
 
-echo "generating a corpus of $CUSTOMERS customers for $WAREHOUSE…"
+# Braced, because the ellipsis that follows is not ASCII: bash reads
+# `$WAREHOUSE…` as one identifier and `set -u` then aborts on a variable
+# nobody named. It survived by never being run in CI.
+echo "generating a corpus of $CUSTOMERS customers for ${WAREHOUSE}…"
 {
   cat <<'SQL'
 CREATE TABLE customers (id TEXT PRIMARY KEY, name TEXT, city TEXT);

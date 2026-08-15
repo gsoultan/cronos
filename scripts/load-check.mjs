@@ -50,12 +50,29 @@ function summarise(times) {
 
 const ms = (n) => `${n.toFixed(1)}ms`.padStart(9)
 
+/*
+ * Which reader a request comes from, per request rather than per worker.
+ *
+ * The render limit is per bearer, so a worker that keeps one token sends every
+ * one of its requests as the same reader — and at concurrency 1 that is the
+ * whole run through a single bucket. More than half of an earlier run came back
+ * 429, which made the numbers below a measurement of the rate limiter rather
+ * than of the renderer, and the summary still concluded "it scales with
+ * concurrency" from data that was 57% refusals.
+ *
+ * Spreading per request is also the truer shape: load on a deployment comes
+ * from many readers, and one token hammering is exactly what the limiter is
+ * there to stop.
+ */
+let issued = 0
+const nextReader = () => TOKENS[issued++ % TOKENS.length]
+
 async function render(report, reader = 0) {
   const started = performance.now()
   const r = await fetch(`${API}/v1/reports/${report}`, {
     method: 'POST',
     headers: {
-      authorization: `Bearer ${TOKENS[reader % TOKENS.length]}`,
+      authorization: `Bearer ${nextReader()}`,
       'content-type': 'application/json',
     },
     body: '{}',
