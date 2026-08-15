@@ -384,16 +384,35 @@ func storeCheck(records *sqlstore.Store) api.Check {
 		Name:     "store",
 		Required: true,
 		Probe: func(ctx context.Context) error {
-			// The schema too, not only the connection. A store answering at a
-			// version this build does not know is one this build must not
-			// write to, and it is the state a half-finished deploy leaves
-			// behind.
+			// The schema too, not only the connection — but only when it is
+			// behind, which is the direction that breaks this build.
+			//
+			// Behind means a table this build reads is not there: the state a
+			// restore of an older dump underneath a running process leaves,
+			// and there is nothing this instance can serve.
+			//
+			// Ahead means a newer cronos has migrated, which is every rolling
+			// deploy for the length of the rollout. This used to report down
+			// for that too, on the reasoning that a schema this build does not
+			// know is one it must not write to. Driving it says otherwise:
+			// scripts/live-upgrade.sh keeps an old build serving while a new
+			// one migrates, and every route still answers — reads, publishes
+			// and sign-ins alike — because migrations only ever add tables.
+			// That is not luck, it is why they add tables rather than columns.
+			//
+			// And reporting down was worse than useless. Readiness is what
+			// decides whether a load balancer sends work here, so the first
+			// new instance to migrate took every old instance out of rotation
+			// at once: an eight-replica deployment served the whole of its
+			// traffic from the one new pod for the rest of the rollout. The
+			// instance that is provably answering correctly is the last one
+			// that should be removed.
 			at, err := records.SchemaVersion(ctx)
 			if err != nil {
 				return err
 			}
-			if at != sqlstore.Wanted() {
-				return fmt.Errorf("schema is at %d, this build wants %d", at, sqlstore.Wanted())
+			if at < sqlstore.Wanted() {
+				return fmt.Errorf("schema is at %d and this build needs %d", at, sqlstore.Wanted())
 			}
 			return nil
 		},

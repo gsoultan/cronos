@@ -163,7 +163,13 @@ jobs:
         ports: ['1025:1025', '8025:8025']
 
     steps:
+      # The whole history, not the one commit checkout defaults to: the upgrade
+      # check compiles an old cronos from the commit before the newest
+      # migration, and with a shallow clone it would find nothing to compare
+      # against and skip — which reads in the log exactly like passing.
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
@@ -191,6 +197,11 @@ jobs:
       # elsewhere.
       - name: the store goes away and comes back
         run: ./scripts/live-failover.sh
+      # Two versions against one database, which is what a rollout is for the
+      # length of one. It needs history, because the old build is compiled from
+      # the commit before the newest migration — hence fetch-depth 0 above.
+      - name: a rolling deploy, with two versions side by side
+        run: ./scripts/live-upgrade.sh
       - name: first run, and administering the deployment
         run: ./scripts/live-setup.sh
       - name: ending every other session

@@ -300,6 +300,39 @@ against a fresh database left three unable to start, and not at some exotic
 migration: `CREATE TABLE IF NOT EXISTS` is not concurrency-safe in Postgres, so
 they collided on the very first statement.
 
+### A rolling deploy
+
+Different versions running together is the other half, and it is what a rollout
+is for the length of one. `scripts/live-upgrade.sh` builds two binaries from two
+commits and runs them side by side against one database; what it finds:
+
+**Instances already running keep working, completely.** The old build serves
+every route after a newer one has migrated — the catalogue, run history, the
+roster, rendering, and publishing and signing people in, which is the half that
+matters, because a rollout where the old instances can only read is a rollout
+with a write outage in the middle of it. That is not luck. Migrations only ever
+add tables, never a column to an existing one, so code that has never heard of
+the new tables is unaffected. It is why they are written that way.
+
+**The migration is the point of no return.** It happens on the first new
+instance to start, and from that moment an old build will not open the database
+— it refuses at startup rather than writing to a schema it does not understand,
+and says which version it found. So an old instance that restarts mid-rollout
+does not come back: a node eviction, an OOM, or a rollback. Take the backup
+immediately before the deploy, not the night before; a rollback is a restore.
+
+**Upgrading from a version before this one has a capacity cliff.** Builds up to
+and including the one that added the tenancy table report readiness `503` when a
+newer cronos has migrated. Readiness is what keeps an instance in the load
+balancer, so the first new instance to migrate takes every old one out of
+rotation at once, and the whole of the traffic lands on the single new pod for
+the rest of the rollout. Nothing is wrong with those instances — they are
+answering every request correctly, as above — but the probe says otherwise.
+This release reports not-ready only when the schema is *behind* what the build
+reads, which is a restore of an older dump underneath a running process and is
+genuinely unservable. Upgrading past this version once fixes it for every
+upgrade after. Until then: scale up before deploying, or accept the window.
+
 Two versions against one database is ordinary during a deploy; what is not is an
 old binary writing to a schema a new one has already changed, which is what the
 refusal above prevents. So roll forward normally, and roll back by restoring.
@@ -643,6 +676,7 @@ out of a browser cache that nothing ever emptied.
 | `live-sqlserver.sh` | a report against SQL Server | SQL Server |
 | `live-portal-2fa.sh` | the same enrolment, through a browser | bun, chrome |
 | `live-handover.sh` | one browser, two people, two organisations | bun, chrome |
+| `live-upgrade.sh` | two versions against one database, through a migration | go, podman, git |
 
 All of them run in CI on every push. Six share a job and take about a minute,
 `live-disconnect.sh` runs beside the Go tests because it wants the same
