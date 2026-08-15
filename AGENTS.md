@@ -203,8 +203,11 @@ choosing between them, and the question is: does the sign-in form render it?
 - Every table is virtualised. A report can return a million rows; the DOM cannot.
 - Row transforms, aggregation and chart data prep run in a **web worker**. The main
   thread is for painting.
-- Service worker caches report definitions and last-rendered results for offline
-  viewing; it never caches a result across principals.
+- Service worker precaches the application shell, and no API response. Offline
+  viewing of results is not built: a cache keyed by URL serves one principal's
+  data to the next person on that browser, so it needs a cache named per
+  principal and emptied on sign-out. The rule that claimed to do this matched
+  three routes that do not exist and had never cached anything.
 - TanStack Query keys include tenant and definition version. A cache that ignores who
   asked is a data leak.
 

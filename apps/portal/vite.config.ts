@@ -46,20 +46,34 @@ export default defineConfig({
         ],
       },
       workbox: {
-        // Definitions are safe to cache; results never are — they are
-        // principal-scoped and must not survive a session.
+        /*
+           The application, and nothing the API answered.
+
+           The shell is precached — it is the same bytes for everybody, so it
+           loads instantly and works offline. No API response is cached at all,
+           and the denylist is what keeps the navigation fallback from ever
+           standing in for one.
+
+           There was a runtimeCaching rule here that meant to cache definitions.
+           It matched `/v1/reports`, `/v1/datasets` and `/v1/datasources`, none
+           of which are routes — the endpoints are `/v1/catalog` and
+           `/v1/definitions` — so it had never cached anything since the day it
+           was written, and AGENTS.md claimed an offline feature that did not
+           exist.
+
+           It is gone rather than corrected, because correcting it is the
+           dangerous half. Workbox keys a cache by URL; the bearer is a header
+           and is not part of the key. Pointed at a route that exists, that rule
+           would serve one principal's catalogue to the next person to sign in
+           on the same browser — which on a shared machine is one tenant reading
+           another's. Their own rule says it: a cache that ignores who asked is
+           a data leak.
+
+           Offline viewing is worth having and is a feature to design: a cache
+           named per principal, emptied on sign-out, and a check that signs in as
+           somebody else and looks. Not a regex.
+        */
         navigateFallbackDenylist: [/^\/v1\//],
-        runtimeCaching: [
-          {
-            /* Definitions are safe to cache: they are the same for everyone in
-               a project and change rarely. Results are not, and never appear
-               here — they are principal-scoped, and a cache that ignores who
-               asked is a data leak. */
-            urlPattern: /\/v1\/(reports|datasets|datasources)(\?|$)/,
-            handler: 'StaleWhileRevalidate',
-            options: { cacheName: 'cronos-definitions' },
-          },
-        ],
       },
     }),
   ],
