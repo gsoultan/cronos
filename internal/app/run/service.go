@@ -97,6 +97,18 @@ func pick(r definition.Report, name string) (definition.Output, error) {
 			return definition.Output{}, fmt.Errorf("%w: report %q has no output %q",
 				ErrNotRenderable, r.Name, name)
 		}
+		// A spreadsheet output describes sheets, not a layout, so drawing it
+		// means walking an empty list and answering with a report that has no
+		// blocks in it. That is what this did: two hundred, a title, and
+		// nothing — for a host application asking a reasonable question by the
+		// wrong route, and for the reader in front of it, neither of whom is
+		// told anything. Statements and Workbook both refuse the outputs they
+		// cannot produce; this is the third door and it was open.
+		if out.Renderer == definition.Spreadsheet {
+			return definition.Output{}, fmt.Errorf(
+				"%w: output %q of report %q renders %s, which is a file rather than a view",
+				ErrNotRenderable, name, r.Name, out.Renderer)
+		}
 		return out, nil
 	}
 	out, ok := r.Rendered(definition.Interactive)
