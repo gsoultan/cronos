@@ -625,6 +625,7 @@ constant, an enrolment wizard rendering inside the account page.
 | `live-leader.sh` | three replicas all armed, one scheduling, and failover | go, typst, Postgres |
 | `live-resume.sh` | resuming a partly delivered burst, without sending anybody two | go, typst, Postgres |
 | `live-restore.sh` | the restore drill below, end to end | go, Postgres, pg_dump |
+| `live-boundaries.sh` | row scope, audiences, tenancy, forged tokens, share links | go |
 | `live-sso.sh` | a whole OIDC sign-in and single log-out | Keycloak |
 | `live-sqlserver.sh` | a report against SQL Server | SQL Server |
 | `live-portal-2fa.sh` | the same enrolment, through a browser | bun, chrome |

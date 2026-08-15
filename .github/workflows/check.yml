@@ -179,6 +179,11 @@ jobs:
       # Each on its own step, so a failure names the check rather than "the
       # live job". They are quick — the longest waits half a minute for a rate
       # limit to refill, which is the limiter working.
+      # The boundaries that decide whether this can be sold into somebody
+      # else's application: an end customer's token, row scope, a token
+      # somebody edited, another organisation, a viewer, a share link.
+      - name: the boundaries hold
+        run: ./scripts/live-boundaries.sh
       - name: first run, and administering the deployment
         run: ./scripts/live-setup.sh
       - name: ending every other session
