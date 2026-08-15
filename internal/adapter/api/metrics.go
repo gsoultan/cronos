@@ -3,6 +3,7 @@ package api
 import (
 	"fmt"
 	"net/http"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -171,9 +172,53 @@ func (m *Metrics) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 	out.WriteString("# TYPE cronos_uptime_seconds gauge\n")
 	fmt.Fprintf(&out, "cronos_uptime_seconds %.0f\n", m.now().Sub(m.started).Seconds())
 
+	writeRuntime(&out)
+
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(out.String()))
+}
+
+/*
+writeRuntime says how the process itself is doing.
+
+Four numbers, and the first is the one that matters. A Go service fails in
+production by leaking goroutines: something is started per request, per run,
+per burst recipient, and one path forgets to finish. It grows for days and then
+the process dies of memory it never allocated deliberately. cronos has exactly
+the shape that hides one — a burst starts a goroutine per recipient and a run
+is deliberately detached from the loop's context so a shutdown cannot cancel it
+— and nothing here reported the count, so nobody could have seen it.
+
+Memory is here because the alternative is asking the operator's container
+runtime, which knows the RSS of a container and not which of the things inside
+it grew. Heap in use against heap released tells a leak apart from a
+fragmented heap, which is the question actually being asked at 3am.
+
+Not the full Go collector's ninety-odd series. This is a component in somebody
+else's monitoring system and most of those are for people debugging the
+runtime, not the service; every one of them is a series per instance per
+scrape, paid for by whoever hosts us.
+*/
+func writeRuntime(out *strings.Builder) {
+	var mem runtime.MemStats
+	runtime.ReadMemStats(&mem)
+
+	out.WriteString("# HELP cronos_goroutines How many goroutines are running.\n")
+	out.WriteString("# TYPE cronos_goroutines gauge\n")
+	fmt.Fprintf(out, "cronos_goroutines %d\n", runtime.NumGoroutine())
+
+	out.WriteString("# HELP cronos_heap_bytes Heap currently in use.\n")
+	out.WriteString("# TYPE cronos_heap_bytes gauge\n")
+	fmt.Fprintf(out, "cronos_heap_bytes %d\n", mem.HeapAlloc)
+
+	out.WriteString("# HELP cronos_heap_reserved_bytes Heap obtained from the system and not returned.\n")
+	out.WriteString("# TYPE cronos_heap_reserved_bytes gauge\n")
+	fmt.Fprintf(out, "cronos_heap_reserved_bytes %d\n", mem.HeapSys-mem.HeapReleased)
+
+	out.WriteString("# HELP cronos_gc_total Garbage collections since start.\n")
+	out.WriteString("# TYPE cronos_gc_total counter\n")
+	fmt.Fprintf(out, "cronos_gc_total %d\n", mem.NumGC)
 }
 
 // buckets are the boundaries, in seconds.

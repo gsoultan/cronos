@@ -93,6 +93,19 @@ Postgres and starts it again to keep all of that true.
   Not the admin key, deliberately: that credential can publish definitions, and
   a Prometheus scraper should not hold one.
 
+  `cronos_goroutines` is the one to alert on. A Go service fails in production
+  by leaking goroutines — something is started per request, per run, per burst
+  recipient, and one path forgets to finish — and cronos has the shape that
+  hides one, because a burst starts a goroutine per recipient and a run is
+  deliberately detached from the loop's context so a shutdown cannot cancel it.
+  It should be flat at rest and return to flat after a burst; a count that
+  climbs across days is a leak, and it is the only symptom until the process
+  dies of memory nobody allocated on purpose. `cronos_heap_bytes` beside
+  `cronos_heap_reserved_bytes` tells a leak from a fragmented heap, which is
+  the question actually being asked at three in the morning. The container
+  runtime knows the RSS of the container; it does not know which of the things
+  inside it grew.
+
 ### Alert on the scheduler stopping
 
 The first three of these are about *absence*, and they are the ones with no
