@@ -356,6 +356,13 @@ jobs:
       - name: enrolling a second factor in a browser
         run: ./scripts/live-portal-2fa.sh
 
+      # Two people in one browser. Every query key names what was asked for and
+      # none names who asked, so a second session was served the first one's
+      # catalogue out of cache — under its own organisation in the header, and
+      # with no request sent, so nothing in any log said so.
+      - name: handing a browser to another organisation
+        run: ./scripts/live-handover.sh
+
   # The image, because the one thing it can be missing is the one thing no
   # other job would notice: paginated output shells out to `typst`, and an
   # image without it serves every other path correctly and fails PDF at six in

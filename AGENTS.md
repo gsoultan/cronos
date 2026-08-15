@@ -208,8 +208,14 @@ choosing between them, and the question is: does the sign-in form render it?
   data to the next person on that browser, so it needs a cache named per
   principal and emptied on sign-out. The rule that claimed to do this matched
   three routes that do not exist and had never cached anything.
-- TanStack Query keys include tenant and definition version. A cache that ignores who
-  asked is a data leak.
+- The TanStack Query cache is emptied when the session changes, in one place
+  (`lib/queryClient.ts`). A cache that ignores who asked is a data leak, and no key
+  here names who asked — `['catalog']` is the same key for everybody. This entry
+  used to claim the keys carried the tenant; they never did, and a browser driven
+  through sign-out and sign-in as another organisation was served the first
+  organisation's catalogue under the second one's name. Naming the tenant in each
+  key is the fix that only holds until a hook forgets; the cache is session state,
+  so it ends with the session. Held by `scripts/live-handover.sh`.
 
 ---
 

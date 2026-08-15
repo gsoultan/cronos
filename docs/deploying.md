@@ -620,7 +620,9 @@ whole decision.
 Between them they have found around a dozen defects no unit test could: a QR code
 that encoded nothing, a session cut that spared the phone it was meant to end, a
 chart that compiled to `GROUP BY 1` against a database that reads the `1` as a
-constant, an enrolment wizard rendering inside the account page.
+constant, an enrolment wizard rendering inside the account page, and one
+organisation's report catalogue shown to another organisation's administrator
+out of a browser cache that nothing ever emptied.
 
 | Script | What it drives | Needs |
 |---|---|---|
@@ -640,6 +642,7 @@ constant, an enrolment wizard rendering inside the account page.
 | `live-sso.sh` | a whole OIDC sign-in and single log-out | Keycloak |
 | `live-sqlserver.sh` | a report against SQL Server | SQL Server |
 | `live-portal-2fa.sh` | the same enrolment, through a browser | bun, chrome |
+| `live-handover.sh` | one browser, two people, two organisations | bun, chrome |
 
 All of them run in CI on every push. Six share a job and take about a minute,
 `live-disconnect.sh` runs beside the Go tests because it wants the same
