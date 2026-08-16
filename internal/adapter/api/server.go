@@ -236,8 +236,22 @@ func Routes(d Deps) http.Handler {
 	   the issuer, not the client id, not whether a given address has an
 	   account — because a page that renders a button is all this is for.
 	*/
+	/*
+	   Whether a forgotten password can be recovered is part of the same answer.
+
+	   A "forgot your password?" link that leads to "this deployment cannot send
+	   email" is worse than no link: it is a promise made to somebody who is
+	   already locked out. The sign-in page asks first and says who to contact
+	   instead. Still nothing about any particular address — only what this
+	   deployment can do at all.
+	*/
+	canReset := false
+	if resets, ok := d.Roster.(Resets); ok && d.Roster != nil {
+		canReset = NewReset(resets, d.Post, d.Portal, d.Log).Available()
+	}
+
 	mux.HandleFunc("/v1/auth/methods", func(w http.ResponseWriter, _ *http.Request) {
-		methods := map[string]any{"password": d.Users != nil}
+		methods := map[string]any{"password": d.Users != nil, "reset": canReset}
 		if flow := extension.SignIn(); flow != nil {
 			methods["sso"] = map[string]string{"provider": flow.Name()}
 		}
@@ -293,6 +307,31 @@ func Routes(d Deps) http.Handler {
 				limited(NewAcceptance(d.Invitations, d.Signer, d.Log),
 					NewLimit(AcceptRate, AcceptBurst),
 					"Too many attempts. Wait a minute."))
+		}
+
+		/*
+		   Getting back in without being able to sign in.
+
+		   Mounted whenever there is a roster and a way to send mail, which is
+		   the same condition an invitation needs and for the same reason: both
+		   are a secret that has to reach a person rather than the browser that
+		   asked for it.
+
+		   Both routes take no session — the caller has no way to have one, which
+		   is the whole situation. Limited per address like every other
+		   unauthenticated auth route: asking is cheap and floods a mailbox,
+		   spending runs bcrypt.
+		*/
+		if resets, ok := d.Roster.(Resets); ok {
+			reset := NewReset(resets, d.Post, d.Portal, d.Log)
+			if reset.Available() {
+				for _, path := range []string{
+					"/v1/auth/password/forgot", "/v1/auth/password/reset",
+				} {
+					mux.Handle(path, limited(reset, NewLimit(AcceptRate, AcceptBurst),
+						"Too many attempts. Wait a minute."))
+				}
+			}
 		}
 
 		// Ending every session this account holds. Unlimited on purpose: it is

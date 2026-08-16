@@ -107,8 +107,9 @@ export function Shell() {
      without one would be the interface undoing the feature. And an invitation,
      because the person opening it does not have an account *yet* — sending
      them to a sign-in page they cannot pass is the loop this feature exists to
-     break. */
-  if (path.startsWith('/s/') || path === '/invitation') {
+     break. A password reset is the third and the same shape: they have an
+     account and cannot get into it. */
+  if (path.startsWith('/s/') || path === '/invitation' || path === '/reset') {
     return (
       <Suspense fallback={<main className="min-h-screen bg-canvas" />}>
         <Outlet />

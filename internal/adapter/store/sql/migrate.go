@@ -286,6 +286,48 @@ CREATE TABLE IF NOT EXISTS cronos_tenancy (
   at      TEXT NOT NULL
 );`,
 	},
+	{
+		ID:   10,
+		Name: "password resets",
+		/*
+		   A forgotten password had no way back.
+
+		   cronos-user creates accounts and will not reset one, on the correct
+		   reasoning that resetting somebody else's password to grant them a
+		   permission would lock its owner out to let them in. Which left the
+		   recovery path for the commonest support request in software as: shell
+		   on the server, a psql prompt, and a bcrypt hash written by hand.
+
+		   Its own table beside cronos_invitations rather than columns on it,
+		   because they are different things with different lifetimes and
+		   because migrations are append-only — ALTER TABLE ADD COLUMN is not
+		   idempotent, and Schema() is the concatenation of all of them.
+		*/
+		SQL: `
+CREATE TABLE IF NOT EXISTS cronos_password_resets (
+  id          TEXT PRIMARY KEY,
+  -- The account, resolved once when the reset is asked for. Resolving it again
+  -- at redemption would let an address that changed in between point the reset
+  -- at somebody else.
+  user_id     TEXT NOT NULL,
+  -- The hash of the secret, never the secret — the same rule as invitations. A
+  -- backup of this table is a set of dead strings rather than an hour's worth
+  -- of working keys to every account in it.
+  secret_hash TEXT NOT NULL UNIQUE,
+  -- As it was when asked for, for the audit line. Never used to find the
+  -- account.
+  email       TEXT NOT NULL,
+  created_at  TEXT NOT NULL,
+  expires_at  TEXT NOT NULL,
+  -- Set exactly once, and what makes the link single-use.
+  used_at     TEXT
+);
+
+-- Asked in two places: pruning by age, and refusing to flood one account with
+-- links because somebody is holding down a button on the sign-in page.
+CREATE INDEX IF NOT EXISTS cronos_password_resets_by_user
+  ON cronos_password_resets (user_id, created_at);`,
+	},
 }
 
 // migrationTable records what has run. Created outside the ordered list,

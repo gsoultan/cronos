@@ -51,6 +51,11 @@ const (
 	ActionPersonDisable = "person.disable"
 	ActionPersonEnable  = "person.enable"
 	ActionPassword      = "auth.password"
+	// A reset asked for and a reset spent, recorded separately. Somebody who
+	// asks and never clicks is the ordinary shape of a phishing attempt against
+	// the account, and it is invisible if only the successful half is written.
+	ActionResetAsk   = "auth.password.reset.ask"
+	ActionResetSpend = "auth.password.reset"
 	// Sending a report to somebody by name. Recorded with every recipient:
 	// "who was this emailed to" is a question an audit exists to answer.
 	ActionSend   = "report.send"

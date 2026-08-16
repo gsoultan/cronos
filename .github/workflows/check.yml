@@ -367,6 +367,13 @@ jobs:
       - name: enrolling a second factor in a browser
         run: ./scripts/live-portal-2fa.sh
 
+      # Forgetting a password, through a real mail server and a real browser.
+      # It is the commonest support request in software and, until it was
+      # built, the only answer was a shell on the server and a bcrypt hash
+      # written by hand.
+      - name: getting back in after forgetting a password
+        run: ./scripts/live-reset.sh
+
       # Two people in one browser. Every query key names what was asked for and
       # none names who asked, so a second session was served the first one's
       # catalogue out of cache — under its own organisation in the header, and

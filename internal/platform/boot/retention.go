@@ -97,6 +97,27 @@ func sweepInvitations(ctx context.Context, records *sqlstore.Store, log *slog.Lo
 		if gone > 0 {
 			log.Info("pruned invitations", "rows", gone)
 		}
+
+		/*
+		   Password resets go with them, and sooner.
+
+		   A link is good for an hour and is spent the first time it is used, so
+		   there is nothing left to keep by the time this runs. An hour's grace
+		   past that, rather than none, so a row is never deleted out from under
+		   a request still holding it.
+
+		   Kept in the same sweep because it is the same kind of thing: a hash
+		   of a credential tied to an address, sitting in a table for no reason
+		   anybody chose.
+		*/
+		gone, err = records.PruneResets(ctx, time.Hour)
+		if err != nil {
+			log.Error("pruning password resets", "err", err)
+			return
+		}
+		if gone > 0 {
+			log.Info("pruned password resets", "rows", gone)
+		}
 	}
 
 	go func() {

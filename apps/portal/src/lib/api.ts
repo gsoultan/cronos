@@ -366,6 +366,10 @@ export function readDefinition(kind: string, name: string): Promise<StoredDefini
 export interface SignInMethods {
   password: boolean
   sso?: { provider: string }
+  /* Whether a forgotten password can be recovered at all. False on a
+     deployment with no mail relay, where the link would be a promise made to
+     somebody who is already locked out. */
+  reset?: boolean
 }
 
 /**
@@ -382,6 +386,49 @@ export async function signInMethods(): Promise<SignInMethods> {
   const r = await fetch(`${base}/v1/auth/methods`)
   if (!r.ok) return { password: true }
   return r.json() as Promise<SignInMethods>
+}
+
+/**
+ * Asks for a link to set a new password.
+ *
+ * Answers the same whatever happened — unknown address, disabled account, mail
+ * server down — so there is nothing here to report and nothing to await beyond
+ * the request being accepted. An endpoint that answered differently for an
+ * address that has an account is a way to ask, one address at a time, who a
+ * customer's staff are.
+ */
+export async function askForReset(email: string): Promise<void> {
+  const base = apiBase()
+  if (!base) throw new ApiError(0, 'This portal is not connected to a server.')
+
+  const r = await fetch(`${base}/v1/auth/password/forgot`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email }),
+  })
+  // 501 is the one real answer: this deployment cannot send email, and saying
+  // "check your inbox" to somebody who will never get one is worse than
+  // saying so.
+  if (!r.ok) throw new ApiError(r.status, await serverMessage(r))
+}
+
+/**
+ * Spends a reset link.
+ *
+ * No session comes back on purpose. Signing somebody in because they proved
+ * control of a mailbox is what a second factor exists to prevent, so this ends
+ * at the sign-in page — which asks for a code if the account has one.
+ */
+export async function resetPassword(secret: string, password: string): Promise<void> {
+  const base = apiBase()
+  if (!base) throw new ApiError(0, 'This portal is not connected to a server.')
+
+  const r = await fetch(`${base}/v1/auth/password/reset`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ secret, password }),
+  })
+  if (!r.ok) throw new ApiError(r.status, await serverMessage(r))
 }
 
 /** Where the browser goes to sign in through the deployment's directory. */

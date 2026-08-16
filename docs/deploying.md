@@ -448,6 +448,46 @@ Runs a real SMTP server and a real database, invites somebody, reads the message
 out of the mailbox, follows the link, and then checks the two things that matter
 most: that the link does not work twice, and that replaying it changes nothing.
 
+## Forgetting a password
+
+Until recently there was no way back. `cronos-user` creates accounts and
+deliberately will not reset one, so the answer to the commonest support request
+in software was a shell on the server and a bcrypt hash written by hand — an
+outage for the person, and a standing reason for somebody to keep a production
+DSN on a laptop.
+
+**Forgot your password?** on the sign-in page, where the deployment can send
+mail. It is absent where it cannot: a link that turns into "no mail server is
+configured" is a promise made to somebody who is already locked out, so
+`/v1/auth/methods` says whether a reset is possible at all and the page asks
+before offering.
+
+Five things decide whether it is safe, and each is asserted by
+`scripts/live-reset.sh`:
+
+- **Asking says nothing.** The answer is identical for an address with an
+  account, one without, a disabled account, five links already sent this hour,
+  and a mail server that refused — the same words, and sent before any of the
+  work, so the time taken carries nothing either. An endpoint that answered
+  differently is a way to ask, one address at a time, who a customer's staff are.
+- **The secret travels in the fragment**, not the query string. A browser sends
+  a fragment to no server, so it reaches no proxy log, no access log and no
+  `Referer` header — the same reasoning an invitation link already followed.
+- **One use.** The link is spent by the UPDATE that redeems it, so two clicks
+  arriving together produce one reset. Every other outstanding link for that
+  account is spent at the same time: the second email is still in the mailbox,
+  and "ask again, wait for the owner to reset, use the older link" is an attack
+  rather than a hypothesis.
+- **Every session ends**, in the same transaction as the password. "I cannot get
+  in" and "somebody else is in" are the same sentence from outside, and a reset
+  that leaves the intruder signed in has recovered nothing.
+- **It is not a way around a second factor.** No session is handed back — signing
+  in afterwards still asks for the code. A reset proves control of a mailbox,
+  which is the exact thing a second factor exists because it is not enough.
+
+An hour, not renewed, and asking again is free. Rows are pruned an hour after
+they are finished with, by the same sweep that clears invitations.
+
 ## Ending sessions
 
 A portal token is signed and stateless: nothing is written when one is minted,
@@ -699,6 +739,7 @@ out of a browser cache that nothing ever emptied.
 | `live-sqlserver.sh` | a report against SQL Server | SQL Server |
 | `live-portal-2fa.sh` | the same enrolment, through a browser | bun, chrome |
 | `live-handover.sh` | one browser, two people, two organisations | bun, chrome |
+| `live-reset.sh` | forgetting a password and getting back in | a mail server, bun, chrome |
 | `live-upgrade.sh` | two versions against one database, through a migration | go, podman, git |
 
 All of them run in CI on every push. Six share a job and take about a minute,
