@@ -119,12 +119,24 @@ Do not add a pattern that is not solving a problem named here.
 
 ### Performance rules
 
-- Results stream. Nothing materialises a full result set in memory — not export, not
-  render, not delivery.
+- Results are bounded everywhere, and streamed almost everywhere. A render never
+  holds more than a page: a table block pages at the query level, so the
+  interactive path answers in two milliseconds and 25MB whether the table has
+  fifty rows or two million. A delivery holds one recipient's rows. The exception
+  is a spreadsheet export, which materialises the whole set in `[][]any` because
+  a workbook is written as a whole — 32MB measured for the 100,000 rows
+  `run.ExportLimit` allows, times six columns. That is the number to check
+  against if the cap ever rises; this entry used to say nothing materialises a
+  full result set, which was true of two paths out of three.
 - Columnar batches (Arrow) on the data plane, not `[]map[string]any`.
 - Every datasource carries a statement timeout and a row cap. No unbounded query.
 - Burst fan-out is bounded by `concurrency`, with backpressure to the renderer.
-- Any cache key includes the tenant and the definition version hash.
+- There is one server-side cache and it is keyed by the token's subject — an
+  account id, which names one person in one tenant, so it is narrower than a
+  tenant key rather than missing one. The browser's cache is the one that carries
+  no principal at all; it is emptied when the session changes. This entry used to
+  say any cache key includes the tenant and the definition version, which was a
+  rule nothing followed and which the portal disproved.
 
 ---
 
