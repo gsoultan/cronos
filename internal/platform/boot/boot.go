@@ -27,6 +27,7 @@ import (
 
 	"github.com/gsoultan/cronos/internal/adapter/api"
 	"github.com/gsoultan/cronos/internal/extension"
+	"github.com/gsoultan/cronos/internal/platform/build"
 	"github.com/gsoultan/cronos/internal/platform/config"
 	"github.com/gsoultan/cronos/internal/platform/token"
 
@@ -201,7 +202,11 @@ func Serve(log *slog.Logger) error {
 		BehindProxy: cfg.BehindProxy,
 	})
 
+	// The build first, because it is the field somebody greps for when a fleet
+	// is halfway through a rollout and one instance is behaving differently
+	// from the rest.
 	log.Info("cronosd listening",
+		"build", build.Version(),
 		"addr", cfg.Addr, "driver", cfg.Driver,
 		"projects", names(which), "definitions", counts(runtimes),
 		"origins", cfg.Origins, "management", len(cfg.AdminKey) > 0,

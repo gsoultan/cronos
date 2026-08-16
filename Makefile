@@ -92,9 +92,11 @@ load: ## Measure under load — needs a postgres on 5433, or WAREHOUSE=sqlite
 	@./scripts/load.sh
 
 image: ## Build the container image, and prove the typesetter is in it
-	$(CONTAINER) build -t cronos:$(VERSION) .
+	$(CONTAINER) build -t cronos:$(VERSION) --build-arg CRONOS_VERSION=$(VERSION) .
 	@echo "--- the one thing an image can be missing and not say so ---"
 	$(CONTAINER) run --rm --entrypoint typst cronos:$(VERSION) --version
+	@echo "--- and the other: which build it is ---"
+	$(CONTAINER) run --rm cronos:$(VERSION) -version
 
 clean: ## Remove build output
 	rm -rf bin $(REACT)/dist $(EMBED)/dist $(EMBED)/harness/*.js $(REACT)/harness/*.js $(PORTAL)/dist $(PORTAL)/dev-dist $(PORTAL)/shots

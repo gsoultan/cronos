@@ -12,8 +12,21 @@ signing key is one customer's project.
 
 ```bash
 make image                     # builds, and proves the typesetter is in it
-docker build -t cronos:1.0 .
+docker build -t cronos:1.0 --build-arg CRONOS_VERSION="$(git describe --tags --always --dirty)" .
 ```
+
+**Pass `CRONOS_VERSION`.** `go build` stamps the commit into a binary by itself,
+but only when `.git` is present, and `.dockerignore` excludes it on purpose — it
+is a large directory that invalidates a layer on every commit. Without the build
+arg the image answers `unknown`, which is the one answer nobody wants from the
+copy of cronos running in somebody else's cluster. CI passes it and then refuses
+an `unknown` in the result, because an image that cannot say what it is still
+builds and still serves.
+
+`cronosd -version` prints it, the startup log carries it as `build=`, and
+`cronos_build_info{version="…"}` is a constant labelled with it — so "how much of
+the fleet is on the new one" is a query, which during a rolling deploy is the
+question.
 
 Three stages: the portal's static files, the server binaries, and `typst`.
 That last one is the only thing an image can be missing without saying so —

@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/gsoultan/cronos/internal/platform/build"
 )
 
 /*
@@ -167,6 +169,19 @@ func (m *Metrics) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 	}
 
 	m.writeSchedulers(&out)
+
+	/*
+	   Which build this is, as a label on a constant.
+
+	   The Prometheus shape for a fact rather than a measurement: the value is
+	   always 1 and the label is the answer. It makes "how many of the fleet are
+	   on the new version" a query — which during a rolling deploy is the
+	   question, and which nothing here could answer, because nothing reported a
+	   version at all.
+	*/
+	out.WriteString("# HELP cronos_build_info Which build this process is, as a label.\n")
+	out.WriteString("# TYPE cronos_build_info gauge\n")
+	fmt.Fprintf(&out, "cronos_build_info{version=%q} 1\n", build.Version())
 
 	out.WriteString("# HELP cronos_uptime_seconds How long this process has been serving.\n")
 	out.WriteString("# TYPE cronos_uptime_seconds gauge\n")

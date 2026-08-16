@@ -40,11 +40,27 @@ COPY . .
 # that federates builds its own image with -tags duckdb and a base that has
 # the runtime.
 ENV CGO_ENABLED=0
+
+# Which build this is, passed in rather than read from the repository.
+#
+# `go build` stamps the commit by itself — but only when .git is there, and
+# .dockerignore excludes it deliberately: it is a large directory that
+# invalidates a layer on every commit and is not something the build needs.
+# So an image built without this reports "unknown", which is exactly the answer
+# nobody wants from the one copy of cronos that runs in somebody else's
+# cluster. Pass it:
+#
+#   docker build --build-arg CRONOS_VERSION="$(git describe --tags --always --dirty)" .
+#
+# The image job in .github/workflows/check.yml builds it with this set and
+# refuses an "unknown" in the result.
+ARG CRONOS_VERSION=unknown
 # Trimmed and stripped: the paths of the machine that built it are not
 # information anybody deploying this needs, and they are information about us.
-RUN go build -trimpath -ldflags="-s -w" -o /out/cronosd ./cmd/cronosd && \
-    go build -trimpath -ldflags="-s -w" -o /out/cronos-token ./cmd/cronos-token && \
-    go build -trimpath -ldflags="-s -w" -o /out/cronos-user ./cmd/cronos-user
+RUN LDFLAGS="-s -w -X github.com/gsoultan/cronos/internal/platform/build.version=${CRONOS_VERSION}" && \
+    go build -trimpath -ldflags="$LDFLAGS" -o /out/cronosd ./cmd/cronosd && \
+    go build -trimpath -ldflags="$LDFLAGS" -o /out/cronos-token ./cmd/cronos-token && \
+    go build -trimpath -ldflags="$LDFLAGS" -o /out/cronos-user ./cmd/cronos-user
 
 # --- The typesetter ---------------------------------------------------------
 #

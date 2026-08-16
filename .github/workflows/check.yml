@@ -390,11 +390,29 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # The commit goes in as a build arg, because .dockerignore excludes .git
+      # on purpose and `go build` has nothing to stamp without it.
       - name: build
-        run: docker build -t cronos:ci .
+        run: |
+          docker build -t cronos:ci \
+            --build-arg CRONOS_VERSION="$(git rev-parse --short=12 HEAD)" .
 
       - name: the typesetter is in it
         run: docker run --rm --entrypoint typst cronos:ci --version
+
+      # And it can say which build it is. Without the arg above this reports
+      # "unknown", which is the answer nobody wants from the one copy of cronos
+      # that runs in somebody else's cluster — and it would be a silent
+      # regression, because the image builds and serves either way.
+      - name: it knows which build it is
+        run: |
+          said=$(docker run --rm cronos:ci -version)
+          echo "$said"
+          case "$said" in
+            *unknown*) echo "the image cannot say which build it is"; exit 1 ;;
+          esac
+          echo "$said" | grep -q "$(git rev-parse --short=12 HEAD)" ||
+            { echo "the image reports a different commit"; exit 1; }
 
       # And it starts, reaches its dependencies, and says so. An image that
       # builds and cannot serve is an image that passes a build check.
