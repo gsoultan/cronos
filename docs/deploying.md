@@ -39,6 +39,16 @@ The image is CGO-free and runs as an unprivileged user. A deployment that
 federates across databases needs `-tags duckdb`, which needs cgo, and builds
 its own image from a base with the runtime.
 
+Federation is one query across two engines — a customer list from the CRM's
+Postgres joined to invoices somewhere else, with no ETL between them. Every
+source is attached `READ_ONLY`, and that is checked against DuckDB rather than
+against the string cronos generates: a delete through a mounted Postgres is
+refused and the row is still there afterwards. cronos reads other people's
+production databases, so a federation that can write to one is a different
+product with a different risk. DuckDB downloads its `postgres` and `sqlite`
+extensions on first use, which is why the CI job for it has a network and the
+rest of the suite does not.
+
 `TZ` is set and `tzdata` is installed, because "the first of the month at six"
 is a local claim. A container with no zoneinfo resolves every timezone to UTC,
 which is a statement dated an hour early in the wrong month.
@@ -794,7 +804,7 @@ out of a browser cache that nothing ever emptied.
 | `live-boundaries.sh` | row scope, audiences, tenancy, forged tokens, share links | go |
 | `live-failover.sh` | the definition store going away and coming back | go, podman |
 | `live-sso.sh` | a whole OIDC sign-in and single log-out | Keycloak |
-| `live-sqlserver.sh` | a report against SQL Server | SQL Server |
+| `live-sqlserver.sh` | a report against SQL Server | Azure SQL Edge |
 | `live-portal-2fa.sh` | the same enrolment, through a browser | bun, chrome |
 | `live-handover.sh` | one browser, two people, two organisations | bun, chrome |
 | `live-reset.sh` | forgetting a password and getting back in | a mail server, bun, chrome |
@@ -816,6 +826,12 @@ is worse than one that stops.
 A script that finds a server already listening uses it and leaves it alone, so
 CI's service containers work without the script knowing it is CI. The exception
 is `live-sqlserver.sh`, which needs telling: set `CRONOS_SQLSERVER_RUNNING=1`.
+Without it the script starts its own Azure SQL Edge and removes it afterwards —
+Edge because it is the SQL Server engine and the only one of the family that
+runs on arm64, where `mssql/server:2022` is amd64 and segfaults under emulation.
+Both paths are exercised: the ten assertions include `@p1` binding where the
+compiler expects, `DATEADD`/`DATEDIFF` bucketing months the way a person would,
+and a `DECIMAL` arriving as a number rather than as bytes.
 Locally it starts Azure SQL Edge instead, because `mssql/server:2022` is amd64
 and segfaults on an arm64 laptop under emulation — the same engine either way.
 

@@ -133,6 +133,22 @@ jobs:
   duckdb:
     name: duckdb
     runs-on: ubuntu-latest
+
+    # A second engine to federate with. Everything here used to check the SQL
+    # that mounts a source and nothing that attached one, so the feature this
+    # exists for — one query across two databases — had never been run.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: cronos
+          POSTGRES_PASSWORD: cronos
+          POSTGRES_DB: cronos
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U cronos"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-go@v5
@@ -140,7 +156,10 @@ jobs:
           go-version-file: go.mod
           cache: true
       - run: go build -tags duckdb ./...
-      - run: go test -tags duckdb ./internal/adapter/driver/duckdb/
+      - name: test
+        env:
+          CRONOS_POSTGRES_DSN: postgres://cronos:cronos@localhost:5432/cronos?sslmode=disable
+        run: go test -tags duckdb ./internal/adapter/driver/duckdb/
 
   live:
     name: live checks
