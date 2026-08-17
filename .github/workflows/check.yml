@@ -275,6 +275,13 @@ jobs:
           CRONOS_SQLSERVER_RUNNING: '1'
         run: ./scripts/live-sqlserver.sh
 
+      # MySQL was supported by every layer and reachable by none: the dialect,
+      # the registry, boot and the federation mount all knew it, and no driver
+      # was ever imported. Nothing had executed a query against the database the
+      # dialect was written for.
+      - name: a report against MySQL
+        run: ./scripts/live-mysql.sh
+
   live-sso:
     name: live checks (sso)
     runs-on: ubuntu-latest

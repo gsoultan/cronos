@@ -27,11 +27,11 @@ election, SSO, audit, and the deployment documentation — with one exception,
 below.
 
 **The engine.** YAML definitions with bound parameters and structural row-level
-security, over Postgres, MySQL, SQL Server, SQLite and object stores. (MySQL was
+security, over Postgres, MySQL, SQL Server, SQLite and object stores — MySQL was
 accepted by every layer and unreachable until this release, for want of one
-blank import.) Federation
-across engines behind `-tags duckdb`: one query joining a customer list in one
-database to invoices in another, every source attached read-only. Results are
+blank import. Federation across engines behind `-tags duckdb`: one query joining
+a customer list in one database to invoices in another, every source attached
+read-only. Results are
 bounded everywhere and streamed almost everywhere — a render never holds more
 than a page, whether the table has fifty rows or two million.
 

@@ -846,6 +846,7 @@ out of a browser cache that nothing ever emptied.
 | `live-failover.sh` | the definition store going away and coming back | go, podman |
 | `live-sso.sh` | a whole OIDC sign-in and single log-out | Keycloak |
 | `live-sqlserver.sh` | a report against SQL Server | Azure SQL Edge |
+| `live-mysql.sh` | a report against MySQL | MySQL 8 |
 | `live-portal-2fa.sh` | the same enrolment, through a browser | bun, chrome |
 | `live-handover.sh` | one browser, two people, two organisations | bun, chrome |
 | `live-reset.sh` | forgetting a password and getting back in | a mail server, bun, chrome |
