@@ -286,3 +286,32 @@ func (r *Registry) Probe(ctx context.Context, name string) (time.Duration, error
 // long enough for a cold connection across a region and short enough that
 // somebody waiting on the answer does not conclude the page is broken.
 const probeTimeout = 5 * time.Second
+
+/*
+Pool reports how busy one source's connections are.
+
+From database/sql's own counters, which is the only party that knows without
+asking the warehouse. Asking the warehouse means a query against a database
+somebody else operates on every scrape — and the load harness did exactly that,
+spawning a psql per sample, until the sampling cost enough to move the numbers
+being sampled.
+
+Three numbers, because any two of them say nothing. `open` is how many
+connections exist, `inUse` is how many are running a query at this instant, and
+`limit` is what the definition allows. In-use pinned at the limit while
+throughput flattens is the pool being the ceiling; in-use well below it means
+the ceiling is somewhere else and raising maxOpen only opens more connections on
+somebody's production database.
+
+A source with no pool — an object store, which is files rather than a database —
+reports nothing rather than zeroes, because zero connections and no connections
+are different answers.
+*/
+func (r *Registry) Pool(name string) (open, inUse, limit int, ok bool) {
+	db, found := r.DB(name)
+	if !found || db == nil {
+		return 0, 0, 0, false
+	}
+	stats := db.Stats()
+	return stats.OpenConnections, stats.InUse, stats.MaxOpenConnections, true
+}

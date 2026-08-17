@@ -180,7 +180,6 @@ before="$(runtime_now)"
 
 API="http://localhost:$PORT" TOKEN="$TOKEN" TOKENS="$WORK/tokens" ADMIN="$CRONOS_ADMIN_KEY" \
   CUSTOMERS="$CUSTOMERS" REQUESTS="$REQUESTS" WORK="$WORK" \
-  PGCOUNT="$([ "$WAREHOUSE" = postgres ] && echo 1 || echo "")" \
   node scripts/load-check.mjs
 
 # A count that went up and stayed up is a leak, and it is the failure mode a

@@ -82,7 +82,14 @@ async function render(report, reader = 0) {
 }
 
 /** Runs `total` requests with at most `concurrency` in flight. */
-async function drive(report, total, concurrency) {
+/*
+`onStart` is called once the workers are running.
+
+So the connection sampler can take one reading during the run rather than only
+on its interval, which at these speeds meant not at all — three hundred requests
+at sixteen in flight is under a fifth of a second.
+*/
+async function drive(report, total, concurrency, onStart) {
   const times = []
   const failures = []
   let next = 0
@@ -98,7 +105,11 @@ async function drive(report, total, concurrency) {
   }
 
   const started = performance.now()
-  await Promise.all(Array.from({ length: concurrency }, (_, i) => worker(i)))
+  const running = Promise.all(Array.from({ length: concurrency }, (_, i) => worker(i)))
+  // After the workers have been handed to the event loop, so the pool is
+  // opening connections rather than idle when this reads it.
+  if (onStart) setTimeout(onStart, 0)
+  await running
   const wall = performance.now() - started
 
   /* Requests that worked, over the wall clock — not requests attempted.
@@ -140,17 +151,33 @@ await insistItWorks('billing-summary')
    rather than the steady state. */
 await drive('billing-summary', 10, 1)
 
-/* How many connections cronos holds to the warehouse while this is running.
-   The pool's own comment says it is bounded because somebody else operates
-   that database — this is what checks whether it actually is. */
+/*
+How many connections cronos holds to the warehouse while this is running.
+
+Asked of cronos, not of the warehouse. This used to shell out to psql against
+Postgres, and the sampling was expensive enough to move the numbers it was
+sampling: at 500ms intervals the runs finished before the first tick and the
+column came out empty above one in flight, and sampling faster made the harness
+the load — p50 at a concurrency of one went from 5ms to 178ms.
+
+The server reports its own pool from database/sql's counters, which costs one
+scrape of an endpoint it already serves. It is also the number an operator
+watches in production, so the harness and the dashboard now read the same thing.
+*/
 async function warehouseConnections() {
-  if (!process.env.PGCOUNT) return null
-  const { execFileSync } = await import('node:child_process')
   try {
-    return Number(execFileSync('podman', [
-      'exec', 'cronos-pg', 'psql', '-tAqU', 'cronos', '-d', 'cronos', '-c',
-      "SELECT count(*) FROM pg_stat_activity WHERE datname='cronos' AND application_name <> 'psql'",
-    ]).toString().trim())
+    const res = await fetch(`${API}/v1/metrics`)
+    if (!res.ok) return null
+    const text = await res.text()
+    // In use rather than open: an idle pool holds connections it is not using,
+    // and the question is whether requests are waiting for one.
+    let peak = null
+    for (const line of text.split('\n')) {
+      if (!line.startsWith('cronos_datasource_connections_in_use{')) continue
+      const n = Number(line.slice(line.lastIndexOf(' ') + 1))
+      if (Number.isFinite(n)) peak = Math.max(peak ?? 0, n)
+    }
+    return peak
   } catch {
     return null
   }
@@ -166,15 +193,24 @@ for (const concurrency of [1, 4, 16, 64]) {
      measurement. */
   let peak = 0
   let sampling = false
-  const watching = setInterval(() => {
+  const sample = () => {
     if (sampling) return
     sampling = true
     warehouseConnections()
       .then((n) => { if (n !== null && n > peak) peak = n })
       .finally(() => { sampling = false })
-  }, 500)
+  }
 
-  const r = await drive('billing-summary', REQUESTS, concurrency)
+  /* One immediately, then on the interval.
+     
+     Interval-only meant the faster the server got, the less this could see:
+     three hundred requests at sixteen in flight is a fifth of a second, the
+     first tick is at half a second, and the column came out empty at every
+     concurrency above one. The sizing advice in docs/deploying.md rested on
+     "the harness reports conns 16 at both 16 and 64" — an observation the
+     harness had quietly stopped being able to make. */
+  const watching = setInterval(sample, 500)
+  const r = await drive('billing-summary', REQUESTS, concurrency, sample)
   clearInterval(watching)
   r.connections = peak
   byConcurrency[concurrency] = r

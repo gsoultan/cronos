@@ -51,6 +51,10 @@ type Metrics struct {
 	// job is to say "nothing has happened for a while" cannot be maintained by
 	// the thing that has stopped happening.
 	schedulers map[string]SchedulerState
+	// pools, by project, read at scrape time for the same reason schedulers
+	// are: a gauge whose job is to say how busy something is cannot be
+	// maintained by the thing that is busy.
+	pools map[string]Pools
 
 	// unarmed answers how many schedules were read and will never run. A
 	// function rather than a number, because the count is boot's and this
@@ -78,6 +82,26 @@ type SchedulerState interface {
 	// Leading says whether this replica is the one firing. Always true where
 	// nothing arbitrates, which is a single-process deployment.
 	Leading() bool
+}
+
+/*
+Pools is a project's datasources and how busy their connection pools are.
+
+Read at scrape time from database/sql's own counters, which is the only party
+that knows: the alternative is asking the warehouse, and that means a query
+against somebody else's production database every time a monitoring system
+looks. The load harness did exactly that — a psql per sample — and the sampling
+cost enough to move the numbers it was sampling.
+
+It is also the signal an operator sizing `maxOpen` actually needs. The
+throughput curve flattens somewhere, and "the pool is the ceiling" is a guess
+until in-use sits at the limit while requests queue.
+*/
+type Pools interface {
+	// Names lists the sources this project holds open.
+	Names() []string
+	// Pool reports open and in-use connections, and the configured ceiling.
+	Pool(name string) (open, inUse, limit int, ok bool)
 }
 
 type requestKey2 struct {
@@ -135,6 +159,16 @@ watcher is itself the signal that this process schedules nothing — which is a
 correct and common state for a replica, and an incident when it is true of
 every replica at once.
 */
+// WatchPools reports on one project's connection pools.
+func (m *Metrics) WatchPools(project string, p Pools) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.pools == nil {
+		m.pools = map[string]Pools{}
+	}
+	m.pools[project] = p
+}
+
 func (m *Metrics) WatchScheduler(project string, s SchedulerState) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -201,6 +235,7 @@ func (m *Metrics) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 	}
 
 	m.writeSchedulers(&out)
+	m.writePools(&out)
 
 	/*
 	   Which build this is, as a label on a constant.
@@ -388,6 +423,83 @@ Labelled by project because a deployment serving three of them wants to know
 which one is stuck, and the label is bounded by configuration rather than by
 data — three projects is three series, not one per customer.
 */
+/*
+writePools is the answer to "is the connection pool the ceiling".
+
+Three numbers per source, because two of them alone say nothing: open is how
+many connections exist, in-use is how many are running a query right now, and
+limit is what the definition allows. In-use pinned at limit while throughput
+flattens is the pool; in-use well under it means the ceiling is somewhere else
+and raising maxOpen will do nothing but open connections on a database somebody
+else operates.
+
+From database/sql's own counters. Asking the warehouse instead means a query
+against a production database on every scrape, which is what the load harness
+did — and the psql it spawned per sample cost enough to change the numbers the
+sample was taken from.
+*/
+// Called with m.mu held, like writeSchedulers beside it: ServeHTTP takes the
+// lock for the whole exposition. Taking it again here deadlocked every scrape —
+// sync.Mutex is not reentrant, and the symptom was a metrics endpoint that
+// accepted the connection and never answered while health stayed green.
+func (m *Metrics) writePools(out *strings.Builder) {
+	if len(m.pools) == 0 {
+		return
+	}
+	projects := make([]string, 0, len(m.pools))
+	for p := range m.pools {
+		projects = append(projects, p)
+	}
+	pools := m.pools
+	sort.Strings(projects)
+
+	// Gathered first, then written a family at a time. Prometheus expects every
+	// sample of a metric to follow its own HELP and TYPE; interleaving three
+	// metrics per source is a scrape some collectors reject and others silently
+	// keep only the last of.
+	type pool struct {
+		project, source    string
+		open, inUse, limit int
+	}
+	var found []pool
+	for _, project := range projects {
+		p := pools[project]
+		if p == nil {
+			continue
+		}
+		names := p.Names()
+		sort.Strings(names)
+		for _, name := range names {
+			open, inUse, limit, ok := p.Pool(name)
+			if !ok {
+				continue
+			}
+			found = append(found, pool{project, name, open, inUse, limit})
+		}
+	}
+	if len(found) == 0 {
+		return
+	}
+
+	for _, family := range []struct {
+		name, help string
+		of         func(pool) int
+	}{
+		{"cronos_datasource_connections", "Connections held to a datasource.",
+			func(p pool) int { return p.open }},
+		{"cronos_datasource_connections_in_use", "Connections running a query right now.",
+			func(p pool) int { return p.inUse }},
+		{"cronos_datasource_connections_limit", "What the datasource definition allows.",
+			func(p pool) int { return p.limit }},
+	} {
+		fmt.Fprintf(out, "# HELP %s %s\n# TYPE %s gauge\n", family.name, family.help, family.name)
+		for _, p := range found {
+			fmt.Fprintf(out, "%s{project=%q,source=%q} %d\n",
+				family.name, p.project, p.source, family.of(p))
+		}
+	}
+}
+
 func (m *Metrics) writeSchedulers(out *strings.Builder) {
 	now := m.now()
 

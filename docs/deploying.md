@@ -259,15 +259,15 @@ during an incident, hunting for the leader is the last thing anybody needs.
 `scripts/load.sh` generates a corpus, stands a cronosd up against a real
 Postgres, and measures. These are four runs of it, and the ranges are the point:
 
-| In flight | p50 | p99 | requests/s |
-|---|---|---|---|
-| 1 | 6–9 ms | 121–173 ms | 71–126 |
-| 4 | 6–13 ms | 17–202 ms | 219–690 |
-| 16 | 12–26 ms | 36–233 ms | 406–1,247 |
-| 64 | 48–93 ms | 121–224 ms | 616–1,156 |
+| In flight | p50 | p99 | requests/s | in use |
+|---|---|---|---|---|
+| 1 | 4.0–4.2 ms | 6.9–10.4 ms | 227–237 | — |
+| 4 | 4.6–5.5 ms | 11.1–17.7 ms | 621–834 | 2–3 |
+| 16 | 9.3–10.7 ms | 33.6–40.5 ms | 1,332–1,533 | 4–6 |
+| 64 | 32.9–35.2 ms | 80.9–88.1 ms | 1,611–1,726 | 16 |
 
-Bursting: **300–420 PDFs per second**, so five thousand statements is under half
-a minute of wall clock. Each is about 19 KB.
+Bursting: **560–650 PDFs per second**, so five thousand statements is about
+eight seconds of wall clock. Each is about 19 KB.
 
 The report is the demo's `billing-summary` over a thousand customers and five
 thousand invoices. The machine is a laptop with the database in a virtual
@@ -275,12 +275,17 @@ machine, which is why the ranges are two to three times wide, and why **you
 should run this on your own hardware rather than size anything from this table**.
 What it is good for is the shape:
 
-- Throughput climbs steeply to about sixteen in flight and then flattens. The
-  connection pool is the ceiling — the harness reports `conns 16` at both 16 and
-  64 in flight — so `maxOpen` on the datasource is the lever, not the instance
-  count.
-- The p99 at one in flight is twenty times its p50. That is the first request
-  against a cold pool and a cold plan cache, not a tail under load.
+- Throughput climbs steeply and then flattens between sixteen and sixty-four in
+  flight, for about 12% more at four times the concurrency. The connection pool
+  is the ceiling: in-use sits at 16, which is the limit, while p50 triples. So
+  `maxOpen` on the datasource is the lever, not the instance count — and that is
+  now a number a deployment can watch rather than one only this harness could
+  see. `cronos_datasource_connections_in_use` against
+  `cronos_datasource_connections_limit` answers it in production; in-use well
+  below the limit means the ceiling is elsewhere and raising `maxOpen` will only
+  open more connections on a database somebody else operates.
+- The last row is the useful one for sizing. Nothing failed at any level, so the
+  flattening is queueing rather than refusing.
 - A burst is bounded by the typesetter, not by the warehouse: it is one render
   per recipient, and the query behind each is small.
 

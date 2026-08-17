@@ -47,6 +47,7 @@ import (
 	_ "time/tzdata"
 
 	"github.com/gsoultan/cronos/internal/adapter/api"
+	"github.com/gsoultan/cronos/internal/adapter/driver/registry"
 	"github.com/gsoultan/cronos/internal/extension"
 	"github.com/gsoultan/cronos/internal/platform/build"
 	"github.com/gsoultan/cronos/internal/platform/config"
@@ -155,6 +156,23 @@ func Serve(log *slog.Logger) error {
 	// Wired here and only here, so the count can never be a zero nobody set —
 	// which on this metric is the same shape as a healthy deployment.
 	metrics := api.NewMetrics().CountingUnarmed(Unarmed).CountingRefused(Rejected)
+
+	/*
+	   Every project's connection pools, for every replica.
+
+	   Registered here rather than beside the scheduler, because a replica that
+	   schedules nothing still holds connections to somebody's warehouse — and
+	   an operator asking "is the pool the ceiling" is asking about the instance
+	   serving reports, which is all of them.
+	*/
+	for t, rt := range runtimes {
+		// The concrete type, the same assertion readinessFor makes. Probes is
+		// an interface a test can fill with something narrower, and a stub that
+		// answers probes has no pool to report on.
+		if reg, ok := rt.project.Probes.(*registry.Registry); ok && reg != nil {
+			metrics.WatchPools(t.String(), reg)
+		}
+	}
 
 	/*
 	   Deferred beside the start, and it both cancels and waits.
