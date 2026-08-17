@@ -112,6 +112,25 @@ restriction would mean nothing.
 
 ## Checking it against a real provider
 
+## When a sign-in does not finish
+
+The sentence the browser gets names the system to go and look at, because for a
+while it named the wrong one. Every refusal read as *the identity provider
+refused this sign-in*, and only one of them is that.
+
+| What it says | Where the problem is |
+| :--- | :--- |
+| the identity provider refused this sign-in | The provider. Usually a declined consent screen (`access_denied`), or an account it will not sign in. |
+| this server and the identity provider disagree about the time | Neither. NTP on this host, or on the provider's. A minute of leeway is allowed; beyond that a token minted seconds ago arrives outside its window. |
+| that account is not one this deployment admits | Here, and nothing is broken. `CRONOS_OIDC_ALLOWED_DOMAINS` does not list their domain, or the provider marks their address unverified. |
+| this sign-in could not be verified | Configuration. A signature that does not check out, a token minted for another client, or an issuer that does not match — usually a client id or issuer URL that belongs to a different environment. |
+| this sign-in did not start here / expired | The browser. A stale bookmark, a replayed callback, or a tab left open past the state's life. |
+
+The full error is in the log beside each one, at `msg="sign-in refused"` with a
+`reason=` field carrying the same classification, so an alert can count them
+apart. The clock case is the one worth having a name for: it looks exactly like
+a provider outage, and it cost an afternoon here before it had one.
+
 Every part of SSO that can be wrong is wrong at a boundary — a redirect URL the
 provider does not recognise, a discovery document without the field we expected,
 a cookie the browser withholds, a logout refused because it wanted a hint we did

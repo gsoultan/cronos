@@ -14,6 +14,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/gsoultan/cronos/internal/extension"
 )
 
 /*
@@ -141,9 +143,16 @@ func (p *Provider) verify(ctx context.Context, raw, nonce string) (claims, error
 		// Without this, any other client there can sign somebody into cronos.
 		return claims{}, fmt.Errorf("oidc: the token was not minted for this application")
 	case c.Expiry == 0 || now.After(time.Unix(c.Expiry, 0).Add(leeway)):
-		return claims{}, fmt.Errorf("oidc: the token has expired")
+		// Wrapped as clock skew rather than reported as a stale token. A
+		// sign-in takes seconds and the token is minted during it, so an
+		// "expired" one here is nearly always two machines disagreeing about
+		// the time by more than the minute of leeway — and saying "the
+		// provider refused" for it sends somebody to the wrong console.
+		return claims{}, fmt.Errorf("%w: the token expired %s ago, and it was minted during this sign-in",
+			extension.ErrClockSkew, now.Sub(time.Unix(c.Expiry, 0)).Round(time.Second))
 	case c.IssuedAt != 0 && now.Add(leeway).Before(time.Unix(c.IssuedAt, 0)):
-		return claims{}, fmt.Errorf("oidc: the token was issued in the future — check the clocks")
+		return claims{}, fmt.Errorf("%w: the token was issued %s in the future",
+			extension.ErrClockSkew, time.Unix(c.IssuedAt, 0).Sub(now).Round(time.Second))
 	case nonce != "" && c.Nonce != nonce:
 		// What ties this answer to the request that asked for it. Without it,
 		// a token captured from another sign-in can be replayed here.

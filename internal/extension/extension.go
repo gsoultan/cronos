@@ -24,6 +24,39 @@ import (
 // request without being configured first. Seams fail closed.
 var ErrNotConfigured = errors.New("extension: not configured")
 
+/*
+Why a sign-in did not finish, in the only terms the person reading it can act on.
+
+A sign-in through a directory fails in half a dozen ways and until this they all
+reached the browser as "the identity provider refused this sign-in". Only one of
+them is that. The rest are cronos refusing a token, or a deployment configured
+against a different client, or two machines disagreeing about the time — and
+sending an operator to the provider's admin console for any of those costs them
+the afternoon. It cost one here: a host clock that jumped hours put a valid
+token outside its window, the log said the provider refused, and the provider
+was the first thing restarted.
+
+Wrapped by whichever implementation is registered, read by the callback handler
+in internal/adapter/api. The detail stays in the log; these decide which system
+the sentence names.
+*/
+var (
+	// ErrProviderRefused is the provider saying no — a consent screen somebody
+	// declined, or an account it will not sign in. The only one where the
+	// provider is the right place to look.
+	ErrProviderRefused = errors.New("extension: the provider refused the sign-in")
+
+	// ErrClockSkew is a token outside its validity window. Almost always the
+	// two machines rather than the token: a directory and an application that
+	// disagree about the time by more than the minute of leeway allowed.
+	ErrClockSkew = errors.New("extension: the token is outside its validity window")
+
+	// ErrNotAcceptable is a sign-in that worked and a person this deployment
+	// will not have — an address outside the permitted domains. Nothing is
+	// broken and nothing will fix itself; somebody has to be added.
+	ErrNotAcceptable = errors.New("extension: this deployment does not accept that account")
+)
+
 // Principal is the identity and active scope a request runs as. See
 // internal/core/principal and docs/tenancy.md.
 type Principal = principal.Principal

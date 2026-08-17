@@ -190,9 +190,10 @@ func (p *Provider) Complete(ctx context.Context, r *http.Request,
 		return extension.Identity{}, fmt.Errorf("oidc: the state did not match")
 	}
 	if failed := r.URL.Query().Get("error"); failed != "" {
-		// The provider's own refusal, which is usually the useful one:
-		// access_denied means somebody said no to a consent screen.
-		return extension.Identity{}, fmt.Errorf("oidc: %s", failed)
+		// The provider's own refusal, and the only failure in this function
+		// where the provider is the right place to look: access_denied means
+		// somebody said no to a consent screen.
+		return extension.Identity{}, fmt.Errorf("%w: %s", extension.ErrProviderRefused, failed)
 	}
 	code := r.URL.Query().Get("code")
 	if code == "" {
@@ -324,7 +325,12 @@ func (p *Provider) permitted(email string) error {
 			return nil
 		}
 	}
-	return fmt.Errorf("oidc: %s is not a domain this deployment admits", domain)
+	// Not a refusal by the provider: it signed them in perfectly well and this
+	// deployment will not have them. Nothing here is broken and nothing will
+	// fix itself — somebody has to be admitted — so the sentence the browser
+	// gets has to say that rather than send them to the provider.
+	return fmt.Errorf("%w: %s is not a domain this deployment admits",
+		extension.ErrNotAcceptable, domain)
 }
 
 func (p *Provider) scopes() []string {

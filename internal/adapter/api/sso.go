@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -142,10 +143,37 @@ func (h *SSO) complete(w http.ResponseWriter, r *http.Request) {
 
 	who, err := h.flow.Complete(r.Context(), r, state)
 	if err != nil {
-		h.log.Info("sign-in refused by the provider", "provider", h.flow.Name(), "err", err)
+		/*
+		   Which system to go and look at.
+
+		   This said "the identity provider refused this sign-in" for every way
+		   Complete can fail, and only one of them is that. The others are
+		   cronos refusing a token, a deployment configured against a different
+		   client, or two machines disagreeing about the time. Naming the
+		   provider for those costs somebody an afternoon in the wrong admin
+		   console — it cost one here, when a host clock jumped and the first
+		   thing restarted was Keycloak.
+		*/
+		reason, why := "the identity provider refused this sign-in", "provider"
+		switch {
+		case errors.Is(err, extension.ErrClockSkew):
+			reason = "this server and the identity provider disagree about the time"
+			why = "clock"
+		case errors.Is(err, extension.ErrNotAcceptable):
+			reason = "that account is not one this deployment admits"
+			why = "not-admitted"
+		case errors.Is(err, extension.ErrProviderRefused):
+			// The default, and now the one case that has earned it.
+		default:
+			reason = "this sign-in could not be verified"
+			why = "unverified"
+		}
+
+		h.log.Info("sign-in refused", "provider", h.flow.Name(), "reason", why, "err", err)
 		audit(r.Context(), h.log, principal.Principal{Subject: "sso"},
-			ActionSignIn, "sso", Refused, map[string]any{"provider": h.flow.Name()})
-		h.refuse(w, r, "the identity provider refused this sign-in")
+			ActionSignIn, "sso", Refused,
+			map[string]any{"provider": h.flow.Name(), "reason": why})
+		h.refuse(w, r, reason)
 		return
 	}
 
