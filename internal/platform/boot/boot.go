@@ -25,6 +25,27 @@ import (
 	"syscall"
 	"time"
 
+	/*
+	   The timezone database, carried in the binary.
+
+	   A schedule's "first of the month at six" is a local claim, so cronos
+	   calls time.LoadLocation on whatever a definition names — and without a
+	   zoneinfo database that returns an error rather than, as the Dockerfile
+	   used to claim, quietly resolving to UTC. Which means an instance with a
+	   Europe/Berlin schedule refuses to start at all: loud, correct, and
+	   discovered by whoever deployed it.
+
+	   Our own image installs tzdata, but cronos is deployed by other people on
+	   base images they choose, and the docs tell a federating deployment to
+	   build its own. Embedding costs about 450KB in a 26MB binary and makes the
+	   guarantee travel with the code instead of with the base image.
+
+	   It is a fallback, not a replacement: Go reads the system database first
+	   where there is one, so a host that updates tzdata for a DST law change
+	   still wins. This is only what happens when there is nothing to read.
+	*/
+	_ "time/tzdata"
+
 	"github.com/gsoultan/cronos/internal/adapter/api"
 	"github.com/gsoultan/cronos/internal/extension"
 	"github.com/gsoultan/cronos/internal/platform/build"
@@ -131,7 +152,9 @@ func Serve(log *slog.Logger) error {
 	// One recorder, however it is served: the counting happens in the handler
 	// chain either way, and only where it can be read changes. Built before the
 	// schedulers so each can register itself as it arms.
-	metrics := api.NewMetrics()
+	// Wired here and only here, so the count can never be a zero nobody set —
+	// which on this metric is the same shape as a healthy deployment.
+	metrics := api.NewMetrics().CountingUnarmed(Unarmed).CountingRefused(Rejected)
 
 	/*
 	   Deferred beside the start, and it both cancels and waits.

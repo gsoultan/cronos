@@ -106,11 +106,30 @@ func scheduler(cfg config.Server, org, project string, serving func() (string, s
 		log.Warn("no mail relay — schedule failures will not alert anybody")
 	}
 
-	// Every schedule is parsed before the listener opens. A timezone the host
-	// does not have should stop a deployment, not surprise somebody at six on
-	// the first of the month.
-	if err := schedule.Check(repo); err != nil {
-		return nil, err
+	/*
+	   Every schedule is parsed before the listener opens, and one that will not
+	   parse is named rather than fatal.
+
+	   This used to return the error and stop the process. The reasoning held
+	   while definitions came from a directory an operator controlled: a
+	   timezone the host does not have was a configuration mistake, and failing
+	   loudly beat serving with two of five schedules quietly missing.
+
+	   Definitions come from the store now. An editor publishing "Europe/Berln"
+	   got a 200, the running instance carried on, and the next restart would
+	   not come back — with the API down, so the only way to remove the typo was
+	   a psql prompt. One person's misspelling was an outage for every project in
+	   the deployment, days later, looking like the deploy had broken it.
+
+	   Publishing validates the timezone now. This is the net under the ones
+	   already stored, and it keeps the loudness that made refusing attractive:
+	   each is logged at error and counted for the metric, so a schedule that is
+	   not running is visible rather than absent.
+	*/
+	for _, u := range schedule.Check(repo) {
+		log.Error("schedule will not arm — it is stored but will never run",
+			"schedule", u.Name, "err", u.Err)
+		unarmed.Add(1)
 	}
 	return sched, nil
 }
@@ -282,7 +301,31 @@ func reconcile(ctx context.Context, store publish.Store, repo *file.Repository,
 		docs = append(docs, raw)
 	}
 	if err := repo.Adopt(docs); err != nil {
-		return fmt.Errorf("adopting the stored definitions: %w", err)
+		/*
+		   One stored definition this build will not accept, and forty-nine it
+		   will. Refusing all fifty is not the safer answer: it takes the
+		   deployment down, and with the API down the only way to remove the one
+		   bad definition is a prompt on the database — the shape of every
+		   unrecoverable failure, where fixing the broken thing needs the broken
+		   thing.
+
+		   Validation gets stricter over time and the store outlives any one
+		   build, so this is not hypothetical: a schedule published against a
+		   timezone nobody checked becomes, one release later, a process that
+		   will not start. It happens on the upgrade, which is when nobody is
+		   looking for a definition somebody published in March.
+
+		   The ordinary path is still all or nothing. This runs only when that
+		   one refused, and it is loud — every reason at error, and counted for
+		   cronos_definitions_refused, which should be zero.
+		*/
+		log.Error("the store holds definitions this build will not accept",
+			"project", pr.OrgID+"/"+pr.ProjectID, "err", err)
+		for _, refused := range repo.AdoptUsable(docs) {
+			log.Error("definition refused — it is stored and will not be served",
+				"project", pr.OrgID+"/"+pr.ProjectID, "err", refused)
+			rejected.Add(1)
+		}
 	}
 	// Stated rather than left to be discovered by somebody who edited a file
 	// and could not work out why nothing changed.

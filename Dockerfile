@@ -95,9 +95,17 @@ COPY --from=server /out/cronos-user /usr/local/bin/cronos-user
 COPY --from=typst /usr/local/bin/typst /usr/local/bin/typst
 COPY --from=portal /src/apps/portal/dist /srv/portal
 
-# Timezones, because a schedule's "first of the month at six" is a local claim
-# and a container with no zoneinfo resolves every timezone to UTC — which is a
-# statement dated an hour early in the wrong month, and a support ticket.
+# Timezones, because a schedule's "first of the month at six" is a local claim.
+#
+# A container with no zoneinfo does not quietly resolve to UTC, which is what
+# this said and is worth correcting: time.LoadLocation returns an error, the
+# schedule will not arm, and the instance says so. Run in a bare alpine, cronosd
+# stopped with `unknown time zone Europe/Berlin` before a listener opened.
+#
+# The binary carries its own copy now (time/tzdata, about 450KB), so it runs on
+# whatever base somebody else builds on. This stays because Go reads the system
+# database first where there is one: a host that updates tzdata for a DST law
+# change should win over a copy frozen at build time.
 ENV TZ=UTC
 
 USER cronos

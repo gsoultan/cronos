@@ -501,6 +501,38 @@ Five things decide whether it is safe, and each is asserted by
 An hour, not renewed, and asking again is free. Rows are pruned an hour after
 they are finished with, by the same sweep that clears invitations.
 
+## A definition this build will not accept
+
+Two things decide what happens, and they used to be one.
+
+**At publish**, a definition is validated and refused where the person who wrote
+it can still see it. That includes the timezone: it was checked for being
+non-empty and never for existing, so `Europe/Berln` published with a 200. The
+running instance carried on perfectly well — a schedule is parsed when the
+process starts, not when it is stored — and then the next restart found a
+schedule that would not arm and refused to start at all. Anybody who could edit
+could take the whole deployment down with a typo, days in advance, and the
+outage would land on a deploy that looked like it broke something.
+
+**At startup**, a stored definition this build will not accept is skipped rather
+than fatal. Adoption is still all or nothing on the ordinary path; this is the
+fallback when that refuses. It matters because validation gets stricter and the
+store outlives any one build, so a definition published under laxer rules
+becomes, one release later, a process that will not start — and with the API
+down, the only way to remove it is a prompt on the database. That is the shape
+of every unrecoverable failure: fixing the broken thing needs the broken thing.
+
+It is not quiet, which was the real fear behind refusing:
+
+- every refusal is logged at error, naming the definition and why
+- `cronos_definitions_refused` counts the ones not being served at all
+- `cronos_schedules_unarmed` counts the ones stored that will never run
+
+Both should be zero. When they are not, the deployment is up, the other
+definitions are being served, and the bad one can be deleted and republished
+through the API. `scripts/live-typo.sh` drives exactly that, including the
+repair.
+
 ## Ending sessions
 
 A portal token is signed and stateless: nothing is written when one is minted,
@@ -753,6 +785,7 @@ out of a browser cache that nothing ever emptied.
 | `live-portal-2fa.sh` | the same enrolment, through a browser | bun, chrome |
 | `live-handover.sh` | one browser, two people, two organisations | bun, chrome |
 | `live-reset.sh` | forgetting a password and getting back in | a mail server, bun, chrome |
+| `live-typo.sh` | a bad definition that used to stop the process starting | go |
 | `live-upgrade.sh` | two versions against one database, through a migration | go, podman, git |
 
 All of them run in CI on every push. Six share a job and take about a minute,

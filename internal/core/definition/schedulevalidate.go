@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 )
 
 // cronFields is the shape a schedule's cron expression must have.
@@ -36,6 +37,28 @@ func (s Schedule) Validate() error {
 		// heats the datacentre.
 		return fmt.Errorf("%w: schedule %q delivers nowhere", ErrInvalid, s.Name)
 	}
+	/*
+	   And a timezone this build can actually resolve.
+
+	   Checked here rather than left to the scheduler, because of what happens
+	   when it is not: the name is only checked for emptiness, so
+	   "Europe/Berln" publishes with a 200 and the running instance carries on
+	   perfectly well. Then the next restart — a deploy, an eviction, an OOM —
+	   finds a schedule that will not arm and refuses to start at all. The
+	   deployment is down, the API with it, and the only way to remove the
+	   typo is a psql prompt.
+
+	   So an editor could take the whole deployment out with a misspelled
+	   timezone, and nothing would connect the outage to a definition somebody
+	   published three weeks earlier. Rejecting it at the moment it is typed
+	   costs one function call and is the only place the person who made the
+	   mistake is still holding it.
+	*/
+	if _, err := time.LoadLocation(s.Timezone); err != nil {
+		return fmt.Errorf("%w: schedule %q wants timezone %q, which this build does not know",
+			ErrInvalid, s.Name, s.Timezone)
+	}
+
 	if err := s.validateBurst(); err != nil {
 		return err
 	}

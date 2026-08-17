@@ -202,6 +202,11 @@ jobs:
       # the commit before the newest migration — hence fetch-depth 0 above.
       - name: a rolling deploy, with two versions side by side
         run: ./scripts/live-upgrade.sh
+      # An editor's misspelled timezone published with a 200 and took the
+      # deployment down at the next restart, with the API down and the only
+      # repair a prompt on the database.
+      - name: a typo that used to take the deployment down
+        run: ./scripts/live-typo.sh
       - name: first run, and administering the deployment
         run: ./scripts/live-setup.sh
       - name: ending every other session

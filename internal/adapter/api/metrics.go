@@ -51,6 +51,18 @@ type Metrics struct {
 	// job is to say "nothing has happened for a while" cannot be maintained by
 	// the thing that has stopped happening.
 	schedulers map[string]SchedulerState
+
+	// unarmed answers how many schedules were read and will never run. A
+	// function rather than a number, because the count is boot's and this
+	// package must not import it — and because a zero from an unset field
+	// would be indistinguishable from a healthy deployment, which is the one
+	// answer this must never invent.
+	unarmed func() int64
+	// refused answers how many stored definitions this build would not accept
+	// — a different question from unarmed, with a different fix: one is a
+	// report that is not in the catalogue, the other a schedule that is there
+	// and will not run.
+	refused func() int64
 }
 
 /*
@@ -89,6 +101,26 @@ func NewMetrics() *Metrics {
 
 // WithClock fixes the clock, so a test can be a stopped scheduler rather than
 // wait to become one.
+/*
+CountingUnarmed wires the count of schedules that will never run.
+
+Unset, it reports zero — and zero is what a healthy deployment reports, so a
+metric nobody wired would look like good news. Which is why boot always wires
+it and this is the only way to set it.
+*/
+func (m *Metrics) CountingUnarmed(count func() int64) *Metrics {
+	m.unarmed = count
+	return m
+}
+
+// CountingRefused wires the count of stored definitions this build will not
+// serve. Unset it reports zero, which is also what healthy reports — so boot
+// always wires it.
+func (m *Metrics) CountingRefused(count func() int64) *Metrics {
+	m.refused = count
+	return m
+}
+
 func (m *Metrics) WithClock(now func() time.Time) *Metrics {
 	m.now = now
 	m.started = now()
@@ -182,6 +214,31 @@ func (m *Metrics) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 	out.WriteString("# HELP cronos_build_info Which build this process is, as a label.\n")
 	out.WriteString("# TYPE cronos_build_info gauge\n")
 	fmt.Fprintf(&out, "cronos_build_info{version=%q} 1\n", build.Version())
+
+	/*
+	   Schedules that were read and will never run.
+
+	   Zero on a healthy deployment, and the number to alert on. A schedule that
+	   does not arm no longer stops the process — one editor's misspelled
+	   timezone taking every project's reports down was the worse of the two
+	   failures — so this is what stops it being silent instead.
+	*/
+	out.WriteString("# HELP cronos_schedules_unarmed Schedules stored that will never run. Should be zero.\n")
+	out.WriteString("# TYPE cronos_schedules_unarmed gauge\n")
+	stored := int64(0)
+	if m.unarmed != nil {
+		stored = m.unarmed()
+	}
+	fmt.Fprintf(&out, "cronos_schedules_unarmed %d\n", stored)
+
+	// And the ones that never became a definition at all.
+	out.WriteString("# HELP cronos_definitions_refused Stored definitions this build will not serve. Should be zero.\n")
+	out.WriteString("# TYPE cronos_definitions_refused gauge\n")
+	dropped := int64(0)
+	if m.refused != nil {
+		dropped = m.refused()
+	}
+	fmt.Fprintf(&out, "cronos_definitions_refused %d\n", dropped)
 
 	out.WriteString("# HELP cronos_uptime_seconds How long this process has been serving.\n")
 	out.WriteString("# TYPE cronos_uptime_seconds gauge\n")

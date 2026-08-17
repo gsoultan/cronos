@@ -469,17 +469,42 @@ func (s *Service) LastTick() time.Time {
 	return s.ticked
 }
 
-// Check parses every schedule and reports the ones that will not arm.
-//
-// For a startup that should fail loudly rather than serve with two of its five
-// schedules quietly missing.
-func Check(src Source) error {
+/*
+Check parses every schedule and returns the ones that will not arm.
+
+It used to return the first error, and boot used to refuse to start on it. The
+reasoning was sound and the context changed underneath it: when definitions came
+from a directory an operator controlled, a bad timezone was a configuration
+mistake and refusing to start was the loud, correct answer. Definitions now come
+from the store, published through a browser by anybody who can edit — and a
+misspelled timezone published on a Tuesday became a deployment that would not
+start on Thursday, with the API down and no way to remove the definition except
+a psql prompt.
+
+The timezone is validated at publish now, which closes the door. This is what
+happens to the ones already through it: a definition written before the check
+existed, restored from an older backup, or put there by something other than
+this API. Those schedules do not arm and every other one does, because a report
+does not depend on a schedule and taking every project's reports down for one
+bad cron expression is not a trade anybody would choose.
+
+Not silent, which was the real fear: each is logged at error, counted, and
+reported by the metric — see cronos_schedules_unarmed.
+*/
+func Check(src Source) []Unarmed {
+	var bad []Unarmed
 	for _, sched := range src.Schedules() {
 		if _, err := Parse(sched); err != nil {
-			return fmt.Errorf("schedule %q will not arm: %w", sched.Name, err)
+			bad = append(bad, Unarmed{Name: sched.Name, Err: err})
 		}
 	}
-	return nil
+	return bad
+}
+
+// Unarmed is one schedule that could not be parsed, and why.
+type Unarmed struct {
+	Name string
+	Err  error
 }
 
 // Fire runs one schedule now, as though its time had come.
