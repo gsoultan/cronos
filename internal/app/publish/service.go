@@ -8,6 +8,7 @@ import (
 
 	codec "github.com/gsoultan/cronos/internal/adapter/codec/yaml"
 	"github.com/gsoultan/cronos/internal/app/run"
+	"github.com/gsoultan/cronos/internal/app/schedule"
 	"github.com/gsoultan/cronos/internal/core/definition"
 	"github.com/gsoultan/cronos/internal/core/principal"
 	"github.com/gsoultan/cronos/internal/core/query"
@@ -241,6 +242,25 @@ func (s *Service) check(ctx context.Context, kind string, raw []byte) (string, e
 // documents while reporting complete success. Nothing downstream can tell that
 // apart from a month in which nobody was billed.
 func (s *Service) checkSchedule(ctx context.Context, sc definition.Schedule) error {
+	/*
+	   Parsed by the same function that arms it.
+
+	   definition.Validate can only go so far: the core is standard library
+	   only, so it checks that a cron expression has five fields and that the
+	   timezone resolves, and it cannot ask the scheduler's parser whether the
+	   fields mean anything. That gap was a real one — "0 25 1 * *" is five
+	   fields, is hour twenty-five, and is a plausible typo for a monthly job at
+	   six. It published with a 200 and never armed.
+
+	   The gap is not that a check was missing, it is that there were two
+	   checks: a regex here and a parser at startup, drifting. So this calls the
+	   parser. A schedule that publishes is a schedule that arms, by
+	   construction rather than by keeping two rules in step.
+	*/
+	if _, err := schedule.Parse(sc); err != nil {
+		return fmt.Errorf("%w: %v", definition.ErrInvalid, err)
+	}
+
 	rep, err := s.reportNamed(ctx, sc.Report)
 	if err != nil {
 		return fmt.Errorf("%w: schedule %q runs report %q: %v",

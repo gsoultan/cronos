@@ -506,13 +506,26 @@ they are finished with, by the same sweep that clears invitations.
 Two things decide what happens, and they used to be one.
 
 **At publish**, a definition is validated and refused where the person who wrote
-it can still see it. That includes the timezone: it was checked for being
-non-empty and never for existing, so `Europe/Berln` published with a 200. The
+it can still see it — and a schedule is parsed by the same function that arms
+it, rather than by a second rule kept in step with the first. That arrangement
+is what produced the bug: the core is standard library only, so it could count
+five fields in a cron expression and check that a timezone resolves, and the
+parser that actually has to arm the schedule ran at startup. Everything the two
+disagreed about published with a 200. `0 25 1 * *` is five fields, is hour
+twenty-five, and is a plausible typo for a monthly job at six; `Europe/Berln`
+was checked for being non-empty and never for existing. The
 running instance carried on perfectly well — a schedule is parsed when the
 process starts, not when it is stored — and then the next restart found a
 schedule that would not arm and refused to start at all. Anybody who could edit
 could take the whole deployment down with a typo, days in advance, and the
 outage would land on a deploy that looked like it broke something.
+
+The two fields that were reachable this way are closed. A datasource's DSN is
+not checked at publish and deliberately so — a warehouse being unreachable is
+not a reason to refuse a definition — but neither is it fatal: `sql.Open` is
+lazy, so a bad one costs the reports that read it rather than the process. A
+delivery channel nobody registered is the same shape, failing the run that uses
+it, where the schedule's alert address is there to say so.
 
 **At startup**, a stored definition this build will not accept is skipped rather
 than fatal. Adoption is still all or nothing on the ordinary path; this is the

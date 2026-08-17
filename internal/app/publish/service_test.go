@@ -431,3 +431,70 @@ func TestEditingSomethingThatWasDeletedIsAConflict(t *testing.T) {
 		t.Errorf("the refusal does not say it was deleted: %v", err)
 	}
 }
+
+/*
+A schedule that publishes is a schedule that arms.
+
+The gap was not a missing check, it was two checks. definition.Validate counted
+five fields in the cron expression, because the core is standard library only
+and cannot ask a scheduler's parser anything; the parser that actually has to
+arm the schedule ran at startup. They disagreed, and every expression they
+disagreed about published with a 200 and never ran.
+
+"0 25 1 * *" is the one to keep in mind: five fields, hour twenty-five, and a
+plausible typo for a monthly job at six. Before the timezone fix it took the
+whole deployment down at the next restart. After it, it published happily and
+silently never fired.
+
+So publishing now parses with the same function that arms — not a second rule
+kept in step with the first, which is the arrangement that produced this.
+*/
+// unscopedDataset is the fixture without row-level security, which a schedule
+// may not read — a different refusal from the one under test here.
+func unscopedDataset() string {
+	return strings.Replace(dataset,
+		"  rowLevelSecurity:\n    - predicate: customer_id = {{ .scope.customer_id }}\n", "", 1)
+}
+
+func TestASchedulePublishesOnlyIfItCanArm(t *testing.T) {
+	for _, c := range []struct {
+		expr string
+		arms bool
+	}{
+		{"0 6 1 * *", true},    // the demo's own: monthly at six
+		{"*/15 * * * *", true}, // every quarter hour
+		{"0 6 * * 1", true},    // Mondays
+		{"0 25 1 * *", false},  // hour twenty-five
+		{"0 6 32 * *", false},  // the thirty-second
+		{"0 6 1 13 *", false},  // the thirteenth month
+		{"* * * * 8", false},   // the eighth day of the week
+		{"0 6 1 * MOO", false}, // not a month anybody has
+		{"70 6 1 * *", false},  // minute seventy
+	} {
+		t.Run(c.expr, func(t *testing.T) {
+			s, repo, _ := setup(t)
+			s = s.WithReports(repo)
+			// The schedule's cron is the only thing under test, so everything
+			// it names has to exist first or the refusal would be about that.
+			mustPublish(t, s, unscopedDataset())
+			mustPublish(t, s, report)
+
+			doc := strings.Replace(schedule, `cron: "0 6 1 * *"`,
+				`cron: "`+c.expr+`"`, 1)
+			if !strings.Contains(doc, c.expr) {
+				t.Fatalf("the fixture no longer carries the cron expression")
+			}
+
+			_, err := s.Publish(context.Background(), []byte(doc), admin())
+			switch {
+			case c.arms && err != nil:
+				t.Fatalf("%q was refused: %v", c.expr, err)
+			case !c.arms && err == nil:
+				t.Fatalf("%q published, and it will never fire", c.expr)
+			}
+			if err != nil && !strings.Contains(err.Error(), "cron") {
+				t.Fatalf("refused %q without saying it was the cron: %v", c.expr, err)
+			}
+		})
+	}
+}

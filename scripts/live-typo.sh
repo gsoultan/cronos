@@ -86,6 +86,20 @@ case "$said" in
 *) die "refused without naming the timezone: $(printf %s "$said" | head -c 120)" ;;
 esac
 
+# The same hole, in the other field a schedule needs to arm. definition.Validate
+# counts five fields, because the core is standard library only; the parser that
+# has to arm it is stricter, and every expression they disagreed about published
+# with a 200 and never fired. "0 25 1 * *" is five fields and hour twenty-five.
+for expr in "0 25 1 * *" "0 6 32 * *" "0 6 1 13 *" "* * * * 8" "0 6 1 * MOO"; do
+	sed -e "s|cron: .*|cron: \"$expr\"|" -e 's|name: monthly-statements|name: cron-typo|' \
+		demo/definitions/monthly-statements.yaml >"$work/cron.yaml"
+	got=$(code -X POST -H "Authorization: Bearer $TOK" -H 'content-type: application/yaml' \
+		--data-binary @"$work/cron.yaml" "$API/v1/definitions")
+	[ "$got" = 422 ] ||
+		die "a schedule with cron \"$expr\" published with $got, and it will never fire"
+done
+ok "and so is every cron expression the scheduler cannot parse"
+
 # A real one still publishes, so the check is a check and not a wall.
 sed -e 's|timezone: Europe/Berlin|timezone: Asia/Jakarta|' \
 	-e 's|name: monthly-statements|name: jakarta-schedule|' \
