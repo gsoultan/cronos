@@ -10,7 +10,7 @@ VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 GO     := go
 
 .DEFAULT_GOAL := help
-.PHONY: help setup dev dev-web dev-api build check test xlsx-oracle duckdb pdf lint fmt boundary live ui shots image load clean
+.PHONY: help setup dev dev-web dev-api build check test xlsx-oracle duckdb pdf lint fmt boundary live ui shots image load release clean
 
 help: ## Show this help
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage: make <target>\n\n"} \
@@ -97,6 +97,14 @@ image: ## Build the container image, and prove the typesetter is in it
 	$(CONTAINER) run --rm --entrypoint typst cronos:$(VERSION) --version
 	@echo "--- and the other: which build it is ---"
 	$(CONTAINER) run --rm cronos:$(VERSION) -version
+
+release: ## Check a tag can be cut: VERSION=v0.5.1 make release
+	@test -n "$(RELEASE)" || { echo "usage: RELEASE=v0.5.1 make release" >&2; exit 1; }
+	@git diff --quiet || { echo "the tree is dirty — a tag would name a build nobody can rebuild" >&2; exit 1; }
+	@grep -q "^## $(RELEASE) " CHANGELOG.md || \
+		{ echo "CHANGELOG.md has no '## $(RELEASE)' entry — a version an operator cannot look up" >&2; exit 1; }
+	@echo "ready: git tag -a $(RELEASE) -m $(RELEASE) && git push origin $(RELEASE)"
+	@echo "then:  make image   # stamps $(RELEASE) into the binaries"
 
 clean: ## Remove build output
 	rm -rf bin $(REACT)/dist $(EMBED)/dist $(EMBED)/harness/*.js $(REACT)/harness/*.js $(PORTAL)/dist $(PORTAL)/dev-dist $(PORTAL)/shots

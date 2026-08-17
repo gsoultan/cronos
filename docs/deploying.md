@@ -338,6 +338,29 @@ Dependabot proposes the updates weekly, grouped rather than one pull request per
 dependency — a stream of individual bumps is a stream nobody reviews, and an
 unreviewed dependency bump is the risk it was meant to reduce.
 
+## Cutting a release
+
+```bash
+RELEASE=v0.5.1 make release       # checks the tree and the changelog, then says what to run
+git tag -a v0.5.1 -m v0.5.1
+make image                        # stamps the tag into the binaries
+```
+
+`make release` refuses two things and only two, because both produce a version
+nobody can act on: a dirty tree, which tags a build that cannot be rebuilt from
+the tag, and a `CHANGELOG.md` with no entry for the version, which is a number
+an operator can read off `cronosd -version` and then not look up.
+
+`VERSION` in the Makefile is `git describe --tags --always --dirty`, so once a
+tag exists every build downstream of it names that tag, and `make image` passes
+it as the `CRONOS_VERSION` build arg. Untagged builds report the commit, which
+is the right answer for a build from a branch.
+
+CHANGELOG.md is written for the person running cronos, not the person who
+changed it: what behaviour is different, what a deployment has to do about it,
+and what breaks if they do nothing. Anything a reader cannot act on belongs in
+the git history instead.
+
 ## Upgrading
 
 Migrations are forward-only and run at startup, each in a transaction. A

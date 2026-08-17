@@ -183,12 +183,12 @@ assumption is tested first.
 
 | Release | Theme | Scope | Validates |
 | :--- | :--- | :--- | :--- |
-| **v0.1** | Engine | YAML definitions, param binding, RLS, table + chart output. *Done, over `database/sql`; DuckDB federation and CSV/XLSX outstanding* | Can a governed query run fast over three source types? |
+| **v0.1** | Engine | YAML definitions, param binding, RLS, table + chart output. *Done, over `database/sql`. Federation and CSV/XLSX landed too — a join across Postgres and SQLite is asserted in CI.* | Can a governed query run fast over three source types? |
 | **v0.2** | Documents | Typst paginated PDF: grouping, page breaks, subtotals, headers/footers | The moat. Hardest technical risk, taken early |
 | **v0.3** | Delivery | Scheduler, bursting, email + S3, retries, run history | Marek's job |
-| **v0.4** | Embed | Repository API, embed tokens, tenancy, embed web component. *Endpoint, token and component done; the repository API is still file-backed* | **Priya's job. First sellable release.** |
-| **v0.5** | Author | Portal PWA, dataset browser, report builder, live preview | Dewi's job — self-service |
-| **v1.0** | Migrate | `.jrxml` importer, HA scheduler, SSO + audit (EE), documentation | Marek's switching cost |
+| **v0.4** | Embed | Repository API, embed tokens, tenancy, embed web component. *Done. The store is authoritative; the directory is the bootstrap.* | **Priya's job. First sellable release.** |
+| **v0.5** | Author | Portal PWA, dataset browser, report builder, live preview. *Done, and tagged — see CHANGELOG.md.* | Dewi's job — self-service |
+| **v1.0** | Migrate | `.jrxml` importer, HA scheduler, SSO + audit (EE), documentation. *All but the importer is done; that is what v1.0 now means.* | Marek's switching cost |
 
 Realistic elapsed time to v1.0 for a small team: **9–12 months**. v0.4 is the first
 release worth charging for; everything before it is validation.
