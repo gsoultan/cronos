@@ -27,7 +27,9 @@ election, SSO, audit, and the deployment documentation — with one exception,
 below.
 
 **The engine.** YAML definitions with bound parameters and structural row-level
-security, over Postgres, MySQL, SQL Server, SQLite and object stores. Federation
+security, over Postgres, MySQL, SQL Server, SQLite and object stores. (MySQL was
+accepted by every layer and unreachable until this release, for want of one
+blank import.) Federation
 across engines behind `-tags duckdb`: one query joining a customer list in one
 database to invoices in another, every source attached read-only. Results are
 bounded everywhere and streamed almost everywhere — a render never holds more
@@ -93,5 +95,7 @@ will have to tell you, and what already holds:
   every share link and invalidates every embed token a host application holds.
 - **Definitions this build will not accept are skipped, not fatal.** A stored
   definition that fails validation is logged at error and counted by
-  `cronos_definitions_refused`; the deployment starts and serves the rest, and
-  the bad one can be deleted through the API. That number should be zero.
+  `cronos_definitions_refused`; a schedule that will not arm by
+  `cronos_schedules_unarmed`; a datasource that will not open by
+  `cronos_datasources_unavailable`. The deployment starts and serves the rest,
+  and the bad one can be deleted through the API. All three should be zero.

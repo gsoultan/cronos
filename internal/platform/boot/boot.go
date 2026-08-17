@@ -53,6 +53,17 @@ import (
 	"github.com/gsoultan/cronos/internal/platform/config"
 	"github.com/gsoultan/cronos/internal/platform/token"
 
+	/*
+	   MySQL, which every other layer already supported.
+
+	   internal/core/query/mysql.go compiles the dialect, the registry maps the
+	   driver name, boot's datasources knows it and DuckDB can mount it — and
+	   definition.Validate has always accepted `driver: mysql`. What was missing
+	   was this line, so a MySQL datasource published with a 200 and then killed
+	   the process on its next start with "unknown driver". A whole supported
+	   database, unreachable, behind one blank import.
+	*/
+	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	// Pure Go, so it costs a binary a megabyte and no cgo. DuckDB is behind a
 	// build tag because it is not; this does not need to be.
@@ -155,7 +166,8 @@ func Serve(log *slog.Logger) error {
 	// schedulers so each can register itself as it arms.
 	// Wired here and only here, so the count can never be a zero nobody set —
 	// which on this metric is the same shape as a healthy deployment.
-	metrics := api.NewMetrics().CountingUnarmed(Unarmed).CountingRefused(Rejected)
+	metrics := api.NewMetrics().
+		CountingUnarmed(Unarmed).CountingRefused(Rejected).CountingUnopenable(Unopenable)
 
 	/*
 	   Every project's connection pools, for every replica.

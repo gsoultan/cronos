@@ -29,7 +29,19 @@ type Registry struct {
 	mu      sync.RWMutex
 	sources map[string]*source
 	log     *slog.Logger
+	// unavailable is why each source that would not open did not. Written once
+	// during New and read after, so it needs no lock — and kept rather than
+	// logged here, because whether this is fatal is the caller's decision and
+	// a library that exits is a library nobody can embed.
+	unavailable []error
 }
+
+// Unavailable is every source this build could not open, and why.
+//
+// Empty on a healthy deployment. Each one is a report that will fail with a
+// message naming it, and a number worth alerting on — see
+// cronos_datasources_unavailable.
+func (r *Registry) Unavailable() []error { return r.unavailable }
 
 // New opens every datasource.
 //
@@ -37,9 +49,27 @@ type Registry struct {
 // thing they see in their monitoring, and opening one per report is how a
 // reporting tool becomes the reason their connection count alarms.
 //
-// A source that will not open is fatal rather than skipped: a server that
-// starts with three of its four warehouses unreachable serves three-quarters
-// of its reports and fails the rest at six in the morning.
+/*
+A source that will not open is skipped and named, not fatal.
+
+It was fatal, on the reasoning that a server starting with three of its four
+warehouses unreachable serves three-quarters of its reports and fails the rest
+at six in the morning. The reasoning describes a failure that cannot happen
+here: sql.Open does not connect, so an unreachable warehouse opens perfectly
+well and fails at query time. What actually reaches this is a driver the build
+cannot open and a ${secret:…} the deployment has not set — both configuration,
+neither transient.
+
+And both are publishable. `driver: mysql` was accepted by definition.Validate
+long before any MySQL driver was registered, so an editor could publish one, get
+a 200, and take the deployment down at its next restart — with the API down, so
+the only way to remove it was a prompt on the database. That is the third time
+the same shape has appeared, after a schedule's timezone and its cron.
+
+So the source is skipped, its reason is returned for the caller to log and
+count, and every report that does not read it keeps working. One that does read
+it fails with a message naming the source, which is where somebody can act.
+*/
 func New(defs []definition.DataSource, secrets secret.Resolver, log *slog.Logger) (*Registry, error) {
 	r := &Registry{sources: map[string]*source{}, log: log}
 
@@ -54,8 +84,9 @@ func New(defs []definition.DataSource, secrets secret.Resolver, log *slog.Logger
 			// path the reader looks for and does not find.
 			uri, err := secret.Resolve(def.URI, secrets)
 			if err != nil {
-				r.Close()
-				return nil, fmt.Errorf("datasource %q: %w", def.Name, err)
+				r.unavailable = append(r.unavailable,
+					fmt.Errorf("datasource %q: %w", def.Name, err))
+				continue
 			}
 			def.URI = uri
 			r.sources[def.Name] = &source{def: def}
@@ -63,8 +94,8 @@ func New(defs []definition.DataSource, secrets secret.Resolver, log *slog.Logger
 		}
 		s, err := open(def, secrets)
 		if err != nil {
-			r.Close()
-			return nil, err
+			r.unavailable = append(r.unavailable, err)
+			continue
 		}
 		r.sources[def.Name] = s
 		log.Info("datasource", "name", def.Name, "driver", def.Driver,
@@ -89,9 +120,22 @@ func open(def definition.DataSource, secrets secret.Resolver) (*source, error) {
 	}
 	db, err := sql.Open(sqlDriver(def.Driver), dsn)
 	if err != nil {
-		// The definition's own text, not the resolved one: a driver error
-		// quotes the string it was given, and by then it has a password in it.
-		return nil, fmt.Errorf("datasource %q (%s): %w", def.Name, def.DSN, err)
+		/*
+		   The name and the driver, and not the DSN in either form.
+
+		   This printed def.DSN — the definition's own text rather than the
+		   resolved one, on the reasoning that the unresolved version says
+		   ${secret:…} where the password goes. True when a definition uses a
+		   secret reference and false when somebody wrote the password inline,
+		   which is allowed and is what a first deployment does. The error goes
+		   to the startup log, so that is a credential in the log of every
+		   instance that failed to start.
+
+		   The driver name is what a person needs anyway: this fails when the
+		   build cannot open that kind of database, and no DSN would have told
+		   them that.
+		*/
+		return nil, fmt.Errorf("datasource %q (driver %q): %w", def.Name, def.Driver, err)
 	}
 
 	// The pool is bounded because somebody else operates this database. A

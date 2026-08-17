@@ -67,6 +67,10 @@ type Metrics struct {
 	// report that is not in the catalogue, the other a schedule that is there
 	// and will not run.
 	refused func() int64
+	// unopenable answers how many datasources could not be opened. The third
+	// of these, and the third distinct fix: a report missing from the
+	// catalogue, a send that never happens, a report that is listed and errors.
+	unopenable func() int64
 }
 
 /*
@@ -142,6 +146,12 @@ func (m *Metrics) CountingUnarmed(count func() int64) *Metrics {
 // always wires it.
 func (m *Metrics) CountingRefused(count func() int64) *Metrics {
 	m.refused = count
+	return m
+}
+
+// CountingUnopenable wires the count of datasources this build could not open.
+func (m *Metrics) CountingUnopenable(count func() int64) *Metrics {
+	m.unopenable = count
 	return m
 }
 
@@ -274,6 +284,15 @@ func (m *Metrics) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 		dropped = m.refused()
 	}
 	fmt.Fprintf(&out, "cronos_definitions_refused %d\n", dropped)
+
+	// And the sources that are defined and cannot be reached.
+	out.WriteString("# HELP cronos_datasources_unavailable Datasources this build could not open. Should be zero.\n")
+	out.WriteString("# TYPE cronos_datasources_unavailable gauge\n")
+	shut := int64(0)
+	if m.unopenable != nil {
+		shut = m.unopenable()
+	}
+	fmt.Fprintf(&out, "cronos_datasources_unavailable %d\n", shut)
 
 	out.WriteString("# HELP cronos_uptime_seconds How long this process has been serving.\n")
 	out.WriteString("# TYPE cronos_uptime_seconds gauge\n")

@@ -35,6 +35,19 @@ func datasources(cfg config.Server, repo *file.Repository,
 			reg.Close()
 			return nil, nil, err
 		}
+		/*
+		   A source this build cannot open is named, not fatal.
+
+		   Reports that do not read it keep working; one that does fails with a
+		   message naming the source. Loud, because a datasource that quietly
+		   vanished is a report that returns an error nobody can trace back to a
+		   definition — every reason at error, and counted for
+		   cronos_datasources_unavailable, which should be zero.
+		*/
+		for _, why := range reg.Unavailable() {
+			log.Error("datasource unavailable — reports that read it will fail", "err", why)
+			unopenable.Add(1)
+		}
 		log.Info("datasources", "kind", "defined", "names", reg.Names())
 		return reg, reg.Close, nil
 	}

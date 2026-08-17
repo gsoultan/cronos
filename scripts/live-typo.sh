@@ -166,6 +166,57 @@ kept=$(curl -s -H "Authorization: Bearer $ADMIN" "$API/v1/definitions" |
 [ "$kept" -ge 9 ] || die "only $kept definitions survived one bad schedule"
 ok "and the other $kept definitions are being served"
 
+# -- 2b. And a datasource this build cannot open ------------------------------
+#
+# The same shape one definition kind over, and the one that was still open after
+# the schedule work: `driver: mysql` was accepted by validation long before any
+# MySQL driver was registered, so an editor could publish one, get a 200, and
+# take the deployment down at its next start.
+
+say "A datasource this build cannot open"
+cat >"$work/lake.yaml" <<'YAML'
+apiVersion: cronos.dev/v1
+kind: DataSource
+metadata:
+  name: lake
+spec:
+  driver: duckdb
+  dsn: "duckdb://reader:a-password-in-the-clear@lake.internal/warehouse"
+YAML
+
+# duckdb is a real driver behind a build tag, so an ordinary build cannot open
+# one — which is exactly the situation: a definition naming something this
+# binary has no import for.
+[ "$(code -X POST -H "Authorization: Bearer $ADMIN" -H 'content-type: application/yaml' \
+	--data-binary @"$work/lake.yaml" "$API/v1/definitions")" = 200 ] ||
+	die "a duckdb datasource could not be published at all"
+
+stop
+start || die "the deployment did not come back — one datasource took every project off the air"
+ok "it starts, with a source it cannot open stored"
+
+figure=$(curl -s --max-time 15 -X POST -H "Authorization: Bearer $ADMIN" \
+	-H 'content-type: application/json' -d '{}' "$API/v1/reports/billing-summary" |
+	python3 -c 'import json,sys
+d = json.load(sys.stdin)
+print(d["blocks"][0]["value"] if "blocks" in d else "refused")')
+[ "$figure" != refused ] || die "a report that does not read that source stopped working"
+ok "and a report reading a different source still reads $figure"
+
+unavailable=$(curl -s "$API/v1/metrics" | awk '/^cronos_datasources_unavailable /{print $2}')
+[ "$unavailable" = 1 ] ||
+	die "cronos_datasources_unavailable is $unavailable, and exactly one source cannot be opened"
+ok "cronos_datasources_unavailable is $unavailable, which is alertable"
+
+# The DSN is not in the log. It printed the definition's own text, which says
+# ${secret:…} only when somebody used a secret reference — and an inline
+# password is allowed, and is what a first deployment writes.
+grep -q "a-password-in-the-clear" "$work/log" &&
+	die "the startup log contains the datasource password"
+ok "and the reason names the source and the driver, without the DSN"
+
+curl -s -o /dev/null -X DELETE -H "Authorization: Bearer $ADMIN" "$API/v1/definitions/DataSource/lake"
+
 # -- 3. And it can be repaired -------------------------------------------------
 
 say "Repairing it, through the API"

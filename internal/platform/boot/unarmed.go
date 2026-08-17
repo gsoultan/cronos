@@ -40,3 +40,21 @@ var rejected atomic.Int64
 
 // Rejected is how many stored definitions this build would not accept.
 func Rejected() int64 { return rejected.Load() }
+
+/*
+unopenable counts the datasources this build could not open.
+
+The third of these, and the third distinct failure: a definition that would not
+parse, a schedule that parsed and will not arm, and now a source that is defined
+and cannot be reached. Each has its own fix, so each has its own number — the
+first is a report missing from the catalogue, the second a send that never
+happens, the third a report that is listed and errors when opened.
+
+What they share is why they are counted at all: each used to stop the process,
+and each one stopping the process meant the API was down and the definition
+could only be removed with a prompt on the database.
+*/
+var unopenable atomic.Int64
+
+// Unopenable is how many datasources this build could not open.
+func Unopenable() int64 { return unopenable.Load() }

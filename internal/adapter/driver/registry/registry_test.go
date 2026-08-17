@@ -185,17 +185,36 @@ func TestAnObjectStoreAloneStillNeedsAnEngine(t *testing.T) {
 	}
 }
 
-// A server that starts with three of its four warehouses unreachable serves
-// three-quarters of its reports and fails the rest at six in the morning.
-func TestASourceThatWillNotOpenStopsStartup(t *testing.T) {
-	_, err := registry.New([]definition.DataSource{
+/*
+A source that will not open is reported, and does not stop startup.
+
+This asserted the opposite, and the comment gave the reason: a server that
+starts with three of its four warehouses unreachable serves three-quarters of
+its reports and fails the rest at six in the morning. It describes a failure
+that cannot occur — sql.Open does not connect, so an unreachable warehouse
+opens fine and fails at query time. What reaches here is a driver this build
+has no import for, or a ${secret:…} nobody set.
+
+Both are publishable through the API, so the old contract meant an editor could
+stop the deployment from ever starting again with one definition — and with the
+API down, the only way to remove it was a prompt on the database. See
+TestASourceThatWillNotOpenDoesNotTakeTheOthersWithIt for the rest.
+*/
+func TestASourceThatWillNotOpenIsReportedRatherThanFatal(t *testing.T) {
+	reg, err := registry.New([]definition.DataSource{
 		{Name: "warehouse", Driver: "oracle", DSN: "x"},
 	}, nil, quiet())
-	if err == nil {
-		t.Fatal("a driver nobody implements was accepted")
+	if err != nil {
+		t.Fatalf("a driver nobody implements stopped the process: %v", err)
 	}
-	if !strings.Contains(err.Error(), "warehouse") {
-		t.Errorf("the message should name the source: %v", err)
+	t.Cleanup(func() { _ = reg.Close() })
+
+	why := reg.Unavailable()
+	if len(why) != 1 {
+		t.Fatalf("reported %d reasons, and one source could not be opened", len(why))
+	}
+	if !strings.Contains(why[0].Error(), "warehouse") {
+		t.Errorf("the message should name the source: %v", why[0])
 	}
 }
 

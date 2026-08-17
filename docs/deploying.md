@@ -573,13 +573,26 @@ becomes, one release later, a process that will not start — and with the API
 down, the only way to remove it is a prompt on the database. That is the shape
 of every unrecoverable failure: fixing the broken thing needs the broken thing.
 
+A **datasource** this build cannot open is the same, and was the last one open.
+`driver: mysql` was accepted by validation long before any MySQL driver was
+registered, so an editor could publish one, get a 200, and take the deployment
+down at its next start. MySQL is registered now — the dialect, the registry and
+the federation mount had all been built, and the feature was a blank import away
+from working — and a source this build still cannot open is skipped. Reports
+that read it fail with a message naming it; reports that do not keep working.
+The reason names the source and the driver and **not** the DSN, which used to be
+printed on the reasoning that it says `${secret:…}` where the password goes:
+true for a definition using a secret reference, false for an inline password,
+which is allowed and is what a first deployment writes.
+
 It is not quiet, which was the real fear behind refusing:
 
 - every refusal is logged at error, naming the definition and why
 - `cronos_definitions_refused` counts the ones not being served at all
 - `cronos_schedules_unarmed` counts the ones stored that will never run
+- `cronos_datasources_unavailable` counts the sources that would not open
 
-Both should be zero. When they are not, the deployment is up, the other
+All three should be zero. When they are not, the deployment is up, the other
 definitions are being served, and the bad one can be deleted and republished
 through the API. `scripts/live-typo.sh` drives exactly that, including the
 repair.

@@ -3,8 +3,10 @@ module github.com/gsoultan/cronos
 go 1.26.6
 
 require (
+	github.com/go-sql-driver/mysql v1.10.0
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/marcboeker/go-duckdb/v2 v2.4.3
+	github.com/microsoft/go-mssqldb v1.10.0
 	github.com/minio/minio-go/v7 v7.2.1
 	github.com/robfig/cron/v3 v3.0.1
 	golang.org/x/crypto v0.54.0
@@ -14,6 +16,7 @@ require (
 )
 
 require (
+	filippo.io/edwards25519 v1.2.0 // indirect
 	github.com/apache/arrow-go/v18 v18.4.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/duckdb/duckdb-go-bindings v0.1.21 // indirect
@@ -38,7 +41,6 @@ require (
 	github.com/marcboeker/go-duckdb/arrowmapping v0.0.21 // indirect
 	github.com/marcboeker/go-duckdb/mapping v0.0.21 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
-	github.com/microsoft/go-mssqldb v1.10.0 // indirect
 	github.com/minio/crc64nvme v1.1.1 // indirect
 	github.com/minio/md5-simd v1.1.2 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect
