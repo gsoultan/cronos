@@ -78,6 +78,16 @@ jobs:
       - name: licence boundary
         run: ./scripts/check-license-boundary.sh
 
+      # A command that ships in one channel and not the other is documentation
+      # that is wrong for half its readers, and nothing else notices.
+      - name: release parity
+        run: ./scripts/check-release-parity.sh
+
+      # The archives are a release artifact, so they have to build on every
+      # push rather than for the first time on the day a tag is cut.
+      - name: release archives
+        run: make dist
+
       # Known vulnerabilities, and only the ones this code can actually reach.
       #
       # govulncheck traces from our call graph rather than listing everything

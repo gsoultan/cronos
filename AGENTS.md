@@ -10,7 +10,8 @@ well it works.
 | Paginated renderer | **Typst** (proven — `docs/rendering.md`) | Real typesetting: page breaks, grouping and subtotals are semantics, not CSS hints. Low memory per render, so a 5,000-customer burst does not need a browser farm. Cost accepted: a non-Go dependency and a template syntax authors must learn. |
 | Query / federation engine | **DuckDB** (built, `-tags duckdb`) | One engine covers SQL databases, Parquet/CSV on object storage, and cross-source joins — the three data-source requirements without a second concept. |
 | Result transport | **Arrow record batches** | Columnar and zero-copy from driver to renderer; the data-plane contract that makes million-row exports survivable. |
-| License boundary | **Import graph** | Enforced by `scripts/check-license-boundary.sh` against the real build graph, not by convention. |
+| License boundary | **Import graph** | Enforced by `scripts/check-license-boundary.sh` against the real build graph, not by convention. It holds in distribution too: `make dist` writes the community binaries and `cronosd-ee` as separate archives, each carrying the LICENSE that covers it. |
+| Distribution | **Archives and an image** | A container is one way to run cronos, not the only one. Anything that ships has to be in both, or a tool exists in one channel and the documentation is wrong for half its readers. |
 
 ## Developer Profile Panel
 

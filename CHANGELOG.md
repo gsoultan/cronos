@@ -71,9 +71,18 @@ a container image, and a restore drill that CI runs on every push.
 files into cronos definitions — one Dataset and one Report each, with identical
 queries shared rather than copied. It writes nothing without `-out`, prints a
 per-file work list graded blocked/review/note, and exits non-zero while anything
-is blocked. It ships in the container image beside `cronosd`, because the person
-holding four hundred `.jrxml` files is running a container rather than a Go
-toolchain. `examples/jasper/` holds a report to try it on.
+is blocked. It ships in both release channels beside `cronosd` — the Linux
+archives and the container image — because the person holding four hundred
+`.jrxml` files is as likely to be on a host as in a container.
+`examples/jasper/` holds a report to try it on.
+
+**Release archives.** `make dist` cross-compiles `linux/amd64`, `linux/arm64`
+and `darwin/arm64` tarballs with a `SHA256SUMS` beside them, so a deployment
+that already has systemd and a backup story does not have to adopt a container
+runtime to run cronos. Two archives per platform: the community binaries under
+BSL, and `cronosd-ee` under its own license, because the boundary
+`scripts/check-license-boundary.sh` enforces in the build graph has to hold in
+distribution too.
 
 ### Not in this release
 

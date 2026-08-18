@@ -3,14 +3,15 @@
 PORTAL := apps/portal
 EMBED  := packages/embed
 REACT  := packages/react
-# Whichever is installed. Both build this Dockerfile; podman is what this was
-# developed against and docker is what most CI has.
-CONTAINER := $(shell command -v podman 2>/dev/null || command -v docker)
+# Whichever is installed. All three build this Dockerfile: Apple's `container`
+# is what this is developed against on macOS, docker is what most CI has, and
+# podman is the fallback.
+CONTAINER := $(shell command -v container 2>/dev/null || command -v docker 2>/dev/null || command -v podman)
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 GO     := go
 
 .DEFAULT_GOAL := help
-.PHONY: help setup dev dev-web dev-api build check test xlsx-oracle duckdb pdf lint fmt boundary live ui shots image load release clean import
+.PHONY: help setup dev dev-web dev-api build check test xlsx-oracle duckdb pdf lint fmt boundary live ui shots image load release clean import dist
 
 help: ## Show this help
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage: make <target>\n\n"} \
@@ -45,6 +46,7 @@ check: ## Everything CI runs — build, vet, test, boundary, typecheck, lint, bu
 	@gofmt -l . | grep . && { echo "gofmt: files above need formatting"; exit 1; } || true
 	CRONOS_XLSX_PYTHON=$(XLSX_PY) $(GO) test ./...
 	@./scripts/check-license-boundary.sh
+	@./scripts/check-release-parity.sh
 	cd $(PORTAL) && bun run check
 	cd $(EMBED) && bun run check
 	cd $(REACT) && bun run check
@@ -77,8 +79,9 @@ lint: ## Lint the portal and the embed package
 fmt: ## Format Go sources
 	$(GO) fmt ./...
 
-boundary: ## Verify no BSL artifact depends on ee/
+boundary: ## Verify no BSL artifact depends on ee/, and that both channels ship the same commands
 	@./scripts/check-license-boundary.sh
+	@./scripts/check-release-parity.sh
 
 live: ## Drive the embed component and the portal against a real cronosd
 	@./scripts/live-embed.sh
@@ -97,6 +100,9 @@ shots: ## Drive the portal in headless Chrome and write screenshots
 load: ## Measure under load — needs a postgres on 5433, or WAREHOUSE=sqlite
 	@./scripts/load.sh
 
+dist: ## Cross-compile the release archives into dist/
+	@./scripts/dist.sh
+
 image: ## Build the container image, and prove the typesetter is in it
 	$(CONTAINER) build -t cronos:$(VERSION) --build-arg CRONOS_VERSION=$(VERSION) .
 	@echo "--- the one thing an image can be missing and not say so ---"
@@ -110,7 +116,8 @@ release: ## Check a tag can be cut: VERSION=v0.5.1 make release
 	@grep -q "^## $(RELEASE) " CHANGELOG.md || \
 		{ echo "CHANGELOG.md has no '## $(RELEASE)' entry — a version an operator cannot look up" >&2; exit 1; }
 	@echo "ready: git tag -a $(RELEASE) -m $(RELEASE) && git push origin $(RELEASE)"
-	@echo "then:  make image   # stamps $(RELEASE) into the binaries"
+	@echo "then:  make dist    # the Linux archives, stamped with $(RELEASE)"
+	@echo "       make image   # the container image, stamped the same way"
 
 clean: ## Remove build output
-	rm -rf bin $(REACT)/dist $(EMBED)/dist $(EMBED)/harness/*.js $(REACT)/harness/*.js $(PORTAL)/dist $(PORTAL)/dev-dist $(PORTAL)/shots
+	rm -rf bin dist $(REACT)/dist $(EMBED)/dist $(EMBED)/harness/*.js $(REACT)/harness/*.js $(PORTAL)/dist $(PORTAL)/dev-dist $(PORTAL)/shots

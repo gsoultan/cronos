@@ -343,8 +343,41 @@ unreviewed dependency bump is the risk it was meant to reduce.
 ```bash
 RELEASE=v0.5.1 make release       # checks the tree and the changelog, then says what to run
 git tag -a v0.5.1 -m v0.5.1
-make image                        # stamps the tag into the binaries
+make dist                         # the Linux archives, stamped with the tag
+make image                        # the container image, stamped the same way
 ```
+
+**Two channels, and they carry the same commands.** The image is one way to run
+cronos and not the only one: a deployment that already has systemd, a package
+mirror and a backup story wants binaries rather than a runtime to adopt. So
+`make dist` cross-compiles `linux/amd64`, `linux/arm64` and `darwin/arm64`
+archives, and anything that ships has to be in both — a tool that exists in the
+image and not the tarball is documentation that is wrong for half its readers.
+
+**Two archives per platform, because there are two licenses.**
+
+| Archive | Holds | License |
+| :--- | :--- | :--- |
+| `cronos_<v>_<os>_<arch>.tar.gz` | `cronosd`, `cronos-token`, `cronos-user`, `cronos-import` | BSL 1.1 |
+| `cronos-ee_<v>_<os>_<arch>.tar.gz` | `cronosd-ee` | Commercial |
+
+The split is not presentation. `scripts/check-license-boundary.sh` enforces in
+the build graph that the community binary cannot reach `ee/`, and distribution
+is the other half of that: one tarball holding both would put
+commercially-licensed code inside the artifact somebody downloads expecting the
+community edition. Each archive carries the LICENSE covering the binary next to
+it, and `dist/SHA256SUMS` covers the archives so a download can be checked.
+
+The binaries are `CGO_ENABLED=0`, so a release runs on a host that is not the
+one that built it and does not depend on a glibc version. Federation needs cgo
+and is a build tag, so it is not in a release archive for the same reason — a
+deployment that wants DuckDB builds with `-tags duckdb`.
+
+Neither archive holds the portal. It is static files served from its own origin
+in every real deployment — see **What has to be set** — and the image bundles a
+copy only because a single-container demo has nowhere else to put it. Nor does
+either hold `typst`: paginated output shells out to it, and a host install gets
+it from the typesetter's own releases.
 
 `make release` refuses two things and only two, because both produce a version
 nobody can act on: a dirty tree, which tags a build that cannot be rebuilt from

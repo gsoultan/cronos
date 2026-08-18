@@ -1,4 +1,5 @@
 bin/
+# Release archives and the portal build, both reproducible from a tag.
 dist/
 node_modules/
 shots/

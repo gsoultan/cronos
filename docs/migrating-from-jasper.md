@@ -19,8 +19,16 @@ so the output can be read before pointing it at anything real:
 go run ./cmd/cronos-import examples/jasper
 ```
 
-The binary also ships in the container image, which is how most estates will
-reach it:
+`cronos-import` ships in both release channels, so an estate does not need a Go
+toolchain to move. From a release archive:
+
+```sh
+tar xzf cronos_v1.0.0_linux_amd64.tar.gz
+./cronos_v1.0.0_linux_amd64/cronos-import -datasource warehouse \
+  -out ./definitions ./jasper
+```
+
+Or from the image, if that is what the deployment runs:
 
 ```sh
 docker run --rm -v "$PWD/jasper:/jasper:ro" -v "$PWD/definitions:/out" \

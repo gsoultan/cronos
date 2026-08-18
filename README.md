@@ -383,8 +383,8 @@ go run ./cmd/cronos-import -datasource warehouse \
   -out ./definitions ./jasper-reports                # do it
 ```
 
-`cronos-import` is in the container image too, so an estate does not need a Go
-toolchain to move.
+`cronos-import` ships in both release channels — the Linux archives and the
+container image — so an estate does not need a Go toolchain to move.
 
 It carries the query and its parameters, the fields, the grouping, the
 subtotals, the page setup and the table the detail band drew. It does not carry
