@@ -60,7 +60,8 @@ ARG CRONOS_VERSION=unknown
 RUN LDFLAGS="-s -w -X github.com/gsoultan/cronos/internal/platform/build.version=${CRONOS_VERSION}" && \
     go build -trimpath -ldflags="$LDFLAGS" -o /out/cronosd ./cmd/cronosd && \
     go build -trimpath -ldflags="$LDFLAGS" -o /out/cronos-token ./cmd/cronos-token && \
-    go build -trimpath -ldflags="$LDFLAGS" -o /out/cronos-user ./cmd/cronos-user
+    go build -trimpath -ldflags="$LDFLAGS" -o /out/cronos-user ./cmd/cronos-user && \
+    go build -trimpath -ldflags="$LDFLAGS" -o /out/cronos-import ./cmd/cronos-import
 
 # --- The typesetter ---------------------------------------------------------
 #
@@ -92,6 +93,10 @@ RUN apk add --no-cache ca-certificates tzdata && \
 COPY --from=server /out/cronosd /usr/local/bin/cronosd
 COPY --from=server /out/cronos-token /usr/local/bin/cronos-token
 COPY --from=server /out/cronos-user /usr/local/bin/cronos-user
+# The migration tool ships in the image because the person holding four hundred
+# .jrxml files is running a container, not a Go toolchain — and they need it
+# before the deployment is worth keeping, not after.
+COPY --from=server /out/cronos-import /usr/local/bin/cronos-import
 COPY --from=typst /usr/local/bin/typst /usr/local/bin/typst
 COPY --from=portal /src/apps/portal/dist /srv/portal
 

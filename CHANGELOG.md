@@ -67,11 +67,27 @@ metrics including scheduler health and datasource pool utilisation, an audit of
 who read what and what was refused, retention for run history and deliveries,
 a container image, and a restore drill that CI runs on every push.
 
+**Migration.** `cronos-import` turns a directory of JasperReports `.jrxml`
+files into cronos definitions — one Dataset and one Report each, with identical
+queries shared rather than copied. It writes nothing without `-out`, prints a
+per-file work list graded blocked/review/note, and exits non-zero while anything
+is blocked. It ships in the container image beside `cronosd`, because the person
+holding four hundred `.jrxml` files is running a container rather than a Go
+toolchain. `examples/jasper/` holds a report to try it on.
+
 ### Not in this release
 
-- **No `.jrxml` importer.** Migrating an existing JasperReports estate is v1.0's
-  distinguishing feature and is not started. A deployment coming from Jasper
-  re-authors its reports.
+- **The `.jrxml` importer stops at the common 80%, and names the rest.**
+  Subreports, crosstabs, images, conditional elements and columns computed by a
+  Java expression do not come across; each is reported against the file that had
+  it, so the remainder is a work list rather than a surprise. Two constructs are
+  refused rather than imported wrong: a `$P!{}` parameter spliced into the SQL
+  as text, and a query that is not SQL.
+- **An imported dataset has no row-level security.** A `.jrxml` has none to carry —
+  JasperReports Server enforced access above the report — so an imported
+  dataset returns every row its query selects until somebody adds a predicate.
+  The importer says so once per file. Do it before publishing anything an end
+  customer can reach: [docs/migrating-from-jasper.md](docs/migrating-from-jasper.md).
 - **No offline viewing of results.** The service worker caches the application
   shell and no API response, deliberately: a cache keyed by URL serves one
   principal's data to the next person on that browser.

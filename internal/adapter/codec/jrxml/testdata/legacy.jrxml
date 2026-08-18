@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<jasperReport xmlns="http://jasperreports.sourceforge.net/jasperreports"
+              name="Auftragsübersicht Müller" pageWidth="612" pageHeight="792"
+              leftMargin="36" rightMargin="36" topMargin="54" bottomMargin="36">
+	<parameter name="fromDate" class="java.util.Date"/>
+	<parameter name="from_date" class="java.lang.String"/>
+	<queryString><![CDATA[SELECT k.name AS "KundeName", a.betrag AS Betrag, a.datum
+FROM auftrag a JOIN kunde k ON k.id = a.kunde_id
+WHERE a.datum >= $P{fromDate}]]></queryString>
+	<field name="KundeName" class="java.lang.String"/>
+	<field name="Betrag" class="java.math.BigDecimal"/>
+	<field name="datum" class="java.sql.Date"/>
+	<variable name="SummeBetrag" class="java.math.BigDecimal" calculation="Sum">
+		<variableExpression><![CDATA[$F{Betrag}]]></variableExpression>
+	</variable>
+	<title>
+		<band height="80">
+			<image>
+				<reportElement x="0" y="0" width="120" height="60"/>
+				<imageExpression><![CDATA["logo.png"]]></imageExpression>
+			</image>
+			<staticText>
+				<reportElement x="130" y="10" width="400" height="30"/>
+				<text><![CDATA[Auftragsübersicht für Müller GmbH]]></text>
+			</staticText>
+		</band>
+	</title>
+	<columnHeader>
+		<band height="20">
+			<staticText><reportElement x="0" y="0" width="200" height="20"/><text><![CDATA[Kunde]]></text></staticText>
+			<staticText><reportElement x="210" y="0" width="100" height="20"/><text><![CDATA[Datum]]></text></staticText>
+			<staticText><reportElement x="320" y="0" width="100" height="20"/><text><![CDATA[Betrag]]></text></staticText>
+		</band>
+	</columnHeader>
+	<detail>
+		<band height="20">
+			<frame>
+				<reportElement x="0" y="0" width="540" height="20"/>
+				<textField><reportElement x="0" y="0" width="200" height="20"/>
+					<textFieldExpression><![CDATA[$F{KundeName}]]></textFieldExpression></textField>
+				<textField pattern="dd.MM.yyyy"><reportElement x="210" y="0" width="100" height="20"/>
+					<textFieldExpression><![CDATA[$F{datum}]]></textFieldExpression></textField>
+				<textField pattern="¤#,##0.00"><reportElement x="320" y="0" width="100" height="20"/>
+					<textFieldExpression><![CDATA[$F{Betrag}]]></textFieldExpression></textField>
+				<textField><reportElement x="430" y="0" width="100" height="20"/>
+					<textFieldExpression><![CDATA[$F{Betrag}.multiply(new BigDecimal("1.19"))]]></textFieldExpression></textField>
+			</frame>
+		</band>
+	</detail>
+	<summary>
+		<band height="200">
+			<crosstab>
+				<reportElement x="0" y="0" width="540" height="180"/>
+				<rowGroup name="Kunde"><bucket><bucketExpression><![CDATA[$F{KundeName}]]></bucketExpression></bucket></rowGroup>
+				<columnGroup name="Monat"><bucket><bucketExpression><![CDATA[$F{datum}]]></bucketExpression></bucket></columnGroup>
+				<measure name="SummeMeasure" calculation="Sum"><measureExpression><![CDATA[$F{Betrag}]]></measureExpression></measure>
+			</crosstab>
+		</band>
+	</summary>
+</jasperReport>

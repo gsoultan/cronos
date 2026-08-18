@@ -363,11 +363,41 @@ always failing.
 | `internal/core/` | Definitions, validation, query compilation. No external dependencies. |
 | `internal/app/run/` | Report → SQL → rows → what a viewer draws |
 | `internal/adapter/` | YAML, `database/sql`, the Typst renderer, the HTTP API |
+| `internal/adapter/codec/jrxml/` | JasperReports in — the common 80%, and a report of what it refused |
 | `internal/adapter/driver/duckdb/` | Federation — one query over a warehouse, a lake and a spreadsheet. cgo, so `-tags duckdb` |
 | `apps/portal/` | The authoring UI — React 19, Mantine, Tailwind, PWA |
 | `packages/embed/` | `<cronos-report>`, 3.2 KB gzipped, framework-agnostic |
 | `packages/react/` | A React wrapper for it |
 | `ee/` | Commercially licensed. Nothing under `internal/core` may import it. |
+
+## Coming from JasperReports
+
+Community Edition was discontinued in January 2024. `cronos-import` reads a
+directory of `.jrxml` files and writes cronos definitions — one `Dataset` and
+one `Report` each, with identical queries shared rather than copied forty times.
+
+```bash
+go run ./cmd/cronos-import examples/jasper           # a report to try it on, over the demo warehouse
+go run ./cmd/cronos-import ./jasper-reports          # read yours, print the work list, write nothing
+go run ./cmd/cronos-import -datasource warehouse \
+  -out ./definitions ./jasper-reports                # do it
+```
+
+`cronos-import` is in the container image too, so an estate does not need a Go
+toolchain to move.
+
+It carries the query and its parameters, the fields, the grouping, the
+subtotals, the page setup and the table the detail band drew. It does not carry
+subreports, crosstabs, images or a column computed in Java — and it says which
+files had them, graded so an estate can be triaged rather than trusted. Two
+things it refuses rather than importing wrong: a `$P!{}` parameter spliced into
+the SQL as text, and a query that is not SQL.
+
+**An imported dataset has no row-level security**, because a `.jrxml` has none
+to give it. Add a predicate before publishing anything an end customer can
+reach. [docs/migrating-from-jasper.md](docs/migrating-from-jasper.md) is the
+whole of it: what comes across, what does not, and what to do instead.
+
 
 ## Checks
 
@@ -400,4 +430,6 @@ what it is handed; only this proves they agree about the shape in between.
 [docs/report-format.md](docs/report-format.md) — the file format ·
 [docs/tenancy.md](docs/tenancy.md) — the three levels of scope, and how they
 fail · [docs/rendering.md](docs/rendering.md) — paginated PDF ·
+[docs/migrating-from-jasper.md](docs/migrating-from-jasper.md) — the `.jrxml`
+importer, and where it stops ·
 [AGENTS.md](AGENTS.md) — the rules the code is held to.

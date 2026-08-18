@@ -1,0 +1,100 @@
+package jrxml
+
+import (
+	"strings"
+	"testing"
+)
+
+// TestTheShapesRealFilesTake covers the variations a four-hundred-file estate
+// contains that a hand-written fixture does not.
+//
+// None of these is exotic. They are what you get from twelve years of Jaspersoft
+// Studio on Windows, and each one breaks the table inference completely if it is
+// not handled — an importer that reads none of the detail band produces a
+// definition that loads, runs, and renders an empty report.
+func TestTheShapesRealFilesTake(t *testing.T) {
+	t.Run("a byte order mark", func(t *testing.T) {
+		// Windows editors add one, and it sits before the XML declaration.
+		res := importString(t, "\xef\xbb\xbf"+plainReport)
+		assertColumns(t, res, "id", "total")
+	})
+
+	t.Run("CRLF line endings", func(t *testing.T) {
+		res := importString(t, strings.ReplaceAll(plainReport, "\n", "\r\n"))
+		assertColumns(t, res, "id", "total")
+		// XML normalises CRLF to LF in character data, so the carriage returns
+		// do not reach the YAML. Asserted rather than assumed: a query with \r
+		// in it cannot be written as a literal block, and the definition would
+		// come out as one long quoted line.
+		if strings.Contains(res.Dataset.Query, "\r") {
+			t.Errorf("carriage returns reached the query: %q", res.Dataset.Query)
+		}
+	})
+
+	t.Run("class on the expression", func(t *testing.T) {
+		// Jaspersoft Studio writes this on every text field.
+		res := importString(t, strings.ReplaceAll(plainReport,
+			"<textFieldExpression>", `<textFieldExpression class="java.lang.String">`))
+		assertColumns(t, res, "id", "total")
+	})
+
+	t.Run("a DOCTYPE instead of a namespace", func(t *testing.T) {
+		// JasperReports 1.x files carry a DTD reference and no namespace.
+		res := importString(t, `<?xml version="1.0"?>
+<!DOCTYPE jasperReport PUBLIC "-//JasperReports//DTD Report Design//EN"
+ "http://jasperreports.sourceforge.net/dtds/jasperreport.dtd">
+<jasperReport name="ancient">`+plainBody+`</jasperReport>`)
+		assertColumns(t, res, "id", "total")
+	})
+
+	t.Run("the JasperReports 7 element syntax", func(t *testing.T) {
+		// A second way to spell a band's contents, which this importer does not
+		// read. The query still has to come across, and the file has to say why
+		// its layout did not — "a construct this importer does not read" is
+		// true and useless when the answer is "your file is a newer dialect".
+		res := importString(t, wrap(`
+			<queryString><![CDATA[SELECT id FROM t]]></queryString>
+			<field name="id" class="java.lang.String"/>
+			<detail><band height="20">
+				<element kind="textField" x="0" y="0" width="100" height="20" expression="$F{id}"/>
+			</band></detail>`))
+		if !res.HasDataset() {
+			t.Error("the query was discarded along with the layout")
+		}
+		if res.HasReport() {
+			t.Error("a report was invented from a layout that was not read")
+		}
+		if !res.Blocked() {
+			t.Error("a file whose layout did not import is not flagged for a person")
+		}
+		if !hasFindingText(res, "JasperReports 7") {
+			t.Errorf("the finding does not name the dialect:\n%s", render(res))
+		}
+	})
+}
+
+func assertColumns(t *testing.T, res Result, want ...string) {
+	t.Helper()
+	pdf, ok := res.Report.Output("pdf")
+	if !ok {
+		t.Fatalf("no pdf output; findings:\n%s", render(res))
+	}
+	table := blockOfKind(t, pdf.Layout, "table")
+	if strings.Join(table.Columns, ",") != strings.Join(want, ",") {
+		t.Errorf("columns = %v, want %v", table.Columns, want)
+	}
+}
+
+const plainBody = `
+	<queryString><![CDATA[SELECT id, total
+FROM t]]></queryString>
+	<field name="id" class="java.lang.String"/>
+	<field name="total" class="java.math.BigDecimal"/>
+	<detail><band height="20">
+		<textField><reportElement x="0" y="0" width="100" height="20"/>
+			<textFieldExpression><![CDATA[$F{id}]]></textFieldExpression></textField>
+		<textField><reportElement x="110" y="0" width="100" height="20"/>
+			<textFieldExpression><![CDATA[$F{total}]]></textFieldExpression></textField>
+	</band></detail>`
+
+var plainReport = wrap(plainBody)

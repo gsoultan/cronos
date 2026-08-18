@@ -81,7 +81,8 @@ internal/
     burst/               One document per recipient, bounded     ✓
     schedule/            Cron loop, no catch-up, no overlap        ✓
   adapter/             Port implementations.
-    codec/yaml/          The file format authors write          ✓
+    codec/yaml/          The file format authors write, read and written ✓
+    codec/jrxml/         JasperReports in. The 80%, and what it refused ✓
     api/                 Embed + portal + management, CORS      ✓
     store/file/          Definitions from a directory           ✓
     store/sql/           Multi-tenant. Postgres + SQLite, both tested ✓

@@ -10,7 +10,7 @@ VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 GO     := go
 
 .DEFAULT_GOAL := help
-.PHONY: help setup dev dev-web dev-api build check test xlsx-oracle duckdb pdf lint fmt boundary live ui shots image load release clean
+.PHONY: help setup dev dev-web dev-api build check test xlsx-oracle duckdb pdf lint fmt boundary live ui shots image load release clean import
 
 help: ## Show this help
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage: make <target>\n\n"} \
@@ -32,6 +32,7 @@ dev-api: ## Run the API only
 build: ## Build both binaries and the portal
 	$(GO) build -o bin/cronosd ./cmd/cronosd
 	$(GO) build -o bin/cronosd-ee ./cmd/cronosd-ee
+	$(GO) build -o bin/cronos-import ./cmd/cronos-import
 	cd $(PORTAL) && bun run build
 	cd $(EMBED) && bun run build
 	cd $(REACT) && bun run build
@@ -58,6 +59,11 @@ xlsx-oracle: ## Install the reader the spreadsheet tests check against
 duckdb: ## Build and test the federation adapter (cgo, several hundred MB)
 	$(GO) build -tags duckdb ./...
 	$(GO) test -tags duckdb ./internal/adapter/driver/duckdb/
+
+import: ## Dry-run the JasperReports importer over a directory: JASPER=./reports make import
+	@test -n "$(JASPER)" || { echo "usage: JASPER=<dir-of-jrxml> make import" >&2; exit 1; }
+	@$(GO) run ./cmd/cronos-import $(JASPER) || \
+		{ echo; echo "Exit 1 means files are blocked and need a person — not that the tool failed."; exit 1; }
 
 pdf: ## Render a sample statement to /tmp/statement.pdf and open it
 	CRONOS_PDF_OUT=/tmp/statement.pdf $(GO) test ./internal/adapter/render/paginated/ -run TestRenderProducesAPDF -v

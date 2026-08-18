@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jasperReport xmlns="http://jasperreports.sourceforge.net/jasperreports"
+              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+              xsi:schemaLocation="http://jasperreports.sourceforge.net/jasperreports http://jasperreports.sourceforge.net/xsd/jasperreport.xsd"
+              name="Monthly_Invoice_Statement" language="java"
+              pageWidth="595" pageHeight="842" columnWidth="555"
+              leftMargin="20" rightMargin="20" topMargin="20" bottomMargin="20"
+              orientation="Portrait">
+	<property name="com.jaspersoft.studio.data.defaultdataadapter" value="Warehouse"/>
+	<style name="Heading" fontName="Helvetica" fontSize="18" isBold="true"/>
+
+	<parameter name="FROM_DATE" class="java.util.Date">
+		<parameterDescription><![CDATA[From]]></parameterDescription>
+		<defaultValueExpression><![CDATA[new Date()]]></defaultValueExpression>
+	</parameter>
+	<parameter name="TO_DATE" class="java.util.Date">
+		<parameterDescription><![CDATA[To]]></parameterDescription>
+	</parameter>
+	<parameter name="StatusList" class="java.util.Collection" nestedType="java.lang.String"/>
+	<parameter name="REPORT_CONNECTION" class="java.sql.Connection" isForPrompting="false"/>
+
+	<queryString>
+		<![CDATA[SELECT c.name AS customer_name,
+       i.issued_at,
+       i.status,
+       i.currency,
+       i.total_cents / 100.0 AS total,
+       i.id AS invoice_id
+FROM invoices i
+JOIN customers c ON c.id = i.customer_id
+WHERE i.issued_at BETWEEN $P{FROM_DATE} AND $P{TO_DATE}
+  AND i.status IN ($P{StatusList})]]>
+	</queryString>
+
+	<field name="customer_name" class="java.lang.String">
+		<fieldDescription><![CDATA[Customer]]></fieldDescription>
+	</field>
+	<field name="issued_at" class="java.sql.Timestamp"/>
+	<field name="status" class="java.lang.String"/>
+	<field name="currency" class="java.lang.String"/>
+	<field name="total" class="java.math.BigDecimal"/>
+	<field name="invoice_id" class="java.lang.Integer"/>
+
+	<sortField name="issued_at" order="Descending"/>
+
+	<variable name="CUSTOMER_TOTAL" class="java.math.BigDecimal" resetType="Group" resetGroup="CustomerGroup" calculation="Sum">
+		<variableExpression><![CDATA[$F{total}]]></variableExpression>
+	</variable>
+	<variable name="GRAND_TOTAL" class="java.math.BigDecimal" calculation="Sum">
+		<variableExpression><![CDATA[$F{total}]]></variableExpression>
+	</variable>
+
+	<group name="CustomerGroup" isStartNewPage="true">
+		<groupExpression><![CDATA[$F{customer_name}]]></groupExpression>
+		<groupHeader>
+			<band height="24">
+				<textField>
+					<reportElement x="0" y="0" width="300" height="20"/>
+					<textFieldExpression><![CDATA[$F{customer_name}]]></textFieldExpression>
+				</textField>
+			</band>
+		</groupHeader>
+		<groupFooter>
+			<band height="20">
+				<staticText>
+					<reportElement x="240" y="0" width="100" height="20"/>
+					<text><![CDATA[Subtotal]]></text>
+				</staticText>
+				<textField>
+					<reportElement x="350" y="0" width="100" height="20"/>
+					<textFieldExpression><![CDATA[$V{CUSTOMER_TOTAL}]]></textFieldExpression>
+				</textField>
+			</band>
+		</groupFooter>
+	</group>
+
+	<title>
+		<band height="60">
+			<staticText>
+				<reportElement style="Heading" x="0" y="0" width="400" height="30"/>
+				<textElement><font size="18" isBold="true"/></textElement>
+				<text><![CDATA[Monthly Invoice Statement]]></text>
+			</staticText>
+		</band>
+	</title>
+
+	<columnHeader>
+		<band height="20">
+			<staticText>
+				<reportElement x="0" y="0" width="120" height="20"/>
+				<text><![CDATA[Issued]]></text>
+			</staticText>
+			<staticText>
+				<reportElement x="130" y="0" width="100" height="20"/>
+				<text><![CDATA[Status]]></text>
+			</staticText>
+			<staticText>
+				<reportElement x="350" y="0" width="100" height="20"/>
+				<text><![CDATA[Amount]]></text>
+			</staticText>
+		</band>
+	</columnHeader>
+
+	<detail>
+		<band height="20">
+			<textField pattern="dd/MM/yyyy">
+				<reportElement x="0" y="0" width="120" height="20"/>
+				<textFieldExpression><![CDATA[$F{issued_at}]]></textFieldExpression>
+			</textField>
+			<textField>
+				<reportElement x="130" y="0" width="100" height="20"/>
+				<textFieldExpression><![CDATA[$F{status}]]></textFieldExpression>
+			</textField>
+			<textField pattern="#,##0.00">
+				<reportElement x="350" y="0" width="100" height="20"/>
+				<textFieldExpression><![CDATA[$F{total}]]></textFieldExpression>
+			</textField>
+		</band>
+	</detail>
+
+	<pageFooter>
+		<band height="20">
+			<textField>
+				<reportElement x="400" y="0" width="80" height="20"/>
+				<textFieldExpression><![CDATA["Page " + $V{PAGE_NUMBER} + " of "]]></textFieldExpression>
+			</textField>
+			<textField evaluationTime="Report">
+				<reportElement x="480" y="0" width="40" height="20"/>
+				<textFieldExpression><![CDATA[$V{PAGE_COUNT}]]></textFieldExpression>
+			</textField>
+		</band>
+	</pageFooter>
+
+	<summary>
+		<band height="30">
+			<staticText>
+				<reportElement x="240" y="0" width="100" height="20"/>
+				<text><![CDATA[Total billed]]></text>
+			</staticText>
+			<textField>
+				<reportElement x="350" y="0" width="100" height="20"/>
+				<textFieldExpression><![CDATA[$V{GRAND_TOTAL}]]></textFieldExpression>
+			</textField>
+		</band>
+	</summary>
+</jasperReport>

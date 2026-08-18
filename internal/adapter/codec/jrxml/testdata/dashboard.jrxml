@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jasperReport xmlns="http://jasperreports.sourceforge.net/jasperreports"
+              name="sales_dashboard" pageWidth="842" pageHeight="595" orientation="Landscape"
+              leftMargin="30" rightMargin="30" topMargin="30" bottomMargin="30">
+	<queryString><![CDATA[SELECT region, month, revenue, orders FROM sales]]></queryString>
+	<field name="region" class="java.lang.String"/>
+	<field name="month" class="java.lang.String"/>
+	<field name="revenue" class="java.math.BigDecimal"/>
+	<field name="orders" class="java.lang.Integer"/>
+
+	<summary>
+		<band height="500">
+			<barChart>
+				<chart>
+					<reportElement x="0" y="0" width="400" height="200"/>
+					<chartTitle><titleExpression><![CDATA["Revenue by region"]]></titleExpression></chartTitle>
+				</chart>
+				<categoryDataset>
+					<categorySeries>
+						<seriesExpression><![CDATA["Revenue"]]></seriesExpression>
+						<categoryExpression><![CDATA[$F{region}]]></categoryExpression>
+						<valueExpression><![CDATA[$F{revenue}]]></valueExpression>
+					</categorySeries>
+				</categoryDataset>
+				<barPlot><plot/><categoryAxisFormat><axisFormat/></categoryAxisFormat></barPlot>
+			</barChart>
+			<lineChart>
+				<chart>
+					<reportElement x="0" y="210" width="400" height="200"/>
+					<chartTitle><titleExpression><![CDATA["Orders over time"]]></titleExpression></chartTitle>
+				</chart>
+				<categoryDataset>
+					<categorySeries>
+						<seriesExpression><![CDATA[$F{region}]]></seriesExpression>
+						<categoryExpression><![CDATA[$F{month}]]></categoryExpression>
+						<valueExpression><![CDATA[$F{orders}]]></valueExpression>
+					</categorySeries>
+				</categoryDataset>
+				<linePlot><plot/></linePlot>
+			</lineChart>
+			<pieChart>
+				<chart><reportElement x="420" y="0" width="400" height="200"/>
+					<chartTitle><titleExpression><![CDATA["Share by region"]]></titleExpression></chartTitle></chart>
+				<pieDataset>
+					<keyExpression><![CDATA[$F{region}]]></keyExpression>
+					<valueExpression><![CDATA[$F{revenue}]]></valueExpression>
+				</pieDataset>
+				<piePlot><plot/></piePlot>
+			</pieChart>
+		</band>
+	</summary>
+
+	<detail><band height="20">
+		<textField><reportElement x="0" y="0" width="100" height="20"/>
+			<textFieldExpression><![CDATA[$F{region}]]></textFieldExpression></textField>
+		<textField><reportElement x="110" y="0" width="100" height="20"/>
+			<textFieldExpression><![CDATA[$F{revenue}]]></textFieldExpression></textField>
+	</band></detail>
+</jasperReport>
