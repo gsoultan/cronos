@@ -78,13 +78,50 @@ func keep(t *testing.T, pdf []byte) {
 
 // The renderer must leave nothing behind. A burst is thousands of renders, so
 // a leaked directory per render is a full disk by the end of the month.
+//
+// Asked as "did this render leave a root that was not already there", rather
+// than by counting. The count was the same question when the temp directory
+// holds nothing else, and a different one the moment it does: a render killed
+// mid-flight never runs its deferred cleanup, so a machine that has ever had a
+// burst interrupted carries stale roots, and any of them disappearing during
+// this test — an OS temp sweep, another run finishing — failed it for a reason
+// having nothing to do with the renderer. Comparing sets ignores what was
+// already there and still catches the leak this exists to catch.
 func TestRenderRemovesItsRoot(t *testing.T) {
-	before := tempDirs(t)
+	before := renderRoots(t)
 	if err := New(TypstCLI{}).Render(context.Background(), fixture(2), &bytes.Buffer{}); err != nil {
 		t.Fatalf("render: %v", err)
 	}
-	if after := tempDirs(t); after != before {
-		t.Errorf("render roots leaked: %d before, %d after", before, after)
+	for root := range renderRoots(t) {
+		if !before[root] {
+			t.Errorf("render leaked its root: %s", root)
+		}
+	}
+}
+
+// TestRenderRootCheckIgnoresStrangers pins the property the count did not have.
+//
+// A stale root vanishing mid-test is somebody else's business. Without this the
+// check is red on any machine with leftovers, which is every machine where a
+// burst has ever been interrupted — and a test that cries wolf about a full
+// disk is one people stop reading.
+func TestRenderRootCheckIgnoresStrangers(t *testing.T) {
+	stranger, err := os.MkdirTemp("", "cronos-render-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := renderRoots(t)
+	if !before[stranger] {
+		t.Fatalf("%s is not being seen as a render root", stranger)
+	}
+	// Gone before the second look, the way a temp sweep takes one.
+	if err := os.RemoveAll(stranger); err != nil {
+		t.Fatal(err)
+	}
+	for root := range renderRoots(t) {
+		if !before[root] {
+			t.Errorf("a stranger disappearing was read as a leak: %s", root)
+		}
 	}
 }
 
@@ -195,11 +232,16 @@ func stderrOf(err error) string {
 	return ""
 }
 
-func tempDirs(t *testing.T) int {
+// renderRoots is the set of render roots currently on disk.
+func renderRoots(t *testing.T) map[string]bool {
 	t.Helper()
 	matches, err := filepath.Glob(filepath.Join(os.TempDir(), "cronos-render-*"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	return len(matches)
+	out := make(map[string]bool, len(matches))
+	for _, m := range matches {
+		out[m] = true
+	}
+	return out
 }
