@@ -31,15 +31,33 @@ RUN cd apps/portal && bun run build
 FROM golang:1.26.6-alpine AS server
 WORKDIR /src
 
-COPY go.mod go.sum ./
-RUN go mod download
-
 COPY . .
 # CGO off, so the result runs on a distroless base with no libc. That is also
 # what excludes the duckdb federation build, which needs cgo — a deployment
 # that federates builds its own image with -tags duckdb and a base that has
 # the runtime.
 ENV CGO_ENABLED=0
+
+# There is no `go mod download` layer, and its absence is the point.
+#
+# `go mod download` fetches the whole module graph: 326 modules, 1249MB. The
+# four binaries below compile 40 of them, 460MB, and none of the nine duckdb
+# modules — federation is a build tag and CGO is off, so that code is not in
+# any import graph here. `go build` fetches what it compiles, so deleting the
+# step removes 789MB from every build of this image.
+#
+# What it cost was a cached layer, and that layer was worth less than it looked.
+# It only survives while go.mod and go.sum are untouched, and it is worth
+# nothing at all on a fresh runner — which is what builds this: the image job in
+# .github/workflows/check.yml runs a plain `docker build` on ubuntu-latest with
+# no layer cache and no buildx, so on every push that layer downloaded 789MB
+# nobody could use. Locally the trade is real but small: `make image` after a
+# source change now re-fetches 460MB instead of none.
+#
+# The alternative that keeps both is a BuildKit cache mount on the build below.
+# It is deliberately not used, because it turns every builder without BuildKit
+# into a parse error, and this file is built by docker, podman and Apple's
+# container across three architectures.
 
 # Which build this is, passed in rather than read from the repository.
 #
