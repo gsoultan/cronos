@@ -63,6 +63,82 @@ takes any firing inside it: that run is a day late, and the run that follows
 covers both days and is labelled with both dates rather than pretending to be
 one. Pick a time outside 01:00–03:00 local and neither applies to you.
 
+## A host install
+
+The other channel. A deployment that already has systemd, a package mirror and a
+backup story wants binaries rather than a runtime to adopt, and `make dist`
+produces them — see Cutting a release for what is in each archive and why there
+are two.
+
+```bash
+sha256sum --ignore-missing -c SHA256SUMS   # the archive, before it is opened
+tar xzf cronos_v1.0_linux_amd64.tar.gz
+install -m 0755 cronos_v1.0_linux_amd64/cronos* /usr/local/bin/
+cronosd -version
+```
+
+The binaries are `CGO_ENABLED=0`, so they do not depend on the host's libc
+version and a release built anywhere runs here. They carry their own copy of the
+timezone database (`time/tzdata`), so "the first of the month at six" resolves
+without `tzdata` installed — though Go reads the system database first where
+there is one, which is what a host that updates for a DST law change should do.
+Federation is absent for the same reason it is absent from the image: DuckDB
+needs cgo, so it is a build tag and a deployment that federates builds its own.
+
+**Install `typst` as well, and prove it.** It is not in the archive — a host
+install takes it from [the typesetter's own
+releases](https://github.com/typst/typst/releases), the way it takes any other
+system dependency — and it is the one thing whose absence says nothing. Nothing
+outside the renderer looks for it: readiness does not, startup does not, and
+every path except paginated output works without it. So a missing `typst` is a
+PDF schedule failing at six in the morning on the first of the month and nowhere
+earlier, which is exactly the failure `make image` and CI run `typst --version`
+inside the container to prevent. Do the same here:
+
+```bash
+typst --version                            # before anything is scheduled, not after
+```
+
+**The portal is not in the archive either**, and `cronosd` does not serve it:
+it is static files on their own origin in every real deployment, which is why
+`CRONOS_PORTAL_URL` is a URL rather than a directory. Build it with `bun run
+build` in `apps/portal` and serve `dist/` from whatever already serves static
+files. The image bundles a copy only because a single-container demo has nowhere
+else to put one.
+
+A unit to start from. The environment goes in a file rather than the unit,
+because `CRONOS_SIGNING_KEY` in a unit is a secret in a world-readable file:
+
+```ini
+[Unit]
+Description=cronos
+After=network-online.target
+
+[Service]
+User=cronos
+EnvironmentFile=/etc/cronos/env
+ExecStart=/usr/local/bin/cronosd
+Restart=on-failure
+# The binary needs no write access to anything except what its datasources and
+# delivery channels name.
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
+```
+
+`cronosd` listens on `:8787` unless `CRONOS_ADDR` says otherwise, and answers
+`/v1/ready` — point the load balancer at that rather than at liveness, and see
+Probes for the difference. What has to be in `/etc/cronos/env` is the next
+section.
+
+`cronos-import` is in the archive too, so an estate migrating off JasperReports
+does not need a container to do it — see
+[migrating-from-jasper.md](migrating-from-jasper.md).
+
 ## What has to be set
 
 | Variable | Why |

@@ -84,6 +84,17 @@ BSL, and `cronosd-ee` under its own license, because the boundary
 `scripts/check-license-boundary.sh` enforces in the build graph has to hold in
 distribution too.
 
+**Installing from an archive: install `typst` too.** It is not in the tarball —
+a host takes it from the typesetter's own releases the way it takes any other
+system dependency — and it is the one missing piece that says nothing. Nothing
+outside the renderer looks for it, so every path except paginated output works
+without it and a PDF schedule fails at six on the first of the month and nowhere
+earlier. Run `typst --version` on the host before anything is scheduled. The
+container image already carries it, and `make image` and CI both prove it does.
+The portal is not in the archive either: it is static files on their own origin,
+which is why `CRONOS_PORTAL_URL` is a URL. See
+[docs/deploying.md](docs/deploying.md) — A host install.
+
 ### Not in this release
 
 - **The `.jrxml` importer stops at the common 80%, and names the rest.**
