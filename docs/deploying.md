@@ -23,6 +23,12 @@ copy of cronos running in somebody else's cluster. CI passes it and then refuses
 an `unknown` in the result, because an image that cannot say what it is still
 builds and still serves.
 
+The image needs no writable filesystem to start and serve, which the CI job
+checks by running it `--read-only`. Paginated output is the exception: the
+typesetter works in a directory under `/tmp`, so a read-only container wants
+`--tmpfs /tmp` beside it — the same thing `PrivateTmp=true` does for the systemd
+unit under A host install.
+
 `cronosd -version` prints it, the startup log carries it as `build=`, and
 `cronos_build_info{version="…"}` is a constant labelled with it — so "how much of
 the fleet is on the new one" is a query, which during a rolling deploy is the
@@ -112,6 +118,9 @@ because `CRONOS_SIGNING_KEY` in a unit is a secret in a world-readable file:
 ```ini
 [Unit]
 Description=cronos
+# Wants as well as After: After alone orders against a target nothing pulled in,
+# so it is reached immediately and the unit starts before there is a route.
+Wants=network-online.target
 After=network-online.target
 
 [Service]
@@ -119,16 +128,33 @@ User=cronos
 EnvironmentFile=/etc/cronos/env
 ExecStart=/usr/local/bin/cronosd
 Restart=on-failure
-# The binary needs no write access to anything except what its datasources and
-# delivery channels name.
+
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
 NoNewPrivileges=true
+# ProtectSystem=strict makes everything read-only, and cronosd writes in three
+# places. Name the ones this deployment uses, or publishing fails at the point
+# somebody saves a definition:
+#
+#   the definitions directory, on every publish, if CRONOS_DEFINITIONS is the
+#   store rather than a bootstrap — a publish writes the file and a copy under
+#   .versions/
+#   the store file, if CRONOS_STORE_DSN is SQLite rather than Postgres
+#   the output directory of any `via: file` delivery
+#
+# Renders need none of it: the typesetter works in its own directory under /tmp,
+# which PrivateTmp already provides.
+ReadWritePaths=/var/lib/cronos
 
 [Install]
 WantedBy=multi-user.target
 ```
+
+The cleanest deployment needs no `ReadWritePaths` at all — a Postgres store, and
+delivery by email or object storage, leaves nothing on local disk to write. That
+is worth aiming at for a second reason: it is also the deployment that survives
+losing the host, which Backing up is about.
 
 `cronosd` listens on `:8787` unless `CRONOS_ADDR` says otherwise, and answers
 `/v1/ready` — point the load balancer at that rather than at liveness, and see

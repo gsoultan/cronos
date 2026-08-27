@@ -457,9 +457,20 @@ jobs:
 
       # And it starts, reaches its dependencies, and says so. An image that
       # builds and cannot serve is an image that passes a build check.
+      #
+      # --read-only because docs/deploying.md tells operators cronosd needs no
+      # writable filesystem to start and serve, and offers a systemd unit with
+      # ProtectSystem=strict on that basis. That is a claim about this binary,
+      # so it is checked here rather than left to whoever follows the advice:
+      # anything that starts writing outside a render fails this job instead of
+      # a hardened deployment somebody else runs.
+      #
+      # --tmpfs /tmp because the typesetter does work in a directory under it,
+      # and a read-only root has no writable /tmp. That is the container's
+      # spelling of PrivateTmp=true, which the unit in the docs already sets.
       - name: it serves
         run: |
-          docker run -d --name cronos -p 8787:8787 \
+          docker run -d --name cronos -p 8787:8787 --read-only --tmpfs /tmp \
             -e CRONOS_SIGNING_KEY=ci-signing-key-at-least-32-bytes-long \
             -e CRONOS_DEFINITIONS=/demo/definitions -e CRONOS_SEED=/demo/seed.sql \
             -v "$PWD/demo:/demo:ro" cronos:ci
