@@ -98,10 +98,13 @@ YAML
 # Its own schema, so this cannot collide with another test's tables — and its
 # own delivery directory per replica, so "which one delivered" is answerable.
 schema=cronos_leader_test
-psql_do() { podman exec -i "${CRONOS_PG_CONTAINER:-cronos-pg}" psql "${CRONOS_PSQL_DSN:-$DSN}" -tAc "$1"; }
-if [ -n "${CRONOS_PSQL:-}" ]; then
-	psql_do() { $CRONOS_PSQL "${CRONOS_PSQL_DSN:-$DSN}" -tAc "$1"; }
-fi
+# CRONOS_PSQL so a laptop without a local client can point at one inside a
+# container — "podman exec -i cronos-pg psql", say. CI has the client, and this
+# defaulted the other way round: `podman exec` against a container named
+# cronos-pg, which exists on one developer's machine and nowhere else. That is
+# the same convention live-resume.sh and live-disconnect.sh already state, and
+# inverting it here made this check unrunnable anywhere it was not written.
+psql_do() { ${CRONOS_PSQL:-psql} "${CRONOS_PSQL_DSN:-$DSN}" -tAc "$1"; }
 psql_do "DROP SCHEMA IF EXISTS $schema CASCADE; CREATE SCHEMA $schema" >/dev/null
 
 scoped="$DSN&options=-csearch_path%3D$schema"
