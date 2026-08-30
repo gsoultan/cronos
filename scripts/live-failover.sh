@@ -48,8 +48,21 @@ go build -o bin/cronos-token ./cmd/cronos-token
 podman rm -f "$PG" >/dev/null 2>&1 || true
 podman run -d --name "$PG" -e POSTGRES_PASSWORD=cronos -e POSTGRES_USER=cronos \
 	-e POSTGRES_DB=cronos -p "$PGPORT:5432" docker.io/library/postgres:16-alpine >/dev/null
-for _ in $(seq 1 90); do podman exec "$PG" pg_isready -U cronos >/dev/null 2>&1 && break; sleep 1; done
-podman exec "$PG" pg_isready -U cronos >/dev/null 2>&1 || die "the database never came up"
+# Over TCP, not the container's unix socket, and the -h is the whole point.
+#
+# The postgres image runs initdb against a temporary server started with
+# listen_addresses='' — reachable on the socket, on no port — and then shuts it
+# down before starting the real one. So a socket check goes ready, then not
+# ready, then ready: the loop below breaks on the temporary server and the line
+# after it lands in the shutdown and reports a database that never came up.
+# Measured, not theorised: polling both during startup gives socket/tcp states
+# of `..` `R.` `..` `RR`, and the container's log shows the fast shutdown
+# between them.
+#
+# TCP is never ready until the real server is listening, which is also the only
+# thing this check cares about — cronosd connects to localhost:$PGPORT.
+for _ in $(seq 1 90); do podman exec "$PG" pg_isready -h 127.0.0.1 -U cronos >/dev/null 2>&1 && break; sleep 1; done
+podman exec "$PG" pg_isready -h 127.0.0.1 -U cronos >/dev/null 2>&1 || die "the database never came up"
 
 mkdir -p "$work/defs"
 cp demo/definitions/*.yaml "$work/defs/"

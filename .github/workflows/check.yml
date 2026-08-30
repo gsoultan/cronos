@@ -369,8 +369,15 @@ jobs:
 
       # Chrome, because the suites launch it by channel rather than using
       # Playwright's bundled build — the same browser a person would use.
-      - name: install chrome
-        run: bunx playwright install --with-deps chrome
+      # Both, because the suites here launch two different browsers. The embed
+      # and react checks ask for `channel: 'chrome'`, which is the Chrome this
+      # installs; the portal's e2e scripts call chromium.launch() bare, which is
+      # Playwright's own build under ~/.cache/ms-playwright and a separate
+      # download. Installing only chrome left the portal suites launching a
+      # browser that was never fetched, which is what "the browser check" failed
+      # on — every script that says `Needs playwright's chromium` in its header.
+      - name: install chrome and chromium
+        run: bunx playwright install --with-deps chrome chromium
 
       - name: install typst
         run: |

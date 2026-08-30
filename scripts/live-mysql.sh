@@ -56,7 +56,20 @@ fi
 # Waited for by asking it a question rather than by reading its log: a log line
 # says the process started, this says it will answer.
 for _ in $(seq 1 120); do sql 'SELECT 1' >/dev/null 2>&1 && break; sleep 2; done
-sql 'SELECT 1' >/dev/null 2>&1 || die "MySQL never started answering"
+if ! sql 'SELECT 1' >/dev/null 2>&1; then
+	# What it was doing, rather than only that it did not answer. Four minutes
+	# of waiting followed by one line naming neither the server's state nor the
+	# client's error is a failure nobody can act on — and this one takes four
+	# minutes to reproduce, so the next person needs the evidence from the run
+	# that already happened.
+	[ -n "${started_db:-}" ] && {
+		printf '  the container last said:\n' >&2
+		podman logs --tail 25 cronos-mysql 2>&1 | sed 's/^/    /' >&2
+		printf '  and asking it a question says:\n' >&2
+		sql 'SELECT 1' 2>&1 | sed 's/^/    /' >&2
+	}
+	die "MySQL never started answering"
+fi
 ok "running and answering on $DBPORT"
 
 # Three months, so a month bucket has something to be wrong about, and a
