@@ -43,7 +43,20 @@ say(){ printf '\n\033[1m%s\033[0m\n' "$*"; }
 command -v podman >/dev/null 2>&1 || { echo "skipped: needs podman for a MySQL"; exit 0; }
 curl -s -o /dev/null --max-time 1 "$API/" 2>/dev/null && die "something is already listening on $PORT"
 
-sql() { podman exec -i cronos-mysql mysql -uroot -p"$ROOT_PASSWORD" -N -B erp -e "$1"; }
+# Over TCP, not the client's default socket, and for the same two reasons
+# live-failover.sh asks postgres over TCP.
+#
+# The socket path moved. `mysql:8` resolves to 8.4 now, which puts the server's
+# socket at /var/lib/mysql/mysql.sock while the client still looks in
+# /var/run/mysqld/mysqld.sock — so a server logging "ready for connections"
+# answered `ERROR 2002: Can't connect to local MySQL server through socket`, and
+# the wait loop read that as a server that had not started. Four minutes of it,
+# then one line naming neither.
+#
+# And the entrypoint runs its init against a temporary server with `port: 0`,
+# no TCP at all, so asking over TCP cannot mistake it for the real one either.
+# Which is what this check wants: cronosd reaches MySQL on localhost:$DBPORT.
+sql() { podman exec -i cronos-mysql mysql -h 127.0.0.1 -uroot -p"$ROOT_PASSWORD" -N -B erp -e "$1"; }
 
 say "MySQL"
 if [ -z "${CRONOS_MYSQL_RUNNING:-}" ]; then
