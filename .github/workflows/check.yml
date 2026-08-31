@@ -7,9 +7,24 @@
 # people stop reading.
 name: check
 
+# Branches too, and this file's first line already said so while the config
+# below said main. The gap is not academic: this branch reached sixty commits
+# carrying five live checks that had never executed once — a container name
+# from one laptop, two readiness probes watching a temporary server, a browser
+# installed under another name, a socket path an image version old. Each broke
+# at the commit that introduced it and nothing said so, because nothing ran
+# until somebody opened the first pull request. That is the paragraph above
+# happening one level up: the gates existed, and ran nowhere the work was.
+#
+# '**' is branches and not tags, so cutting a release does not re-run the suite
+# against the commit it just passed on. pull_request stays because a fork's
+# push does not trigger anything here, and the cost of a branch and its pull
+# request both running is runner minutes, which are free on a public
+# repository, bounded by the concurrency group below, and cheaper than another
+# check nobody notices is dead.
 on:
   push:
-    branches: [main]
+    branches: ['**']
   pull_request:
 
 # A second push supersedes the first. Reviewing a branch does not need the
