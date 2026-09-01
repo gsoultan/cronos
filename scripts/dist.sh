@@ -23,6 +23,25 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 VERSION="${VERSION:-$(git describe --tags --always --dirty 2>/dev/null || echo dev)}"
+
+# Built by the compiler the image is built by, taken from the Dockerfile so
+# there is one place to change it.
+#
+# `go 1.26.6` in go.mod does not pin anything: it is the minimum language
+# version, and Go builds happily with a newer toolchain than it names. So an
+# archive cut on a laptop that had moved on shipped binaries from one compiler
+# while the image shipped them from another, which is drift the deploying guide
+# claimed was impossible. It was: the release built here reported go1.27.0
+# against an image pinned to 1.26.6.
+#
+# That matters because of why the pin exists. govulncheck found six open
+# advisories against the standard library the first time it ran, from a
+# toolchain one patch behind that nobody was watching. A release channel that
+# quietly uses a different compiler is that hole, reopened, in the artifact
+# people download.
+TOOLCHAIN="$(sed -n 's/^FROM golang:\([0-9][0-9.]*\)-alpine.*/go\1/p' Dockerfile | head -1)"
+[ -n "$TOOLCHAIN" ] || die "no 'FROM golang:<version>-alpine' in Dockerfile to take a toolchain from"
+export GOTOOLCHAIN="${GOTOOLCHAIN:-$TOOLCHAIN}"
 PLATFORMS="${PLATFORMS:-linux/amd64 linux/arm64 darwin/arm64}"
 OUT="dist"
 
@@ -74,6 +93,7 @@ archive() {
 }
 
 say "cronos $VERSION"
+printf '  %s built with %s\n' "$OK" "$(go version | awk '{print $3}')"
 for platform in $PLATFORMS; do
 	os="${platform%%/*}"; arch="${platform##*/}"
 	archive ""   LICENSE    "$os" "$arch" $BSL_CMDS

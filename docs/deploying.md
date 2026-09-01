@@ -428,8 +428,16 @@ shipped, so what it reports is what an attacker could actually reach — which i
 the difference between a gate people act on and a weekly list they stop reading.
 
 It found six open against the standard library the first time it ran: the
-toolchain was one patch behind and nothing was looking. `go.mod` names the patch
-now, and the Dockerfile's builder names the same one, so the two cannot drift.
+toolchain was one patch behind and nothing was looking. The Dockerfile's builder
+names the patch, and `scripts/dist.sh` reads it back out of the Dockerfile and
+sets `GOTOOLCHAIN` from it, so the image and the archives are built by the same
+compiler.
+
+`go.mod` is not what holds that. Its `go 1.26.6` is a minimum language version
+and not a pin — Go builds with a newer toolchain than it names without comment,
+which is how a release cut here once reported `go1.27.0` against an image pinned
+to 1.26.6. Two channels, two compilers, and the only place that would have shown
+is `cronosd -version` on an artifact somebody had already downloaded.
 
 Two remain, and neither is reachable from this code: an out-of-bounds read in
 `klauspost/compress/s2`, and `x/crypto/openpgp` being unmaintained. Both arrive
