@@ -71,6 +71,11 @@ func (t *translation) columnOf(p placedField) (string, bool) {
 			p.field.EvaluationTime, oneLine(p.field.Expression))
 	}
 
+	if raw := strings.TrimSpace(p.field.Expression); raw != unwrapToString(raw) {
+		t.found.add(Note, "textFieldExpression",
+			"a column called .toString() on its field; the column is imported and formats "+
+				"from the field's type instead")
+	}
 	r, plain := plainRef(p.field.Expression)
 	if !plain {
 		t.found.addf(Review, "textFieldExpression",

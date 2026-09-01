@@ -219,6 +219,56 @@ var notCarried = map[string]lost{
 	"highLowChart":      {Review, "chart", "a high-low chart is not a cronos chart kind and is not imported"},
 	"spiderChart":       {Review, "chart", "a spider chart is not a cronos chart kind and is not imported"},
 
+	// ---- Families found by running this over JasperReports' own samples. ----
+	//
+	// Each of these was arriving as "a construct this importer does not read",
+	// which is honest and the least actionable thing the report can say. A
+	// reader holding four hundred files needs to know a map is a map.
+	"map":                 {Review, "map", mapDetail},
+	"markerData":          {Note, "map", mapDetail},
+	"markerDataset":       {Note, "map", mapDetail},
+	"marker":              {Note, "map", mapDetail},
+	"latitudeExpression":  {Note, "map", mapDetail},
+	"longitudeExpression": {Note, "map", mapDetail},
+	"zoomExpression":      {Note, "map", mapDetail},
+	"addressExpression":   {Note, "map", mapDetail},
+
+	"customvisualization": {Review, "component",
+		"a custom visualization renders through a JavaScript component of its own; there is no cronos equivalent and it is not imported"},
+	"cvData":       {Note, "component", "part of a custom visualization that was not imported"},
+	"cvDataset":    {Note, "component", "part of a custom visualization that was not imported"},
+	"itemData":     {Note, "component", "the data behind a component that was not imported"},
+	"itemProperty": {Note, "component", "the data behind a component that was not imported"},
+	"item":         {Note, "component", "the data behind a component that was not imported"},
+
+	// The XY family: two measures against each other, which cronos does not
+	// chart. xyDataset above says so; these are the elements around it.
+	"xyLineChart":          {Review, "chart", xyDetail},
+	"xyBarChart":           {Review, "chart", xyDetail},
+	"xyAreaChart":          {Review, "chart", xyDetail},
+	"xyzDataset":           {Review, "chart", xyDetail},
+	"valueDataset":         {Review, "chart", xyDetail},
+	"highLowDataset":       {Review, "chart", xyDetail},
+	"xValueExpression":     {Note, "chart", xyDetail},
+	"yValueExpression":     {Note, "chart", xyDetail},
+	"zValueExpression":     {Note, "chart", xyDetail},
+	"timePeriodExpression": {Note, "chart", xyDetail},
+	"timeSeriesPlot":       {Note, "chart appearance", chartAppearance},
+	"xAxisFormat":          {Note, "chart appearance", chartAppearance},
+	"yAxisFormat":          {Note, "chart appearance", chartAppearance},
+	"openExpression":       {Note, "chart", xyDetail},
+	"closeExpression":      {Note, "chart", xyDetail},
+	"highExpressionValue":  {Note, "chart", xyDetail},
+	"volumeExpression":     {Note, "chart", xyDetail},
+	"dateExpression":       {Note, "chart", xyDetail},
+
+	"parametersMapExpression": {Note, "subDataset",
+		"the parameter map handed to a subreport or component, which went with it"},
+
+	// A conditional style is a style. conditionalStyle is already appearance;
+	// the expression inside it was arriving as an unknown construct.
+	"conditionExpression": {Note, "appearance", appearanceDetail},
+
 	// ---- Appearance. Expected, and expected to be ignored. ----
 	"textElement":       {Note, "appearance", appearanceDetail},
 	"font":              {Note, "appearance", appearanceDetail},
@@ -274,3 +324,7 @@ var notCarried = map[string]lost{
 const appearanceDetail = "fonts, colours, borders, rules and pixel positions are not carried; cronos styles by theme and lays out by block"
 
 const chartAppearance = "a chart's axis titles, colours and value formatting are not carried"
+
+const mapDetail = "a map plots points on tiles fetched from a map service; cronos has no map block, so it is not imported"
+
+const xyDetail = "an XY, time-series, high-low or candlestick chart plots two measures against each other; cronos charts a dimension against a measure, so it is not imported"

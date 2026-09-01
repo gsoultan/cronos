@@ -118,7 +118,7 @@ func refuseSplice(r ref) error {
 // a second token, an operator or a method call is not a column reference, and
 // pretending otherwise imports a column of wrong numbers.
 func plainRef(expr string) (r ref, ok bool) {
-	trimmed := strings.TrimSpace(expr)
+	trimmed := unwrapToString(strings.TrimSpace(expr))
 	refs := scanRefs(trimmed)
 	if len(refs) != 1 {
 		return ref{}, false
@@ -132,6 +132,24 @@ func plainRef(expr string) (r ref, ok bool) {
 		return ref{}, false
 	}
 	return only, true
+}
+
+// unwrapToString drops a trailing `.toString()` from a reference.
+//
+// `$F{OrderId}.toString()` is the same column as `$F{OrderId}`. The call
+// changes how Java rendered it and not which field it is, and this importer
+// does not carry rendering anyway — a cronos column formats from the field's
+// declared type. Found in JasperReports' own samples, where dropping it meant
+// dropping the column: a report short one column is a worse import than one
+// whose number is formatted by a different rule.
+func unwrapToString(s string) string {
+	for {
+		t := strings.TrimSuffix(s, ".toString()")
+		if t == s {
+			return s
+		}
+		s = strings.TrimSpace(t)
+	}
 }
 
 // literalString reads a Java string literal, which is how Jasper spells a fixed

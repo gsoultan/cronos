@@ -47,6 +47,39 @@ func TestTheShapesRealFilesTake(t *testing.T) {
 		assertColumns(t, res, "id", "total")
 	})
 
+	t.Run("a column that calls toString on its field", func(t *testing.T) {
+		// Found in JasperReports' own samples. `$F{OrderId}.toString()` is the
+		// same column as `$F{OrderId}` — the call changed how Java rendered it,
+		// not which field it is — and dropping it dropped the column, which is
+		// a worse import than a number formatted by a different rule.
+		res := importString(t, wrap(`
+			<queryString><![CDATA[SELECT order_id, total FROM t]]></queryString>
+			<field name="order_id" class="java.lang.Integer"/>
+			<field name="total" class="java.math.BigDecimal"/>
+			<detail><band height="20">
+				<textField><reportElement x="0" y="0" width="100" height="20"/>
+					<textFieldExpression><![CDATA[$F{order_id}.toString()]]></textFieldExpression></textField>
+				<textField><reportElement x="110" y="0" width="100" height="20"/>
+					<textFieldExpression><![CDATA[$F{total}]]></textFieldExpression></textField>
+			</band></detail>`))
+		assertColumns(t, res, "order_id", "total")
+		if !hasFindingText(res, "toString") {
+			t.Errorf("the column was recovered without saying the coercion was dropped:\n%s", render(res))
+		}
+		// Still not a licence to import arithmetic.
+		other := importString(t, wrap(`
+			<queryString><![CDATA[SELECT a, b FROM t]]></queryString>
+			<field name="a" class="java.lang.String"/>
+			<field name="b" class="java.lang.String"/>
+			<detail><band height="20">
+				<textField><reportElement x="0" y="0" width="100" height="20"/>
+					<textFieldExpression><![CDATA[$F{a} + $F{b}.toString()]]></textFieldExpression></textField>
+				<textField><reportElement x="110" y="0" width="100" height="20"/>
+					<textFieldExpression><![CDATA[$F{b}]]></textFieldExpression></textField>
+			</band></detail>`))
+		assertColumns(t, other, "b")
+	})
+
 	t.Run("the JasperReports 7 query spelling", func(t *testing.T) {
 		// JasperReports 7 renamed <queryString> to <query> and changed nothing
 		// else about it. Found by running the importer over the library's own
