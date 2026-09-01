@@ -47,6 +47,48 @@ func TestTheShapesRealFilesTake(t *testing.T) {
 		assertColumns(t, res, "id", "total")
 	})
 
+	t.Run("the JasperReports 7 query spelling", func(t *testing.T) {
+		// JasperReports 7 renamed <queryString> to <query> and changed nothing
+		// else about it. Found by running the importer over the library's own
+		// samples on master, where every file came back with nothing at all:
+		// the layout is a syntax this does not read, and the query was going
+		// unread too, so a JR7 file yielded no dataset either. It yields one now.
+		res := importString(t, wrap(`
+			<query language="sql"><![CDATA[SELECT id, total FROM t WHERE d >= $P{From}]]></query>
+			<field name="id" class="java.lang.String"/>
+			<field name="total" class="java.math.BigDecimal"/>
+			<parameter name="From" class="java.util.Date"/>
+			<detail><band height="20">
+				<textField><reportElement x="0" y="0" width="100" height="20"/>
+					<textFieldExpression><![CDATA[$F{id}]]></textFieldExpression></textField>
+			</band></detail>`))
+		if !res.HasDataset() {
+			t.Fatalf("a <query> element yielded no dataset:\n%s", render(res))
+		}
+		if !strings.Contains(res.Dataset.Query, "{{ .params.from }}") {
+			t.Errorf("the JR7 query did not bind its parameter:\n%s", res.Dataset.Query)
+		}
+		if len(res.Dataset.Fields) != 2 {
+			t.Errorf("got %d fields, want 2", len(res.Dataset.Fields))
+		}
+	})
+
+	t.Run("both spellings do not fight", func(t *testing.T) {
+		// A file carrying both is not something Jasper writes, but the reader
+		// has to pick one rather than concatenate or blank them.
+		res := importString(t, wrap(`
+			<queryString><![CDATA[SELECT id FROM classic]]></queryString>
+			<query language="sql"><![CDATA[SELECT id FROM modern]]></query>
+			<field name="id" class="java.lang.String"/>
+			<detail><band height="20">
+				<textField><reportElement x="0" y="0" width="100" height="20"/>
+					<textFieldExpression><![CDATA[$F{id}]]></textFieldExpression></textField>
+			</band></detail>`))
+		if !strings.Contains(res.Dataset.Query, "classic") {
+			t.Errorf("the classic spelling did not win:\n%s", res.Dataset.Query)
+		}
+	})
+
 	t.Run("the JasperReports 7 element syntax", func(t *testing.T) {
 		// A second way to spell a band's contents, which this importer does not
 		// read. The query still has to come across, and the file has to say why

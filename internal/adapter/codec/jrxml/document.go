@@ -24,7 +24,11 @@ type document struct {
 	BottomMargin int    `xml:"bottomMargin,attr"`
 	ColumnCount  int    `xml:"columnCount,attr"`
 
-	Query      queryString `xml:"queryString"`
+	Query queryString `xml:"queryString"`
+	// QueryJR7 is the same element under the name JasperReports 7 gives it.
+	// Identical shape — a language attribute and the SQL as chardata — so the
+	// newer spelling costs one field rather than a second parser.
+	QueryJR7   queryString `xml:"query"`
 	Parameters []parameter `xml:"parameter"`
 	Fields     []field     `xml:"field"`
 	SortFields []sortField `xml:"sortField"`
@@ -126,8 +130,12 @@ type group struct {
 
 // subDataset is a second query inside the file, feeding a chart or a crosstab.
 type subDataset struct {
-	Name       string      `xml:"name,attr"`
-	Query      queryString `xml:"queryString"`
+	Name  string      `xml:"name,attr"`
+	Query queryString `xml:"queryString"`
+	// QueryJR7 is the same element under the name JasperReports 7 gives it.
+	// Identical shape — a language attribute and the SQL as chardata — so the
+	// newer spelling costs one field rather than a second parser.
+	QueryJR7   queryString `xml:"query"`
 	Fields     []field     `xml:"field"`
 	Parameters []parameter `xml:"parameter"`
 }

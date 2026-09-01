@@ -164,8 +164,20 @@ func (t *translation) name() string {
 // HQL, MDX, XPath and the rest are not SQL with different keywords, and a
 // dataset that claims to hold one when it holds another fails when it runs
 // rather than when it is imported.
+// queryString is whichever spelling of the query element this file used.
+//
+// JasperReports 7 renamed <queryString> to <query> and changed nothing else
+// about it. Reading both means a JR7 file still yields its dataset — the half
+// worth most — even though its bands are a syntax this importer does not read.
+func (d document) queryString() queryString {
+	if strings.TrimSpace(d.Query.SQL) != "" || d.Query.Language != "" {
+		return d.Query
+	}
+	return d.QueryJR7
+}
+
 func (t *translation) checkQueryLanguage() error {
-	lang := strings.TrimSpace(t.doc.Query.Language)
+	lang := strings.TrimSpace(t.doc.queryString().Language)
 	if lang == "" || strings.EqualFold(lang, "sql") {
 		return nil
 	}
@@ -180,7 +192,7 @@ func (t *translation) checkQueryLanguage() error {
 
 // query translates the SQL, binding the parameters it reads.
 func (t *translation) query(names map[string]string) (string, error) {
-	sql := strings.TrimSpace(t.doc.Query.SQL)
+	sql := strings.TrimSpace(t.doc.queryString().SQL)
 	if sql == "" {
 		return "", t.refuse("queryString",
 			"the report has no query — it was filled by whatever ran it, "+

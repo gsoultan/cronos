@@ -98,7 +98,7 @@ definition.
 | **`printWhenExpression`** | No conditional block | Imported unconditionally — check it does not now show what it hid |
 | **Fonts, colours, borders, positions** | Styled by theme, laid out by block | Nothing; this is the trade |
 | **Pie charts** | No pie renderer | Imported as a bar chart of the same values |
-| **The JasperReports 7 element syntax** | This reads the classic `<textField>` bands | The query still imports; the layout has to be rebuilt |
+| **The JasperReports 7 band syntax** | This reads the classic `<textField>` bands, not `<element kind="…">` | The dataset still imports — query, parameters and fields — and the layout has to be rebuilt |
 | **XY, time-series, scatter, gauge charts** | cronos charts a dimension against a measure | Rebuild in the builder |
 | **Row-level security** | A `.jrxml` has none to carry | **Read the next section.** |
 
@@ -199,6 +199,15 @@ quantities. A column the report totalled is a measure; one the report grouped by
 is a dimension; otherwise a numeric column whose name ends in `id`, `code`, `no`,
 `year` and similar is a dimension, and anything else numeric becomes a measure
 that sums. The count of guesses is reported. Check them.
+
+**Both spellings of the query are read.** JasperReports 7 renamed
+`<queryString>` to `<query>` and changed nothing else about it, so a file in
+either dialect yields its dataset. Its *layout* is another matter: JR7 also
+replaced `<textField>` with `<element kind="textField">`, which this does not
+read, so a JR7 file imports its query and reports that its bands did not come
+across. A JasperReports Server CE estate is 6.x — CE stopped there in January
+2024 — so this mostly matters for reports somebody has since opened in a newer
+Studio.
 
 **Non-UTF-8 files are read.** Jasper Studio wrote the platform default encoding
 for years, so ISO-8859-x and windows-125x files are common and are decoded
