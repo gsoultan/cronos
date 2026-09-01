@@ -363,7 +363,7 @@ always failing.
 | `internal/core/` | Definitions, validation, query compilation. No external dependencies. |
 | `internal/app/run/` | Report → SQL → rows → what a viewer draws |
 | `internal/adapter/` | YAML, `database/sql`, the Typst renderer, the HTTP API |
-| `internal/adapter/codec/jrxml/` | JasperReports in — the common 80%, and a report of what it refused |
+| `internal/adapter/codec/jrxml/` | JasperReports in — 79% of the format authors' own SQL samples, and a report of what it refused |
 | `internal/adapter/driver/duckdb/` | Federation — one query over a warehouse, a lake and a spreadsheet. cgo, so `-tags duckdb` |
 | `apps/portal/` | The authoring UI — React 19, Mantine, Tailwind, PWA |
 | `packages/embed/` | `<cronos-report>`, 3.2 KB gzipped, framework-agnostic |

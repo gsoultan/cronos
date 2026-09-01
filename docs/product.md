@@ -188,7 +188,7 @@ assumption is tested first.
 | **v0.3** | Delivery | Scheduler, bursting, email + S3, retries, run history | Marek's job |
 | **v0.4** | Embed | Repository API, embed tokens, tenancy, embed web component. *Done. The store is authoritative; the directory is the bootstrap.* | **Priya's job. First sellable release.** |
 | **v0.5** | Author | Portal PWA, dataset browser, report builder, live preview. *Done, and tagged — see CHANGELOG.md.* | Dewi's job — self-service |
-| **v1.0** | Migrate | `.jrxml` importer, HA scheduler, SSO + audit (EE), documentation. *Done. The importer covers the common 80% and reports the rest per file — docs/migrating-from-jasper.md.* | Marek's switching cost |
+| **v1.0** | Migrate | `.jrxml` importer, HA scheduler, SSO + audit (EE), documentation. *Done. Measured at 79% of the SQL reports in JasperReports' own sample suite, with the rest reported per file — docs/migrating-from-jasper.md.* | Marek's switching cost |
 
 Realistic elapsed time to v1.0 for a small team: **9–12 months**. v0.4 is the first
 release worth charging for; everything before it is validation.

@@ -60,7 +60,7 @@ which is why `CRONOS_PORTAL_URL` is a URL. See
 
 ### Not yet in a release
 
-- **The `.jrxml` importer stops at the common 80%, and names the rest.**
+- **The `.jrxml` importer stops at four fifths of it, and names the rest.**
   Subreports, crosstabs, images, conditional elements and columns computed by a
   Java expression do not come across; each is reported against the file that had
   it, so the remainder is a work list rather than a surprise. Two constructs are

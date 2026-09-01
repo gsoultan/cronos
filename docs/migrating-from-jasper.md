@@ -40,6 +40,38 @@ parameters, a grouped and subtotalled table on paper — and says, per file, wha
 it could not carry. Everything below is what "covers" means, because the useful
 thing to know before migrating four hundred reports is where the work will be.
 
+## How much comes across
+
+The number below is measured rather than estimated, against the sample reports
+JasperReports 6.10 ships in its own `demo/samples` — 153 files written by the
+people who defined the format, and none of them written for this.
+
+|  |  |
+| :--- | ---: |
+| Sample reports in the suite | 153 |
+| …with no query at all, fed by a Java `JRDataSource` | 67 |
+| …with a query in a language that is not SQL — MDX, xPath, olap4j, JSON, CSV, HQL, EJBQL, xls | 31 |
+| **Reports carrying SQL** | **48** |
+| **Imported** | **38 — 79%** |
+
+The 38 became 27 datasets and 38 reports, because identical queries collapse.
+All of them load into the repository, every dataset compiles, and of the 80
+blocks across them, not one names a column its dataset does not publish.
+
+The ten that did not: six draw their detail band with a crosstab or a component
+rather than fields, so there is a dataset and nothing to render it; two declare
+a query element and leave it empty; two splice `$P!{}` into their SQL, which is
+refused on purpose and is described below. `QueryReport.jrxml` — the suite's own
+example of a configurable `ORDER BY` — is one of those two.
+
+Two things that number is not. It is not a promise about your estate: a demo
+suite exists to show off crosstabs, subreports, charts and components, so it is
+biased toward exactly what does not survive, and an operational estate of
+tabular statements should do better. And it is not a claim that 79% of files
+need no work — every one of the 38 came with findings. It is the fraction that
+arrives as a definition the engine will load, which is the thing worth measuring
+before you start.
+
 ## What the two formats disagree about
 
 Everything else follows from this, so it is worth two paragraphs.
