@@ -18,6 +18,62 @@ deployment depends on — each one says so under **Upgrading** below.
 
 ---
 
+## Unreleased
+
+Work since v0.5.0. None of it is in a tagged build yet: an operator running
+v0.5.0 has none of what follows, which is the reason this section exists rather
+than being folded into the release below it.
+
+**MySQL.** Accepted by every layer and unreachable, for want of one blank
+import. A report against a real MySQL 8 now runs in CI, and a source that will
+not open is skipped and named rather than fatal — counted by a third counter,
+`cronos_datasources_unavailable`, beside the two v0.5.0 already had. It should
+be zero.
+
+**Migration.** `cronos-import` turns a directory of JasperReports `.jrxml`
+files into cronos definitions — one Dataset and one Report each, with identical
+queries shared rather than copied. It writes nothing without `-out`, prints a
+per-file work list graded blocked/review/note, and exits non-zero while anything
+is blocked. It ships in both release channels beside `cronosd` — the Linux
+archives and the container image — because the person holding four hundred
+`.jrxml` files is as likely to be on a host as in a container.
+`examples/jasper/` holds a report to try it on.
+
+**Release archives.** `make dist` cross-compiles `linux/amd64`, `linux/arm64`
+and `darwin/arm64` tarballs with a `SHA256SUMS` beside them, so a deployment
+that already has systemd and a backup story does not have to adopt a container
+runtime to run cronos. Two archives per platform: the community binaries under
+BSL, and `cronosd-ee` under its own license, because the boundary
+`scripts/check-license-boundary.sh` enforces in the build graph has to hold in
+distribution too.
+
+**Installing from an archive: install `typst` too.** It is not in the tarball —
+a host takes it from the typesetter's own releases the way it takes any other
+system dependency — and it is the one missing piece that says nothing. Nothing
+outside the renderer looks for it, so every path except paginated output works
+without it and a PDF schedule fails at six on the first of the month and nowhere
+earlier. Run `typst --version` on the host before anything is scheduled. The
+container image already carries it, and `make image` and CI both prove it does.
+The portal is not in the archive either: it is static files on their own origin,
+which is why `CRONOS_PORTAL_URL` is a URL. See
+[docs/deploying.md](docs/deploying.md) — A host install.
+
+### Not yet in a release
+
+- **The `.jrxml` importer stops at the common 80%, and names the rest.**
+  Subreports, crosstabs, images, conditional elements and columns computed by a
+  Java expression do not come across; each is reported against the file that had
+  it, so the remainder is a work list rather than a surprise. Two constructs are
+  refused rather than imported wrong: a `$P!{}` parameter spliced into the SQL
+  as text, and a query that is not SQL.
+- **An imported dataset has no row-level security.** A `.jrxml` has none to carry —
+  JasperReports Server enforced access above the report — so an imported
+  dataset returns every row its query selects until somebody adds a predicate.
+  The importer says so once per file. Do it before publishing anything an end
+  customer can reach: [docs/migrating-from-jasper.md](docs/migrating-from-jasper.md).
+
+---
+
 ## v0.5.0 — 2026-08-17
 
 The first tagged release. Everything through the roadmap's v0.5 is here: the
@@ -27,11 +83,9 @@ election, SSO, audit, and the deployment documentation — with one exception,
 below.
 
 **The engine.** YAML definitions with bound parameters and structural row-level
-security, over Postgres, MySQL, SQL Server, SQLite and object stores — MySQL was
-accepted by every layer and unreachable until this release, for want of one
-blank import. Federation across engines behind `-tags duckdb`: one query joining
-a customer list in one database to invoices in another, every source attached
-read-only. Results are
+security, over Postgres, MySQL, SQL Server, SQLite and object stores. Federation
+across engines behind `-tags duckdb`: one query joining a customer list in one
+database to invoices in another, every source attached read-only. Results are
 bounded everywhere and streamed almost everywhere — a render never holds more
 than a page, whether the table has fifty rows or two million.
 
@@ -67,47 +121,11 @@ metrics including scheduler health and datasource pool utilisation, an audit of
 who read what and what was refused, retention for run history and deliveries,
 a container image, and a restore drill that CI runs on every push.
 
-**Migration.** `cronos-import` turns a directory of JasperReports `.jrxml`
-files into cronos definitions — one Dataset and one Report each, with identical
-queries shared rather than copied. It writes nothing without `-out`, prints a
-per-file work list graded blocked/review/note, and exits non-zero while anything
-is blocked. It ships in both release channels beside `cronosd` — the Linux
-archives and the container image — because the person holding four hundred
-`.jrxml` files is as likely to be on a host as in a container.
-`examples/jasper/` holds a report to try it on.
-
-**Release archives.** `make dist` cross-compiles `linux/amd64`, `linux/arm64`
-and `darwin/arm64` tarballs with a `SHA256SUMS` beside them, so a deployment
-that already has systemd and a backup story does not have to adopt a container
-runtime to run cronos. Two archives per platform: the community binaries under
-BSL, and `cronosd-ee` under its own license, because the boundary
-`scripts/check-license-boundary.sh` enforces in the build graph has to hold in
-distribution too.
-
-**Installing from an archive: install `typst` too.** It is not in the tarball —
-a host takes it from the typesetter's own releases the way it takes any other
-system dependency — and it is the one missing piece that says nothing. Nothing
-outside the renderer looks for it, so every path except paginated output works
-without it and a PDF schedule fails at six on the first of the month and nowhere
-earlier. Run `typst --version` on the host before anything is scheduled. The
-container image already carries it, and `make image` and CI both prove it does.
-The portal is not in the archive either: it is static files on their own origin,
-which is why `CRONOS_PORTAL_URL` is a URL. See
-[docs/deploying.md](docs/deploying.md) — A host install.
-
 ### Not in this release
 
-- **The `.jrxml` importer stops at the common 80%, and names the rest.**
-  Subreports, crosstabs, images, conditional elements and columns computed by a
-  Java expression do not come across; each is reported against the file that had
-  it, so the remainder is a work list rather than a surprise. Two constructs are
-  refused rather than imported wrong: a `$P!{}` parameter spliced into the SQL
-  as text, and a query that is not SQL.
-- **An imported dataset has no row-level security.** A `.jrxml` has none to carry —
-  JasperReports Server enforced access above the report — so an imported
-  dataset returns every row its query selects until somebody adds a predicate.
-  The importer says so once per file. Do it before publishing anything an end
-  customer can reach: [docs/migrating-from-jasper.md](docs/migrating-from-jasper.md).
+- **No `.jrxml` importer.** Migrating an existing JasperReports estate is v1.0's
+  distinguishing feature and is not started. A deployment coming from Jasper
+  re-authors its reports.
 - **No offline viewing of results.** The service worker caches the application
   shell and no API response, deliberately: a cache keyed by URL serves one
   principal's data to the next person on that browser.
@@ -132,6 +150,5 @@ will have to tell you, and what already holds:
 - **Definitions this build will not accept are skipped, not fatal.** A stored
   definition that fails validation is logged at error and counted by
   `cronos_definitions_refused`; a schedule that will not arm by
-  `cronos_schedules_unarmed`; a datasource that will not open by
-  `cronos_datasources_unavailable`. The deployment starts and serves the rest,
-  and the bad one can be deleted through the API. All three should be zero.
+  `cronos_schedules_unarmed`. The deployment starts and serves the rest, and
+  the bad one can be deleted through the API. Both should be zero.
