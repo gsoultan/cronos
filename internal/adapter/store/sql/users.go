@@ -29,7 +29,7 @@ func (s *Store) CreateUser(ctx context.Context, u identity.User, password string
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`),
 		u.ID, email, u.Name, hash, u.Org, u.Project, u.Role, stamp(s.now()))
 
-	if err != nil && strings.Contains(strings.ToLower(err.Error()), "unique") {
+	if duplicate(err) {
 		return fmt.Errorf("%w: %s", identity.ErrExists, email)
 	}
 	return err
@@ -69,6 +69,10 @@ func (s *Store) Authenticate(ctx context.Context, email, password string) (ident
 	}
 
 	u.CreatedAt, _ = time.Parse(time.RFC3339, created)
+	// Read here so the session can carry it, rather than asked on every
+	// request. Taking it away cuts their sessions, so the claim never outlives
+	// the grant by more than the moment between the two writes.
+	u.Platform = s.IsPlatformAdmin(ctx, u.ID)
 	return u, s.seen(ctx, u.ID)
 }
 
@@ -97,7 +101,7 @@ func (s *Store) User(ctx context.Context, id string) (identity.User, error) {
 		FROM cronos_users WHERE id = ?`), id).
 		Scan(&u.ID, &u.Email, &u.Name, &u.Org, &u.Project, &u.Role, &created, &seen, &u.Disabled)
 	if err != nil {
-		return identity.User{}, fmt.Errorf("%w: %s", identity.ErrNotFound, id)
+		return identity.User{}, fmt.Errorf("%w: %s", identity.ErrNoUser, id)
 	}
 
 	u.CreatedAt, _ = time.Parse(time.RFC3339, created)

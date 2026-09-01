@@ -2,13 +2,21 @@ import { lazy, Suspense, useEffect, useState } from 'react'
 import { Outlet, useRouterState } from '@tanstack/react-router'
 import { Header } from './Header'
 import { SampleBanner } from './SampleBanner'
-import { adoptSessionFromFragment, needsSignIn, SIGNED_OUT } from '../lib/api'
+import {
+  adoptSessionFromFragment, mustEnrol, needsSignIn, setupNeeded, SIGNED_OUT,
+} from '../lib/api'
 
 /* Lazy, because the sign-in page pulls Mantine's password field and most loads
    never show it — a signed-in author, and every load in sample mode. It was
    ten kilobytes in the eager bundle for a page shown once a day. */
 const SignInPage = lazy(() =>
   import('../routes/SignInPage').then((m) => ({ default: m.SignInPage })))
+
+const SetupPage = lazy(() =>
+  import('../routes/SetupPage').then((m) => ({ default: m.SetupPage })))
+
+const MustEnrolPage = lazy(() =>
+  import('../routes/MustEnrolPage').then((m) => ({ default: m.MustEnrolPage })))
 import { NavRail } from './NavRail'
 import { WorkspaceSwitcher } from './WorkspaceSwitcher'
 import { useWorkspace } from '../lib/WorkspaceContext'
@@ -43,6 +51,18 @@ export function Shell() {
     root.dataset.mantineColorScheme = theme
   }, [theme])
 
+  /*
+     The Mantine styles no first screen renders, fetched once the first one has.
+
+     Every one of them belongs to a lazily-loaded route — the editors, the
+     builder, the settings panels — and shipping their CSS with the sign-in form
+     was thirty-odd kilobytes nobody had asked for. Started on mount, so it is
+     in flight long before anybody can navigate anywhere, and joining a cascade
+     layer theme/index.css has already declared, so arriving late does not
+     change what wins.
+  */
+  useEffect(() => { void import('../theme/mantine-deferred.css') }, [])
+
   /* Navigating closes the drawer. It sits on top of the page it just took you
      to, so leaving it open hides the result of the tap that opened it. */
   useEffect(() => { setDrawer(false) }, [path])
@@ -69,14 +89,42 @@ export function Shell() {
   const [adopted] = useState(() => adoptSessionFromFragment())
   void adopted
 
-  /* A shared report is the page and nothing else, and before the sign-in check
-     rather than after: whoever follows a share link has no account here, and
+  /* Undefined until the server has answered. */
+  const [setupWanted, setSetupWanted] = useState<boolean | undefined>(undefined)
+  useEffect(() => {
+    if (!needsSignIn()) {
+      setSetupWanted(false)
+      return
+    }
+    let live = true
+    void setupNeeded().then((yes) => { if (live) setSetupWanted(yes) })
+    return () => { live = false }
+  }, [session])
+
+  /* Two pages stand on their own, before the sign-in check rather than after.
+     A shared report, because whoever follows the link has no account here and
      asking them to sign in to read something they were deliberately given
-     without one would be the interface undoing the feature. */
-  if (path.startsWith('/s/')) {
+     without one would be the interface undoing the feature. And an invitation,
+     because the person opening it does not have an account *yet* — sending
+     them to a sign-in page they cannot pass is the loop this feature exists to
+     break. A password reset is the third and the same shape: they have an
+     account and cannot get into it. */
+  if (path.startsWith('/s/') || path === '/invitation' || path === '/reset') {
     return (
       <Suspense fallback={<main className="min-h-screen bg-canvas" />}>
         <Outlet />
+      </Suspense>
+    )
+  }
+
+  /* Signed in, and to one thing only: this project requires a second factor
+     and this account has none. The wizard and nothing else, because the shell
+     around it would be a navigation bar over panels that each answer 403 — and
+     the server refuses every one of those routes anyway. */
+  if (mustEnrol()) {
+    return (
+      <Suspense fallback={<main className="min-h-screen bg-canvas" />}>
+        <MustEnrolPage onDone={() => setSession((n) => n + 1)} />
       </Suspense>
     )
   }
@@ -86,9 +134,20 @@ export function Shell() {
      never reaches here, which is what keeps the interface workable before a
      server exists. */
   if (needsSignIn()) {
+    /* A deployment with no accounts at all shows setup instead of a sign-in
+       form nobody can pass. Asked of the server rather than guessed, and the
+       answer is only ever "yes" while it is true — the endpoint closes itself
+       the moment an account exists. Undecided means the question is still in
+       flight, and neither page is shown, because flashing a sign-in form and
+       replacing it is worse than a blank moment. */
+    if (setupWanted === undefined) {
+      return <main className="min-h-screen bg-canvas" />
+    }
     return (
       <Suspense fallback={<main className="min-h-screen bg-canvas" />}>
-        <SignInPage onSignedIn={() => setSession((n) => n + 1)} />
+        {setupWanted
+          ? <SetupPage onDone={() => { setSetupWanted(false); setSession((n) => n + 1) }} />
+          : <SignInPage onSignedIn={() => setSession((n) => n + 1)} />}
       </Suspense>
     )
   }

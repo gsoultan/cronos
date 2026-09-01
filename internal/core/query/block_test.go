@@ -87,9 +87,40 @@ func TestChartsBucketPerDialect(t *testing.T) {
 	if !strings.Contains(lite, "strftime('%Y-%m-01', issued_at) AS bucket") {
 		t.Errorf("sqlite has no date_trunc:\n%s", lite)
 	}
-	// Repeating the expression in GROUP BY is a second place for it to differ.
-	if !strings.Contains(pg, "GROUP BY 1") {
-		t.Errorf("group by the ordinal:\n%s", pg)
+	/*
+	   Grouped by the expression, not by an ordinal.
+
+	   This asserted `GROUP BY 1` and every dialect that existed accepted it.
+	   SQL Server does not — it reads the 1 as a constant and answers "each
+	   GROUP BY expression must contain at least one column that is not an outer
+	   reference", which is a sentence nobody would connect to a chart. Found by
+	   running a report against a real server.
+
+	   The same string is interpolated into both places, so the drift the
+	   ordinal was avoiding cannot happen.
+	*/
+	for name, sql := range map[string]string{"postgres": pg, "sqlite": lite} {
+		bucket := sql[strings.Index(sql, "SELECT ")+len("SELECT ") : strings.Index(sql, " AS bucket")]
+		if !strings.Contains(sql, "GROUP BY "+bucket) {
+			t.Errorf("%s does not group by the bucket expression:\n%s", name, sql)
+		}
+		if strings.Contains(sql, "GROUP BY 1") {
+			t.Errorf("%s groups by an ordinal, which sql server reads as a constant:\n%s", name, sql)
+		}
+	}
+
+	// SQL Server, for the same block, and the arithmetic that works before 2022.
+	ms := block(t, dated(), blk, SQLServer{})
+	if !strings.Contains(ms, "DATEADD(month, DATEDIFF(month, 0, issued_at), 0) AS bucket") {
+		t.Errorf("sqlserver should truncate with DATEADD:\n%s", ms)
+	}
+	if !strings.Contains(ms, "GROUP BY DATEADD(month, DATEDIFF(month, 0, issued_at), 0)") {
+		t.Errorf("sqlserver does not group by the expression:\n%s", ms)
+	}
+	// Its arguments are named, so a `?` anywhere would be a literal question
+	// mark reaching the server.
+	if strings.Contains(ms, "?") {
+		t.Errorf("sqlserver has a positional placeholder in it:\n%s", ms)
 	}
 }
 

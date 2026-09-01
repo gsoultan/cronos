@@ -15,4 +15,7 @@ var (
 	// ErrScopedBySchedule means a schedule reads a dataset with row-level
 	// security, which would deliver empty documents to everybody.
 	ErrScopedBySchedule = errors.New("publish: schedule reads a row-scoped dataset")
+	// ErrStale means somebody else saved this definition since the caller read
+	// it, so storing theirs would quietly discard the other edit.
+	ErrStale = errors.New("publish: changed since you read it")
 )

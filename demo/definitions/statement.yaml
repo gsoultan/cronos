@@ -2,7 +2,8 @@ apiVersion: cronos.dev/v1
 kind: Report
 metadata:
   name: customer-statement
-  folder: Acme Logistics
+  title: Customer statement
+  folder: Finance
   description: One statement per customer, for the period just closed.
 spec:
   # Scoped by parameter, not by row scope: a burst runs as the schedule's

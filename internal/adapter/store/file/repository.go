@@ -114,6 +114,39 @@ func (r *Repository) Adopt(docs [][]byte) error {
 	return nil
 }
 
+/*
+AdoptUsable takes the documents it can and returns the reasons for the rest.
+
+The fallback when Adopt refuses, and only then — the ordinary path stays all or
+nothing. What it protects against is a store holding a document this build will
+not accept, which is not hypothetical: validation gets stricter, and a schedule
+with a timezone nobody checked at the time it was published becomes, on the next
+release, a deployment that will not start. With the API down, the only way to
+remove that definition is a prompt on the database.
+
+Which is the shape of every unrecoverable failure in this product: the fix for
+the thing that is broken requires the thing that is broken. One definition of
+fifty taking the other forty-nine off the air is not a trade anybody would
+choose, and it is not the trade Adopt's comment was defending — that one is
+about a repository half from the store and half from a directory it was told not
+to trust. This is still entirely the store, minus what it could not read.
+
+Loud rather than quiet: the caller logs each reason at error and counts them,
+because a definition that silently disappeared is the failure this is not
+allowed to become.
+*/
+func (r *Repository) AdoptUsable(docs [][]byte) []error {
+	fresh := empty()
+	var refused []error
+	for _, raw := range docs {
+		if err := fresh.insert(raw, ""); err != nil {
+			refused = append(refused, err)
+		}
+	}
+	r.replace(fresh)
+	return refused
+}
+
 // Load reads every .yaml under dir.
 //
 // It fails on the first bad file rather than skipping it. A repository that

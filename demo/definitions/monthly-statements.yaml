@@ -2,6 +2,7 @@ apiVersion: cronos.dev/v1
 kind: Schedule
 metadata:
   name: monthly-statements
+  title: Monthly statements
   description: 06:00 on the 1st — one PDF per customer, for the month just closed.
 spec:
   report: customer-statement

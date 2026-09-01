@@ -1,0 +1,29 @@
+/*
+ * The Mantine styles no first screen renders.
+ *
+ * Loaded after first paint rather than never: every one of these belongs to a
+ * lazily-loaded route — the editors, the builder, the settings panels, the
+ * share panel — and shipping their CSS with the sign-in form was thirty-odd
+ * kilobytes nobody had asked for yet.
+ *
+ * Fetched from Shell on mount, so it is in flight before anybody can navigate
+ * anywhere. The layer name is already declared by theme/index.css, so these
+ * rules join `@layer mantine` in the order that file established however late
+ * they arrive — which is what makes deferring them safe rather than a race
+ * between the cascade and the network.
+ */
+
+/* Select, MultiSelect, TagsInput — the combobox and everything it opens. */
+@import '@mantine/core/styles/Popover.layer.css';
+@import '@mantine/core/styles/ScrollArea.layer.css';
+@import '@mantine/core/styles/Combobox.layer.css';
+@import '@mantine/core/styles/Pill.layer.css';
+@import '@mantine/core/styles/PillsInput.layer.css';
+@import '@mantine/core/styles/FloatingIndicator.layer.css';
+
+/* The rest, each on a route somebody navigates to. */
+@import '@mantine/core/styles/Group.layer.css';
+@import '@mantine/core/styles/Menu.layer.css';
+@import '@mantine/core/styles/Tooltip.layer.css';
+@import '@mantine/core/styles/SegmentedControl.layer.css';
+@import '@mantine/core/styles/NumberInput.layer.css';

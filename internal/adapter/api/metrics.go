@@ -3,10 +3,13 @@ package api
 import (
 	"fmt"
 	"net/http"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/gsoultan/cronos/internal/platform/build"
 )
 
 /*
@@ -43,6 +46,66 @@ type Metrics struct {
 	deliveries map[string]int64 // by result
 	started    time.Time
 	now        func() time.Time
+
+	// schedulers are read at scrape time rather than pushed to. A gauge whose
+	// job is to say "nothing has happened for a while" cannot be maintained by
+	// the thing that has stopped happening.
+	schedulers map[string]SchedulerState
+	// pools, by project, read at scrape time for the same reason schedulers
+	// are: a gauge whose job is to say how busy something is cannot be
+	// maintained by the thing that is busy.
+	pools map[string]Pools
+
+	// unarmed answers how many schedules were read and will never run. A
+	// function rather than a number, because the count is boot's and this
+	// package must not import it — and because a zero from an unset field
+	// would be indistinguishable from a healthy deployment, which is the one
+	// answer this must never invent.
+	unarmed func() int64
+	// refused answers how many stored definitions this build would not accept
+	// — a different question from unarmed, with a different fix: one is a
+	// report that is not in the catalogue, the other a schedule that is there
+	// and will not run.
+	refused func() int64
+	// unopenable answers how many datasources could not be opened. The third
+	// of these, and the third distinct fix: a report missing from the
+	// catalogue, a send that never happens, a report that is listed and errors.
+	unopenable func() int64
+}
+
+/*
+SchedulerState is what a scheduler can be asked at scrape time.
+
+Both halves are needed and neither is sufficient. Due says what is armed and
+when it fires, which catches a deployment that armed nothing. LastTick says the
+loop is still going round, which catches one that armed everything and stopped.
+*/
+type SchedulerState interface {
+	Due() map[string]time.Time
+	LastTick() time.Time
+	// Leading says whether this replica is the one firing. Always true where
+	// nothing arbitrates, which is a single-process deployment.
+	Leading() bool
+}
+
+/*
+Pools is a project's datasources and how busy their connection pools are.
+
+Read at scrape time from database/sql's own counters, which is the only party
+that knows: the alternative is asking the warehouse, and that means a query
+against somebody else's production database every time a monitoring system
+looks. The load harness did exactly that — a psql per sample — and the sampling
+cost enough to move the numbers it was sampling.
+
+It is also the signal an operator sizing `maxOpen` actually needs. The
+throughput curve flattens somewhere, and "the pool is the ceiling" is a guess
+until in-use sits at the limit while requests queue.
+*/
+type Pools interface {
+	// Names lists the sources this project holds open.
+	Names() []string
+	// Pool reports open and in-use connections, and the configured ceiling.
+	Pool(name string) (open, inUse, limit int, ok bool)
 }
 
 type requestKey2 struct {
@@ -60,7 +123,66 @@ func NewMetrics() *Metrics {
 		deliveries: map[string]int64{},
 		started:    now(),
 		now:        now,
+		schedulers: map[string]SchedulerState{},
 	}
+}
+
+// WithClock fixes the clock, so a test can be a stopped scheduler rather than
+// wait to become one.
+/*
+CountingUnarmed wires the count of schedules that will never run.
+
+Unset, it reports zero — and zero is what a healthy deployment reports, so a
+metric nobody wired would look like good news. Which is why boot always wires
+it and this is the only way to set it.
+*/
+func (m *Metrics) CountingUnarmed(count func() int64) *Metrics {
+	m.unarmed = count
+	return m
+}
+
+// CountingRefused wires the count of stored definitions this build will not
+// serve. Unset it reports zero, which is also what healthy reports — so boot
+// always wires it.
+func (m *Metrics) CountingRefused(count func() int64) *Metrics {
+	m.refused = count
+	return m
+}
+
+// CountingUnopenable wires the count of datasources this build could not open.
+func (m *Metrics) CountingUnopenable(count func() int64) *Metrics {
+	m.unopenable = count
+	return m
+}
+
+func (m *Metrics) WithClock(now func() time.Time) *Metrics {
+	m.now = now
+	m.started = now()
+	return m
+}
+
+/*
+WatchScheduler reports on one project's scheduler.
+
+Called only for a scheduler that was actually armed, so the absence of any
+watcher is itself the signal that this process schedules nothing — which is a
+correct and common state for a replica, and an incident when it is true of
+every replica at once.
+*/
+// WatchPools reports on one project's connection pools.
+func (m *Metrics) WatchPools(project string, p Pools) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.pools == nil {
+		m.pools = map[string]Pools{}
+	}
+	m.pools[project] = p
+}
+
+func (m *Metrics) WatchScheduler(project string, s SchedulerState) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.schedulers[project] = s
 }
 
 // Request records one served request.
@@ -122,13 +244,107 @@ func (m *Metrics) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 		fmt.Fprintf(&out, "cronos_deliveries_total{result=%q} %d\n", result, m.deliveries[result])
 	}
 
+	m.writeSchedulers(&out)
+	m.writePools(&out)
+
+	/*
+	   Which build this is, as a label on a constant.
+
+	   The Prometheus shape for a fact rather than a measurement: the value is
+	   always 1 and the label is the answer. It makes "how many of the fleet are
+	   on the new version" a query — which during a rolling deploy is the
+	   question, and which nothing here could answer, because nothing reported a
+	   version at all.
+	*/
+	out.WriteString("# HELP cronos_build_info Which build this process is, as a label.\n")
+	out.WriteString("# TYPE cronos_build_info gauge\n")
+	fmt.Fprintf(&out, "cronos_build_info{version=%q} 1\n", build.Version())
+
+	/*
+	   Schedules that were read and will never run.
+
+	   Zero on a healthy deployment, and the number to alert on. A schedule that
+	   does not arm no longer stops the process — one editor's misspelled
+	   timezone taking every project's reports down was the worse of the two
+	   failures — so this is what stops it being silent instead.
+	*/
+	out.WriteString("# HELP cronos_schedules_unarmed Schedules stored that will never run. Should be zero.\n")
+	out.WriteString("# TYPE cronos_schedules_unarmed gauge\n")
+	stored := int64(0)
+	if m.unarmed != nil {
+		stored = m.unarmed()
+	}
+	fmt.Fprintf(&out, "cronos_schedules_unarmed %d\n", stored)
+
+	// And the ones that never became a definition at all.
+	out.WriteString("# HELP cronos_definitions_refused Stored definitions this build will not serve. Should be zero.\n")
+	out.WriteString("# TYPE cronos_definitions_refused gauge\n")
+	dropped := int64(0)
+	if m.refused != nil {
+		dropped = m.refused()
+	}
+	fmt.Fprintf(&out, "cronos_definitions_refused %d\n", dropped)
+
+	// And the sources that are defined and cannot be reached.
+	out.WriteString("# HELP cronos_datasources_unavailable Datasources this build could not open. Should be zero.\n")
+	out.WriteString("# TYPE cronos_datasources_unavailable gauge\n")
+	shut := int64(0)
+	if m.unopenable != nil {
+		shut = m.unopenable()
+	}
+	fmt.Fprintf(&out, "cronos_datasources_unavailable %d\n", shut)
+
 	out.WriteString("# HELP cronos_uptime_seconds How long this process has been serving.\n")
 	out.WriteString("# TYPE cronos_uptime_seconds gauge\n")
 	fmt.Fprintf(&out, "cronos_uptime_seconds %.0f\n", m.now().Sub(m.started).Seconds())
 
+	writeRuntime(&out)
+
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(out.String()))
+}
+
+/*
+writeRuntime says how the process itself is doing.
+
+Four numbers, and the first is the one that matters. A Go service fails in
+production by leaking goroutines: something is started per request, per run,
+per burst recipient, and one path forgets to finish. It grows for days and then
+the process dies of memory it never allocated deliberately. cronos has exactly
+the shape that hides one — a burst starts a goroutine per recipient and a run
+is deliberately detached from the loop's context so a shutdown cannot cancel it
+— and nothing here reported the count, so nobody could have seen it.
+
+Memory is here because the alternative is asking the operator's container
+runtime, which knows the RSS of a container and not which of the things inside
+it grew. Heap in use against heap released tells a leak apart from a
+fragmented heap, which is the question actually being asked at 3am.
+
+Not the full Go collector's ninety-odd series. This is a component in somebody
+else's monitoring system and most of those are for people debugging the
+runtime, not the service; every one of them is a series per instance per
+scrape, paid for by whoever hosts us.
+*/
+func writeRuntime(out *strings.Builder) {
+	var mem runtime.MemStats
+	runtime.ReadMemStats(&mem)
+
+	out.WriteString("# HELP cronos_goroutines How many goroutines are running.\n")
+	out.WriteString("# TYPE cronos_goroutines gauge\n")
+	fmt.Fprintf(out, "cronos_goroutines %d\n", runtime.NumGoroutine())
+
+	out.WriteString("# HELP cronos_heap_bytes Heap currently in use.\n")
+	out.WriteString("# TYPE cronos_heap_bytes gauge\n")
+	fmt.Fprintf(out, "cronos_heap_bytes %d\n", mem.HeapAlloc)
+
+	out.WriteString("# HELP cronos_heap_reserved_bytes Heap obtained from the system and not returned.\n")
+	out.WriteString("# TYPE cronos_heap_reserved_bytes gauge\n")
+	fmt.Fprintf(out, "cronos_heap_reserved_bytes %d\n", mem.HeapSys-mem.HeapReleased)
+
+	out.WriteString("# HELP cronos_gc_total Garbage collections since start.\n")
+	out.WriteString("# TYPE cronos_gc_total counter\n")
+	fmt.Fprintf(out, "cronos_gc_total %d\n", mem.NumGC)
 }
 
 // buckets are the boundaries, in seconds.
@@ -199,4 +415,183 @@ func sortedCounts(in map[string]int64) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+/*
+writeSchedulers is the answer to "is anybody running the schedules".
+
+Three gauges, because there are three ways for the answer to be no and a
+deployment has to be able to tell them apart:
+
+  - nothing armed anywhere: the flag was never set on any replica, so every
+    schedule in every project is simply not running. `cronos_scheduler_armed`
+    is 0 on every instance, and no counter anywhere is non-zero, because
+    nothing has happened at all.
+
+  - armed and stuck: the loop stopped going round. Seconds since the last pass
+    grows without bound, and this is the one nothing else can see — the process
+    serves every request, answers health and readiness, and quietly does not
+    fire. Alert on it above a few times the tick.
+
+  - going round and behind: a schedule is past its firing time and has not run,
+    usually because the previous run of the same schedule is still going. Small
+    values are ordinary; growing ones are a burst that cannot finish inside its
+    own interval.
+
+Labelled by project because a deployment serving three of them wants to know
+which one is stuck, and the label is bounded by configuration rather than by
+data — three projects is three series, not one per customer.
+*/
+/*
+writePools is the answer to "is the connection pool the ceiling".
+
+Three numbers per source, because two of them alone say nothing: open is how
+many connections exist, in-use is how many are running a query right now, and
+limit is what the definition allows. In-use pinned at limit while throughput
+flattens is the pool; in-use well under it means the ceiling is somewhere else
+and raising maxOpen will do nothing but open connections on a database somebody
+else operates.
+
+From database/sql's own counters. Asking the warehouse instead means a query
+against a production database on every scrape, which is what the load harness
+did — and the psql it spawned per sample cost enough to change the numbers the
+sample was taken from.
+*/
+// Called with m.mu held, like writeSchedulers beside it: ServeHTTP takes the
+// lock for the whole exposition. Taking it again here deadlocked every scrape —
+// sync.Mutex is not reentrant, and the symptom was a metrics endpoint that
+// accepted the connection and never answered while health stayed green.
+func (m *Metrics) writePools(out *strings.Builder) {
+	if len(m.pools) == 0 {
+		return
+	}
+	projects := make([]string, 0, len(m.pools))
+	for p := range m.pools {
+		projects = append(projects, p)
+	}
+	pools := m.pools
+	sort.Strings(projects)
+
+	// Gathered first, then written a family at a time. Prometheus expects every
+	// sample of a metric to follow its own HELP and TYPE; interleaving three
+	// metrics per source is a scrape some collectors reject and others silently
+	// keep only the last of.
+	type pool struct {
+		project, source    string
+		open, inUse, limit int
+	}
+	var found []pool
+	for _, project := range projects {
+		p := pools[project]
+		if p == nil {
+			continue
+		}
+		names := p.Names()
+		sort.Strings(names)
+		for _, name := range names {
+			open, inUse, limit, ok := p.Pool(name)
+			if !ok {
+				continue
+			}
+			found = append(found, pool{project, name, open, inUse, limit})
+		}
+	}
+	if len(found) == 0 {
+		return
+	}
+
+	for _, family := range []struct {
+		name, help string
+		of         func(pool) int
+	}{
+		{"cronos_datasource_connections", "Connections held to a datasource.",
+			func(p pool) int { return p.open }},
+		{"cronos_datasource_connections_in_use", "Connections running a query right now.",
+			func(p pool) int { return p.inUse }},
+		{"cronos_datasource_connections_limit", "What the datasource definition allows.",
+			func(p pool) int { return p.limit }},
+	} {
+		fmt.Fprintf(out, "# HELP %s %s\n# TYPE %s gauge\n", family.name, family.help, family.name)
+		for _, p := range found {
+			fmt.Fprintf(out, "%s{project=%q,source=%q} %d\n",
+				family.name, p.project, p.source, family.of(p))
+		}
+	}
+}
+
+func (m *Metrics) writeSchedulers(out *strings.Builder) {
+	now := m.now()
+
+	out.WriteString("# HELP cronos_scheduler_armed Whether this process runs schedules.\n")
+	out.WriteString("# TYPE cronos_scheduler_armed gauge\n")
+	armed := 0
+	if len(m.schedulers) > 0 {
+		armed = 1
+	}
+	fmt.Fprintf(out, "cronos_scheduler_armed %d\n", armed)
+
+	if len(m.schedulers) == 0 {
+		return
+	}
+
+	projects := make([]string, 0, len(m.schedulers))
+	for p := range m.schedulers {
+		projects = append(projects, p)
+	}
+	sort.Strings(projects)
+
+	out.WriteString("# HELP cronos_scheduler_leader " +
+		"Whether this replica is the one firing schedules, by project.\n")
+	out.WriteString("# TYPE cronos_scheduler_leader gauge\n")
+	for _, p := range projects {
+		lead := 0
+		if m.schedulers[p].Leading() {
+			lead = 1
+		}
+		fmt.Fprintf(out, "cronos_scheduler_leader{project=%q} %d\n", p, lead)
+	}
+
+	out.WriteString("# HELP cronos_schedules_armed Schedules with a next firing, by project.\n")
+	out.WriteString("# TYPE cronos_schedules_armed gauge\n")
+	for _, p := range projects {
+		fmt.Fprintf(out, "cronos_schedules_armed{project=%q} %d\n", p, len(m.schedulers[p].Due()))
+	}
+
+	out.WriteString("# HELP cronos_scheduler_seconds_since_tick " +
+		"How long since the scheduler loop last completed a pass.\n")
+	out.WriteString("# TYPE cronos_scheduler_seconds_since_tick gauge\n")
+	for _, p := range projects {
+		last := m.schedulers[p].LastTick()
+		if last.IsZero() {
+			// Never ran. Reported as the uptime rather than as a number since
+			// the epoch, which would be true and would also make every
+			// dashboard unreadable.
+			fmt.Fprintf(out, "cronos_scheduler_seconds_since_tick{project=%q} %.0f\n",
+				p, now.Sub(m.started).Seconds())
+			continue
+		}
+		fmt.Fprintf(out, "cronos_scheduler_seconds_since_tick{project=%q} %.0f\n",
+			p, now.Sub(last).Seconds())
+	}
+
+	out.WriteString("# HELP cronos_schedule_overdue_seconds " +
+		"How far past its firing time the most overdue schedule is.\n")
+	out.WriteString("# TYPE cronos_schedule_overdue_seconds gauge\n")
+	for _, p := range projects {
+		fmt.Fprintf(out, "cronos_schedule_overdue_seconds{project=%q} %.0f\n",
+			p, overdue(m.schedulers[p].Due(), now))
+	}
+}
+
+// overdue is how long the most overdue schedule has been waiting, or zero when
+// none is. Zero rather than a negative time-until-next: an alert reads more
+// clearly as "greater than five minutes" than as "less than minus five".
+func overdue(due map[string]time.Time, now time.Time) float64 {
+	worst := 0.0
+	for _, when := range due {
+		if late := now.Sub(when).Seconds(); late > worst {
+			worst = late
+		}
+	}
+	return worst
 }

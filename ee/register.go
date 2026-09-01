@@ -40,7 +40,11 @@ func init() {
 		ClientID:     os.Getenv("CRONOS_OIDC_CLIENT_ID"),
 		ClientSecret: os.Getenv("CRONOS_OIDC_CLIENT_SECRET"),
 		RedirectURL:  os.Getenv("CRONOS_OIDC_REDIRECT_URL"),
-		Scopes:       split(os.Getenv("CRONOS_OIDC_SCOPES")),
+		// Where the provider sends somebody after ending its own session.
+		// Registered with them too; omitted rather than guessed, because an
+		// unregistered one turns every sign-out into their error page.
+		PostLogoutURL: os.Getenv("CRONOS_OIDC_POST_LOGOUT_URL"),
+		Scopes:        split(os.Getenv("CRONOS_OIDC_SCOPES")),
 
 		Org:            os.Getenv("CRONOS_ORG"),
 		Project:        os.Getenv("CRONOS_PROJECT"),

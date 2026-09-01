@@ -16,7 +16,7 @@
  * No thresholds and no pass/fail. A benchmark that fails a build teaches
  * people to raise the number in the benchmark.
  */
-import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 
 const API = process.env.API
 const TOKEN = process.env.TOKEN
@@ -50,12 +50,29 @@ function summarise(times) {
 
 const ms = (n) => `${n.toFixed(1)}ms`.padStart(9)
 
+/*
+ * Which reader a request comes from, per request rather than per worker.
+ *
+ * The render limit is per bearer, so a worker that keeps one token sends every
+ * one of its requests as the same reader — and at concurrency 1 that is the
+ * whole run through a single bucket. More than half of an earlier run came back
+ * 429, which made the numbers below a measurement of the rate limiter rather
+ * than of the renderer, and the summary still concluded "it scales with
+ * concurrency" from data that was 57% refusals.
+ *
+ * Spreading per request is also the truer shape: load on a deployment comes
+ * from many readers, and one token hammering is exactly what the limiter is
+ * there to stop.
+ */
+let issued = 0
+const nextReader = () => TOKENS[issued++ % TOKENS.length]
+
 async function render(report, reader = 0) {
   const started = performance.now()
   const r = await fetch(`${API}/v1/reports/${report}`, {
     method: 'POST',
     headers: {
-      authorization: `Bearer ${TOKENS[reader % TOKENS.length]}`,
+      authorization: `Bearer ${nextReader()}`,
       'content-type': 'application/json',
     },
     body: '{}',
@@ -65,7 +82,14 @@ async function render(report, reader = 0) {
 }
 
 /** Runs `total` requests with at most `concurrency` in flight. */
-async function drive(report, total, concurrency) {
+/*
+`onStart` is called once the workers are running.
+
+So the connection sampler can take one reading during the run rather than only
+on its interval, which at these speeds meant not at all — three hundred requests
+at sixteen in flight is under a fifth of a second.
+*/
+async function drive(report, total, concurrency, onStart) {
   const times = []
   const failures = []
   let next = 0
@@ -81,32 +105,79 @@ async function drive(report, total, concurrency) {
   }
 
   const started = performance.now()
-  await Promise.all(Array.from({ length: concurrency }, (_, i) => worker(i)))
+  const running = Promise.all(Array.from({ length: concurrency }, (_, i) => worker(i)))
+  // After the workers have been handed to the event loop, so the pool is
+  // opening connections rather than idle when this reads it.
+  if (onStart) setTimeout(onStart, 0)
+  await running
   const wall = performance.now() - started
 
-  return { ...summarise(times), failures, wall, throughput: (total / wall) * 1000 }
+  /* Requests that worked, over the wall clock — not requests attempted.
+     A 500 comes back instantly, so counting them made a run where the
+     warehouse was not there the fastest one ever recorded: 8,793 req/s, p50
+     0.0ms, and every single request a failure. The rate of an error is not a
+     throughput and must never be printed as one. */
+  return { ...summarise(times), failures, wall, throughput: (times.length / wall) * 1000 }
+}
+
+/* Nothing is measured until one request has worked.
+
+   The corpus loads through psql and the warehouse is reached over TCP, and
+   either can be absent without anything before this point saying so — a
+   missing client, a database on another port, a container that is not running.
+   What followed was a full run, a table of zeroes, and a verdict. */
+async function insistItWorks(report) {
+  const first = await render(report)
+  if (first.ok) return
+  const body = await fetch(`${API}/v1/reports/${report}`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${nextReader()}`, 'content-type': 'application/json' },
+    body: '{}',
+  }).then((r) => r.text()).catch(() => '')
+  console.error(`\n  the warehouse is not answering — ${report} came back ${first.status}`)
+  console.error(`  ${body.slice(0, 200)}`)
+  console.error('\n  nothing was measured. Check PGDSN and that the database is up.')
+  process.exit(1)
 }
 
 console.log(`\n=== rendering, ${CUSTOMERS} customers, ${CUSTOMERS * 5} invoices ===\n`)
 row('concurrency', 'p50'.padStart(9), 'p95'.padStart(9), 'p99'.padStart(9),
   'max'.padStart(9), 'req/s'.padStart(8), 'failed '.padEnd(7), 'warehouse')
 
+await insistItWorks('billing-summary')
+
 /* Warm first. The first render of a report compiles it, opens a connection and
    fills a page cache, and folding that into the numbers measures the startup
    rather than the steady state. */
 await drive('billing-summary', 10, 1)
 
-/* How many connections cronos holds to the warehouse while this is running.
-   The pool's own comment says it is bounded because somebody else operates
-   that database — this is what checks whether it actually is. */
+/*
+How many connections cronos holds to the warehouse while this is running.
+
+Asked of cronos, not of the warehouse. This used to shell out to psql against
+Postgres, and the sampling was expensive enough to move the numbers it was
+sampling: at 500ms intervals the runs finished before the first tick and the
+column came out empty above one in flight, and sampling faster made the harness
+the load — p50 at a concurrency of one went from 5ms to 178ms.
+
+The server reports its own pool from database/sql's counters, which costs one
+scrape of an endpoint it already serves. It is also the number an operator
+watches in production, so the harness and the dashboard now read the same thing.
+*/
 async function warehouseConnections() {
-  if (!process.env.PGCOUNT) return null
-  const { execFileSync } = await import('node:child_process')
   try {
-    return Number(execFileSync('podman', [
-      'exec', 'cronos-pg', 'psql', '-tAqU', 'cronos', '-d', 'cronos', '-c',
-      "SELECT count(*) FROM pg_stat_activity WHERE datname='cronos' AND application_name <> 'psql'",
-    ]).toString().trim())
+    const res = await fetch(`${API}/v1/metrics`)
+    if (!res.ok) return null
+    const text = await res.text()
+    // In use rather than open: an idle pool holds connections it is not using,
+    // and the question is whether requests are waiting for one.
+    let peak = null
+    for (const line of text.split('\n')) {
+      if (!line.startsWith('cronos_datasource_connections_in_use{')) continue
+      const n = Number(line.slice(line.lastIndexOf(' ') + 1))
+      if (Number.isFinite(n)) peak = Math.max(peak ?? 0, n)
+    }
+    return peak
   } catch {
     return null
   }
@@ -122,15 +193,24 @@ for (const concurrency of [1, 4, 16, 64]) {
      measurement. */
   let peak = 0
   let sampling = false
-  const watching = setInterval(() => {
+  const sample = () => {
     if (sampling) return
     sampling = true
     warehouseConnections()
       .then((n) => { if (n !== null && n > peak) peak = n })
       .finally(() => { sampling = false })
-  }, 500)
+  }
 
-  const r = await drive('billing-summary', REQUESTS, concurrency)
+  /* One immediately, then on the interval.
+     
+     Interval-only meant the faster the server got, the less this could see:
+     three hundred requests at sixteen in flight is a fifth of a second, the
+     first tick is at half a second, and the column came out empty at every
+     concurrency above one. The sizing advice in docs/deploying.md rested on
+     "the harness reports conns 16 at both 16 and 64" — an observation the
+     harness had quietly stopped being able to make. */
+  const watching = setInterval(sample, 500)
+  const r = await drive('billing-summary', REQUESTS, concurrency, sample)
   clearInterval(watching)
   r.connections = peak
   byConcurrency[concurrency] = r
@@ -150,15 +230,34 @@ for (const concurrency of [1, 4, 16, 64]) {
   }
 }
 
-/* The number that matters is not the latency at 64 — it is whether throughput
-   went up. A tool that serialises shows flat throughput and latency rising in
-   proportion, which reads as "it got slower under load" and is really "it was
-   never doing more than one thing". */
-const scaling = byConcurrency[64].throughput / byConcurrency[1].throughput
-console.log(`\n  throughput at 64 in flight is ${scaling.toFixed(1)}x the throughput at 1`)
-console.log(scaling < 1.5
-  ? '  → it is serialising somewhere'
-  : '  → it scales with concurrency')
+/* The verdict is withheld when the data it would be drawn from is mostly
+   refusals.
+
+   The comment above about tokens records this happening once: a run that was
+   57% 429s still printed "it scales with concurrency". The cause was fixed and
+   the reporting was not, so it happened again from a different direction — a
+   warehouse that was not there, every request a 500, and a confident verdict
+   under a table of zeroes. A benchmark that will say something whatever the
+   data says nothing. */
+const attempted = REQUESTS * 4
+const refused = [1, 4, 16, 64].reduce((n, c) => n + byConcurrency[c].failures.length, 0)
+const share = refused / attempted
+
+if (share > 0.05) {
+  console.log(`\n  ${refused} of ${attempted} requests were refused (${(share * 100).toFixed(0)}%).`)
+  console.log('  No verdict: the numbers above are the rate of a refusal, not a throughput.')
+  process.exitCode = 1
+} else {
+  /* The number that matters is not the latency at 64 — it is whether throughput
+     went up. A tool that serialises shows flat throughput and latency rising in
+     proportion, which reads as "it got slower under load" and is really "it was
+     never doing more than one thing". */
+  const scaling = byConcurrency[64].throughput / byConcurrency[1].throughput
+  console.log(`\n  throughput at 64 in flight is ${scaling.toFixed(1)}x the throughput at 1`)
+  console.log(scaling < 1.5
+    ? '  → it is serialising somewhere'
+    : '  → it scales with concurrency')
+}
 
 console.log(`\n=== bursting to ${CUSTOMERS} recipients ===\n`)
 
@@ -176,25 +275,39 @@ if (!fired.ok) {
   }).then((r) => r.json())
 
   const run = runs.runs?.[0]
+  const delivered = run?.delivered ?? 0
   row('recipients', String(run?.recipients ?? '?'))
   row('delivered', String(run?.delivered ?? '?'))
   row('wall clock', `${(burstWall / 1000).toFixed(1)}s`)
-  row('documents per second', ((run?.delivered ?? 0) / (burstWall / 1000)).toFixed(1))
-  /* The one that decides whether this is a product or a demo: at five thousand
-     recipients, this rate is the difference between finishing before anybody
-     is awake and still going at nine. */
-  const atFiveThousand = 5000 / ((run?.delivered ?? 1) / (burstWall / 1000))
-  console.log(`\n  at this rate, 5,000 statements would take ${(atFiveThousand / 60).toFixed(1)} minutes`)
 
   /* A throughput number is worth nothing if the documents are not documents.
      Three hundred PDFs a second is either very good or a sign that nothing is
-     being typeset, and the difference is four lines of checking. */
-  const files = readdirSync(`${process.env.WORK}/deliveries`, { recursive: true })
-    .map((f) => `${process.env.WORK}/deliveries/${f}`)
+     being typeset, and the difference is four lines of checking.
+
+     Read before the rates are printed rather than after. A burst that
+     delivered nothing divides by zero and used to announce that five thousand
+     statements would take "Infinity minutes" — and then crash on the delivery
+     directory that was never created, three lines above the branch written to
+     report exactly that. */
+  const out = `${process.env.WORK}/deliveries`
+  const files = (existsSync(out) ? readdirSync(out, { recursive: true }) : [])
+    .map((f) => `${out}/${f}`)
     .filter((f) => f.endsWith('.pdf'))
-  if (files.length === 0) {
-    console.log('  ⚠ no documents were written — the rate above measures nothing')
+
+  if (delivered === 0 || files.length === 0) {
+    console.log(`\n  ⚠ the burst delivered ${delivered} and wrote ${files.length} documents.`)
+    console.log('  There is no rate to report. The server log says why.')
+    process.exitCode = 1
   } else {
+    row('documents per second', (delivered / (burstWall / 1000)).toFixed(1))
+    /* The one that decides whether this is a product or a demo: at five
+       thousand recipients, this rate is the difference between finishing
+       before anybody is awake and still going at nine. */
+    const atFiveThousand = 5000 / (delivered / (burstWall / 1000))
+    console.log(`\n  at this rate, 5,000 statements would take ${(atFiveThousand / 60).toFixed(1)} minutes`)
+  }
+
+  if (files.length > 0) {
     const sizes = files.map((f) => statSync(f).size)
     const smallest = Math.min(...sizes)
     const header = readFileSync(files[0]).subarray(0, 5).toString()

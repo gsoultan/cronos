@@ -2,11 +2,13 @@ package publish
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
 	codec "github.com/gsoultan/cronos/internal/adapter/codec/yaml"
 	"github.com/gsoultan/cronos/internal/app/run"
+	"github.com/gsoultan/cronos/internal/app/schedule"
 	"github.com/gsoultan/cronos/internal/core/definition"
 	"github.com/gsoultan/cronos/internal/core/principal"
 	"github.com/gsoultan/cronos/internal/core/query"
@@ -102,8 +104,38 @@ func (s *Service) WithReports(r Reports) *Service {
 	return s
 }
 
-// Publish validates raw and stores it.
+// Publish validates raw and stores it, whatever is there now.
 func (s *Service) Publish(ctx context.Context, raw []byte, pr principal.Principal) (Result, error) {
+	return s.PublishIf(ctx, raw, pr, "")
+}
+
+/*
+PublishIf stores raw only if the definition is still at the version the caller
+read.
+
+Two people editing one report is not exotic — it is a Monday — and until now the
+second save silently discarded the first. The version history means the lost
+work is recoverable, which sounds like a mitigation and is not: nobody knows to
+look, because nothing said anything. The author sees their change land and the
+other author's disappear the next time they open the page.
+
+An empty expectation stores unconditionally, which is deliberate and is what
+every existing caller does. A deployment pipeline publishing from a git
+repository *is* the source of truth and must not be refused because the running
+copy differs — that difference is the point of the deploy. It is the editor,
+which read a specific version and is proposing a change to it, that has
+something to be stale about.
+
+The window this closes is the one that matters and not the only one. Two saves
+milliseconds apart can still both read the same current version and both
+succeed; two people editing for ten minutes cannot. Closing the smaller window
+means a conditional write in each store, which is worth doing when anybody has
+ever hit it — and nobody has, because it needs two people to press a button in
+the same instant on the same definition.
+*/
+func (s *Service) PublishIf(ctx context.Context, raw []byte, pr principal.Principal,
+	expect string) (Result, error) {
+
 	if !pr.CanEdit() {
 		return Result{}, fmt.Errorf("%w: %s may not change definitions", ErrForbidden, pr.ProjectRole)
 	}
@@ -116,6 +148,12 @@ func (s *Service) Publish(ctx context.Context, raw []byte, pr principal.Principa
 	name, err := s.check(ctx, kind, raw)
 	if err != nil {
 		return Result{}, err
+	}
+
+	if expect != "" {
+		if err := s.unchanged(ctx, pr, kind, name, expect); err != nil {
+			return Result{}, err
+		}
 	}
 
 	version, err := s.store.Put(ctx, pr, kind, name, raw)
@@ -143,6 +181,29 @@ func (s *Service) Publish(ctx context.Context, raw []byte, pr principal.Principa
 // path would silently store one definition under another's name.
 func (s *Service) check(ctx context.Context, kind string, raw []byte) (string, error) {
 	switch kind {
+	case codec.KindDataSource:
+		/*
+		   A datasource, which this switch did not mention until now.
+
+		   The portal has had a four-step wizard for connecting one since before
+		   there was a server to publish to, and every Save it ever made was
+		   answered "unsupported kind" — a 400 from a screen that had just told
+		   somebody their connection test passed. The codec has the kind, the
+		   loader parses one, the file store keeps them; only this was missing.
+
+		   The loader runs definition.Validate, which is what checks the driver
+		   is one this build can open and that a connection string is present.
+		   Deliberately no attempt to connect: that is what the test endpoint is
+		   for, and a publish that fails because a warehouse is down at four in
+		   the afternoon is a definition somebody cannot save for a reason that
+		   has nothing to do with it.
+		*/
+		src, err := codec.Loader{}.DataSource(raw)
+		if err != nil {
+			return "", err
+		}
+		return src.Name, nil
+
 	case codec.KindDataset:
 		// The loader already ran definition.Validate.
 		ds, err := codec.Loader{}.Dataset(raw)
@@ -181,6 +242,25 @@ func (s *Service) check(ctx context.Context, kind string, raw []byte) (string, e
 // documents while reporting complete success. Nothing downstream can tell that
 // apart from a month in which nobody was billed.
 func (s *Service) checkSchedule(ctx context.Context, sc definition.Schedule) error {
+	/*
+	   Parsed by the same function that arms it.
+
+	   definition.Validate can only go so far: the core is standard library
+	   only, so it checks that a cron expression has five fields and that the
+	   timezone resolves, and it cannot ask the scheduler's parser whether the
+	   fields mean anything. That gap was a real one — "0 25 1 * *" is five
+	   fields, is hour twenty-five, and is a plausible typo for a monthly job at
+	   six. It published with a 200 and never armed.
+
+	   The gap is not that a check was missing, it is that there were two
+	   checks: a regex here and a parser at startup, drifting. So this calls the
+	   parser. A schedule that publishes is a schedule that arms, by
+	   construction rather than by keeping two rules in step.
+	*/
+	if _, err := schedule.Parse(sc); err != nil {
+		return fmt.Errorf("%w: %v", definition.ErrInvalid, err)
+	}
+
 	rep, err := s.reportNamed(ctx, sc.Report)
 	if err != nil {
 		return fmt.Errorf("%w: schedule %q runs report %q: %v",
@@ -253,7 +333,7 @@ func (s *Service) checkReport(ctx context.Context, rep definition.Report) error 
 	if err := query.CheckFilters(rep.Filters, known); err != nil {
 		return err
 	}
-	return s.checkBlocks(rep, sets)
+	return s.checkBlocks(ctx, rep, sets)
 }
 
 // checkBlocks compiles every block, which is the only way to know they will.
@@ -261,7 +341,8 @@ func (s *Service) checkReport(ctx context.Context, rep definition.Report) error 
 // Compiling is cheaper than being wrong: it catches a field the dataset does
 // not publish, an aggregate nobody implements, and a grain the dialect cannot
 // express — all of which are otherwise found by whoever opens the report.
-func (s *Service) checkBlocks(rep definition.Report, sets map[string]definition.Dataset) error {
+func (s *Service) checkBlocks(ctx context.Context, rep definition.Report,
+	sets map[string]definition.Dataset) error {
 	// Postgres, because it supports every grain: a check that used a narrower
 	// dialect would pass definitions the eventual database cannot run, and one
 	// that used a narrower one still would reject definitions that are fine.
@@ -277,7 +358,7 @@ func (s *Service) checkBlocks(rep definition.Report, sets map[string]definition.
 			if _, _, err := builder.BuildBlock(ds, blk, defaults(ds), filters, checker(ds)); err != nil {
 				return fmt.Errorf("%w: output %q block %d: %v", query.ErrBadTemplate, out.Name, i, err)
 			}
-			if err := s.provable(rep, out.Name, i, ds, blk, filters); err != nil {
+			if err := s.provable(ctx, rep, out.Name, i, ds, blk, filters); err != nil {
 				return err
 			}
 		}
@@ -297,13 +378,27 @@ whole. A warehouse that is unreachable is not the definition's fault and is not
 a reason to refuse a publish — a deployment whose database is down should still
 be able to fix the report that is waiting for it.
 */
-func (s *Service) provable(rep definition.Report, output string, i int,
+func (s *Service) provable(ctx context.Context, rep definition.Report, output string, i int,
 	ds definition.Dataset, blk definition.Block, filters query.Filters) error {
 
 	if s.engines == nil {
 		return nil
 	}
-	ctx := context.Background()
+	/*
+	   The caller's context, which this used to discard for a fresh Background.
+
+	   Every other step of a publish is cancellable and this one is not, which
+	   is backwards: it is the only step that talks to a database somebody else
+	   operates. A report with four outputs of six blocks prepares twenty-four
+	   statements against their warehouse, and a browser tab closed halfway
+	   through left all of them to run to their own timeout with nobody waiting
+	   for the answer.
+
+	   The statement timeout below still bounds each prepare, so this was never
+	   unbounded — it was work continuing after the only party who wanted it had
+	   gone, which on a warehouse with a connection limit is somebody else's
+	   incident.
+	*/
 	engine, err := s.engines.Engine(ctx, ds)
 	if err != nil {
 		return nil // no engine for it here; the render will say so
@@ -428,4 +523,35 @@ func checker(ds definition.Dataset) principal.Principal {
 		}
 	}
 	return principal.Principal{Subject: "publish-check", ProjectRole: principal.ProjectViewer, Scope: scope}
+}
+
+/*
+unchanged refuses a save built on a version somebody has already replaced.
+
+Reads what is stored and compares its content address. The alternative — asking
+the store to compare — would be a conditional write and a wider port; this is
+one Get against a definition, on a path that already does several.
+
+A definition that has been deleted is a conflict too, and a pointed one: the
+caller is editing something that no longer exists, and storing theirs would
+bring it back without anybody deciding to.
+*/
+func (s *Service) unchanged(ctx context.Context, pr principal.Principal,
+	kind, name, expect string) error {
+
+	current, err := s.store.Get(ctx, pr, kind, name)
+	switch {
+	case errors.Is(err, ErrNotFound):
+		return fmt.Errorf("%w: %s %q was deleted while you were editing it",
+			ErrStale, kind, name)
+	case err != nil:
+		return err
+	}
+
+	if got := Version(current); got != expect {
+		return fmt.Errorf(
+			"%w: %s %q is at %s and you started from %s — somebody else saved it",
+			ErrStale, kind, name, got, expect)
+	}
+	return nil
 }

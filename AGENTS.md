@@ -10,7 +10,8 @@ well it works.
 | Paginated renderer | **Typst** (proven — `docs/rendering.md`) | Real typesetting: page breaks, grouping and subtotals are semantics, not CSS hints. Low memory per render, so a 5,000-customer burst does not need a browser farm. Cost accepted: a non-Go dependency and a template syntax authors must learn. |
 | Query / federation engine | **DuckDB** (built, `-tags duckdb`) | One engine covers SQL databases, Parquet/CSV on object storage, and cross-source joins — the three data-source requirements without a second concept. |
 | Result transport | **Arrow record batches** | Columnar and zero-copy from driver to renderer; the data-plane contract that makes million-row exports survivable. |
-| License boundary | **Import graph** | Enforced by `scripts/check-license-boundary.sh` against the real build graph, not by convention. |
+| License boundary | **Import graph** | Enforced by `scripts/check-license-boundary.sh` against the real build graph, not by convention. It holds in distribution too: `make dist` writes the community binaries and `cronosd-ee` as separate archives, each carrying the LICENSE that covers it. |
+| Distribution | **Archives and an image** | A container is one way to run cronos, not the only one. Anything that ships has to be in both, or a tool exists in one channel and the documentation is wrong for half its readers. |
 
 ## Developer Profile Panel
 
@@ -81,7 +82,8 @@ internal/
     burst/               One document per recipient, bounded     ✓
     schedule/            Cron loop, no catch-up, no overlap        ✓
   adapter/             Port implementations.
-    codec/yaml/          The file format authors write          ✓
+    codec/yaml/          The file format authors write, read and written ✓
+    codec/jrxml/         JasperReports in. The 80%, and what it refused ✓
     api/                 Embed + portal + management, CORS      ✓
     store/file/          Definitions from a directory           ✓
     store/sql/           Multi-tenant. Postgres + SQLite, both tested ✓
@@ -119,12 +121,24 @@ Do not add a pattern that is not solving a problem named here.
 
 ### Performance rules
 
-- Results stream. Nothing materialises a full result set in memory — not export, not
-  render, not delivery.
+- Results are bounded everywhere, and streamed almost everywhere. A render never
+  holds more than a page: a table block pages at the query level, so the
+  interactive path answers in two milliseconds and 25MB whether the table has
+  fifty rows or two million. A delivery holds one recipient's rows. The exception
+  is a spreadsheet export, which materialises the whole set in `[][]any` because
+  a workbook is written as a whole — 32MB measured for the 100,000 rows
+  `run.ExportLimit` allows, times six columns. That is the number to check
+  against if the cap ever rises; this entry used to say nothing materialises a
+  full result set, which was true of two paths out of three.
 - Columnar batches (Arrow) on the data plane, not `[]map[string]any`.
 - Every datasource carries a statement timeout and a row cap. No unbounded query.
 - Burst fan-out is bounded by `concurrency`, with backpressure to the renderer.
-- Any cache key includes the tenant and the definition version hash.
+- There is one server-side cache and it is keyed by the token's subject — an
+  account id, which names one person in one tenant, so it is narrower than a
+  tenant key rather than missing one. The browser's cache is the one that carries
+  no principal at all; it is emptied when the session changes. This entry used to
+  say any cache key includes the tenant and the definition version, which was a
+  rule nothing followed and which the portal disproved.
 
 ---
 
@@ -192,15 +206,30 @@ Enforced in CI on every PR; a build over budget fails.
 Lazy-loaded, never in an initial chunk: charting library, PDF viewer, report builder,
 spreadsheet export.
 
+The same rule applies to CSS, and it is the one that drifts, because a stylesheet
+imported once covers every route for ever. `theme/mantine.css` is what the first
+screen renders — TextInput, PasswordInput, Button — and `theme/mantine-deferred.css`
+is everything else, fetched by Shell on mount. Adding a Mantine component means
+choosing between them, and the question is: does the sign-in form render it?
+
 ### Performance rules
 
 - Every table is virtualised. A report can return a million rows; the DOM cannot.
 - Row transforms, aggregation and chart data prep run in a **web worker**. The main
   thread is for painting.
-- Service worker caches report definitions and last-rendered results for offline
-  viewing; it never caches a result across principals.
-- TanStack Query keys include tenant and definition version. A cache that ignores who
-  asked is a data leak.
+- Service worker precaches the application shell, and no API response. Offline
+  viewing of results is not built: a cache keyed by URL serves one principal's
+  data to the next person on that browser, so it needs a cache named per
+  principal and emptied on sign-out. The rule that claimed to do this matched
+  three routes that do not exist and had never cached anything.
+- The TanStack Query cache is emptied when the session changes, in one place
+  (`lib/queryClient.ts`). A cache that ignores who asked is a data leak, and no key
+  here names who asked — `['catalog']` is the same key for everybody. This entry
+  used to claim the keys carried the tenant; they never did, and a browser driven
+  through sign-out and sign-in as another organisation was served the first
+  organisation's catalogue under the second one's name. Naming the tenant in each
+  key is the fix that only holds until a hook forgets; the cache is session state,
+  so it ends with the session. Held by `scripts/live-handover.sh`.
 
 ---
 

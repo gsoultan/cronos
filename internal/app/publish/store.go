@@ -2,6 +2,8 @@ package publish
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 
 	"github.com/gsoultan/cronos/internal/core/principal"
 )
@@ -33,4 +35,20 @@ type Entry struct {
 	Kind    string `json:"kind"`
 	Name    string `json:"name"`
 	Version string `json:"version"`
+}
+
+/*
+Version is the content address of a document.
+
+One definition, used by both stores and by the conflict check. It was written
+out twice — identically, which is the only reason nothing had gone wrong yet,
+and exactly the arrangement where a change to one of them is a silent
+disagreement about what version a definition is at.
+
+Truncated to twelve hex characters: a collision every 2^24 documents in one
+project, and short enough to appear in a run record somebody reads.
+*/
+func Version(raw []byte) string {
+	sum := sha256.Sum256(raw)
+	return "sha256:" + hex.EncodeToString(sum[:])[:12]
 }

@@ -14,7 +14,8 @@ type DataSource struct {
 	Description string            `json:"description,omitempty" yaml:"description,omitempty"`
 	Labels      map[string]string `json:"labels,omitempty" yaml:"labels,omitempty"`
 
-	// Driver selects the adapter: postgres, mysql, sqlite, object-store.
+	// Driver selects the adapter: postgres, mysql, sqlserver, sqlite,
+	// object-store.
 	Driver string `json:"driver" yaml:"driver"`
 	// DSN is how to connect. ${secret:name} is resolved at load, never stored
 	// expanded and never returned by the management API.

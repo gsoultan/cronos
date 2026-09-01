@@ -69,10 +69,7 @@ func (w *Writer) tenant(pr principal.Principal) error {
 // Truncated to twelve hex characters, which is a collision every 2^24
 // documents in one project and short enough to appear in a run record someone
 // reads. The full digest is the file's name in the version directory.
-func Version(raw []byte) string {
-	sum := sha256.Sum256(raw)
-	return "sha256:" + hex.EncodeToString(sum[:])[:12]
-}
+func Version(raw []byte) string { return publish.Version(raw) }
 
 // Put writes a definition and keeps the previous content addressable.
 func (w *Writer) Put(_ context.Context, pr principal.Principal, kind, name string, raw []byte) (string, error) {
@@ -163,7 +160,9 @@ func (w *Writer) List(ctx context.Context, pr principal.Principal) ([]publish.En
 		return nil, err
 	}
 	var out []publish.Entry
-	for _, kind := range []string{codec.KindDataset, codec.KindReport, codec.KindSchedule} {
+	for _, kind := range []string{
+		codec.KindDataSource, codec.KindDataset, codec.KindReport, codec.KindSchedule,
+	} {
 		for _, name := range w.repo.Names(kind) {
 			raw, err := w.Get(ctx, pr, kind, name)
 			if err != nil {
@@ -187,6 +186,22 @@ func (w *Writer) pathFor(kind, name string) (string, error) {
 		return path, nil
 	}
 	switch kind {
+	/*
+	   A datasource is a definition here like any other.
+
+	   It was not, and the asymmetry was invisible because Load indexes the kind
+	   and records its path: editing a datasource that already existed on disk
+	   worked, and only creating one fell through to the refusal below. So a
+	   file-backed deployment could change a connection and not add one, which is
+	   the wrong way round — adding is what somebody does on their first
+	   afternoon.
+
+	   The secret in a `dsn` is a reference to be resolved, not the credential
+	   itself; a definitions directory is a git repository and writing a password
+	   into one is the thing secret resolution exists to avoid.
+	*/
+	case codec.KindDataSource:
+		return filepath.Join(w.dir, "datasources", name+".yaml"), nil
 	case codec.KindDataset:
 		return filepath.Join(w.dir, "datasets", name+".yaml"), nil
 	case codec.KindReport:

@@ -23,10 +23,20 @@ PGDSN="${PGDSN:-postgres://cronos:cronos@localhost:5433/cronos?sslmode=disable}"
 CUSTOMERS="${CUSTOMERS:-1000}"
 REQUESTS="${REQUESTS:-300}"
 PORT="${PORT:-8783}"
+# KEEP=1 leaves the corpus, the definitions and the server's log behind. A run
+# that reports something surprising is a run whose log has just been deleted,
+# which is how "every request failed with 500" took three goes to look at.
 WORK="$(mktemp -d)"
-trap 'kill %1 2>/dev/null || true; rm -rf "$WORK"' EXIT
+if [ -n "${KEEP:-}" ]; then
+  trap 'kill %1 2>/dev/null || true; echo; echo "kept: $WORK"' EXIT
+else
+  trap 'kill %1 2>/dev/null || true; rm -rf "$WORK"' EXIT
+fi
 
-echo "generating a corpus of $CUSTOMERS customers for $WAREHOUSE…"
+# Braced, because the ellipsis that follows is not ASCII: bash reads
+# `$WAREHOUSE…` as one identifier and `set -u` then aborts on a variable
+# nobody named. It survived by never being run in CI.
+echo "generating a corpus of $CUSTOMERS customers for ${WAREHOUSE}…"
 {
   cat <<'SQL'
 CREATE TABLE customers (id TEXT PRIMARY KEY, name TEXT, city TEXT);
@@ -158,10 +168,28 @@ for i in $(seq 1 "$READERS"); do
 done
 TOKEN="$(head -1 "$WORK/tokens")"
 
+# What the process looked like before any of it, so the numbers after have
+# something to be a change from. Read from the API's own exposition, because
+# CRONOS_METRICS_ADDR moves /v1/metrics to a listener of its own — setting it
+# here silently 404'd the section below that reads what the server counted.
+runtime_now() {
+  curl -sf "http://localhost:$PORT/v1/metrics" 2>/dev/null |
+    awk '/^cronos_goroutines /{g=$2} /^cronos_heap_bytes /{h=$2} END{printf "%s goroutines, %.0f MB heap", g, h/1048576}'
+}
+before="$(runtime_now)"
+
 API="http://localhost:$PORT" TOKEN="$TOKEN" TOKENS="$WORK/tokens" ADMIN="$CRONOS_ADMIN_KEY" \
   CUSTOMERS="$CUSTOMERS" REQUESTS="$REQUESTS" WORK="$WORK" \
-  PGCOUNT="$([ "$WAREHOUSE" = postgres ] && echo 1 || echo "")" \
   node scripts/load-check.mjs
+
+# A count that went up and stayed up is a leak, and it is the failure mode a
+# throughput number cannot show: the run that measures fastest is often the one
+# that left the most behind. Read after a pause, because a request still being
+# served is a goroutine that has not finished rather than one that will not.
+sleep 5
+echo
+echo "--- what the process did to itself ---"
+printf '  before  %s\n  after   %s\n' "$before" "$(runtime_now)"
 
 echo
 echo "--- what the server said about itself ---"

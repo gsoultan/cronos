@@ -164,3 +164,50 @@ func stampp(t *time.Time) any {
 	}
 	return stamp(*t)
 }
+
+/*
+DeliveredFor is who already has this period's document, across every attempt.
+
+Across attempts, not within one run, which is the difference between a resume
+that works twice and one that works once. A burst cut at eight hundred is
+resumed; the resume is cut too; the second resume has to see both sets or it
+sends a third copy to whoever the first one reached.
+
+Keyed by channel and destination together, because those are different
+questions: a customer whose email arrived and whose file delivery failed needs
+the file and not another email.
+
+Only the deliveries that worked. A failed one is exactly what a resume exists to
+retry, and counting it as done would make the resume a no-op that reports
+success — the quietest possible way to leave somebody without an invoice.
+*/
+func (s *Store) DeliveredFor(ctx context.Context, pr principal.Principal,
+	schedule, periodStart, periodEnd string) (map[string]bool, error) {
+
+	if err := tenant(pr); err != nil {
+		return nil, err
+	}
+
+	rows, err := s.db.QueryContext(ctx, s.sql(`
+		SELECT d.channel, d.destination
+		FROM cronos_deliveries d
+		JOIN cronos_runs r ON r.id = d.run_id
+		WHERE r.org = ? AND r.project = ?
+		  AND r.schedule = ? AND r.period_start = ? AND r.period_end = ?
+		  AND d.status = ?`),
+		pr.OrgID, pr.ProjectID, schedule, periodStart, periodEnd, history.Delivered)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	done := map[string]bool{}
+	for rows.Next() {
+		var channel, destination string
+		if err := rows.Scan(&channel, &destination); err != nil {
+			return nil, err
+		}
+		done[history.DeliveredKey(channel, destination)] = true
+	}
+	return done, rows.Err()
+}

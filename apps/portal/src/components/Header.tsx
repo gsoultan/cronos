@@ -3,6 +3,7 @@ import { Link, useRouterState } from '@tanstack/react-router'
 import { Icon } from './Icon'
 import { Brand } from './Brand'
 import { useWorkspace } from '../lib/WorkspaceContext'
+import { currentUser, endSession, type SignedInUser } from '../lib/api'
 
 interface Props {
   collapsed: boolean
@@ -17,13 +18,56 @@ interface Props {
 const TOGGLE = `grid size-8 cursor-pointer place-items-center rounded-md text-ink-secondary
                 hover:bg-hover hover:text-ink`
 
-const TITLES: Record<string, string> = {
-  '/': 'Reports',
-  '/data': 'Data',
-  '/schedules': 'Schedules',
-  '/settings': 'Settings',
-  '/account': 'Your account',
-  '/reports/new': 'New report',
+/*
+ * What the breadcrumb calls each page.
+ *
+ * One entry per top-level route. Activity was missing, so its breadcrumb read
+ * "acme / finance" and stopped — visible in a screenshot beside five pages that
+ * name themselves, and invisible in sample mode for the same reason everything
+ * else was.
+ */
+const SECTIONS: Record<string, string> = {
+  '': 'Reports',
+  reports: 'Reports',
+  data: 'Data',
+  schedules: 'Schedules',
+  activity: 'Activity',
+  settings: 'Settings',
+  account: 'Your account',
+}
+
+/* What /data holds, since it holds two things and they are not interchangeable. */
+const KINDS: Record<string, string> = { sources: 'Sources', datasets: 'Datasets' }
+
+/*
+ * The trail to a page, from its path.
+ *
+ * A map of fixed titles could only ever name the pages with no argument in
+ * them, and everything below a section has one: the editors read "acme /
+ * finance" and stopped, which is the same gap Activity had. The old fallback
+ * said "Report" over a page editing a specific report — a label that is true of
+ * every one of them and identifies none.
+ *
+ * The name from the path rather than the loaded document's title, deliberately.
+ * The breadcrumb is drawn before the fetch resolves, and a crumb that appears
+ * blank and then fills in is a header that moves while somebody is reading it.
+ * The identifier is also what they typed to get here.
+ *
+ * "Edit" is not a crumb. The editor is unmistakably an editor, and the last
+ * crumb should name the thing rather than the verb.
+ */
+export function crumbs(path: string): string[] {
+  const [section, ...rest] = path.replace(/^\/+|\/+$/g, '').split('/')
+  const head = SECTIONS[section ?? '']
+  if (!head) return []
+
+  const parts = rest.filter((p) => p !== 'edit')
+  // The one page below a section with no name of its own, because it is the
+  // page where somebody chooses one.
+  if (section === 'reports' && parts[0] === 'new') return [head, 'New report']
+
+  const kind = KINDS[parts[0] ?? '']
+  return [head, ...(kind ? [kind, ...parts.slice(1)] : parts)]
 }
 
 /**
@@ -38,8 +82,11 @@ export function Header({ collapsed, onToggleSidebar, drawerOpen, onToggleDrawer,
   theme, onToggleTheme }: Props) {
   const path = useRouterState({ select: (s) => s.location.pathname })
   const { org, project } = useWorkspace()
+  // Read once per render rather than held in state: a sign-out takes the whole
+  // shell down to the sign-in page, so there is nothing here to keep in step.
+  const me = currentUser()
 
-  const title = TITLES[path] ?? (path.startsWith('/reports/') ? 'Report' : '')
+  const trail = crumbs(path)
 
   return (
     <header className="sticky top-0 z-50 flex h-14 items-center gap-3 border-b border-line
@@ -83,12 +130,18 @@ export function Header({ collapsed, onToggleSidebar, drawerOpen, onToggleDrawer,
         <span className="truncate text-small text-ink-secondary">{org.name}</span>
         <span className="text-line" aria-hidden>/</span>
         <span className="truncate text-small text-ink-secondary">{project.name}</span>
-        {title && (
-          <>
+        {trail.map((crumb, i) => (
+          <span key={crumb} className="flex min-w-0 items-center gap-2">
             <span className="text-line" aria-hidden>/</span>
-            <span className="truncate text-small font-medium text-ink">{title}</span>
-          </>
-        )}
+            {/* Only the last crumb is where you are; the ones before it are
+                the way you got here, and weighting them all equally makes the
+                header read as a sentence nobody wrote. */}
+            <span className={`truncate text-small ${i === trail.length - 1
+              ? 'font-medium text-ink' : 'text-ink-secondary'}`}>
+              {crumb}
+            </span>
+          </span>
+        ))}
       </nav>
 
       <div className="ml-auto flex items-center gap-1">
@@ -101,13 +154,22 @@ export function Header({ collapsed, onToggleSidebar, drawerOpen, onToggleDrawer,
           <Icon name={theme === 'light' ? 'moon' : 'sun'} />
         </button>
 
-        <Link to="/account" aria-label="Your account" title="Your account"
+        <Link to="/account" aria-label="Your account" title={me ? me.email : 'Your account'}
           data-testid="account-link"
           className="grid size-8 place-items-center rounded-full border border-line
                      bg-sunken text-small font-semibold text-ink-secondary no-underline
                      hover:border-accent">
-          DR
+          {initials(me)}
         </Link>
+
+        {me && (
+          <button type="button" onClick={() => void endSession()}
+            aria-label="Sign out" title="Sign out" data-testid="sign-out"
+            className="grid size-8 cursor-pointer place-items-center rounded-md
+                       text-ink-secondary hover:bg-hover hover:text-ink">
+            <Icon name="sign-out" />
+          </button>
+        )}
       </div>
     </header>
   )
@@ -147,4 +209,28 @@ function GlobalSearch() {
       </kbd>
     </div>
   )
+}
+
+/*
+ * Whose session this is, in two letters.
+ *
+ * Next to a sign-out button, showing the wrong person is worse than showing
+ * nobody — this used to be hardcoded initials, which on a shared machine reads
+ * as being signed in as somebody else.
+ *
+ * From the name where there is one, and from the email otherwise, because a
+ * directory that gave us an address and no name is common and "?" is not an
+ * improvement on the first letter of it.
+ */
+function initials(me: SignedInUser | null): string {
+  if (!me) return '\u00B7'
+
+  const words = (me.name ?? '').trim().split(/\s+/).filter(Boolean)
+  const first = words.at(0)
+  const last = words.at(-1)
+  if (first && last && words.length >= 2) {
+    return (first.slice(0, 1) + last.slice(0, 1)).toUpperCase()
+  }
+  if (first) return first.slice(0, 2).toUpperCase()
+  return (me.email || '?').slice(0, 2).toUpperCase()
 }

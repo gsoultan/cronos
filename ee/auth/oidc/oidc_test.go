@@ -7,6 +7,7 @@ import (
 	"crypto/rsa"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -270,15 +271,24 @@ type fakeIDP struct {
 	key *rsa.PrivateKey
 
 	// What it says, and everything that can be made wrong.
-	issuer        string
-	alg           string
-	signWith      *rsa.PrivateKey
-	audience      string
-	nonce         string
-	expiry        time.Time
+	issuer   string
+	alg      string
+	signWith *rsa.PrivateKey
+	audience string
+	nonce    string
+	expiry   time.Time
+	// issued lets a token be minted in the future, which is a clock behind the
+	// provider's rather than a token anybody could have made.
+	issued time.Time
+	// deny makes the authorize endpoint refuse, the way a declined consent
+	// screen does.
+	deny          string
 	email         string
 	emailVerified *bool
 	groups        []string
+	// endSession is what this provider publishes for RP-initiated logout, and
+	// most publish nothing.
+	endSession string
 }
 
 func newFakeIDP(t *testing.T) *fakeIDP {
@@ -296,12 +306,16 @@ func newFakeIDP(t *testing.T) *fakeIDP {
 		if issuer == "" {
 			issuer = idp.URL
 		}
-		_ = json.NewEncoder(w).Encode(map[string]string{
+		doc := map[string]string{
 			"issuer":                 issuer,
 			"authorization_endpoint": idp.URL + "/authorize",
 			"token_endpoint":         idp.URL + "/token",
 			"jwks_uri":               idp.URL + "/keys",
-		})
+		}
+		if idp.endSession != "" {
+			doc["end_session_endpoint"] = idp.endSession
+		}
+		_ = json.NewEncoder(w).Encode(doc)
 	})
 
 	mux.HandleFunc("/keys", func(w http.ResponseWriter, _ *http.Request) {
@@ -343,11 +357,15 @@ func (f *fakeIDP) mint() string {
 	if expiry.IsZero() {
 		expiry = time.Now().Add(time.Hour)
 	}
+	issuedAt := f.issued
+	if issuedAt.IsZero() {
+		issuedAt = time.Now()
+	}
 
 	head := map[string]string{"alg": f.alg, "kid": "test-key", "typ": "JWT"}
 	body := map[string]any{
 		"iss": issuer, "sub": "sub-1", "aud": aud,
-		"exp": expiry.Unix(), "iat": time.Now().Unix(),
+		"exp": expiry.Unix(), "iat": issuedAt.Unix(),
 		"nonce": f.nonce, "email": f.email, "name": "Dewi",
 	}
 	if f.emailVerified != nil {
@@ -433,4 +451,245 @@ func signIn(t *testing.T, p *Provider, idp *fakeIDP) (extension.Identity, error)
 		idp.nonce = state.Data["nonce"]
 	}
 	return p.Complete(context.Background(), callback(state.ID, "code"), state)
+}
+
+/*
+Ending the provider's session.
+
+Signing out of cronos alone leaves the person signed in where they thought they
+had left: the next sign-in is silent, and on a shared machine the next person
+gets the last one's session. RP-initiated logout is the other half, and it is
+one URL built from three things — so these are the tests that each of the three
+is right, because a wrong one produces a page at the identity provider that says
+"invalid request" and nothing that says why.
+*/
+
+func TestSignOutGoesWhereTheProviderSaid(t *testing.T) {
+	idp := newFakeIDP(t)
+	defer idp.Close()
+	idp.endSession = "https://idp.example/oauth2/logout"
+
+	p, err := New(context.Background(), config(idp))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	where := p.SignOut("the-id-token")
+	parsed, err := url.Parse(where)
+	if err != nil {
+		t.Fatalf("sign-out built %q: %v", where, err)
+	}
+
+	if parsed.Scheme+"://"+parsed.Host+parsed.Path != idp.endSession {
+		t.Fatalf("sign-out goes to %q", where)
+	}
+	// The hint says whose session. Okta refuses a logout without one.
+	if got := parsed.Query().Get("id_token_hint"); got != "the-id-token" {
+		t.Fatalf("id_token_hint is %q", got)
+	}
+	// The client id is what Entra and Keycloak accept instead, and sending
+	// both is what makes one implementation work against all three.
+	if got := parsed.Query().Get("client_id"); got != "cronos-test-client" {
+		t.Fatalf("client_id is %q", got)
+	}
+}
+
+/*
+A provider that publishes no end-session endpoint is not guessed at.
+
+Dex publishes none. Guessing /logout — because the last provider had one —
+sends somebody to a 404 on a domain they recognise, which reads as cronos being
+broken rather than as this provider not offering the feature.
+*/
+func TestSignOutIsNotInventedForAProviderThatHasNone(t *testing.T) {
+	idp := newFakeIDP(t)
+	defer idp.Close()
+
+	p, err := New(context.Background(), config(idp))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if where := p.SignOut("the-id-token"); where != "" {
+		t.Fatalf("a provider with no end-session endpoint sent us to %q", where)
+	}
+}
+
+/*
+Where the browser lands afterwards is only sent when a deployment registered
+one.
+
+post_logout_redirect_uri must match a value configured at the provider, and an
+unregistered one is refused outright — turning every sign-out into an error page
+at the identity provider. Sending nothing lands on the provider's own "you have
+signed out" page, which is worse-looking and works.
+*/
+func TestAnUnconfiguredLandingIsNotSent(t *testing.T) {
+	idp := newFakeIDP(t)
+	defer idp.Close()
+	idp.endSession = "https://idp.example/logout"
+
+	p, err := New(context.Background(), config(idp))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Nothing configured, so nothing sent: without a registered URL the
+	// provider has nowhere it will agree to send anybody.
+	where, _ := url.Parse(p.SignOut("t"))
+	if got := where.Query().Get("post_logout_redirect_uri"); got != "" {
+		t.Fatalf("an unregistered landing was sent: %q", got)
+	}
+
+	cfg := config(idp)
+	cfg.PostLogoutURL = "https://portal.example/signed-out"
+	p, err = New(context.Background(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	where, _ = url.Parse(p.SignOut("t"))
+	if got := where.Query().Get("post_logout_redirect_uri"); got != cfg.PostLogoutURL {
+		t.Fatalf("the configured landing was not sent: %q", got)
+	}
+}
+
+// A restart loses the hints, and a sign-out then goes without one. Some
+// providers refuse that; sending an empty id_token_hint= is refused by more.
+func TestSignOutWithoutAHintSendsNoEmptyOne(t *testing.T) {
+	idp := newFakeIDP(t)
+	defer idp.Close()
+	idp.endSession = "https://idp.example/logout"
+
+	p, err := New(context.Background(), config(idp))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	where, _ := url.Parse(p.SignOut(""))
+	if _, present := where.Query()["id_token_hint"]; present {
+		t.Fatalf("an empty hint was sent: %q", where)
+	}
+}
+
+// The identity token has to survive the sign-in to be presentable later. It
+// used to be dropped on the floor once verified, which is what made single
+// log-out impossible without storing one.
+func TestTheIdentityTokenIsCarriedOutOfASignIn(t *testing.T) {
+	idp := newFakeIDP(t)
+	defer idp.Close()
+
+	p, err := New(context.Background(), config(idp))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	who, err := signIn(t, p, idp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if who.Token == "" {
+		t.Fatal("the identity token was dropped, so no sign-out can present it")
+	}
+	// And it is the token, not something that looks like one.
+	if strings.Count(who.Token, ".") != 2 {
+		t.Fatalf("what came back is not a JWT: %q", who.Token)
+	}
+}
+
+/*
+Which system a failure names.
+
+Every refusal from Complete used to reach the browser as "the identity provider
+refused this sign-in", and only one of them is that. The rest are cronos
+refusing a token, a deployment pointed at a different client, or two machines
+disagreeing about the time — and the sentence decides which admin console
+somebody opens.
+
+It is not hypothetical. A host clock jumped during a live run here, a valid
+token landed outside its window, and the first thing restarted was Keycloak.
+*/
+func TestARefusalNamesTheSystemToLookAt(t *testing.T) {
+	for _, c := range []struct {
+		what  string
+		set   func(*fakeIDP)
+		want  error
+		avoid error
+	}{
+		{
+			what:  "a clock that is behind the provider's",
+			set:   func(i *fakeIDP) { i.expiry = time.Now().Add(-2 * time.Hour) },
+			want:  extension.ErrClockSkew,
+			avoid: extension.ErrProviderRefused,
+		},
+		{
+			what:  "a clock that is ahead of it",
+			set:   func(i *fakeIDP) { i.issued = time.Now().Add(2 * time.Hour) },
+			want:  extension.ErrClockSkew,
+			avoid: extension.ErrProviderRefused,
+		},
+	} {
+		t.Run(c.what, func(t *testing.T) {
+			idp := newFakeIDP(t)
+			defer idp.Close()
+			p := provider(t, idp)
+			c.set(idp)
+
+			_, err := signIn(t, p, idp)
+			if err == nil {
+				t.Fatal("the sign-in was allowed")
+			}
+			if !errors.Is(err, c.want) {
+				t.Fatalf("refused with %v, which does not say what to go and look at", err)
+			}
+			if errors.Is(err, c.avoid) {
+				t.Fatalf("refused with %v, which sends somebody to the wrong system", err)
+			}
+		})
+	}
+}
+
+// And the one case that has earned the default: the provider said no. It comes
+// back on the callback rather than from the server — a declined consent screen
+// sends the browser home with ?error= and no code.
+func TestTheProviderSayingNoIsNamedAsSuch(t *testing.T) {
+	idp := newFakeIDP(t)
+	defer idp.Close()
+	p := provider(t, idp)
+
+	_, state, err := p.Start(context.Background(), "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	declined := httptest.NewRequest(http.MethodGet,
+		"/v1/auth/sso/callback?state="+url.QueryEscape(state.ID)+"&error=access_denied", nil)
+
+	_, err = p.Complete(context.Background(), declined, state)
+	if !errors.Is(err, extension.ErrProviderRefused) {
+		t.Fatalf("a provider refusal came back as %v", err)
+	}
+}
+
+/*
+A person the provider vouched for and this deployment will not have.
+
+Nothing is broken and nothing will fix itself: somebody has to be admitted. It
+is the one refusal where the answer is neither "check the provider" nor "check
+the clocks", and it read as the first of those.
+*/
+func TestAnAddressOutsideTheAllowedDomainsIsNotTheProvidersFault(t *testing.T) {
+	idp := newFakeIDP(t)
+	defer idp.Close()
+	p := provider(t, idp)
+	// The fake provider signs in dewi@acme.example, so the list has to be a
+	// domain that is not hers — a list containing her own would admit her and
+	// this test would pass by testing nothing.
+	p.cfg.AllowedDomains = []string{"globex.example"}
+
+	_, err := signIn(t, p, idp)
+	if !errors.Is(err, extension.ErrNotAcceptable) {
+		t.Fatalf("an unadmitted address came back as %v", err)
+	}
+	if errors.Is(err, extension.ErrProviderRefused) {
+		t.Fatal("an unadmitted address blamed the provider, which signed them in perfectly well")
+	}
 }

@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -32,14 +33,31 @@ type SSO struct {
 	flow   extension.SignInFlow
 	signer *token.Signer
 	users  Directory
-	log    *slog.Logger
+	// auth reads the session a sign-out is ending, to find its hint.
+	auth Principals
+	log  *slog.Logger
 
 	// Where the deployment's people belong when the provider does not say.
 	org, project, role string
 
 	mu     sync.Mutex
 	states map[string]extension.State
-	now    func() time.Time
+	/*
+	   hints holds each session's identity token, for a later sign-out.
+
+	   In memory, keyed by the account it belongs to, and nowhere else. A
+	   provider's identity token is a credential at that provider: in a
+	   database it is a credential in a backup, and in the browser it is one in
+	   a page. A restart loses them, and a sign-out then goes without a hint —
+	   which some providers refuse, and which is the honest outcome, because
+	   the local session has already ended by then.
+
+	   Dropped when the session it belongs to expires, because a hint outlives
+	   its usefulness the moment the session does, and what is left is a
+	   credential held for a sign-out that can no longer happen.
+	*/
+	hints map[string]hint
+	now   func() time.Time
 }
 
 // Directory is how a person the provider vouched for becomes somebody here.
@@ -48,10 +66,12 @@ type Directory interface {
 }
 
 // NewSSO wires the handler.
-func NewSSO(f extension.SignInFlow, s *token.Signer, d Directory, log *slog.Logger) *SSO {
+func NewSSO(f extension.SignInFlow, s *token.Signer, d Directory,
+	auth Principals, log *slog.Logger) *SSO {
 	return &SSO{
-		flow: f, signer: s, users: d, log: log,
+		flow: f, signer: s, users: d, auth: auth, log: log,
 		states: map[string]extension.State{},
+		hints:  map[string]hint{},
 		now:    time.Now,
 	}
 }
@@ -77,6 +97,8 @@ func (h *SSO) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.start(w, r)
 	case strings.HasSuffix(r.URL.Path, "/callback"):
 		h.complete(w, r)
+	case strings.HasSuffix(r.URL.Path, "/logout"):
+		h.logout(w, r)
 	default:
 		fail(w, http.StatusNotFound, "No such endpoint.")
 	}
@@ -121,10 +143,37 @@ func (h *SSO) complete(w http.ResponseWriter, r *http.Request) {
 
 	who, err := h.flow.Complete(r.Context(), r, state)
 	if err != nil {
-		h.log.Info("sign-in refused by the provider", "provider", h.flow.Name(), "err", err)
+		/*
+		   Which system to go and look at.
+
+		   This said "the identity provider refused this sign-in" for every way
+		   Complete can fail, and only one of them is that. The others are
+		   cronos refusing a token, a deployment configured against a different
+		   client, or two machines disagreeing about the time. Naming the
+		   provider for those costs somebody an afternoon in the wrong admin
+		   console — it cost one here, when a host clock jumped and the first
+		   thing restarted was Keycloak.
+		*/
+		reason, why := "the identity provider refused this sign-in", "provider"
+		switch {
+		case errors.Is(err, extension.ErrClockSkew):
+			reason = "this server and the identity provider disagree about the time"
+			why = "clock"
+		case errors.Is(err, extension.ErrNotAcceptable):
+			reason = "that account is not one this deployment admits"
+			why = "not-admitted"
+		case errors.Is(err, extension.ErrProviderRefused):
+			// The default, and now the one case that has earned it.
+		default:
+			reason = "this sign-in could not be verified"
+			why = "unverified"
+		}
+
+		h.log.Info("sign-in refused", "provider", h.flow.Name(), "reason", why, "err", err)
 		audit(r.Context(), h.log, principal.Principal{Subject: "sso"},
-			ActionSignIn, "sso", Refused, map[string]any{"provider": h.flow.Name()})
-		h.refuse(w, r, "the identity provider refused this sign-in")
+			ActionSignIn, "sso", Refused,
+			map[string]any{"provider": h.flow.Name(), "reason": why})
+		h.refuse(w, r, reason)
 		return
 	}
 
@@ -138,11 +187,22 @@ func (h *SSO) complete(w http.ResponseWriter, r *http.Request) {
 	issued, err := h.signer.Mint(token.Claims{
 		Audience: token.Portal, Role: user.Role,
 		Org: user.Org, Project: user.Project, Subject: user.ID,
+		// Set by the directory, not by the provider. A deployment
+		// administrator who signs in through their company's SSO is the same
+		// account as one who signs in with a password, and a claim that
+		// depended on which door they used would be a surprise nobody enjoys.
+		Platform: user.Platform,
 	}, SessionLifetime)
 	if err != nil {
 		h.log.Error("could not mint a session", "err", err)
 		h.refuse(w, r, "could not start a session")
 		return
+	}
+
+	// Kept for a sign-out, and only for that. Replaced rather than appended,
+	// so signing in again on another machine does not leave a stale one.
+	if who.Token != "" {
+		h.keep(user.ID, who.Token)
 	}
 
 	// Cleared, because it has been spent. A state that stays valid is a
@@ -237,6 +297,43 @@ func (h *SSO) recall(id string) (extension.State, bool) {
 	return s, true
 }
 
+// hint is one session's identity token and how long it is worth keeping.
+type hint struct {
+	token   string
+	expires time.Time
+}
+
+// keep holds a hint for as long as the session it was minted alongside.
+func (h *SSO) keep(user, token string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	// Swept on the way in, like states. A person who signs in and closes the
+	// tab never calls the sign-out route, so nothing else would ever remove
+	// theirs, and a long-lived process would accumulate one provider
+	// credential per person who has ever signed in.
+	now := h.now()
+	for id, held := range h.hints {
+		if now.After(held.expires) {
+			delete(h.hints, id)
+		}
+	}
+	h.hints[user] = hint{token: token, expires: now.Add(SessionLifetime)}
+}
+
+// spend takes a hint and removes it: it is good for one sign-out.
+func (h *SSO) spend(user string) string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	held, ok := h.hints[user]
+	delete(h.hints, user)
+	if !ok || h.now().After(held.expires) {
+		return ""
+	}
+	return held.token
+}
+
 func (h *SSO) forget(id string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -268,4 +365,58 @@ func firstOf(values ...string) string {
 		}
 	}
 	return ""
+}
+
+/*
+logout ends the provider's session as well as this one.
+
+The local session is a signed token with no server-side record, so ending it is
+the browser's business and has already happened by the time this is called:
+what this answers is where to go next, which is the provider's end-session
+endpoint or nothing.
+
+Answered as JSON rather than as a redirect, because the page is a script that
+has just cleared its own storage and needs to decide whether to navigate. A
+redirect here would be a redirect from a fetch, which goes nowhere.
+*/
+func (h *SSO) logout(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		fail(w, http.StatusMethodNotAllowed, "Use POST.")
+		return
+	}
+
+	out, ok := h.flow.(extension.SignOutFlow)
+	if !ok {
+		// This provider cannot end its own session. The local one is over
+		// either way, and saying so is better than sending somebody to a URL
+		// nobody published.
+		send(w, http.StatusOK, map[string]string{})
+		return
+	}
+
+	// The hint belongs to whoever is asking, which needs a session — so this
+	// route is the one place a sign-out is authenticated. Without one there is
+	// nothing to end and nothing to look up.
+	var token string
+	if pr, signedIn := h.auth.Principal(r); signedIn {
+		token = h.spend(pr.Subject)
+
+		h.log.Info("signed out", "user", pr.Subject, "provider", h.flow.Name())
+		audit(r.Context(), h.log, pr, ActionSignOut, pr.Subject, Allowed,
+			map[string]any{"provider": h.flow.Name()})
+	}
+
+	// Nothing from the request decides where this goes. The provider will only
+	// accept a URL registered with it, so the landing is the deployment's
+	// configuration — which is also what keeps an open redirect off the one
+	// route somebody reaches expecting to have just left.
+	send(w, http.StatusOK, map[string]string{"redirect": out.SignOut(token)})
+}
+
+// SSOClock moves this handler's clock, for tests that need a session to have
+// expired without waiting eight hours for it.
+func SSOClock(h *SSO, now func() time.Time) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.now = now
 }

@@ -42,7 +42,18 @@ func NewAuthor(s *token.Signer, admin *AdminKey) *Author {
 // Standing is whether the person a token names is an account here, and
 // whether it may still act.
 type Standing interface {
-	Active(ctx context.Context, id string) (known, active bool)
+	/*
+	   Active reports whether this subject may act, and from when.
+
+	   `since` is the moment their sessions became valid. A token minted before
+	   it is refused however good its signature — which is how "sign out
+	   everywhere" works without storing sessions: there is no list to walk,
+	   only a line drawn in time that every token is checked against.
+
+	   Zero means no line has been drawn, which is every account until somebody
+	   presses the button.
+	*/
+	Active(ctx context.Context, id string) (known, active bool, since time.Time)
 }
 
 /*
@@ -67,10 +78,18 @@ func (a *Author) WithStanding(s Standing) *Author {
 type moment struct {
 	ok bool
 	at time.Time
+	// since is when this account's sessions became valid, held so the cached
+	// answer can still refuse a token minted before it.
+	since time.Time
 }
 
-// stands reports whether the subject may still act, from a short cache.
-func (a *Author) stands(ctx context.Context, subject string) bool {
+// stands reports whether this token may still act, from a short cache.
+//
+// Takes the claims rather than the subject: two of the three questions are
+// about the account, and the third — whether this token predates the last "sign
+// out everywhere" — is about the token.
+func (a *Author) stands(ctx context.Context, claims token.Claims) bool {
+	subject := claims.Subject
 	if a.standing == nil || subject == "" {
 		return true
 	}
@@ -81,7 +100,7 @@ func (a *Author) stands(ctx context.Context, subject string) bool {
 	const remember = 5 * time.Second
 	now := time.Now()
 	if cached, ok := a.active[subject]; ok && now.Sub(cached.at) < remember {
-		return cached.ok
+		return cached.ok && minted(claims, cached.since)
 	}
 
 	// Sweeping here rather than on a timer: the map is only read on this path,
@@ -93,15 +112,68 @@ func (a *Author) stands(ctx context.Context, subject string) bool {
 		}
 	}
 
-	known, active := a.standing.Active(ctx, subject)
+	known, active, since := a.standing.Active(ctx, subject)
 	// A subject that is not an account here is a machine credential — a
 	// pipeline's token, or one baked into a portal build — and those are
 	// governed by their signature and expiry, which is all there has ever been
 	// to govern them by. Refusing them was locking out every deployment that
 	// mints its own.
 	ok := !known || active
-	a.active[subject] = moment{ok: ok, at: now}
-	return ok
+	if !known {
+		/*
+		   Not an account here, so no line applies.
+
+		   A machine credential — a pipeline's token, one baked into a portal
+		   build — is governed by its signature and expiry, which is all there
+		   has ever been to govern it by. Cleared here rather than trusted to
+		   arrive zero, because "somebody's sign-out ended every CI token in
+		   the deployment" is the failure this check already had once, and a
+		   store that answered a stale timestamp for a missing row would bring
+		   it back.
+		*/
+		since = time.Time{}
+	}
+	a.active[subject] = moment{ok: ok, at: now, since: since}
+	return ok && minted(claims, since)
+}
+
+/*
+minted reports whether this token was issued after the line was drawn.
+
+This is the whole of session revocation, and the reason it is affordable:
+nothing is stored per session, so nothing has to be walked. One timestamp per
+account invalidates every token issued before it — including the ones on
+machines nobody has access to any more, which is the only reason the button
+exists.
+
+What it cannot do is end one session and leave another, because a stateless
+token carries nothing to tell them apart. That is a real limit and the interface
+says so rather than offering a list of devices it cannot produce.
+*/
+func minted(claims token.Claims, since time.Time) bool {
+	if since.IsZero() {
+		/*
+		   No line drawn, which is every account until somebody presses the
+		   button.
+
+		   Redundant, strictly: a zero time's Unix() is around -62135596800, so
+		   the comparison below already lets everything through. Kept because
+		   the rule is worth stating where it can be read, and because a
+		   representation that ever stopped having that property would
+		   otherwise turn "nobody has pressed the button" into "nothing is
+		   valid" silently.
+		*/
+		return true
+	}
+	/*
+	   Whole seconds, and `>=` rather than `>`.
+
+	   `iat` has second granularity, so a token minted in the same second as the
+	   cut-off must survive it — otherwise pressing the button ends the session
+	   of the person pressing it, from the very request that pressed it, and
+	   they are bounced to the sign-in page for doing the right thing.
+	*/
+	return claims.IssuedAt >= since.Unix()
 }
 
 // Principal returns who the request acts as.
@@ -113,7 +185,7 @@ func (a *Author) Principal(r *http.Request) (principal.Principal, bool) {
 		// Signed, unexpired, and still somebody who works here. The first two
 		// are what the signature proves; the third is the one that changes
 		// after the token was issued.
-		if !a.stands(r.Context(), claims.Subject) {
+		if !a.stands(r.Context(), claims) {
 			return principal.Principal{}, false
 		}
 		return claims.Principal(), true
@@ -156,4 +228,12 @@ func (p *PortalReports) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p.embed.render(w, r, pr, r.PathValue("name"))
+}
+
+// ForgetStanding drops the cached answers, so a test does not wait five seconds
+// for a change to take effect.
+func ForgetStanding(a *Author) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.active = map[string]moment{}
 }

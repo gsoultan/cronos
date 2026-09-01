@@ -2,7 +2,8 @@ apiVersion: cronos.dev/v1
 kind: Report
 metadata:
   name: billing-summary
-  folder: /finance
+  title: Billing summary
+  folder: Finance
   description: What you have been billed, and what is still open.
 spec:
   dataset: invoices

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -28,7 +29,19 @@ type Registry struct {
 	mu      sync.RWMutex
 	sources map[string]*source
 	log     *slog.Logger
+	// unavailable is why each source that would not open did not. Written once
+	// during New and read after, so it needs no lock — and kept rather than
+	// logged here, because whether this is fatal is the caller's decision and
+	// a library that exits is a library nobody can embed.
+	unavailable []error
 }
+
+// Unavailable is every source this build could not open, and why.
+//
+// Empty on a healthy deployment. Each one is a report that will fail with a
+// message naming it, and a number worth alerting on — see
+// cronos_datasources_unavailable.
+func (r *Registry) Unavailable() []error { return r.unavailable }
 
 // New opens every datasource.
 //
@@ -36,9 +49,27 @@ type Registry struct {
 // thing they see in their monitoring, and opening one per report is how a
 // reporting tool becomes the reason their connection count alarms.
 //
-// A source that will not open is fatal rather than skipped: a server that
-// starts with three of its four warehouses unreachable serves three-quarters
-// of its reports and fails the rest at six in the morning.
+/*
+A source that will not open is skipped and named, not fatal.
+
+It was fatal, on the reasoning that a server starting with three of its four
+warehouses unreachable serves three-quarters of its reports and fails the rest
+at six in the morning. The reasoning describes a failure that cannot happen
+here: sql.Open does not connect, so an unreachable warehouse opens perfectly
+well and fails at query time. What actually reaches this is a driver the build
+cannot open and a ${secret:…} the deployment has not set — both configuration,
+neither transient.
+
+And both are publishable. `driver: mysql` was accepted by definition.Validate
+long before any MySQL driver was registered, so an editor could publish one, get
+a 200, and take the deployment down at its next restart — with the API down, so
+the only way to remove it was a prompt on the database. That is the third time
+the same shape has appeared, after a schedule's timezone and its cron.
+
+So the source is skipped, its reason is returned for the caller to log and
+count, and every report that does not read it keeps working. One that does read
+it fails with a message naming the source, which is where somebody can act.
+*/
 func New(defs []definition.DataSource, secrets secret.Resolver, log *slog.Logger) (*Registry, error) {
 	r := &Registry{sources: map[string]*source{}, log: log}
 
@@ -53,8 +84,9 @@ func New(defs []definition.DataSource, secrets secret.Resolver, log *slog.Logger
 			// path the reader looks for and does not find.
 			uri, err := secret.Resolve(def.URI, secrets)
 			if err != nil {
-				r.Close()
-				return nil, fmt.Errorf("datasource %q: %w", def.Name, err)
+				r.unavailable = append(r.unavailable,
+					fmt.Errorf("datasource %q: %w", def.Name, err))
+				continue
 			}
 			def.URI = uri
 			r.sources[def.Name] = &source{def: def}
@@ -62,8 +94,8 @@ func New(defs []definition.DataSource, secrets secret.Resolver, log *slog.Logger
 		}
 		s, err := open(def, secrets)
 		if err != nil {
-			r.Close()
-			return nil, err
+			r.unavailable = append(r.unavailable, err)
+			continue
 		}
 		r.sources[def.Name] = s
 		log.Info("datasource", "name", def.Name, "driver", def.Driver,
@@ -88,9 +120,22 @@ func open(def definition.DataSource, secrets secret.Resolver) (*source, error) {
 	}
 	db, err := sql.Open(sqlDriver(def.Driver), dsn)
 	if err != nil {
-		// The definition's own text, not the resolved one: a driver error
-		// quotes the string it was given, and by then it has a password in it.
-		return nil, fmt.Errorf("datasource %q (%s): %w", def.Name, def.DSN, err)
+		/*
+		   The name and the driver, and not the DSN in either form.
+
+		   This printed def.DSN — the definition's own text rather than the
+		   resolved one, on the reasoning that the unresolved version says
+		   ${secret:…} where the password goes. True when a definition uses a
+		   secret reference and false when somebody wrote the password inline,
+		   which is allowed and is what a first deployment does. The error goes
+		   to the startup log, so that is a credential in the log of every
+		   instance that failed to start.
+
+		   The driver name is what a person needs anyway: this fails when the
+		   build cannot open that kind of database, and no DSN would have told
+		   them that.
+		*/
+		return nil, fmt.Errorf("datasource %q (driver %q): %w", def.Name, def.Driver, err)
 	}
 
 	// The pool is bounded because somebody else operates this database. A
@@ -103,7 +148,46 @@ func open(def definition.DataSource, secrets secret.Resolver) (*source, error) {
 	db.SetMaxIdleConns(def.Pool.Idle())
 	db.SetConnMaxIdleTime(def.Pool.IdleFor())
 	db.SetConnMaxLifetime(def.Pool.LifetimeOf())
+
+	/*
+	   An in-memory database lives exactly as long as a connection to it.
+
+	   SQLite destroys a `mode=memory` database when its last connection closes,
+	   and the pool above is built to close connections: a few minutes idle and
+	   every one of them is reaped. The next query then opens a *new*, empty
+	   database and the report fails with "no such table" — against a source
+	   whose Test button still passes, because connecting is not the problem.
+
+	   The demo warehouse is exactly this, so the symptom is somebody opening
+	   the demo, reading a report, coming back after lunch and finding every
+	   report broken with no error anybody caused. Which is what happened here,
+	   between one screenshot and the next.
+
+	   Pinning the pool is the whole fix: one connection that is never idle-timed
+	   and never aged out keeps the database alive for the life of the process.
+	   It costs one connection to a database that is in this process's own
+	   memory, and it applies to nothing else — a file or a server survives an
+	   idle pool perfectly well, and their operators are the reason the limits
+	   above exist.
+	*/
+	if memoryDatabase(dsn) {
+		db.SetConnMaxIdleTime(0)
+		db.SetConnMaxLifetime(0)
+		if def.Pool.Idle() < 1 {
+			db.SetMaxIdleConns(1)
+		}
+	}
 	return &source{def: def, db: db, dialect: dialect}, nil
+}
+
+// memoryDatabase reports whether a DSN names a database that exists only while
+// something is connected to it.
+//
+// Matched on the parameter rather than on the driver: `mode=memory` is how
+// SQLite spells it, `:memory:` is the older form, and a source that says
+// neither is on disk or on a server either way.
+func memoryDatabase(dsn string) bool {
+	return strings.Contains(dsn, "mode=memory") || strings.Contains(dsn, ":memory:")
 }
 
 // Engine resolves how to compile and run queries for a dataset.
@@ -246,3 +330,32 @@ func (r *Registry) Probe(ctx context.Context, name string) (time.Duration, error
 // long enough for a cold connection across a region and short enough that
 // somebody waiting on the answer does not conclude the page is broken.
 const probeTimeout = 5 * time.Second
+
+/*
+Pool reports how busy one source's connections are.
+
+From database/sql's own counters, which is the only party that knows without
+asking the warehouse. Asking the warehouse means a query against a database
+somebody else operates on every scrape — and the load harness did exactly that,
+spawning a psql per sample, until the sampling cost enough to move the numbers
+being sampled.
+
+Three numbers, because any two of them say nothing. `open` is how many
+connections exist, `inUse` is how many are running a query at this instant, and
+`limit` is what the definition allows. In-use pinned at the limit while
+throughput flattens is the pool being the ceiling; in-use well below it means
+the ceiling is somewhere else and raising maxOpen only opens more connections on
+somebody's production database.
+
+A source with no pool — an object store, which is files rather than a database —
+reports nothing rather than zeroes, because zero connections and no connections
+are different answers.
+*/
+func (r *Registry) Pool(name string) (open, inUse, limit int, ok bool) {
+	db, found := r.DB(name)
+	if !found || db == nil {
+		return 0, 0, 0, false
+	}
+	stats := db.Stats()
+	return stats.OpenConnections, stats.InUse, stats.MaxOpenConnections, true
+}

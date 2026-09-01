@@ -88,13 +88,15 @@ export const reports: Report[] = [
 
 export const STATUSES = ['Paid', 'Sent', 'Overdue'] as const
 
+/* Keyed `label` rather than `month`, like every other chart datum. The key
+   used to be the reason the axis formatted itself as a date — see ColumnChart. */
 export const billedByMonth = [
-  { month: '2026-02-01', Paid: 284_000, Sent: 61_000, Overdue: 18_400 },
-  { month: '2026-03-01', Paid: 312_500, Sent: 74_200, Overdue: 22_100 },
-  { month: '2026-04-01', Paid: 298_100, Sent: 68_900, Overdue: 31_800 },
-  { month: '2026-05-01', Paid: 341_700, Sent: 82_400, Overdue: 27_600 },
-  { month: '2026-06-01', Paid: 366_200, Sent: 79_100, Overdue: 34_900 },
-  { month: '2026-07-01', Paid: 388_400, Sent: 91_300, Overdue: 41_200 },
+  { label: '2026-02-01', Paid: 284_000, Sent: 61_000, Overdue: 18_400 },
+  { label: '2026-03-01', Paid: 312_500, Sent: 74_200, Overdue: 22_100 },
+  { label: '2026-04-01', Paid: 298_100, Sent: 68_900, Overdue: 31_800 },
+  { label: '2026-05-01', Paid: 341_700, Sent: 82_400, Overdue: 27_600 },
+  { label: '2026-06-01', Paid: 366_200, Sent: 79_100, Overdue: 34_900 },
+  { label: '2026-07-01', Paid: 388_400, Sent: 91_300, Overdue: 41_200 },
 ]
 
 export const outstandingTrend = [4.9, 5.2, 4.7, 5.4, 5.1, 5.6]

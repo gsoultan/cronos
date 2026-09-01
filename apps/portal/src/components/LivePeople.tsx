@@ -1,10 +1,11 @@
 import { useState } from 'react'
-import { Button, PasswordInput, Select, TextInput } from '@mantine/core'
+import { Button, PasswordInput, Select, Switch, TextInput } from '@mantine/core'
 import { Field } from './form/Field'
 import { EmptyState } from './EmptyState'
 import { relativeTime } from '../lib/format'
 import { usePeople } from '../lib/usePeople'
-import { addPerson, amendPerson, ApiError, type Person } from '../lib/api'
+import { addPerson, amendPerson, ApiError, type Person, uninvite } from '../lib/api'
+import { useInvitations } from '../lib/usePeople'
 
 const CARD = 'mb-6 overflow-hidden rounded-lg border border-line bg-surface shadow-card'
 const HEAD = 'flex flex-wrap items-center justify-between gap-4 border-b border-line p-4'
@@ -32,6 +33,7 @@ export function LivePeople() {
   const { data, isPending, error, refresh } = usePeople()
   const [adding, setAdding] = useState(false)
   const [refused, setRefused] = useState('')
+  const [sent, setSent] = useState('')
 
   if (isPending) {
     return <p data-testid="people-loading" className="p-8 text-center text-ink-muted">Loading…</p>
@@ -64,9 +66,20 @@ export function LivePeople() {
         </div>
 
         {adding && (
-          <AddPerson
-            onAdded={() => { setAdding(false); void refresh() }}
+          <AddPerson canInvite={data?.canInvite ?? false}
+            onAdded={(invited) => {
+              setAdding(false)
+              setSent(invited ? 'Invitation sent. It works once and expires in a week.' : '')
+              void refresh()
+            }}
             onRefused={setRefused} />
+        )}
+
+        {sent && (
+          <p role="status" data-testid="people-sent"
+            className="border-b border-line bg-good/10 px-4 py-2 text-small text-ink">
+            {sent}
+          </p>
         )}
 
         {refused && (
@@ -83,7 +96,71 @@ export function LivePeople() {
           ))}
         </ul>
       </section>
+
+      {data?.canInvite && <Invited onRefused={setRefused} />}
     </>
+  )
+}
+
+/**
+ * Who has been invited and has not arrived.
+ *
+ * Its own list rather than a row in the one above, because an invitation is not
+ * a person yet: there is no account to disable, no last-seen date, and nothing
+ * a run record could be attributed to. Without this, an administrator who sent
+ * an invitation has no way to tell whether it arrived, was accepted, or expired
+ * quietly a week later.
+ */
+function Invited({ onRefused }: { onRefused: (message: string) => void }) {
+  const { data, refresh } = useInvitations()
+  const [busy, setBusy] = useState('')
+
+  const pending = data ?? []
+  if (pending.length === 0) return null
+
+  async function withdraw(id: string) {
+    setBusy(id)
+    onRefused('')
+    try {
+      await uninvite(id)
+      await refresh()
+    } catch (err) {
+      onRefused(err instanceof ApiError ? err.message : 'Could not withdraw it.')
+    } finally {
+      setBusy('')
+    }
+  }
+
+  return (
+    <section className={CARD} data-testid="pending-invitations">
+      <div className={HEAD}>
+        <div>
+          <h2 className="text-lead font-semibold text-ink">Invited, not yet arrived</h2>
+          <p className="mt-1 text-small text-ink-secondary">
+            Each link works once. Withdrawing one stops it working immediately.
+          </p>
+        </div>
+      </div>
+      <ul>
+        {pending.map((inv) => (
+          <li key={inv.id}
+            className="flex flex-wrap items-center gap-4 border-b border-line px-4 py-3 last:border-b-0">
+            <span className="min-w-[220px] flex-1">
+              <span className="font-medium text-ink">{inv.email}</span>
+              {inv.name && <span className="ml-2 text-small text-ink-secondary">{inv.name}</span>}
+            </span>
+            <span className="text-small text-ink-secondary">{inv.role}</span>
+            <span className="text-caption text-ink-muted">
+              expires {relativeTime(inv.expires)}
+            </span>
+            <Button variant="subtle" color="gray" size="xs" loading={busy === inv.id}
+              onClick={() => void withdraw(inv.id)}>
+              Withdraw
+            </Button>
+          </li>
+        ))}
+      </ul>
+    </section>
   )
 }
 
@@ -142,15 +219,19 @@ function PersonRow({ person, onChanged, onRefused }: {
 }
 
 /**
- * Adding somebody.
+ * Adding somebody, one of two ways.
  *
- * A password to hand over rather than an invitation to send. It is what the
- * server does, and the form says so instead of implying an email is on its
- * way — a person waiting for one that does not exist is worse than being
- * told to send a message themselves.
+ * An invitation where this deployment can send mail, which is the default and
+ * the better of the two: nothing is created until they accept, and the password
+ * is one only they ever see. A password chosen here otherwise — kept because a
+ * deployment with no mail server still has to be able to add its second
+ * administrator, and said plainly rather than implied, since a person waiting
+ * for an email that was never sent is worse off than one told to expect a
+ * message.
  */
-function AddPerson({ onAdded, onRefused }: {
-  onAdded: () => void
+function AddPerson({ canInvite, onAdded, onRefused }: {
+  canInvite: boolean
+  onAdded: (invited: boolean) => void
   onRefused: (message: string) => void
 }) {
   const [email, setEmail] = useState('')
@@ -159,14 +240,18 @@ function AddPerson({ onAdded, onRefused }: {
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
 
-  const ready = email.includes('@') && password.trim().length >= 12
+  // Only where there is a choice to make. On a deployment that cannot send
+  // mail this is not a toggle somebody has to discover is broken.
+  const [invite, setInvite] = useState(canInvite)
+
+  const ready = email.includes('@') && (invite || password.trim().length >= 12)
 
   async function submit() {
     setBusy(true)
     onRefused('')
     try {
-      await addPerson({ email, name, role, password })
-      onAdded()
+      await addPerson(invite ? { email, name, role } : { email, name, role, password })
+      onAdded(invite)
     } catch (err) {
       onRefused(err instanceof ApiError ? err.message : 'Could not reach the server.')
     } finally {
@@ -187,14 +272,34 @@ function AddPerson({ onAdded, onRefused }: {
         <Select data={ROLES} value={role} allowDeselect={false}
           onChange={(v) => setRole(v ?? 'viewer')} />
       </Field>
-      <Field label="First password"
-        help="Give it to them directly. They change it themselves from Account.">
-        <PasswordInput value={password} data-testid="person-password"
-          onChange={(e) => setPassword(e.currentTarget.value)} />
-      </Field>
+
+      {canInvite ? (
+        <Field label="How they get in" required={false}>
+          <Switch checked={invite} data-testid="invite-instead"
+            onChange={(e) => setInvite(e.currentTarget.checked)}
+            label={invite
+              ? 'Email them a link to set their own password'
+              : 'Set a password here and give it to them'} />
+        </Field>
+      ) : (
+        <Field label="How they get in" required={false}>
+          <p className="text-caption text-ink-muted">
+            No mail server is configured, so you set their first password here.
+          </p>
+        </Field>
+      )}
+
+      {!invite && (
+        <Field label="First password"
+          help="Give it to them directly. They change it themselves from Account.">
+          <PasswordInput value={password} data-testid="person-password"
+            onChange={(e) => setPassword(e.currentTarget.value)} />
+        </Field>
+      )}
+
       <div className="md:col-span-2">
         <Button onClick={submit} loading={busy} disabled={!ready} data-testid="save-person">
-          Add them
+          {invite ? 'Send the invitation' : 'Add them'}
         </Button>
       </div>
     </div>

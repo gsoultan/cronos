@@ -2,6 +2,7 @@ apiVersion: cronos.dev/v1
 kind: Dataset
 metadata:
   name: invoices
+  title: Invoices
   description: Issued invoices with customer detail, scoped to the caller's customer.
 spec:
   sources:

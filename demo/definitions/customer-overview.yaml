@@ -3,6 +3,7 @@ kind: Report
 metadata:
   name: customer-overview
   title: Customers
+  folder: Customers
   description: Who we bill, where they are, and how much.
 spec:
   dataset: customer-list

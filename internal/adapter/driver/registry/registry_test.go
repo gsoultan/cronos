@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gsoultan/cronos/internal/adapter/driver/registry"
 	"github.com/gsoultan/cronos/internal/core/definition"
@@ -184,17 +185,36 @@ func TestAnObjectStoreAloneStillNeedsAnEngine(t *testing.T) {
 	}
 }
 
-// A server that starts with three of its four warehouses unreachable serves
-// three-quarters of its reports and fails the rest at six in the morning.
-func TestASourceThatWillNotOpenStopsStartup(t *testing.T) {
-	_, err := registry.New([]definition.DataSource{
+/*
+A source that will not open is reported, and does not stop startup.
+
+This asserted the opposite, and the comment gave the reason: a server that
+starts with three of its four warehouses unreachable serves three-quarters of
+its reports and fails the rest at six in the morning. It describes a failure
+that cannot occur — sql.Open does not connect, so an unreachable warehouse
+opens fine and fails at query time. What reaches here is a driver this build
+has no import for, or a ${secret:…} nobody set.
+
+Both are publishable through the API, so the old contract meant an editor could
+stop the deployment from ever starting again with one definition — and with the
+API down, the only way to remove it was a prompt on the database. See
+TestASourceThatWillNotOpenDoesNotTakeTheOthersWithIt for the rest.
+*/
+func TestASourceThatWillNotOpenIsReportedRatherThanFatal(t *testing.T) {
+	reg, err := registry.New([]definition.DataSource{
 		{Name: "warehouse", Driver: "oracle", DSN: "x"},
 	}, nil, quiet())
-	if err == nil {
-		t.Fatal("a driver nobody implements was accepted")
+	if err != nil {
+		t.Fatalf("a driver nobody implements stopped the process: %v", err)
 	}
-	if !strings.Contains(err.Error(), "warehouse") {
-		t.Errorf("the message should name the source: %v", err)
+	t.Cleanup(func() { _ = reg.Close() })
+
+	why := reg.Unavailable()
+	if len(why) != 1 {
+		t.Fatalf("reported %d reasons, and one source could not be opened", len(why))
+	}
+	if !strings.Contains(why[0].Error(), "warehouse") {
+		t.Errorf("the message should name the source: %v", why[0])
 	}
 }
 
@@ -240,5 +260,112 @@ func TestTheRowCapIsEnforced(t *testing.T) {
 	}
 	if !strings.Contains(rows.Err().Error(), "more than 10 rows") {
 		t.Errorf("err = %v", rows.Err())
+	}
+}
+
+/*
+An in-memory database outlives an idle pool.
+
+SQLite destroys a `mode=memory` database when the last connection to it closes,
+and the pool this package configures is built to close connections: a few
+minutes idle and every one of them is reaped. The next query opens a new, empty
+database, and every report against that source fails with "no such table" —
+while the source's Test button still passes, because connecting was never the
+problem.
+
+The demo warehouse is exactly such a source, so this is what somebody sees when
+they open the demo, read a report, and come back after lunch. It was found
+between two screenshots taken twenty minutes apart.
+
+The test drives it deliberately rather than by waiting: an idle time of a
+millisecond and a lifetime of a millisecond is the same reaping, arriving sooner.
+*/
+func TestAnInMemoryDatabaseSurvivesAnIdlePool(t *testing.T) {
+	const dsn = "file:idle-pool-test?mode=memory&cache=shared"
+
+	def := definition.DataSource{
+		Name: "warehouse", Driver: "sqlite", DSN: dsn,
+		Pool: definition.Pool{
+			// As aggressive as the format allows. A real deployment says
+			// minutes; the failure is identical and merely slower.
+			MaxOpen: 2, MaxIdle: 1,
+			MaxIdleTime: definition.Duration(time.Millisecond),
+			MaxLifetime: definition.Duration(time.Millisecond),
+		},
+	}
+
+	reg, err := registry.New([]definition.DataSource{def}, nil, quiet())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reg.Close()
+
+	db, ok := reg.DB("warehouse")
+	if !ok {
+		t.Fatal("the source did not open")
+	}
+	if _, err := db.Exec(`CREATE TABLE invoices (id INTEGER)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO invoices VALUES (1)`); err != nil {
+		t.Fatal(err)
+	}
+
+	/*
+	   Long enough for the reaper to have run.
+
+	   database/sql sweeps on a ticker whose interval is the smaller of the two
+	   limits but never below a second, so a 50ms sleep proves nothing however
+	   aggressive the configuration is — the sweep simply had not happened yet,
+	   and the test passed for the wrong reason. The sibling test below catches
+	   that: it asserts connections *were* closed, and it fails at 50ms.
+	*/
+	time.Sleep(1300 * time.Millisecond)
+
+	var n int
+	if err := db.QueryRow(`SELECT count(*) FROM invoices`).Scan(&n); err != nil {
+		t.Fatalf("the database was destroyed while nothing was using it: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("the row is gone: %d", n)
+	}
+}
+
+// And a source on disk keeps the limits it was given. The pinning above exists
+// for one case, and a warehouse somebody else operates is not it: holding a
+// connection open forever against their database is the behaviour their DBA
+// turns this off for.
+func TestAFileBackedSourceKeepsItsPoolLimits(t *testing.T) {
+	dsn := "file:" + filepath.Join(t.TempDir(), "warehouse.db")
+
+	def := definition.DataSource{
+		Name: "warehouse", Driver: "sqlite", DSN: dsn,
+		Pool: definition.Pool{
+			MaxOpen: 2, MaxIdle: 1,
+			MaxIdleTime: definition.Duration(10 * time.Millisecond),
+			MaxLifetime: definition.Duration(10 * time.Millisecond),
+		},
+	}
+
+	reg, err := registry.New([]definition.DataSource{def}, nil, quiet())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reg.Close()
+
+	db, _ := reg.DB("warehouse")
+	if _, err := db.Exec(`CREATE TABLE invoices (id INTEGER)`); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(1300 * time.Millisecond)
+
+	// The connections were closed, which is the point — and the data is still
+	// there, because it is on disk.
+	if got := db.Stats().MaxIdleTimeClosed + db.Stats().MaxLifetimeClosed; got == 0 {
+		t.Error("a file-backed source was pinned open along with the in-memory one")
+	}
+	var n int
+	if err := db.QueryRow(`SELECT count(*) FROM invoices`).Scan(&n); err != nil {
+		t.Fatalf("reopening a file-backed source: %v", err)
 	}
 }

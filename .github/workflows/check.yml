@@ -7,9 +7,24 @@
 # people stop reading.
 name: check
 
+# Branches too, and this file's first line already said so while the config
+# below said main. The gap is not academic: this branch reached sixty commits
+# carrying five live checks that had never executed once — a container name
+# from one laptop, two readiness probes watching a temporary server, a browser
+# installed under another name, a socket path an image version old. Each broke
+# at the commit that introduced it and nothing said so, because nothing ran
+# until somebody opened the first pull request. That is the paragraph above
+# happening one level up: the gates existed, and ran nowhere the work was.
+#
+# '**' is branches and not tags, so cutting a release does not re-run the suite
+# against the commit it just passed on. pull_request stays because a fork's
+# push does not trigger anything here, and the cost of a branch and its pull
+# request both running is runner minutes, which are free on a public
+# repository, bounded by the concurrency group below, and cheaper than another
+# check nobody notices is dead.
 on:
   push:
-    branches: [main]
+    branches: ['**']
   pull_request:
 
 # A second push supersedes the first. Reviewing a branch does not need the
@@ -78,12 +93,87 @@ jobs:
       - name: licence boundary
         run: ./scripts/check-license-boundary.sh
 
+      # A command that ships in one channel and not the other is documentation
+      # that is wrong for half its readers, and nothing else notices.
+      - name: release parity
+        run: ./scripts/check-release-parity.sh
+
+      # The archives are a release artifact, so they have to build on every
+      # push rather than for the first time on the day a tag is cut.
+      - name: release archives
+        run: make dist
+
+      # Known vulnerabilities, and only the ones this code can actually reach.
+      #
+      # govulncheck traces from our call graph rather than listing everything
+      # a dependency ever shipped, so what it reports is what an attacker could
+      # get to — which is the difference between a gate people act on and a
+      # weekly list they stop reading.
+      #
+      # It found six open against the standard library the first time it ran:
+      # the toolchain was a patch behind, and nothing in this repository was
+      # looking. go.mod names the patch now, and so does the Dockerfile.
+      - name: known vulnerabilities
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
+      # A browser tab closed on a slow dashboard must not leave a query running
+      # on somebody else's warehouse. The chain from request context to the
+      # wire is long and every unit test along it owns both ends; Postgres is
+      # the only party that can say whether the statement is still there.
+      - name: hanging up on a slow report
+        env:
+          CRONOS_POSTGRES_DSN: postgres://cronos:cronos@localhost:5432/cronos?sslmode=disable
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
+          ./scripts/live-disconnect.sh
+
+      # Three replicas, all armed, one scheduling — and the schedule surviving
+      # the loss of that one. Before this, CRONOS_SCHEDULER had to be set on
+      # exactly one instance: a rule held in somebody's head, where setting it
+      # twice sends every customer two statements.
+      - name: several replicas, one scheduler
+        env:
+          CRONOS_POSTGRES_DSN: postgres://cronos:cronos@localhost:5432/cronos?sslmode=disable
+        run: ./scripts/live-leader.sh
+
+      # A burst that stopped halfway, resumed. Both directions: the customers
+      # who were missed get theirs, and the ones who already had one are not
+      # sent a second.
+      - name: resuming a partly delivered burst
+        env:
+          CRONOS_POSTGRES_DSN: postgres://cronos:cronos@localhost:5432/cronos?sslmode=disable
+        run: ./scripts/live-resume.sh
+
+      # The restore drill from docs/deploying.md, run rather than described. A
+      # backup nobody has restored is a hypothesis, and what breaks one is a
+      # schema change — which the forward path never notices.
+      - name: restoring a backup, and serving from it
+        env:
+          CRONOS_POSTGRES_DSN: postgres://cronos:cronos@localhost:5432/cronos?sslmode=disable
+        run: ./scripts/live-restore.sh
+
   # Federation needs cgo and a 460 MB module download, so it is its own job:
   # every other check should not wait for it, and it should not be the reason
   # a typo in a comment takes six minutes to fail.
   duckdb:
     name: duckdb
     runs-on: ubuntu-latest
+
+    # A second engine to federate with. Everything here used to check the SQL
+    # that mounts a source and nothing that attached one, so the feature this
+    # exists for — one query across two databases — had never been run.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: cronos
+          POSTGRES_PASSWORD: cronos
+          POSTGRES_DB: cronos
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U cronos"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-go@v5
@@ -91,7 +181,151 @@ jobs:
           go-version-file: go.mod
           cache: true
       - run: go build -tags duckdb ./...
-      - run: go test -tags duckdb ./internal/adapter/driver/duckdb/
+      - name: test
+        env:
+          CRONOS_POSTGRES_DSN: postgres://cronos:cronos@localhost:5432/cronos?sslmode=disable
+        run: go test -tags duckdb ./internal/adapter/driver/duckdb/
+
+  live:
+    name: live checks
+    runs-on: ubuntu-latest
+
+    # The scripts under scripts/live-*.sh drive a running cronos the way a
+    # person or a browser would, and between them they have found around a
+    # dozen defects that no unit test could: a QR code that encoded nothing, a
+    # session cut that spared the phone it was meant to end, a chart that
+    # compiled to `GROUP BY 1` on a database that reads the 1 as a constant, an
+    # enrolment wizard rendering inside the account page.
+    #
+    # None of them ran anywhere but on the machine of whoever remembered. This
+    # job runs the ones that need nothing but the toolchain; the ones wanting a
+    # Keycloak or a SQL Server are their own job below, so a slow image pull is
+    # never the reason a typo takes ten minutes to fail.
+    services:
+      mailhog:
+        image: mailhog/mailhog
+        ports: ['1025:1025', '8025:8025']
+
+    steps:
+      # The whole history, not the one commit checkout defaults to: the upgrade
+      # check compiles an old cronos from the commit before the newest
+      # migration, and with a shallow clone it would find nothing to compare
+      # against and skip — which reads in the log exactly like passing.
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # The drain check bursts a real report per recipient, and a burst
+      # attaches a document.
+      - name: install typst
+        run: |
+          curl -fsSL https://github.com/typst/typst/releases/download/v0.15.1/typst-x86_64-unknown-linux-musl.tar.xz \
+            | tar -xJ --strip-components=1 -C /usr/local/bin typst-x86_64-unknown-linux-musl/typst
+
+      # Each on its own step, so a failure names the check rather than "the
+      # live job". They are quick — the longest waits half a minute for a rate
+      # limit to refill, which is the limiter working.
+      # The boundaries that decide whether this can be sold into somebody
+      # else's application: an end customer's token, row scope, a token
+      # somebody edited, another organisation, a viewer, a share link.
+      - name: the boundaries hold
+        run: ./scripts/live-boundaries.sh
+      # A database failover is an ordinary Tuesday and the classic reason a
+      # service needs restarting afterwards. It also pins the property worth
+      # having: an outage of cronos's own store does not stop anybody reading a
+      # report, because definitions are in memory and the warehouse is
+      # elsewhere.
+      - name: the store goes away and comes back
+        run: ./scripts/live-failover.sh
+      # Two versions against one database, which is what a rollout is for the
+      # length of one. It needs history, because the old build is compiled from
+      # the commit before the newest migration — hence fetch-depth 0 above.
+      - name: a rolling deploy, with two versions side by side
+        run: ./scripts/live-upgrade.sh
+      # An editor's misspelled timezone published with a 200 and took the
+      # deployment down at the next restart, with the API down and the only
+      # repair a prompt on the database.
+      - name: a typo that used to take the deployment down
+        run: ./scripts/live-typo.sh
+      - name: first run, and administering the deployment
+        run: ./scripts/live-setup.sh
+      - name: ending every other session
+        run: ./scripts/live-sessions.sh
+      - name: two-factor, against codes computed independently
+        run: ./scripts/live-2fa.sh
+      - name: requiring a second factor of everyone
+        run: ./scripts/live-require-2fa.sh
+      - name: inviting somebody, and reading the mail
+        run: ./scripts/live-invite.sh
+      # SIGTERM in the middle of a burst of eight hundred. Two defects lived
+      # here that no unit test could see: nothing waited for the schedulers,
+      # and cancelling them cancelled the very renders the wait existed to
+      # protect — so a burst that had delivered to twenty of eight hundred
+      # left no run record at all.
+      - name: interrupting a burst
+        run: ./scripts/live-drain.sh
+      # The failure with no signal: a scheduler that stops inside a process that
+      # keeps answering health, readiness and every request. Nothing counted it,
+      # because a scheduler that is not running produces nothing to count.
+      - name: a scheduler that stops is visible
+        run: ./scripts/live-scheduler-stalls.sh
+
+  live-databases:
+    name: live checks (databases)
+    runs-on: ubuntu-latest
+
+    # SQL Server, in its own job because the image is 1.7 GB and everything
+    # else in this workflow should be able to fail in under two minutes.
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: 'Y'
+          MSSQL_SA_PASSWORD: 'A-Strong-Passw0rd!'
+          MSSQL_PID: Developer
+        ports: ['1433:1433']
+
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: a report against a real SQL Server
+        env:
+          CRONOS_SQLSERVER_RUNNING: '1'
+        run: ./scripts/live-sqlserver.sh
+
+      # MySQL was supported by every layer and reachable by none: the dialect,
+      # the registry, boot and the federation mount all knew it, and no driver
+      # was ever imported. Nothing had executed a query against the database the
+      # dialect was written for.
+      - name: a report against MySQL
+        run: ./scripts/live-mysql.sh
+
+  live-sso:
+    name: live checks (sso)
+    runs-on: ubuntu-latest
+
+    # Keycloak in its own job for the same reason SQL Server is: the image is
+    # large and the realm setup takes a minute, and neither should be why a
+    # typo takes ten minutes to fail. The script starts and removes its own
+    # container, so nothing is declared here.
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      # OIDC sign-in against a real provider: the discovery document, the
+      # callback, the claims, and single log-out. A mock provider agrees with
+      # whatever the client believes, which is the one thing worth checking.
+      - name: sign in through a real identity provider
+        run: ./scripts/live-sso.sh
 
   portal:
     name: portal
@@ -101,6 +335,12 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - working-directory: apps/portal
         run: bun install --frozen-lockfile
+      # The other half of the supply chain. The portal ships to a browser, so a
+      # vulnerable dependency here is one served to every reader of every
+      # report — including an ISV's end customers, through the embed.
+      - name: known vulnerabilities
+        working-directory: apps/portal
+        run: bun audit --audit-level=high
       - working-directory: apps/portal
         run: bunx tsc --noEmit
       - working-directory: apps/portal
@@ -144,8 +384,15 @@ jobs:
 
       # Chrome, because the suites launch it by channel rather than using
       # Playwright's bundled build — the same browser a person would use.
-      - name: install chrome
-        run: bunx playwright install --with-deps chrome
+      # Both, because the suites here launch two different browsers. The embed
+      # and react checks ask for `channel: 'chrome'`, which is the Chrome this
+      # installs; the portal's e2e scripts call chromium.launch() bare, which is
+      # Playwright's own build under ~/.cache/ms-playwright and a separate
+      # download. Installing only chrome left the portal suites launching a
+      # browser that was never fetched, which is what "the browser check" failed
+      # on — every script that says `Needs playwright's chromium` in its header.
+      - name: install chrome and chromium
+        run: bunx playwright install --with-deps chrome chromium
 
       - name: install typst
         run: |
@@ -177,6 +424,26 @@ jobs:
           ./scripts/live-embed.sh
           ./scripts/live-portal.sh
 
+      # Enrolment through the browser: a QR code that encodes a real secret, a
+      # code computed from it, and a wizard that renders where it should. The
+      # QR encoded nothing for a while and every server-side test passed.
+      - name: enrolling a second factor in a browser
+        run: ./scripts/live-portal-2fa.sh
+
+      # Forgetting a password, through a real mail server and a real browser.
+      # It is the commonest support request in software and, until it was
+      # built, the only answer was a shell on the server and a bcrypt hash
+      # written by hand.
+      - name: getting back in after forgetting a password
+        run: ./scripts/live-reset.sh
+
+      # Two people in one browser. Every query key names what was asked for and
+      # none names who asked, so a second session was served the first one's
+      # catalogue out of cache — under its own organisation in the header, and
+      # with no request sent, so nothing in any log said so.
+      - name: handing a browser to another organisation
+        run: ./scripts/live-handover.sh
+
   # The image, because the one thing it can be missing is the one thing no
   # other job would notice: paginated output shells out to `typst`, and an
   # image without it serves every other path correctly and fails PDF at six in
@@ -186,17 +453,46 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # The commit goes in as a build arg, because .dockerignore excludes .git
+      # on purpose and `go build` has nothing to stamp without it.
       - name: build
-        run: docker build -t cronos:ci .
+        run: |
+          docker build -t cronos:ci \
+            --build-arg CRONOS_VERSION="$(git rev-parse --short=12 HEAD)" .
 
       - name: the typesetter is in it
         run: docker run --rm --entrypoint typst cronos:ci --version
 
+      # And it can say which build it is. Without the arg above this reports
+      # "unknown", which is the answer nobody wants from the one copy of cronos
+      # that runs in somebody else's cluster — and it would be a silent
+      # regression, because the image builds and serves either way.
+      - name: it knows which build it is
+        run: |
+          said=$(docker run --rm cronos:ci -version)
+          echo "$said"
+          case "$said" in
+            *unknown*) echo "the image cannot say which build it is"; exit 1 ;;
+          esac
+          echo "$said" | grep -q "$(git rev-parse --short=12 HEAD)" ||
+            { echo "the image reports a different commit"; exit 1; }
+
       # And it starts, reaches its dependencies, and says so. An image that
       # builds and cannot serve is an image that passes a build check.
+      #
+      # --read-only because docs/deploying.md tells operators cronosd needs no
+      # writable filesystem to start and serve, and offers a systemd unit with
+      # ProtectSystem=strict on that basis. That is a claim about this binary,
+      # so it is checked here rather than left to whoever follows the advice:
+      # anything that starts writing outside a render fails this job instead of
+      # a hardened deployment somebody else runs.
+      #
+      # --tmpfs /tmp because the typesetter does work in a directory under it,
+      # and a read-only root has no writable /tmp. That is the container's
+      # spelling of PrivateTmp=true, which the unit in the docs already sets.
       - name: it serves
         run: |
-          docker run -d --name cronos -p 8787:8787 \
+          docker run -d --name cronos -p 8787:8787 --read-only --tmpfs /tmp \
             -e CRONOS_SIGNING_KEY=ci-signing-key-at-least-32-bytes-long \
             -e CRONOS_DEFINITIONS=/demo/definitions -e CRONOS_SEED=/demo/seed.sql \
             -v "$PWD/demo:/demo:ro" cronos:ci

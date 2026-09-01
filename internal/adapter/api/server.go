@@ -64,6 +64,27 @@ type Deps struct {
 	// and a deployment manages accounts with the CLI, which is where they were
 	// managed before this existed.
 	Roster Roster
+	// Factors is second factors. Absent — a file-backed deployment — sign-in
+	// is the password alone, because there is nowhere to record one.
+	Factors Factors
+	// Platform administers the deployment across tenants. Absent for a
+	// file-backed deployment, which has no accounts to administer.
+	Platform Platform
+	// Policies is what a project requires of the people in it — today, whether
+	// everybody needs a second factor.
+	Policies Policies
+	// Accounts counts them, for the first-run check.
+	Accounts Accounts
+	// Invitations holds places for people who have not arrived. Absent — a
+	// file-backed deployment — adding somebody still means choosing their
+	// password, because there is nowhere to record the invitation.
+	Invitations Invitations
+	// Post delivers one. Absent where no mail server is configured, in which
+	// case the invite path is refused rather than quietly downgraded.
+	Post Postman
+	// Portal is where the portal is served, for the link in the email. There
+	// is nothing to put in an invitation without it.
+	Portal string
 
 	// Org and Project are the single tenant this process serves. The store is
 	// multi-tenant; the process is not, and the read fallback is gated on
@@ -78,6 +99,14 @@ type Deps struct {
 	// is not mounted — a deployment that scrapes nothing should not be serving
 	// an endpoint that lists its routes and their volumes.
 	Metrics *Metrics
+	/*
+	   MetricsElsewhere keeps /v1/metrics off this mux.
+
+	   For a deployment serving them on an address of its own — see
+	   CRONOS_METRICS_ADDR. The counting still happens either way; this decides
+	   only whether the public API is where anybody can read it.
+	*/
+	MetricsElsewhere bool
 
 	// BehindProxy says something in front terminates the connection, so the
 	// caller's address arrives in X-Forwarded-For. Off by default: reading it
@@ -99,6 +128,10 @@ var (
 	// Sign-in: five a minute, ten at once. A person mistyping a password three
 	// times in a row is ordinary; three hundred attempts is not a person.
 	signInRate, signInBurst = 5.0 / 60, 10.0
+	// The second step gets its own, and a looser one. Guessing six digits is
+	// hopeless at any rate a person would tolerate, and the person is the one
+	// retrying after an expired code or a drifting phone clock.
+	codeRate, codeBurst = 10.0 / 60, 20.0
 	// Opening a share: the id is the credential and there is no other, so this
 	// is what stands between the id space and somebody enumerating it. Thirty
 	// a minute is more than any reader needs and far less than a script wants.
@@ -191,7 +224,7 @@ func Routes(d Deps) http.Handler {
 	// Readiness: send it work. This one asks.
 	mux.Handle("/v1/ready", NewReady(d.Log, d.Ready...))
 
-	if d.Metrics != nil {
+	if d.Metrics != nil && !d.MetricsElsewhere {
 		mux.Handle("/v1/metrics", d.Metrics)
 	}
 
@@ -203,8 +236,22 @@ func Routes(d Deps) http.Handler {
 	   the issuer, not the client id, not whether a given address has an
 	   account — because a page that renders a button is all this is for.
 	*/
+	/*
+	   Whether a forgotten password can be recovered is part of the same answer.
+
+	   A "forgot your password?" link that leads to "this deployment cannot send
+	   email" is worse than no link: it is a promise made to somebody who is
+	   already locked out. The sign-in page asks first and says who to contact
+	   instead. Still nothing about any particular address — only what this
+	   deployment can do at all.
+	*/
+	canReset := false
+	if resets, ok := d.Roster.(Resets); ok && d.Roster != nil {
+		canReset = NewReset(resets, d.Post, d.Portal, d.Log).Available()
+	}
+
 	mux.HandleFunc("/v1/auth/methods", func(w http.ResponseWriter, _ *http.Request) {
-		methods := map[string]any{"password": d.Users != nil}
+		methods := map[string]any{"password": d.Users != nil, "reset": canReset}
 		if flow := extension.SignIn(); flow != nil {
 			methods["sso"] = map[string]string{"provider": flow.Name()}
 		}
@@ -216,7 +263,9 @@ func Routes(d Deps) http.Handler {
 	// is indistinguishable from a wrong password and impossible to debug.
 	if d.Users != nil {
 		mux.Handle("/v1/auth/login",
-			limited(NewAuth(d.Users, d.Signer, d.Log), NewLimit(signInRate, signInBurst),
+			limited(NewAuth(d.Users, d.Signer, d.Log).
+				WithFactors(d.Factors).WithPolicies(d.Policies),
+				NewLimit(signInRate, signInBurst),
 				"Too many sign-in attempts. Try again in a minute."))
 	}
 
@@ -228,20 +277,135 @@ func Routes(d Deps) http.Handler {
 	   afternoon probing.
 	*/
 	if flow := extension.SignIn(); flow != nil {
-		sso := NewSSO(flow, d.Signer, d.Directory, d.Log).In(d.Org, d.Project, "viewer")
+		sso := NewSSO(flow, d.Signer, d.Directory, author, d.Log).In(d.Org, d.Project, "viewer")
 		// Limited like sign-in: it reaches an identity provider, which is
 		// somebody else's service and somebody else's rate limit.
 		mux.Handle("/v1/auth/sso/start",
 			limited(sso, NewLimit(signInRate, signInBurst), "Too many attempts. Try again in a minute."))
 		mux.Handle("/v1/auth/sso/callback", sso)
+		mux.Handle("/v1/auth/sso/logout", sso)
 	}
 
 	// Who has access, and the ways it changes. Only where there is somewhere
 	// to keep people: a file-backed deployment has no accounts to manage.
 	if d.Roster != nil {
-		people := NewPeople(d.Roster, author, d.Log)
+		invite := NewInvite(d.Invitations, d.Post, d.Portal, d.Log)
+
+		people := NewPeople(d.Roster, author, d.Log).Inviting(invite)
 		mux.Handle("/v1/people", people)
 		mux.Handle("/v1/people/{id}", people)
+		mux.Handle("/v1/people/invitations", people)
+		mux.Handle("/v1/people/invitations/{id}", people)
+
+		// The one route in this API that takes no session, because the person
+		// using it has no account yet. Limited per address: the secret is
+		// unguessable, so this is not what stops an attack on it — it stops an
+		// unauthenticated endpoint that runs bcrypt from being a way to spend
+		// somebody else's CPU.
+		if invite.Available() {
+			mux.Handle("/v1/auth/invitation",
+				limited(NewAcceptance(d.Invitations, d.Signer, d.Log),
+					NewLimit(AcceptRate, AcceptBurst),
+					"Too many attempts. Wait a minute."))
+		}
+
+		/*
+		   Getting back in without being able to sign in.
+
+		   Mounted whenever there is a roster and a way to send mail, which is
+		   the same condition an invitation needs and for the same reason: both
+		   are a secret that has to reach a person rather than the browser that
+		   asked for it.
+
+		   Both routes take no session — the caller has no way to have one, which
+		   is the whole situation. Limited per address like every other
+		   unauthenticated auth route: asking is cheap and floods a mailbox,
+		   spending runs bcrypt.
+		*/
+		if resets, ok := d.Roster.(Resets); ok {
+			reset := NewReset(resets, d.Post, d.Portal, d.Log)
+			if reset.Available() {
+				for _, path := range []string{
+					"/v1/auth/password/forgot", "/v1/auth/password/reset",
+				} {
+					mux.Handle(path, limited(reset, NewLimit(AcceptRate, AcceptBurst),
+						"Too many attempts. Wait a minute."))
+				}
+			}
+		}
+
+		// Ending every session this account holds. Unlimited on purpose: it is
+		// idempotent, it takes nothing to guess at, and it is pressed by
+		// somebody whose laptop has just been taken.
+		mux.Handle("/v1/auth/profile", NewProfile(d.Roster, author, d.Log))
+
+		/*
+		   Administering the deployment rather than a project.
+
+		   Mounted beside the rest, and the only thing keeping one customer's
+		   administrator out of another's accounts is the check at the top of
+		   this handler — every other route in this API is scoped by the
+		   caller's own organisation and project, and these deliberately are
+		   not. Somebody without the permission is answered 404 rather than 403,
+		   so probing does not confirm the tier exists.
+		*/
+		/*
+		   The first run.
+
+		   Mounted outside the sign-in requirement because on a fresh install
+		   there is nobody to sign in as, and rate limited per address because
+		   it is unauthenticated: not to protect the deployment — the endpoint
+		   closes itself the moment an account exists — but so that a machine
+		   asking a thousand times a second cannot make the answer expensive.
+		*/
+		setup := NewSetup(d.Accounts, d.Signer, d.Log)
+		// A single-project deployment can be told what it is called; one
+		// configured to serve several already was.
+		if one, ok := d.Projects.(*One); ok {
+			setup = setup.Serving(one)
+		}
+		if setup.Available() {
+			mux.Handle("/v1/setup", limited(setup, NewLimit(signInRate, signInBurst),
+				"Too many attempts. Try again in a minute."))
+		}
+
+		if d.Platform != nil {
+			platform := NewPlatformAPI(d.Platform, author, d.Log)
+			for _, path := range []string{
+				"/v1/platform/tenants", "/v1/platform/people", "/v1/platform/people/{id}",
+				"/v1/platform/admins", "/v1/platform/admins/{id}",
+			} {
+				mux.Handle(path, platform)
+			}
+		}
+		mux.Handle("/v1/auth/sessions/end", NewSessions(d.Roster, author, d.Signer, d.Log))
+
+		/*
+		   Second factors, all four routes about the caller's own account.
+
+		   There is deliberately no path by which an administrator enrols,
+		   inspects or removes somebody else's: enrolling for another person is
+		   meaningless — they hold the phone — and removing one is precisely
+		   what a social-engineering call asks for.
+		*/
+		if d.Policies != nil {
+			mux.Handle("/v1/policy", NewPolicyAPI(d.Policies, author, d.Log))
+		}
+
+		if d.Factors != nil {
+			factor := NewFactor(d.Factors, d.Roster, author, d.Org, d.Log).
+				Upgrading(d.Signer)
+			mux.Handle("/v1/auth/factor", factor)
+			// Confirming and removing both take a code, so both are limited
+			// like sign-in: an unbounded rate here is an unbounded number of
+			// guesses at six digits from inside a borrowed session.
+			for _, path := range []string{
+				"/v1/auth/factor/start", "/v1/auth/factor/confirm", "/v1/auth/factor/codes",
+			} {
+				mux.Handle(path, limited(factor, NewLimit(signInRate, signInBurst),
+					"Too many attempts. Try again in a minute."))
+			}
+		}
 
 		// Limited like sign-in rather than like a render: it takes the current
 		// password, so an unbounded rate is an unbounded number of guesses at
@@ -272,15 +436,31 @@ func Routes(d Deps) http.Handler {
 		// Behind the admin key and never the embed token: a run record names
 		// every recipient of a burst.
 		if d.Runs != nil {
-			h := NewRuns(d.Runs, author, d.Log)
+			h := NewRuns(d.Runs, author, d.Log).WithProjects(d.Projects)
 			mux.Handle("/v1/runs", h)
 			mux.Handle("/v1/runs/{id}", h)
+			// The recovery for a burst that stopped halfway: re-send the
+			// period to whoever did not get it, and to nobody else.
+			mux.Handle("/v1/runs/{id}/resume", h)
 		}
+	}
+
+	/*
+	   A session that may only enrol reaches the enrolment routes and nothing
+	   else.
+
+	   Around the whole mux rather than inside each handler, and an allow-list
+	   rather than a deny-list: a route added tomorrow is refused to these
+	   sessions until somebody deliberately lists it. See OnlyEnrolment.
+	*/
+	var handler http.Handler = mux
+	if d.Policies != nil {
+		handler = OnlyEnrolment(mux, author)
 	}
 
 	// Outermost, so a panic in the CORS layer is caught too and every request
 	// gets an id — including the ones refused before they reach a handler.
-	observed := NewObserved(NewCORS(d.Origins, mux), d.Log)
+	observed := NewObserved(NewCORS(d.Origins, handler), d.Log)
 	if d.Metrics != nil {
 		observed = observed.WithMetrics(d.Metrics)
 	}

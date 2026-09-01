@@ -16,14 +16,20 @@ type envelope struct {
 
 // metadata is a definition's identity, which lives outside the spec because it
 // is what the repository indexes rather than what the engine executes.
+//
+// omitempty is for Encoder, which shares this type: a definition with no folder
+// should not write `folder: ""`, both because it is noise in a file someone
+// reviews and because an empty string is a claim where absence is the truth.
+// It has no effect on decoding, where an absent key already means the zero
+// value.
 type metadata struct {
 	Name string `yaml:"name"`
 	// Title is what a person calls it, where the name is the identifier other
 	// definitions point at. Every kind has one: an author who typed a name
 	// into a form and had it silently discarded on save would find the field
 	// blank the next time they opened it.
-	Title       string            `yaml:"title"`
-	Description string            `yaml:"description"`
-	Folder      string            `yaml:"folder"`
-	Labels      map[string]string `yaml:"labels"`
+	Title       string            `yaml:"title,omitempty"`
+	Description string            `yaml:"description,omitempty"`
+	Folder      string            `yaml:"folder,omitempty"`
+	Labels      map[string]string `yaml:"labels,omitempty"`
 }

@@ -13,23 +13,53 @@ import (
 // call sites, because an audit is queried by action and a typo makes one
 // action into two that nobody notices until the query returns half of it.
 const (
-	ActionRead      = "report.read"
-	ActionPublish   = "definition.publish"
-	ActionDelete    = "definition.delete"
-	ActionShare     = "share.create"
-	ActionShareOpen = "share.open"
-	ActionRevoke    = "share.revoke"
-	ActionSignIn    = "auth.signin"
+	ActionRead          = "report.read"
+	ActionPublish       = "definition.publish"
+	ActionDelete        = "definition.delete"
+	ActionShare         = "share.create"
+	ActionShareOpen     = "share.open"
+	ActionRevoke        = "share.revoke"
+	ActionSignIn        = "auth.signin"
+	ActionSignOut       = "auth.signout"
+	ActionSessionsEnd   = "auth.sessions.end"
+	ActionProfileRename = "auth.profile.rename"
+
+	// Platform administration. Their own prefix, because these are the entries
+	// somebody reads when asking "who reached across tenants, and when" — and
+	// mixed in with ordinary project administration they are impossible to
+	// find.
+	ActionPlatformAdd     = "platform.person.add"
+	ActionPlatformMove    = "platform.person.move"
+	ActionPlatformDisable = "platform.person.disable"
+	ActionPlatformEnable  = "platform.person.enable"
+	ActionPlatformGrant   = "platform.admin.grant"
+	ActionPlatformRevoke  = "platform.admin.revoke"
+	ActionSetup           = "platform.setup"
+	ActionPolicySet       = "project.policy.set"
+	ActionFactorAdd       = "auth.factor.add"
+	ActionFactorCodes     = "auth.factor.codes"
+	// Removing a second factor is the one worth a warning in the log: it is
+	// what a social-engineering call asks for, and it is invisible afterwards.
+	ActionFactorRemove = "auth.factor.remove"
 	// Who has access, and every change to it. The one part of an audit that
 	// answers "how did they still have a login in March".
 	ActionPersonAdd     = "person.add"
+	ActionInvite        = "person.invite"
+	ActionInviteAccept  = "person.invite.accept"
+	ActionUninvite      = "person.invite.revoke"
 	ActionPersonRole    = "person.role"
 	ActionPersonDisable = "person.disable"
 	ActionPersonEnable  = "person.enable"
 	ActionPassword      = "auth.password"
+	// A reset asked for and a reset spent, recorded separately. Somebody who
+	// asks and never clicks is the ordinary shape of a phishing attempt against
+	// the account, and it is invisible if only the successful half is written.
+	ActionResetAsk   = "auth.password.reset.ask"
+	ActionResetSpend = "auth.password.reset"
 	// Sending a report to somebody by name. Recorded with every recipient:
 	// "who was this emailed to" is a question an audit exists to answer.
-	ActionSend = "report.send"
+	ActionSend   = "report.send"
+	ActionResume = "run.resume"
 )
 
 // Results. Two, because an audit that only records what succeeded answers the

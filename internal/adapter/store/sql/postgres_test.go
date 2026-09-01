@@ -318,3 +318,195 @@ func TestPreparingCatchesWhatCompilingCannot(t *testing.T) {
 var member = principal.Principal{
 	OrgID: "acme", ProjectID: "finance", ProjectRole: principal.ProjectEditor, Member: true,
 }
+
+/*
+Four instances starting at once, which is what a rolling deploy is.
+
+Every migration ran in its own transaction, which makes each one all-or-nothing
+and says nothing about two processes doing it together. Against a fresh Postgres
+this left three of four unable to start, and not at some exotic migration — at
+the first statement:
+
+	sql: recording migrations: ERROR: duplicate key value violates unique
+	constraint "pg_type_typname_nsp_index"
+
+because `CREATE TABLE IF NOT EXISTS` is not concurrency-safe in Postgres. Two
+sessions both pass the existence check and one loses the race in the catalogue.
+
+An orchestrator retries, so a deployment does converge — after a
+CrashLoopBackOff on every deploy carrying a migration, which is exactly the kind
+of noise that teaches people to ignore a restarting pod.
+
+Only Postgres can show this. SQLite is one writer by construction, which is the
+same reason this file exists at all.
+*/
+func TestFourInstancesCanStartAtOnce(t *testing.T) {
+	dsn := os.Getenv("CRONOS_POSTGRES_DSN")
+	if dsn == "" {
+		t.Skip("set CRONOS_POSTGRES_DSN to run against a real Postgres")
+	}
+
+	// Its own schema, so this cannot be the test that migrates the others'.
+	name := "cronos_race_test"
+	admin, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer admin.Close()
+	for _, stmt := range []string{
+		`DROP SCHEMA IF EXISTS ` + name + ` CASCADE`,
+		`CREATE SCHEMA ` + name,
+	} {
+		if _, err := admin.Exec(stmt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Cleanup(func() { _, _ = admin.Exec(`DROP SCHEMA IF EXISTS ` + name + ` CASCADE`) })
+
+	scoped := dsn + "&options=-csearch_path%3D" + name
+
+	const instances = 4
+	var wg sync.WaitGroup
+	failures := make([]error, instances)
+
+	for i := range instances {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			db, err := sql.Open("pgx", scoped)
+			if err != nil {
+				failures[i] = err
+				return
+			}
+			defer db.Close()
+			failures[i] = store.New(db, store.Dollar).ForDriver("postgres").
+				Migrate(context.Background())
+		}(i)
+	}
+	wg.Wait()
+
+	for i, err := range failures {
+		if err != nil {
+			t.Errorf("instance %d could not start: %v", i, err)
+		}
+	}
+
+	/*
+	   And each migration ran exactly once.
+
+	   The quieter half of the same failure: a lock that let two instances
+	   through might not error at all — it would apply a migration twice and
+	   leave two rows saying so, and only the ones whose DDL happens to be
+	   non-idempotent would complain.
+	*/
+	db, err := sql.Open("pgx", scoped)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	var duplicates int
+	if err := db.QueryRow(`
+		SELECT count(*) FROM (
+			SELECT id FROM cronos_schema_migrations GROUP BY id HAVING count(*) > 1
+		) AS d`).Scan(&duplicates); err != nil {
+		t.Fatal(err)
+	}
+	if duplicates != 0 {
+		t.Fatalf("%d migrations were recorded more than once", duplicates)
+	}
+}
+
+/*
+Two instances want to schedule; one may.
+
+This is the guarantee that lets every replica run with CRONOS_SCHEDULER=1. It
+used to be a rule a deployment held in its head — set the flag twice and every
+customer gets two statements, forget it and nobody gets one, and both are quiet
+because the only party who notices is the recipient.
+
+Only Postgres can arbitrate it, which is the whole reason this lives here.
+*/
+func TestOnlyOneInstanceLeads(t *testing.T) {
+	dsn := os.Getenv("CRONOS_POSTGRES_DSN")
+	if dsn == "" {
+		t.Skip("set CRONOS_POSTGRES_DSN — leadership needs a database that can arbitrate it")
+	}
+
+	// Two stores, as two processes would be: separate pools, separate sessions.
+	open := func() *store.Store {
+		db, err := sql.Open("pgx", dsn)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { db.Close() })
+		return store.New(db, store.Dollar).ForDriver("postgres")
+	}
+
+	name := "test:only-one-leads"
+	first, second := open().Lease(name), open().Lease(name)
+	t.Cleanup(func() { first.Release(); second.Release() })
+
+	ctx := context.Background()
+	if !first.Leading(ctx) {
+		t.Fatal("nobody could take an uncontested claim")
+	}
+	if second.Leading(ctx) {
+		t.Fatal("two instances both believe they are scheduling — every customer gets two")
+	}
+
+	// Leadership is kept, not re-won: asking again must not hand it to the
+	// other one, or the two would alternate and each fire half the schedules.
+	if !first.Leading(ctx) {
+		t.Fatal("the leader lost its own claim by asking about it")
+	}
+	if second.Leading(ctx) {
+		t.Fatal("the follower took a claim that was still held")
+	}
+
+	// And it hands over when released, which is what makes a rolling deploy
+	// take one tick rather than a keepalive timeout.
+	first.Release()
+	if !second.Leading(ctx) {
+		t.Fatal("nobody took over after the leader stood down")
+	}
+}
+
+// Two names do not contend. A deployment serving three projects runs three
+// schedulers, and one project's leader must not block another's.
+func TestLeadershipIsPerName(t *testing.T) {
+	dsn := os.Getenv("CRONOS_POSTGRES_DSN")
+	if dsn == "" {
+		t.Skip("set CRONOS_POSTGRES_DSN")
+	}
+	db, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	s := store.New(db, store.Dollar).ForDriver("postgres")
+
+	acme, rival := s.Lease("test:acme/finance"), s.Lease("test:rival/finance")
+	defer acme.Release()
+	defer rival.Release()
+
+	ctx := context.Background()
+	if !acme.Leading(ctx) || !rival.Leading(ctx) {
+		t.Fatal("one project's scheduler blocked another's")
+	}
+}
+
+// A store that cannot arbitrate says so, rather than pretending. SQLite is one
+// process by construction, so the honest answer is "you are the only one here".
+func TestSqliteHasNoLeaseAndNeedsNone(t *testing.T) {
+	s := open(t)
+	if s.Lease("anything") != nil {
+		t.Fatal("SQLite offered a lease it cannot enforce")
+	}
+	// nil is the "lead unconditionally" case, and it must be safe to use.
+	var none *store.Lease
+	if !none.Leading(context.Background()) {
+		t.Fatal("a deployment with nothing to arbitrate refused to lead")
+	}
+	none.Release()
+}

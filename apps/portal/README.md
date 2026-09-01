@@ -212,6 +212,16 @@ someone is mid-layout throws their work away. Definitions are cached; results
 never are — they are principal-scoped, and a cache that ignores who asked is a
 data leak.
 
+**The query cache belongs to a session.** No query key names who asked;
+`['catalog']` is the same key in every organisation. That is fine while a page
+load has one session and wrong the moment it has two, which is a shared machine
+or anyone with two accounts: sign out, sign in as somebody in another
+organisation, and the Reports page listed the first one's reports under the
+second one's name, from cache, without sending a request. `lib/queryClient.ts`
+empties the cache on both `SIGNED_OUT` and `SIGNED_IN` — one place, so a hook
+written next year cannot forget. `scripts/live-handover.sh` drives it in a
+browser.
+
 **Mobile.** Every page fits 390px, asserted. The bug that caused all of it was
 one line: a bare `1fr` grid column is `minmax(auto,1fr)` and refuses to shrink
 below its content, so a wide child pushed the whole document sideways and took

@@ -46,13 +46,53 @@ type Server struct {
 	StoreDriver string
 	// Deliveries is where the file channel writes. Empty disables it.
 	Deliveries string
-	// Scheduler arms schedules when true. Off by default: two instances both
-	// running the same bursts deliver every customer two documents, and
-	// deciding which one schedules is a deployment decision rather than a
-	// default.
+	/*
+	   Scheduler arms schedules when true.
+
+	   Off by default, because a deployment should choose to send things on a
+	   timer rather than discover that it does. Safe on every replica: they
+	   elect one leader per project through the store, and the others arm
+	   nothing and wait.
+
+	   It was not safe, and the comment here used to say so — two instances both
+	   running the same bursts deliver every customer two documents, so which
+	   one schedules was "a deployment decision". That is a rule held in
+	   somebody's head, and the two ways to get it wrong are both quiet: set it
+	   twice and the recipient notices, forget it and the recipient notices a
+	   month later.
+	*/
 	Scheduler bool
-	SMTP      SMTP
-	S3        S3
+	/*
+	   SchedulerTick is how often armed schedules are checked. Zero is a minute.
+
+	   Cron resolves to the minute, so a tick of a minute means a schedule due
+	   at 06:00 fires somewhere in the minute after — wherever the process
+	   happened to start within it. A deployment that wants statements out at
+	   06:00 rather than "some time past six" sets this lower and pays for it in
+	   wake-ups, which is the trade to make deliberately rather than to inherit.
+	*/
+	SchedulerTick time.Duration
+	/*
+	   MetricsAddr moves /v1/metrics to an address of its own.
+
+	   Empty serves it on the main listener, which is where it has always been
+	   and what every existing scrape config expects. Set — "127.0.0.1:9090",
+	   say — it is served there and nowhere else.
+
+	   Worth having because the exposition is not nothing: route names, request
+	   volumes by status, and how many scheduled runs and deliveries failed.
+	   No customer data and no report names, but on a public API it is a running
+	   commentary on somebody's business. The admin key is the wrong answer —
+	   that credential can publish definitions, and a Prometheus scraper should
+	   not hold one.
+	*/
+	MetricsAddr string
+	SMTP        SMTP
+	// Portal is where the portal is served, for links in email. A separate
+	// origin from the API in every real deployment — the portal is a static
+	// build behind a CDN — so it cannot be derived from the listen address.
+	Portal string
+	S3     S3
 	// SeedSource names which datasource the seed applies to. Required when
 	// several are defined: the seed runs DDL, and picking one would be a guess.
 	SeedSource string
@@ -101,12 +141,15 @@ func Load() (Server, error) {
 		// The projects one process serves, as org/project pairs. Empty is the
 		// ordinary deployment: the single project named above, with its
 		// definitions where they have always been.
-		Projects:    os.Getenv("CRONOS_PROJECTS"),
-		Project:     env("CRONOS_PROJECT", "default"),
-		StoreDSN:    os.Getenv("CRONOS_STORE_DSN"),
-		StoreDriver: env("CRONOS_STORE_DRIVER", "postgres"),
-		Deliveries:  env("CRONOS_DELIVERIES", "deliveries"),
-		Scheduler:   os.Getenv("CRONOS_SCHEDULER") == "1",
+		Projects:      os.Getenv("CRONOS_PROJECTS"),
+		Project:       env("CRONOS_PROJECT", "default"),
+		StoreDSN:      os.Getenv("CRONOS_STORE_DSN"),
+		StoreDriver:   env("CRONOS_STORE_DRIVER", "postgres"),
+		Deliveries:    env("CRONOS_DELIVERIES", "deliveries"),
+		Scheduler:     os.Getenv("CRONOS_SCHEDULER") == "1",
+		SchedulerTick: duration("CRONOS_SCHEDULER_TICK"),
+		MetricsAddr:   os.Getenv("CRONOS_METRICS_ADDR"),
+		Portal:        strings.TrimRight(os.Getenv("CRONOS_PORTAL_URL"), "/"),
 		SMTP: SMTP{
 			Host: os.Getenv("CRONOS_SMTP_HOST"), From: os.Getenv("CRONOS_SMTP_FROM"),
 			Username: os.Getenv("CRONOS_SMTP_USER"), Password: os.Getenv("CRONOS_SMTP_PASSWORD"),

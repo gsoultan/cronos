@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react'
-import { Button, TextInput } from '@mantine/core'
+import { useEffect, useMemo, useState } from 'react'
+import { Link } from '@tanstack/react-router'
+import { Button, Switch, TextInput } from '@mantine/core'
 import { PageHeader } from '../components/PageHeader'
 import { EmptyState } from '../components/EmptyState'
 import { Tag } from '../components/StatusPill'
@@ -18,8 +19,10 @@ import { relativeTime } from '../lib/format'
 import { SecurityPolicy } from '../components/settings/SecurityPolicy'
 import { ChannelsPanel } from '../components/settings/ChannelsPanel'
 import { OrganizationPanel } from '../components/settings/OrganizationPanel'
+import { LivePlatform } from '../components/LivePlatform'
+import { ApiError, platformAdmins, policy, profile, setPolicy } from '../lib/api'
 
-type Tab = 'organization' | 'people' | 'projects' | 'security' | 'channels'
+type Tab = 'organization' | 'people' | 'projects' | 'security' | 'channels' | 'platform'
 type Panel = 'none' | 'invite' | 'new-project'
 
 const CARD = 'mb-4 overflow-hidden rounded-lg border border-line bg-surface shadow-card'
@@ -36,6 +39,18 @@ const HEAD = 'flex flex-wrap items-center justify-between gap-4 border-b border-
  */
 export function SettingsPage() {
   const [tab, setTab] = useState<Tab>('organization')
+  /* Null until asked, and null for ever on a deployment where this account does
+     not administer the platform — the server answers 404 rather than 403 to
+     anybody else, so an ordinary administrator simply never sees the tab. */
+  const [platform, setPlatform] = useState<string | null>(null)
+  useEffect(() => {
+    if (!connected()) return
+    let live = true
+    void profile()
+      .then((me) => platformAdmins().then(() => { if (live) setPlatform(me.id) }))
+      .catch(() => { /* not a platform administrator, or no server. */ })
+    return () => { live = false }
+  }, [])
   const [panel, setPanel] = useState<Panel>('none')
   const [query, setQuery] = useState('')
   const [directory, setDirectory] = useState<Person[]>(seedPeople)
@@ -75,14 +90,18 @@ export function SettingsPage() {
       <PageHeader title="Settings" description="Who can reach what, at both levels." />
 
       <div className="mb-4 flex gap-1 overflow-x-auto border-b border-line" role="tablist">
-        {([['organization', 'Organization'], ['people', 'People'], ['projects', 'Projects'], ['security', 'Security'], ['channels', 'Channels']] as const).map(([id, label]) => (
+        {(tabs(platform !== null)).map(([id, label]) => (
           <button key={id} type="button" role="tab" aria-selected={tab === id}
             onClick={() => setTab(id)}
             className={`shrink-0 cursor-pointer border-b-2 px-3 py-2.5 text-small font-medium ${
               tab === id ? 'border-accent text-ink'
                 : 'border-transparent text-ink-secondary hover:text-ink'}`}>
             {label}
-            {(id === 'people' || id === 'projects') && (
+            {/* The counts come from the sample directory, so on a connected
+                deployment they described somebody's demo data — "People 6"
+                beside a project with one person in it. Shown only where
+                everything else is samples and announced as such. */}
+            {!connected() && (id === 'people' || id === 'projects') && (
               <span className="ml-1.5 text-caption text-ink-muted">
                 {id === 'people' ? members.length : projects.filter((p) => p.orgId === org.id).length}
               </span>
@@ -187,10 +206,20 @@ export function SettingsPage() {
 
       {tab === 'channels' && <ChannelsPanel canAdmin={canAdminOrg} />}
 
-      {tab === 'security' && (
+      {/* The policy panel is the designed shape of a feature the engine does
+          not enforce: its switches are React state over the sample directory,
+          so on a connected deployment an administrator would turn on "require
+          two-factor" and nothing at all would happen. Shown where everything
+          else is samples and announced as such; replaced by a statement of what
+          is actually enforced where it is not. */}
+      {tab === 'security' && !connected() && (
         <SecurityPolicy orgName={org.name} members={members} canAdmin={canAdminOrg}
           twoFactorOn={(p) => !!p.twoFactor} />
       )}
+
+      {tab === 'security' && connected() && <LiveSecurity />}
+
+      {tab === 'platform' && platform !== null && <LivePlatform me={platform} />}
 
       {tab === 'projects' && (
         <section className={CARD}>
@@ -236,5 +265,132 @@ export function SettingsPage() {
         </section>
       )}
     </>
+  )
+}
+
+/**
+ * What this deployment enforces.
+ *
+ * The requirement below is real now. What made it wait was never the flag: it
+ * was what happens to somebody who has no second factor, cannot enrol without
+ * signing in, and cannot sign in without enrolling. They sign in to a session
+ * that reaches the enrolment wizard and nothing else, so nobody is locked out
+ * and nobody has to ring an administrator and ask them to turn a second factor
+ * off — which is the exact call a second factor exists to make suspicious.
+ */
+function LiveSecurity() {
+  return (
+    <section className={CARD} data-testid="live-security">
+      <div className={HEAD}>
+        <h2 className="text-lead font-semibold text-ink">Security</h2>
+      </div>
+      <div className="grid gap-4 p-4 text-small text-ink-secondary">
+        <p>
+          <strong className="text-ink">Two-factor authentication</strong> is per
+          account and set up by its owner, from{' '}
+          <Link to="/account" className="text-accent">Your account</Link>. There
+          is no path by which an administrator enrols, inspects or removes
+          somebody else&rsquo;s — enrolling for another person is meaningless,
+          they hold the phone, and removing one is what a social-engineering
+          call asks for.
+        </p>
+        <p>
+          <strong className="text-ink">Sessions</strong> last eight hours and are
+          signed rather than stored, so there is no device list and no way to end
+          one and keep another. Ending all of them at once is on the account
+          page, and it is what to press if a laptop goes missing.
+        </p>
+        <RequireTwoFactor />
+        <p>
+          Everything that changes access — adding somebody, changing a role,
+          turning access off, enrolling or removing a second factor — is in the
+          audit log.
+        </p>
+      </div>
+    </section>
+  )
+}
+
+/**
+ * The tabs, with the platform one only where it applies.
+ *
+ * Hidden rather than disabled: a tab that exists and refuses is a tab that says
+ * there is a deployment-administration tier and this account is not in it,
+ * which is exactly what the server's 404 declines to say.
+ */
+function tabs(isPlatformAdmin: boolean): (readonly [Tab, string])[] {
+  const always: (readonly [Tab, string])[] = [
+    ['organization', 'Organization'],
+    ['people', 'People'],
+    ['projects', 'Projects'],
+    ['security', 'Security'],
+    ['channels', 'Channels'],
+  ]
+  return isPlatformAdmin ? [...always, ['platform', 'Deployment'] as const] : always
+}
+
+/**
+ * The requirement, and who it will ask to enrol.
+ *
+ * The counts come before the switch rather than after, because "12 people, 4
+ * without" is the whole decision. Nobody is locked out either way — the four
+ * sign in to the enrolment wizard — so this is information rather than the
+ * warning it would have to be under a lockout rollout.
+ */
+function RequireTwoFactor() {
+  const [state, setState] = useState<Awaited<ReturnType<typeof policy>> | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [said, setSaid] = useState('')
+
+  useEffect(() => {
+    let live = true
+    policy()
+      .then((out) => { if (live) setState(out) })
+      .catch(() => { if (live) setState(null) })
+    return () => { live = false }
+  }, [])
+
+  if (state === null) return null
+  const uncovered = state.uncovered ?? 0
+
+  return (
+    <div className="rounded-lg border border-line bg-sunken p-4">
+      <Switch checked={state.requireTwoFactor} disabled={busy}
+        data-testid="require-2fa"
+        label="Require a second factor of everyone in this project"
+        onChange={(e) => {
+          const next = e.currentTarget.checked
+          setBusy(true)
+          setSaid('')
+          setPolicy(next)
+            .then(() => {
+              setState((s) => (s ? { ...s, requireTwoFactor: next } : s))
+              setSaid(next
+                ? 'On. Anyone without one will be asked to set it up at their next sign-in.'
+                : 'Off.')
+            })
+            .catch((err: unknown) =>
+              setSaid(err instanceof ApiError ? err.message : 'Could not save that.'))
+            .finally(() => setBusy(false))
+        }} />
+
+      <p className="mt-2 text-small text-ink-secondary">
+        {state.covered !== undefined && (
+          <>
+            <strong className="text-ink">{state.covered}</strong> of{' '}
+            <strong className="text-ink">{state.covered + uncovered}</strong> people
+            here have one.{' '}
+          </>
+        )}
+        {uncovered > 0
+          ? `The other ${uncovered} will sign in to the setup wizard and nothing else until it is done. Nobody is locked out.`
+          : 'Everyone here already has one.'}
+      </p>
+
+      {said && (
+        <p role="status" data-testid="policy-said"
+          className="mt-2 text-small text-ink">{said}</p>
+      )}
+    </div>
   )
 }

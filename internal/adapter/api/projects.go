@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/gsoultan/cronos/internal/app/run"
 	"github.com/gsoultan/cronos/internal/core/principal"
@@ -25,7 +26,10 @@ type Project struct {
 	Definitions Repository
 	Due         Due
 	Fires       Firing
-	Probes      Probes
+	// Resumes re-sends a period to whoever did not get it. Absent where no
+	// scheduler is armed here, the same as Fires.
+	Resumes Resuming
+	Probes  Probes
 }
 
 /*
@@ -51,6 +55,75 @@ different set of them.
 type One struct {
 	Org, ProjectID string
 	Only           *Project
+
+	/*
+	   adopted is the tenancy a first run named, when there was none.
+
+	   A fresh install serves whatever CRONOS_ORG and CRONOS_PROJECT default to
+	   — "default/default" — because nothing else exists yet. Then somebody
+	   opens /setup and calls the organisation Acme Logistics, and their account
+	   is created there. Without this, that account signs in successfully and
+	   sees nothing at all: its principal says acme-logistics/finance and the
+	   process says default/default, so every read is refused by the very check
+	   that keeps tenants apart.
+
+	   Discovering it from the database would be the other answer, and Many's
+	   comment explains why not: a project appearing in a database is not a
+	   reason for a process to open connections to warehouses nobody named. This
+	   is narrower — it is the deployment being told, once, at the moment
+	   somebody sets it up, by the endpoint that can only run once.
+	*/
+	mu       sync.RWMutex
+	adopted  bool
+	adoptOrg string
+	adoptPrj string
+}
+
+/*
+Adopt names the tenancy of a deployment that had none.
+
+Called by the first run and by nothing else. It is refused once anything has
+been adopted, and it is refused when the deployment was configured explicitly —
+a process told to serve acme/finance must not be renamed by an HTTP request, and
+the only reason this exists at all is the case where nothing was told to it.
+*/
+func (o *One) Adopt(org, project string) bool {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+
+	if o.adopted || org == "" || project == "" {
+		return false
+	}
+	o.adopted, o.adoptOrg, o.adoptPrj = true, org, project
+	return true
+}
+
+/*
+Serving is the tenancy this process answers for, after any first run.
+
+Exported because the scheduler needs it. A schedule runs as a project member,
+and which project that is was captured from configuration at boot — so a
+deployment set up through /setup recorded every scheduled run under the tenancy
+it had before somebody named it. Those runs are then invisible in the run
+history, because the history is read as the caller's tenant and the caller is in
+the adopted one, and a burst that stopped halfway cannot be resumed because
+nothing can find it.
+
+The same fault publishingFor had, one layer down and quieter: publishing failed
+loudly with "no such project here", and this succeeded and filed the record
+where nobody would look.
+*/
+func (o *One) Serving() (org, project string) { return o.serving() }
+
+// serving is the tenancy this process answers for.
+func (o *One) serving() (string, string) {
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+
+	if o.adopted {
+		return o.adoptOrg, o.adoptPrj
+	}
+	return o.Org, o.ProjectID
 }
 
 // Project returns the one runtime, having checked the caller belongs to it.
@@ -59,9 +132,10 @@ type One struct {
 // definitions to a principal from another organisation would be the same leak
 // as a multi-tenant one that resolved the wrong runtime. The narrowness of the
 // deployment is not the check.
-func (o One) Project(_ context.Context, pr principal.Principal) (*Project, error) {
-	if pr.OrgID != o.Org || pr.ProjectID != o.ProjectID {
-		return nil, fmt.Errorf("%w: this server holds %s/%s", ErrNoProject, o.Org, o.ProjectID)
+func (o *One) Project(_ context.Context, pr principal.Principal) (*Project, error) {
+	org, project := o.serving()
+	if pr.OrgID != org || pr.ProjectID != project {
+		return nil, fmt.Errorf("%w: this server holds %s/%s", ErrNoProject, org, project)
 	}
 	return o.Only, nil
 }

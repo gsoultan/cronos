@@ -11,7 +11,7 @@ import { IdentifierField } from '../components/form/IdentifierField'
 import { FormSection, Callout } from '../components/form/FormShell'
 import { Wizard, type Step } from '../components/form/Wizard'
 import { all, port as portRule, required, slug, toSlug, url } from '../lib/validators'
-import { SOURCE_KINDS, type SourceKind } from '../lib/sources'
+import { SOURCE_KINDS, type SourceKind, type SourceSpec } from '../lib/sources'
 
 const STEPS: Step[] = [
   { id: 'kind', label: 'Choose a source', hint: 'Where the data lives' },
@@ -63,6 +63,10 @@ export function DataSourceForm({ onDone, onCancel, initial }: Props) {
       // ${secret:…} reference and the server does not return the value behind
       // it. Left blank, an edit publishes the same reference again.
       password: '',
+      // The connection string as stored, for the shapes that show it. Kept
+      // verbatim: a DSN somebody wrote is theirs, and recomposing it from parts
+      // is how a query parameter goes missing.
+      dsn: stored?.dsn ?? '',
       uri: stored?.uri ?? '', endpoint: '', authHeader: '',
       filePath: stored?.filePath ?? '',
       name: stored?.name ?? '', slug: stored?.slug ?? '',
@@ -72,18 +76,45 @@ export function DataSourceForm({ onDone, onCancel, initial }: Props) {
         name: value.name, slug: value.slug, kind: kind ?? 'postgres',
         host: value.host, port: value.port, database: value.database,
         user: value.user, uri: value.uri || value.endpoint, filePath: value.filePath,
-        /* The stored connection string, kept while nothing about the
-           connection was touched. Not every DSN decomposes into these fields —
-           a SQLite one has no host at all — so rebuilding one that was only
-           ever displayed would replace a working connection with a guess. */
-        dsn: untouched(value) ? stored?.dsn : undefined,
-      }), initial))
+        /*
+           The connection string: edited, or kept.
+
+           Edited where the form shows one — a SQLite path, or a driver this
+           build has no screen for. Otherwise the stored one, while nothing
+           about the connection was touched: not every DSN decomposes into host
+           and database and user, so rebuilding one that was only ever displayed
+           would replace a working connection with a guess.
+
+           The second half was already here, with a comment observing that a
+           SQLite DSN has no host. What was missing was any way to see or change
+           it, so a SQLite source opened a form asking for a port. */
+        dsn: value.dsn || (untouched(value) ? stored?.dsn : undefined),
+      }), initial), initial?.version)
       if (saved) onDone()
     },
   })
 
   const values = useStore(form.store, (s) => s.values)
-  const spec = kind ? SOURCE_KINDS.find((k) => k.id === kind)! : null
+  /*
+     The card for this kind, or one made up for a driver that has no card.
+
+     This was `.find(...)!`, which tells the compiler a lookup always succeeds
+     when it plainly does not: a source stored with `driver: sqlite` — which the
+     engine supports and the demo ships — matched nothing, `spec` was undefined
+     at runtime while typed as present, and every `step === 1 && spec` below went
+     quietly false. Editing it showed three ticked steps, a highlighted Connect,
+     and no fields at all, with Continue greyed out and Cancel the only way
+     forward.
+
+     Nothing about that is specific to sqlite. Any driver the engine gains
+     before the picker does lands the same way, so the fallback is the fix and
+     the new card is the smaller half of it. Treated as SQL because every driver
+     without a card is one: it asks for a DSN and says which driver it is
+     talking about rather than pretending to know more.
+  */
+  const spec: SourceSpec | null = kind
+    ? SOURCE_KINDS.find((k) => k.id === kind) ?? unknownDriver(kind)
+    : null
 
   /** Whether every connection field still holds what was loaded. */
   function untouched(v: { host: string; port: number; database: string; user: string; password: string }) {
@@ -236,6 +267,22 @@ export function DataSourceForm({ onDone, onCancel, initial }: Props) {
               </>
             )}
 
+            {spec.shape === 'dsn' && (
+              <form.Field name="dsn"
+                validators={{ onBlur: ({ value }) => required('A connection string')(value) }}>
+                {(f) => (
+                  <Field label="Connection string" error={fieldError(f.state.meta)}
+                    help={'Passed to the driver as written. Use ${secret:name} rather than '
+                      + 'a password here — a definition is a file somebody commits.'}>
+                    <TextInput value={f.state.value as string} onBlur={f.handleBlur}
+                      data-testid="source-dsn"
+                      placeholder="file:/var/lib/cronos/warehouse.db"
+                      onChange={(e) => f.handleChange(e.currentTarget.value)} />
+                  </Field>
+                )}
+              </form.Field>
+            )}
+
             {spec.shape === 'object' && (
               <form.Field name="uri" validators={{ onBlur: ({ value }) => required('A location')(value) }}>
                 {(f) => (
@@ -381,15 +428,44 @@ function pushdownTone(p: string): string {
   return 'text-serious'
 }
 
-type Values = { host: string; database: string; user: string; uri: string; endpoint: string; filePath: string }
+type Values = {
+  host: string; database: string; user: string
+  dsn: string; uri: string; endpoint: string; filePath: string
+}
 
 function connectionComplete(spec: { shape: string } | null, v: Values): boolean {
   if (!spec) return false
   switch (spec.shape) {
     case 'sql': return !!(v.host && v.database && v.user)
+    case 'dsn': return !!v.dsn
     case 'object': return !!v.uri
     case 'api': return !!v.endpoint
     case 'file': return !!v.filePath
     default: return false
+  }
+}
+
+/**
+ * A card for a driver the picker has never heard of.
+ *
+ * So that a definition remains editable rather than opening a form with nothing
+ * in it. Named after the driver, because "Connect to sqlite" is what somebody
+ * needs to read to know the page is about the thing they clicked — and the hint
+ * says plainly that this is a driver without a dedicated screen, rather than
+ * implying the fields shown are all there are.
+ */
+function unknownDriver(kind: string): SourceSpec {
+  return {
+    id: kind as SourceKind,
+    label: kind,
+    hint: 'A driver this version has no dedicated screen for',
+    icon: '◇',
+    shape: 'dsn',
+    connectHint: `cronos can open ${kind}, and this build has no dedicated screen `
+      + 'for it. The connection string is passed through as written.',
+    pushdown: 'declared',
+    pushdownLabel: 'Filters run where the driver puts them',
+    pushdownHint: 'This build cannot say how much of a filter this driver pushes '
+      + 'down. Check the source documentation before relying on it for a large table.',
   }
 }

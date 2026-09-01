@@ -168,10 +168,19 @@ func TestPublishRefuses(t *testing.T) {
 				"{field: profit, aggregate: sum}\n        - kind: chart", 1),
 			query.ErrBadTemplate, `"profit" is not a field`},
 
-		// Datasources are read by the driver registry, not stored here.
+		/*
+		   A kind nothing in this build has ever heard of.
+
+		   This case used to say DataSource, on the reasoning that datasources
+		   were "read by the driver registry, not stored here" — which was true
+		   of the file store and false of the SQL one, and meant the portal's
+		   wizard for connecting a database ended in a 400 every time somebody
+		   used it. Both stores hold the kind now; what stays refused is a
+		   document naming something that does not exist.
+		*/
 		{"a kind this build does not store",
-			strings.Replace(dataset, "kind: Dataset", "kind: DataSource", 1),
-			publish.ErrUnsupported, "DataSource"},
+			strings.Replace(dataset, "kind: Dataset", "kind: Notebook", 1),
+			publish.ErrUnsupported, "Notebook"},
 	}
 
 	for _, c := range cases {
@@ -274,5 +283,218 @@ func TestAScheduleRunningAReportNobodyHasIsRefused(t *testing.T) {
 		[]byte(strings.Replace(schedule, "report: billing", "report: ghost", 1)), admin())
 	if !errors.Is(err, publish.ErrNotFound) {
 		t.Fatalf("got %v, want ErrNotFound", err)
+	}
+}
+
+/*
+A datasource can be published.
+
+The switch that decides what this service accepts listed Dataset, Report and
+Schedule and not DataSource — while the codec had the kind, the loader parsed
+one, and the file store kept them. So the portal's four-step wizard for
+connecting a database ended, every time, in a 400 saying "unsupported kind",
+one screen after telling somebody their connection test had passed.
+
+Found by driving the editor against a real server, which is also the only way it
+could have been: nothing in the portal's own suites publishes, and no fixture
+here had ever offered this kind.
+*/
+func TestADataSourceCanBePublished(t *testing.T) {
+	svc, _, _ := setup(t)
+
+	out, err := svc.Publish(context.Background(), []byte(`apiVersion: cronos.dev/v1
+kind: DataSource
+metadata:
+  name: warehouse
+spec:
+  driver: sqlite
+  dsn: "file:demo.db"
+`), admin())
+	if err != nil {
+		t.Fatalf("publishing a datasource: %v", err)
+	}
+	if out.Kind != "DataSource" || out.Name != "warehouse" {
+		t.Fatalf("stored as %s/%s", out.Kind, out.Name)
+	}
+}
+
+// And a bad one is still refused, by the same validation every other path uses.
+// Accepting the kind must not mean accepting anything wearing it.
+func TestABadDataSourceIsStillRefused(t *testing.T) {
+	svc, _, _ := setup(t)
+
+	for _, bad := range []string{
+		// A driver this build cannot open.
+		"driver: cassandra\n  dsn: \"x\"",
+		// No connection string at all.
+		"driver: sqlite",
+	} {
+		_, err := svc.Publish(context.Background(), []byte(`apiVersion: cronos.dev/v1
+kind: DataSource
+metadata:
+  name: warehouse
+spec:
+  `+bad+"\n"), admin())
+		if err == nil {
+			t.Fatalf("accepted %q", bad)
+		}
+	}
+}
+
+/*
+Two editors, and the second one is told rather than winning silently.
+
+Two people editing one report is a Monday, not an exotic race. Until now the
+second save discarded the first without a word: the author saw their change
+land, and the other author found theirs gone the next time they opened the page.
+The version history means the lost work is recoverable, which sounds like a
+mitigation and is not — nobody knows to look, because nothing said anything.
+*/
+func TestASaveBuiltOnAReplacedVersionIsRefused(t *testing.T) {
+	svc, _, _ := setup(t)
+	mustPublish(t, svc, dataset)
+
+	// Both open it, and both see the same version.
+	first := mustPublish(t, svc, report)
+
+	// One of them saves.
+	edited := strings.Replace(report, "label: Total", "label: Total billed", 1)
+	if _, err := svc.PublishIf(context.Background(), []byte(edited), admin(), first.Version); err != nil {
+		t.Fatalf("the first editor could not save: %v", err)
+	}
+
+	// The other saves what they were working on, which started from the version
+	// that is no longer there.
+	theirs := strings.Replace(report, "label: Total", "label: Amount due", 1)
+	_, err := svc.PublishIf(context.Background(), []byte(theirs), admin(), first.Version)
+	if !errors.Is(err, publish.ErrStale) {
+		t.Fatalf("the second save was accepted, so the first edit is gone: %v", err)
+	}
+	// And the message says what happened, because "conflict" on its own is how
+	// somebody re-applies their edit on top of whatever just replaced it.
+	if !strings.Contains(err.Error(), "somebody else saved it") {
+		t.Errorf("the refusal does not say why: %v", err)
+	}
+}
+
+// The first editor's save is what is stored. A check that refused both would
+// pass the test above and be useless.
+func TestTheFirstSaveIsTheOneThatStands(t *testing.T) {
+	svc, repo, _ := setup(t)
+	mustPublish(t, svc, dataset)
+	first := mustPublish(t, svc, report)
+
+	edited := strings.Replace(report, "label: Total", "label: Total billed", 1)
+	if _, err := svc.PublishIf(context.Background(), []byte(edited), admin(), first.Version); err != nil {
+		t.Fatal(err)
+	}
+	// Read back from the running view, which is what a reader would see.
+	if got := repo.Reports()[0].Outputs[0].Layout[0].Label; got != "Total billed" {
+		t.Fatalf("the report reads %q, so the accepted save did not land", got)
+	}
+}
+
+/*
+Publishing without an expectation is unconditional, which is the deployment
+pipeline's case.
+
+It publishes from a git repository that is the source of truth, and refusing it
+because the running copy differs would refuse the deploy for doing its job.
+*/
+func TestPublishingWithoutAnExpectationOverwrites(t *testing.T) {
+	svc, _, _ := setup(t)
+	mustPublish(t, svc, dataset)
+	mustPublish(t, svc, report)
+
+	edited := strings.Replace(report, "label: Total", "label: From the pipeline", 1)
+	if _, err := svc.Publish(context.Background(), []byte(edited), admin()); err != nil {
+		t.Fatalf("an unconditional publish was refused: %v", err)
+	}
+}
+
+// Editing something that has been deleted is a conflict too, and a pointed one:
+// storing it would bring the definition back without anybody deciding to.
+func TestEditingSomethingThatWasDeletedIsAConflict(t *testing.T) {
+	svc, _, _ := setup(t)
+	mustPublish(t, svc, dataset)
+	first := mustPublish(t, svc, report)
+
+	if err := svc.Delete(context.Background(), admin(), "Report", "billing"); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := svc.PublishIf(context.Background(), []byte(report), admin(), first.Version)
+	if !errors.Is(err, publish.ErrStale) {
+		t.Fatalf("a definition that was deleted was quietly recreated: %v", err)
+	}
+	if !strings.Contains(err.Error(), "deleted while you were editing") {
+		t.Errorf("the refusal does not say it was deleted: %v", err)
+	}
+}
+
+/*
+A schedule that publishes is a schedule that arms.
+
+The gap was not a missing check, it was two checks. definition.Validate counted
+five fields in the cron expression, because the core is standard library only
+and cannot ask a scheduler's parser anything; the parser that actually has to
+arm the schedule ran at startup. They disagreed, and every expression they
+disagreed about published with a 200 and never ran.
+
+"0 25 1 * *" is the one to keep in mind: five fields, hour twenty-five, and a
+plausible typo for a monthly job at six. Before the timezone fix it took the
+whole deployment down at the next restart. After it, it published happily and
+silently never fired.
+
+So publishing now parses with the same function that arms — not a second rule
+kept in step with the first, which is the arrangement that produced this.
+*/
+// unscopedDataset is the fixture without row-level security, which a schedule
+// may not read — a different refusal from the one under test here.
+func unscopedDataset() string {
+	return strings.Replace(dataset,
+		"  rowLevelSecurity:\n    - predicate: customer_id = {{ .scope.customer_id }}\n", "", 1)
+}
+
+func TestASchedulePublishesOnlyIfItCanArm(t *testing.T) {
+	for _, c := range []struct {
+		expr string
+		arms bool
+	}{
+		{"0 6 1 * *", true},    // the demo's own: monthly at six
+		{"*/15 * * * *", true}, // every quarter hour
+		{"0 6 * * 1", true},    // Mondays
+		{"0 25 1 * *", false},  // hour twenty-five
+		{"0 6 32 * *", false},  // the thirty-second
+		{"0 6 1 13 *", false},  // the thirteenth month
+		{"* * * * 8", false},   // the eighth day of the week
+		{"0 6 1 * MOO", false}, // not a month anybody has
+		{"70 6 1 * *", false},  // minute seventy
+	} {
+		t.Run(c.expr, func(t *testing.T) {
+			s, repo, _ := setup(t)
+			s = s.WithReports(repo)
+			// The schedule's cron is the only thing under test, so everything
+			// it names has to exist first or the refusal would be about that.
+			mustPublish(t, s, unscopedDataset())
+			mustPublish(t, s, report)
+
+			doc := strings.Replace(schedule, `cron: "0 6 1 * *"`,
+				`cron: "`+c.expr+`"`, 1)
+			if !strings.Contains(doc, c.expr) {
+				t.Fatalf("the fixture no longer carries the cron expression")
+			}
+
+			_, err := s.Publish(context.Background(), []byte(doc), admin())
+			switch {
+			case c.arms && err != nil:
+				t.Fatalf("%q was refused: %v", c.expr, err)
+			case !c.arms && err == nil:
+				t.Fatalf("%q published, and it will never fire", c.expr)
+			}
+			if err != nil && !strings.Contains(err.Error(), "cron") {
+				t.Fatalf("refused %q without saying it was the cron: %v", c.expr, err)
+			}
+		})
 	}
 }

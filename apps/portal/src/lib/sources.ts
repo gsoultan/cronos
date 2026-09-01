@@ -8,10 +8,19 @@
  */
 
 export type SourceKind =
-  | 'postgres' | 'mysql' | 'clickhouse' | 'bigquery'
+  | 'postgres' | 'mysql' | 'sqlserver' | 'sqlite' | 'clickhouse' | 'bigquery'
   | 'objectstore' | 'api' | 'excel'
 
-export type Shape = 'sql' | 'object' | 'api' | 'file'
+/*
+ * How a source is connected to, which decides what the form asks for.
+ *
+ * `dsn` is one field: the connection string, as written. It exists because
+ * `sql` asks for a host, a port, a database and a user, and there are sources
+ * that have none of those — SQLite is a path, and a driver this build has no
+ * screen for is whatever its own documentation says. Asking for a port to
+ * connect to a file is not a smaller mistake than asking for nothing.
+ */
+export type Shape = 'sql' | 'dsn' | 'object' | 'api' | 'file'
 export type Pushdown = 'full' | 'partial' | 'none' | 'declared'
 
 export interface SourceSpec {
@@ -41,6 +50,19 @@ export const SOURCE_KINDS: SourceSpec[] = [
   {
     id: 'mysql', label: 'MySQL', hint: 'Or MariaDB', icon: '🐬', shape: 'sql',
     connectHint: 'A read-only user is enough — cronos never writes to your database.',
+    ...FULL,
+  },
+  {
+    id: 'sqlserver', label: 'SQL Server', hint: 'Or Azure SQL', icon: '🗃', shape: 'sql',
+    connectHint: 'A read-only login is enough — cronos never writes to your database. '
+      + 'Port 1433 unless somebody changed it.',
+    ...FULL,
+  },
+  {
+    id: 'sqlite', label: 'SQLite', hint: 'A file on disk', icon: '🪶', shape: 'dsn',
+    connectHint: 'A path, or file:… — cronos opens it read-only. '
+      + 'Fine for a small deployment and for the demo; a file cannot be read by '
+      + 'two servers at once.',
     ...FULL,
   },
   {
@@ -77,3 +99,25 @@ export const SOURCE_KINDS: SourceSpec[] = [
     pushdownHint: 'The whole sheet is read, then filtered. Fine for thousands of rows, not millions.',
   },
 ]
+
+/**
+ * What a source kind is called in a definition's `driver` field.
+ *
+ * Mostly the same word, and deliberately not always: the wire name for SQL
+ * Server is `sqlserver`, which is what the driver registers as, while the label
+ * people read is "SQL Server". `mssql` is accepted by the engine too, because
+ * it is what half the world types.
+ */
+export function driverFor(kind: SourceKind): string {
+  return kind
+}
+
+/** Which grains a kind can bucket a date by. */
+export function grainsFor(kind: SourceKind): string[] {
+  // SQL Server counts week boundaries from Sunday whatever the session says,
+  // so the same report bucketed weekly would disagree with every other source.
+  // The engine refuses it; saying so here means somebody finds out while
+  // building the report rather than when it runs.
+  if (kind === 'sqlserver') return ['day', 'month', 'quarter', 'year']
+  return ['day', 'week', 'month', 'quarter', 'year']
+}

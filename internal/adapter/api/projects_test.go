@@ -108,7 +108,7 @@ easier mistake to make because there is only ever one thing to return.
 */
 func TestASingleProjectStillChecksWhoIsAsking(t *testing.T) {
 	only := &api.Project{}
-	one := api.One{Org: "acme", ProjectID: "finance", Only: only}
+	one := &api.One{Org: "acme", ProjectID: "finance", Only: only}
 
 	got, err := one.Project(context.Background(), acme)
 	if err != nil || got != only {
@@ -142,7 +142,7 @@ is acting, and ignoring half of it made the other half load-bearing by
 accident.
 */
 func TestATokenNamingAnotherProjectDoesNotOpenThisOne(t *testing.T) {
-	one := api.One{Org: "acme", ProjectID: "finance", Only: &api.Project{}}
+	one := &api.One{Org: "acme", ProjectID: "finance", Only: &api.Project{}}
 
 	// Signed by the same key, for the same server, naming somewhere else.
 	elsewhere := principal.Principal{
@@ -150,5 +150,83 @@ func TestATokenNamingAnotherProjectDoesNotOpenThisOne(t *testing.T) {
 	}
 	if _, err := one.Project(context.Background(), elsewhere); err == nil {
 		t.Fatal("a token for another project of the same organisation was served")
+	}
+}
+
+/*
+A fresh deployment learns what it was called.
+
+Found by driving a first run rather than by reasoning about it. A new install
+serves whatever CRONOS_ORG and CRONOS_PROJECT default to, because nothing else
+exists yet; then somebody opens /setup and names the organisation Acme
+Logistics. Without this the account is created there, the process is still
+serving default/default, and the first person signs in successfully and sees an
+empty portal — refused by the very check that keeps tenants apart.
+*/
+func TestAFreshDeploymentAdoptsTheNameItIsGiven(t *testing.T) {
+	only := &api.Project{}
+	one := &api.One{Org: "default", ProjectID: "default", Only: only}
+
+	named := principal.Principal{OrgID: "acme-logistics", ProjectID: "finance"}
+	if _, err := one.Project(context.Background(), named); err == nil {
+		t.Fatal("a project nobody has named yet resolved")
+	}
+
+	if !one.Adopt("acme-logistics", "finance") {
+		t.Fatal("a deployment that has never been named refused to adopt one")
+	}
+	got, err := one.Project(context.Background(), named)
+	if err != nil || got != only {
+		t.Fatalf("after adopting: %v", err)
+	}
+
+	// And the placeholder it started with is no longer served, or the tenancy
+	// would be two names for one runtime.
+	was := principal.Principal{OrgID: "default", ProjectID: "default"}
+	if _, err := one.Project(context.Background(), was); err == nil {
+		t.Fatal("the deployment still answers to the name it was given at boot")
+	}
+}
+
+/*
+And is named once.
+
+Adopting is the first run telling a deployment what it is, and the first run
+happens once. A second call is either a bug or a second setup, and the endpoint
+that calls this is closed by then — but the guarantee belongs here, where it can
+be read next to the thing it protects.
+*/
+func TestADeploymentIsNamedOnlyOnce(t *testing.T) {
+	one := &api.One{Org: "default", ProjectID: "default", Only: &api.Project{}}
+
+	if !one.Adopt("acme", "finance") {
+		t.Fatal("the first naming was refused")
+	}
+	if one.Adopt("globex", "ops") {
+		t.Fatal("a second naming was accepted")
+	}
+
+	// The first name stands.
+	if _, err := one.Project(context.Background(),
+		principal.Principal{OrgID: "globex", ProjectID: "ops"}); err == nil {
+		t.Fatal("the second name took effect")
+	}
+	if _, err := one.Project(context.Background(),
+		principal.Principal{OrgID: "acme", ProjectID: "finance"}); err != nil {
+		t.Fatalf("the first name was lost: %v", err)
+	}
+}
+
+// Half a name is no name. Adopting an empty organisation would make the
+// tenancy check match a principal that names nothing.
+func TestAnEmptyNameIsNotAdopted(t *testing.T) {
+	for _, c := range [][2]string{{"", "finance"}, {"acme", ""}, {"", ""}} {
+		one := &api.One{Org: "default", ProjectID: "default", Only: &api.Project{}}
+		if one.Adopt(c[0], c[1]) {
+			t.Fatalf("adopted %q/%q", c[0], c[1])
+		}
+		if _, err := one.Project(context.Background(), principal.Principal{}); err == nil {
+			t.Fatal("a principal naming nothing resolved a runtime")
+		}
 	}
 }

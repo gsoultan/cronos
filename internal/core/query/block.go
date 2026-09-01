@@ -84,12 +84,23 @@ func (b Builder) chartSQL(ds definition.Dataset, blk definition.Block, inner str
 			return "", err
 		}
 	}
-	// GROUP BY 1, not by the expression: repeating a date_trunc in the GROUP BY
-	// is a second place for it to differ from the SELECT, and every dialect
-	// here accepts the ordinal.
+	/*
+	   The expression again in GROUP BY, not an ordinal.
+
+	   This was `GROUP BY 1` and the comment beside it said every dialect here
+	   accepts the ordinal, which was true of the three that existed. SQL Server
+	   does not: it reads the 1 as a constant and answers "each GROUP BY
+	   expression must contain at least one column that is not an outer
+	   reference", which is a sentence nobody would connect to this line.
+
+	   The worry the ordinal avoided was having the bucket written in two places
+	   that could drift apart. That does not apply when both are the same `x`:
+	   there is one expression, interpolated twice. `ORDER BY 1` stays, because
+	   an ordinal in ORDER BY is accepted everywhere including here.
+	*/
 	return fmt.Sprintf(
-		"SELECT %s AS bucket, %s(%s) AS value\nFROM (\n%s\n) AS %s%s\nGROUP BY 1\nORDER BY 1",
-		x, fn, y, inner, blockAlias, where(blk.Filter)), nil
+		"SELECT %s AS bucket, %s(%s) AS value\nFROM (\n%s\n) AS %s%s\nGROUP BY %s\nORDER BY 1",
+		x, fn, y, inner, blockAlias, where(blk.Filter), x), nil
 }
 
 // tableSQL selects the named columns, ordered and capped.

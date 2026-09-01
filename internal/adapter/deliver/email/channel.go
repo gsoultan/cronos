@@ -101,3 +101,15 @@ func (c *Channel) auth() smtp.Auth {
 	host, _, _ := net.SplitHostPort(c.cfg.Host)
 	return smtp.PlainAuth("", c.cfg.Username, c.cfg.Password, host)
 }
+
+/*
+Post sends a plain message with nothing attached.
+
+An invitation is not a report: no document, no schedule, no run record. What it
+shares with one is this SMTP connection and the settings that were configured
+once — which is the whole reason it lives here rather than growing a second mail
+client somewhere else with its own idea of what timeout means.
+*/
+func (c *Channel) Post(ctx context.Context, to, subject, body string) error {
+	return c.Deliver(ctx, burst.Delivery{To: to, Subject: subject, Body: body})
+}

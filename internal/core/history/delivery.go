@@ -23,3 +23,19 @@ type Delivery struct {
 	Error    string    `json:"error,omitempty"`
 	At       time.Time `json:"at"`
 }
+
+/*
+DeliveredKey identifies one document that arrived: a channel and a destination.
+
+Both, because they are different questions. A customer whose email arrived and
+whose file delivery failed needs the file and not another email; keyed by
+recipient alone, a resume would send them both again or neither.
+
+Here rather than in the burst service because it is a property of the record —
+the store builds these keys when it reads deliveries back, and an adapter
+reaching into an app package to format a map key is a dependency nobody wants
+to explain.
+*/
+func DeliveredKey(channel, destination string) string {
+	return channel + "\x00" + destination
+}

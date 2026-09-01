@@ -183,12 +183,12 @@ assumption is tested first.
 
 | Release | Theme | Scope | Validates |
 | :--- | :--- | :--- | :--- |
-| **v0.1** | Engine | YAML definitions, param binding, RLS, table + chart output. *Done, over `database/sql`; DuckDB federation and CSV/XLSX outstanding* | Can a governed query run fast over three source types? |
+| **v0.1** | Engine | YAML definitions, param binding, RLS, table + chart output. *Done, over `database/sql`. Federation and CSV/XLSX landed too — a join across Postgres and SQLite is asserted in CI.* | Can a governed query run fast over three source types? |
 | **v0.2** | Documents | Typst paginated PDF: grouping, page breaks, subtotals, headers/footers | The moat. Hardest technical risk, taken early |
 | **v0.3** | Delivery | Scheduler, bursting, email + S3, retries, run history | Marek's job |
-| **v0.4** | Embed | Repository API, embed tokens, tenancy, embed web component. *Endpoint, token and component done; the repository API is still file-backed* | **Priya's job. First sellable release.** |
-| **v0.5** | Author | Portal PWA, dataset browser, report builder, live preview | Dewi's job — self-service |
-| **v1.0** | Migrate | `.jrxml` importer, HA scheduler, SSO + audit (EE), documentation | Marek's switching cost |
+| **v0.4** | Embed | Repository API, embed tokens, tenancy, embed web component. *Done. The store is authoritative; the directory is the bootstrap.* | **Priya's job. First sellable release.** |
+| **v0.5** | Author | Portal PWA, dataset browser, report builder, live preview. *Done, and tagged — see CHANGELOG.md.* | Dewi's job — self-service |
+| **v1.0** | Migrate | `.jrxml` importer, HA scheduler, SSO + audit (EE), documentation. *Done. The importer covers the common 80% and reports the rest per file — docs/migrating-from-jasper.md.* | Marek's switching cost |
 
 Realistic elapsed time to v1.0 for a small team: **9–12 months**. v0.4 is the first
 release worth charging for; everything before it is validation.
@@ -236,7 +236,7 @@ cronos in the path of a recurring business obligation, and that is very hard to 
 | ~~Typst layout cannot express real statement layouts~~ **retired** | Kills the differentiator | Prototyped and under test: grouping, page breaks, repeated headings, per-group subtotals and per-recipient page numbering all hold — `docs/rendering.md` | eng |
 | BSL suppresses OSS adoption | Loses the distribution channel | Community tier is genuinely complete; measure installs, not stars | product |
 | Builder UI is where similar projects die | No self-service, no Dewi, no renewal | Ship the file format and API first; the builder writes YAML it cannot corrupt | product |
-| Jasper migration is harder than it looks | v1.0 slips, Marek does not switch | Scope `.jrxml` import to the common 80% and say so plainly | eng |
+| ~~Jasper migration is harder than it looks~~ **retired** | v1.0 slips, Marek does not switch | Scoped to the common 80% and said plainly: the importer grades every file blocked/review/note and refuses the two constructs it would otherwise import wrong — docs/migrating-from-jasper.md | eng |
 | Two personas pull the roadmap apart | Neither is served well | Priya is primary. When they conflict, Priya wins | product |
 | A competitor drops per-viewer pricing | Erodes the wedge | Governance and reproducibility (Job 4) are the second moat | product |
 
@@ -247,7 +247,10 @@ cronos in the path of a recurring business obligation, and that is very hard to 
    first ten design partners.
 2. **Cloud offering.** Self-host only keeps the story simple and margins clean; a
    hosted tier shortens time-to-value but adds infrastructure the team must run.
-3. **`.jrxml` import.** It is the highest-leverage migration feature and the biggest
-   scope risk. Worth validating with real Jasper users before committing to v1.0.
+3. **`.jrxml` import against a real estate.** It is built and tested against the
+   shapes a report takes, but no four-hundred-file estate has been through it.
+   The number to learn from the first one is what fraction comes back *blocked*:
+   the design bets that subreports are the common blocker, and that is a guess
+   until somebody runs it.
 4. **Design partners.** Nothing here is proven. Three Priyas and one Marek, committed
    before v0.4, are worth more than any amount of further specification.

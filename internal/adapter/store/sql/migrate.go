@@ -61,6 +61,273 @@ var migrations = []Migration{
 		SQL: `
 CREATE INDEX IF NOT EXISTS cronos_runs_by_age ON cronos_runs (started_at);`,
 	},
+	{
+		ID:   3,
+		Name: "invitations",
+		// Adding somebody used to mean choosing their password and telling
+		// them what it was, which puts a working credential in a chat message
+		// and makes it known to two people from the moment it exists.
+		SQL: `
+CREATE TABLE IF NOT EXISTS cronos_invitations (
+  id          TEXT PRIMARY KEY,
+  -- The hash of the secret, never the secret. A backup of this table is a set
+  -- of dead strings rather than a set of working invitations, and a read-only
+  -- replica is not enough to become somebody else.
+  secret_hash TEXT NOT NULL UNIQUE,
+  -- Lowercased on the way in, like cronos_users.email, so the uniqueness the
+  -- accept relies on means the same thing in both tables.
+  email       TEXT NOT NULL,
+  name        TEXT NOT NULL DEFAULT '',
+  org         TEXT NOT NULL,
+  project     TEXT NOT NULL,
+  role        TEXT NOT NULL,
+  invited_by  TEXT NOT NULL DEFAULT '',
+  created_at  TEXT NOT NULL,
+  expires_at  TEXT NOT NULL,
+  -- Set exactly once, by the UPDATE that spends it. NULL is the whole of
+  -- "still usable" as far as concurrency is concerned.
+  accepted_at TEXT
+);
+
+-- Listing what is outstanding, per project, is the common read.
+CREATE INDEX IF NOT EXISTS cronos_invitations_by_project
+  ON cronos_invitations (org, project, accepted_at);`,
+	}, {
+		ID:   4,
+		Name: "when an account's sessions were last cut",
+		/*
+		   A portal token is signed and stateless, so there is no list of
+		   sessions to revoke — which meant "sign out everywhere" could not be
+		   built, and the interface offered it anyway. One timestamp per account
+		   is the whole mechanism: every token minted before it is refused.
+
+		   Its own table rather than a column on cronos_users, for two reasons.
+		   Schema() is the concatenation of every migration and a fresh install
+		   applies all of it, so a migration that is not idempotent breaks the
+		   adoption of an existing database — and ALTER TABLE ADD COLUMN is not
+		   idempotent on either driver without writing two dialects of it.
+
+		   And it reads better: cronos_users says who somebody is, and this says
+		   something that happened to them.
+		*/
+		SQL: `
+CREATE TABLE IF NOT EXISTS cronos_sessions_cut (
+  user_id TEXT PRIMARY KEY,
+  -- Rounded up to the next second when written. A token's issue time has
+  -- second granularity, so a line drawn inside a second cannot be told from
+  -- the sessions minted during that same second.
+  at      TEXT NOT NULL
+);`,
+	},
+	{
+		ID:   5,
+		Name: "second factors",
+		/*
+		   The portal has rendered a two-factor enrolment wizard since before
+		   there was a server to enrol against, and it accepted any six digits.
+		   Telling somebody their account has a second factor when it has none
+		   is worse than not offering one: they choose a weaker password because
+		   they believe something else is guarding it.
+
+		   Two tables. A factor is a secret and its state; a recovery code is a
+		   password, one row each, spent by deleting it. Separate because their
+		   lifetimes differ — regenerating the codes must not disturb the
+		   enrolment, and removing the factor takes the codes with it.
+		*/
+		SQL: `
+CREATE TABLE IF NOT EXISTS cronos_factors (
+  user_id TEXT PRIMARY KEY,
+  -- The TOTP secret, and a credential: whoever reads it can produce codes for
+  -- this account for ever. Returned by no endpoint once enrolment is
+  -- confirmed, and never logged.
+  secret       TEXT NOT NULL,
+  label        TEXT NOT NULL DEFAULT '',
+  -- NULL until a real code has been entered. An enrolment offered but never
+  -- proved must not count as protection — that is the state the old wizard
+  -- left every account in.
+  confirmed_at TEXT,
+  -- The last step accepted, so one code cannot be used twice inside its thirty
+  -- seconds. Without it a code read over a shoulder is usable.
+  last_step    INTEGER NOT NULL DEFAULT 0,
+  created_at   TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS cronos_recovery_codes (
+  user_id   TEXT NOT NULL,
+  -- The hash, never the code. A backup of this table is a set of dead strings
+  -- rather than a working way into every account that has a second factor.
+  code_hash TEXT NOT NULL,
+  PRIMARY KEY (user_id, code_hash)
+);`,
+	},
+	{
+		ID:   6,
+		Name: "platform administrators",
+		/*
+		   A tier above organisations, for whoever runs the deployment: adding
+		   accounts, moving people between projects, seeing which tenants a
+		   process serves. Until this there was none, so a fresh install had no
+		   way in except the CLI on the machine.
+
+		   Administration only. Nothing here grants access to a project's data —
+		   reading a report still needs membership. A platform administrator who
+		   could also read every project is one credential away from every
+		   customer at once; one who cannot is a control-plane problem, which is
+		   bad and is not the same thing.
+
+		   Its own table rather than a column, for the reason migration 4 gives:
+		   Schema() is every migration concatenated and a fresh install applies
+		   all of it, so ALTER TABLE ADD COLUMN breaks adopting a database that
+		   already exists.
+		*/
+		SQL: `
+CREATE TABLE IF NOT EXISTS cronos_platform_admins (
+  user_id    TEXT PRIMARY KEY,
+  granted_at TEXT NOT NULL,
+  -- Who granted it. The audit log has this too; keeping it here means the
+  -- answer survives a log rotation, and "who made this person a platform
+  -- administrator" is a question asked months later.
+  granted_by TEXT NOT NULL DEFAULT ''
+);`,
+	},
+	{
+		ID:   7,
+		Name: "the first run, recorded once",
+		/*
+		   /setup is open only while no account exists, and closing it was a
+		   mutex in one process. That is enough for the case it was written for
+		   — a double-clicked button, two people sent the same URL — and it is
+		   not enough for two cronos processes brought up against one empty
+		   database before anybody has been given the address. Both would find
+		   it empty, and both would create a deployment administrator.
+
+		   One row with a fixed key closes it exactly. The insert happens in the
+		   same transaction as the first account, so the second process's
+		   transaction violates the primary key and rolls back — no lock, no
+		   polling, and the database is the thing that decides, which is the
+		   only participant both processes can agree on.
+
+		   It also answers "when was this deployment set up", which is a
+		   question somebody asks of a system they inherited.
+		*/
+		SQL: `
+CREATE TABLE IF NOT EXISTS cronos_setup (
+  -- Always 1. The table holds one row or none, and which of those it is
+  -- is the whole of the state.
+  id      INTEGER PRIMARY KEY,
+  at      TEXT NOT NULL,
+  by_user TEXT NOT NULL DEFAULT ''
+);`,
+	},
+	{
+		ID:   8,
+		Name: "per-project security policy",
+		/*
+		   Requiring a second factor of everybody in a project.
+
+		   The portal has shown this switch since before there was anything
+		   behind it, over the sample directory, so an administrator could turn
+		   on "require two-factor" and nothing whatever would happen. It was
+		   gated to sample mode rather than shipped half-built, because the hard
+		   part is not the flag: it is what happens to somebody who has no
+		   factor, cannot enrol without signing in, and cannot sign in without
+		   enrolling.
+
+		   Keyed by organisation and project, like every other row in this
+		   store. The panel says "organisation" and cronos's unit of tenancy is
+		   the pair — a policy keyed by half of it would apply to projects
+		   nobody meant.
+		*/
+		SQL: `
+CREATE TABLE IF NOT EXISTS cronos_policies (
+  org       TEXT NOT NULL,
+  project   TEXT NOT NULL,
+  -- Everybody signing in here needs a second factor. Somebody who has none
+  -- still signs in — to a session that can reach the enrolment endpoints and
+  -- nothing else — because the alternative locks a team out of its own
+  -- reporting on the afternoon somebody turns this on.
+  require_two_factor BOOLEAN NOT NULL DEFAULT FALSE,
+  updated_at TEXT NOT NULL,
+  updated_by TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY (org, project)
+);`,
+	},
+	{
+		ID:   9,
+		Name: "the tenancy a first run named",
+		/*
+		   What a deployment calls itself, once somebody has told it.
+
+		   /setup adopted a name in memory and nowhere else, so the deployment
+		   forgot it on the next restart. The store had already been re-keyed to
+		   the new tenancy, and the process came back believing it served the
+		   configured one — which meant an empty store for its tenant, the
+		   definitions directory adopted a second time under the old name, and
+		   an administrator whose token said acme/finance reading "you do not
+		   have access to this project" on a deployment that had been working
+		   ten seconds earlier.
+
+		   Every deployment set up through the browser broke on its first
+		   restart. Nothing caught it because nothing restarted one: every check
+		   here set a deployment up and then used it.
+
+		   One row or none, like cronos_setup beside it. A separate table rather
+		   than two columns on that one because migrations are append-only and
+		   every one of them has to be idempotent — ALTER TABLE ADD COLUMN is
+		   not, since Schema() is the concatenation of all of them.
+		*/
+		SQL: `
+CREATE TABLE IF NOT EXISTS cronos_tenancy (
+  -- Always 1. The table holds one row or none, and which of those it is is
+  -- the whole of the state.
+  id      INTEGER PRIMARY KEY,
+  org     TEXT NOT NULL,
+  project TEXT NOT NULL,
+  at      TEXT NOT NULL
+);`,
+	},
+	{
+		ID:   10,
+		Name: "password resets",
+		/*
+		   A forgotten password had no way back.
+
+		   cronos-user creates accounts and will not reset one, on the correct
+		   reasoning that resetting somebody else's password to grant them a
+		   permission would lock its owner out to let them in. Which left the
+		   recovery path for the commonest support request in software as: shell
+		   on the server, a psql prompt, and a bcrypt hash written by hand.
+
+		   Its own table beside cronos_invitations rather than columns on it,
+		   because they are different things with different lifetimes and
+		   because migrations are append-only — ALTER TABLE ADD COLUMN is not
+		   idempotent, and Schema() is the concatenation of all of them.
+		*/
+		SQL: `
+CREATE TABLE IF NOT EXISTS cronos_password_resets (
+  id          TEXT PRIMARY KEY,
+  -- The account, resolved once when the reset is asked for. Resolving it again
+  -- at redemption would let an address that changed in between point the reset
+  -- at somebody else.
+  user_id     TEXT NOT NULL,
+  -- The hash of the secret, never the secret — the same rule as invitations. A
+  -- backup of this table is a set of dead strings rather than an hour's worth
+  -- of working keys to every account in it.
+  secret_hash TEXT NOT NULL UNIQUE,
+  -- As it was when asked for, for the audit line. Never used to find the
+  -- account.
+  email       TEXT NOT NULL,
+  created_at  TEXT NOT NULL,
+  expires_at  TEXT NOT NULL,
+  -- Set exactly once, and what makes the link single-use.
+  used_at     TEXT
+);
+
+-- Asked in two places: pruning by age, and refusing to flood one account with
+-- links because somebody is holding down a button on the sign-in page.
+CREATE INDEX IF NOT EXISTS cronos_password_resets_by_user
+  ON cronos_password_resets (user_id, created_at);`,
+	},
 }
 
 // migrationTable records what has run. Created outside the ordered list,
@@ -86,6 +353,35 @@ one that has already added a column and an old one that writes without it is
 how a row goes missing a field nobody notices for a week.
 */
 func (s *Store) Migrate(ctx context.Context) error {
+	/*
+	   One instance migrates at a time, and the others wait.
+
+	   Every migration already runs in its own transaction, which makes each one
+	   all-or-nothing and does nothing about two processes doing it at once —
+	   and two processes starting at once is precisely what a rolling deploy is.
+	   Four instances against a fresh Postgres left three unable to start:
+
+	     sql: recording migrations: ERROR: duplicate key value violates unique
+	     constraint "pg_type_typname_nsp_index"
+
+	   from the very first statement, because `CREATE TABLE IF NOT EXISTS` is
+	   not concurrency-safe in Postgres: two sessions both pass the existence
+	   check and one loses the race in the catalogue. An orchestrator retries,
+	   so a deployment converges — after a CrashLoopBackOff on every deploy that
+	   carries a migration, which is the kind of noise that trains people to
+	   ignore a restarting pod.
+
+	   Held across the whole function rather than per migration, so the read of
+	   what has been applied is inside it too. Without that an instance could
+	   see nine applied, wait for the lock, and then apply the tenth a second
+	   time.
+	*/
+	unlock, err := s.lockMigrations(ctx)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+
 	if _, err := s.db.ExecContext(ctx, migrationTable); err != nil {
 		return fmt.Errorf("sql: recording migrations: %w", err)
 	}
@@ -211,4 +507,67 @@ func last(ms []Migration) int {
 		return 0
 	}
 	return ms[len(ms)-1].ID
+}
+
+/*
+migrationLock is the advisory lock every instance takes before migrating.
+
+An arbitrary constant, and it only has to be the same one in every build: a
+Postgres advisory lock is a number in a namespace shared by the whole database,
+so the only real requirement is that nothing else picks it. This is "cronosdb"
+in ASCII, which nothing else will.
+*/
+const migrationLock = 0x63726F6E6F736462
+
+// migrationWait bounds how long to wait for another instance to finish.
+//
+// Generous, because a large migration on a large table legitimately takes
+// minutes and an instance that gave up would be the second failure. Bounded,
+// because an instance that waits for ever on a lock somebody left behind never
+// reports anything at all, and a readiness probe that hangs is harder to
+// diagnose than one that fails with a sentence.
+const migrationWait = 5 * time.Minute
+
+/*
+lockMigrations serialises startup against the database itself.
+
+Postgres only. SQLite is one file with one writer, and a deployment on it is one
+process by construction — there is nothing to serialise against and no advisory
+lock to do it with.
+
+The lock is taken on a connection of its own, because a session advisory lock
+belongs to the session: taken through the pool it could be released on a
+different connection, or never, depending on which one the pool handed back.
+Closing that connection releases it too, which is what makes the returned
+function safe to call after an error.
+*/
+func (s *Store) lockMigrations(ctx context.Context) (func(), error) {
+	if s.driver != "postgres" && s.driver != "pgx" {
+		return func() {}, nil
+	}
+
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("sql: connecting to migrate: %w", err)
+	}
+
+	waiting, cancel := context.WithTimeout(ctx, migrationWait)
+	defer cancel()
+
+	if _, err := conn.ExecContext(waiting, "SELECT pg_advisory_lock($1)", int64(migrationLock)); err != nil {
+		conn.Close() //nolint:errcheck // the error below is the one worth reporting
+		return nil, fmt.Errorf(
+			"sql: waited %s for another instance to finish migrating: %w", migrationWait, err)
+	}
+
+	return func() {
+		// Not the caller's context: it may already be cancelled by whatever
+		// made migration stop, and releasing the lock is the one thing that
+		// must still happen. Closing the connection would release it anyway;
+		// this makes it prompt and says so out loud in the query log.
+		release, done := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+		defer done()
+		_, _ = conn.ExecContext(release, "SELECT pg_advisory_unlock($1)", int64(migrationLock))
+		conn.Close() //nolint:errcheck // released above, and closing releases it regardless
+	}, nil
 }

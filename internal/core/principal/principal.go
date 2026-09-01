@@ -60,6 +60,38 @@ type Principal struct {
 	// is treated as an end customer and gets the fail-closed predicate, so the
 	// cost of forgetting is no rows rather than everybody's.
 	Member bool
+
+	/*
+	   Platform marks somebody who administers the deployment itself rather than
+	   any one project: adding accounts, moving people between projects, seeing
+	   which tenants a process serves.
+
+	   Administration only, and that is the whole design. It grants nothing at
+	   all inside a project — not reading a report, not running one, not editing
+	   a definition. Reaching a project's data still requires membership in it.
+
+	   The reason is what a leaked credential costs. A platform administrator
+	   who could also read every project is one credential away from every
+	   customer's data at once; one who cannot is a control-plane problem, which
+	   is bad and is not the same thing. Support that needs to see what a
+	   customer sees adds themselves to that project, and the audit log says so.
+	*/
+	Platform bool
+
+	/*
+	   Enrol marks a session that exists only to set up a second factor.
+
+	   Its project requires one and this account has none. Rather than refusing
+	   the sign-in — which locks a team out of its own reporting on the
+	   afternoon somebody turns the requirement on — they get in, and get
+	   nowhere: the enrolment endpoints and nothing else.
+
+	   Deliberately not consulted by CanRead, CanEdit or either administrative
+	   check. Those answer "what may this role do"; this answers "may this
+	   session do anything at all", which is a different question asked earlier,
+	   in one place. See api.OnlyEnrolment.
+	*/
+	Enrol bool
 }
 
 // CanRead reports whether the principal may run reports in the active project.
@@ -88,6 +120,16 @@ func (p Principal) CanAdminProject() bool {
 func (p Principal) CanAdminOrg() bool {
 	return p.OrgRole == OrgOwner || p.OrgRole == OrgAdmin
 }
+
+/*
+CanAdminPlatform reports whether the principal may administer the deployment.
+
+Deliberately not consulted by any of the checks above. A reader of this file
+should be able to see, from the four methods that decide access to data, that
+none of them mentions Platform — because the moment one does, "administration
+only" becomes a sentence in a comment rather than a property of the code.
+*/
+func (p Principal) CanAdminPlatform() bool { return p.Platform }
 
 // effective resolves the project-level role, accounting for org administrators
 // who hold no explicit project membership. An org without an owner who can fix

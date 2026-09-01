@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/gsoultan/cronos/internal/adapter/api"
 	"github.com/gsoultan/cronos/internal/adapter/driver/registry"
@@ -13,6 +15,7 @@ import (
 	sqlstore "github.com/gsoultan/cronos/internal/adapter/store/sql"
 	"github.com/gsoultan/cronos/internal/app/publish"
 	"github.com/gsoultan/cronos/internal/app/run"
+	"github.com/gsoultan/cronos/internal/app/schedule"
 	"github.com/gsoultan/cronos/internal/app/send"
 	"github.com/gsoultan/cronos/internal/app/share"
 	"github.com/gsoultan/cronos/internal/core/principal"
@@ -150,33 +153,164 @@ func finish(ctx context.Context, cfg config.Server, rt *runtime,
 	return nil
 }
 
-// startSchedulers arms a scheduler per project and returns how to stop them.
-//
-// One each rather than one over all of them: a schedule runs as its project's
-// owner, against its project's datasources, and a single loop would need to
-// resolve both per firing — which is the same resolution done once here, where
-// it can be read.
-func startSchedulers(ctx context.Context, cfg config.Server, runtimes map[tenant]*runtime,
-	records *sqlstore.Store, log *slog.Logger) error {
+/*
+startSchedulers arms a scheduler per project and returns a wait for them.
 
-	if !cfg.Scheduler {
-		return nil
-	}
-	for t, rt := range runtimes {
-		sched, err := scheduler(cfg, t.org, t.project, rt.repo, rt.project.Runner, records, log)
-		if err != nil {
-			return fmt.Errorf("%s: %w", t, err)
+One each rather than one over all of them: a schedule runs as its project's
+owner, against its project's datasources, and a single loop would need to
+resolve both per firing — which is the same resolution done once here, where it
+can be read.
+
+The wait is the point, and it did not exist. Every scheduler's Start already
+holds a WaitGroup over its in-flight runs and blocks on it when the context is
+cancelled — so a burst mid-delivery finishes rather than being abandoned. That
+guarantee was unreachable: nothing kept a handle on these goroutines, so the
+process cancelled them and returned, and the runtime tore down the goroutine
+that was waiting.
+
+The effect was the one the drain exists to prevent, on the path that matters
+most. cronos is a report scheduler; the work it exists to do happens in these
+goroutines, not in an HTTP handler. A rolling deploy at six in the morning on
+the first of the month lands exactly on the monthly statements burst, and half
+a customer list receives a document while the other half does not — the state
+that is worst to reconcile, because nobody can tell from outside which half.
+*/
+func startSchedulers(cfg config.Server, runtimes map[tenant]*runtime,
+	records *sqlstore.Store, watch *api.Metrics, projects api.Projects,
+	log *slog.Logger) (stop func(), err error) {
+
+	/*
+	   One thing to call, and it both cancels and waits.
+
+	   Two — a cancel and a separate wait — is what this was, and the wait was
+	   the one that went missing: boot cancelled, returned, and the runtime tore
+	   down the goroutine doing the waiting. Returning a single stop makes that
+	   particular mistake unwritable, and it is deferred beside the start rather
+	   than called sixty lines below, where a `return` added later would skip it.
+	*/
+	ctx, cancel := context.WithCancel(context.Background())
+	var wg sync.WaitGroup
+	var leases []*sqlstore.Lease
+	stop = func() {
+		cancel()
+		drain(wg.Wait, log)
+		// After the drain, not before: a burst finishing is still this
+		// instance's work, and handing leadership over while it delivers would
+		// let a replacement start the same schedule beside it.
+		for _, l := range leases {
+			l.Release()
 		}
-		rt.project.Due, rt.project.Fires = sched, sched
+	}
 
+	/*
+	   Where the tenancy can change, the scheduler asks rather than remembers.
+
+	   Only api.One can be adopted — a multi-project deployment names each of
+	   them in configuration and none of those can be renamed by a request. So
+	   this is nil for Many, where asking would be a slower way to get the same
+	   answer.
+	*/
+	var serving func() (string, string)
+	if one, ok := projects.(*api.One); ok {
+		serving = one.Serving
+	}
+
+	for t, rt := range runtimes {
+		sched, err := scheduler(cfg, t.org, t.project, serving, rt.repo, rt.project.Runner, records, log)
+		if err != nil {
+			// The schedulers already started keep running until the caller
+			// stops them; returning stop alongside the error means it can.
+			return stop, fmt.Errorf("%s: %w", t, err)
+		}
+
+		/*
+		   Resuming works whether or not this process schedules.
+
+		   Built before the CRONOS_SCHEDULER check on purpose. Repairing a
+		   partly-delivered burst is an operator action, and making it work only
+		   on the replica that happens to be leading would mean hunting for that
+		   replica during the incident. A deployment that has turned scheduling
+		   off entirely — often because something went wrong — still has the
+		   partial runs to repair.
+
+		   Nothing fires by itself here: the loop below is what does that, and
+		   it only starts when asked.
+		*/
+		if records != nil {
+			rt.project.Resumes = resumer{records: records, sched: sched}
+		}
+
+		if !cfg.Scheduler {
+			continue
+		}
+		/*
+		   Leadership, where the store can arbitrate it.
+
+		   Every replica may now run with CRONOS_SCHEDULER=1 and exactly one
+		   fires. Before this, that was a rule a deployment held in its head:
+		   set it twice and every customer gets two statements, forget it and
+		   nobody gets one — and both are quiet, because the only party who
+		   notices is the recipient.
+
+		   Nil for a file-backed or SQLite deployment, which is one process by
+		   construction and leads unconditionally.
+		*/
+		if records != nil {
+			if lease := records.Lease("scheduler:" + t.String()); lease != nil {
+				sched = sched.WithElection(lease)
+				leases = append(leases, lease)
+			}
+		}
+
+		rt.project.Due, rt.project.Fires = sched, sched
+		if watch != nil {
+			// Registered only for a scheduler that was actually armed, so no
+			// watcher at all is itself the signal that this process schedules
+			// nothing — ordinary for a replica, an incident when it is true of
+			// every replica at once.
+			watch.WatchScheduler(t.String(), sched)
+		}
+
+		wg.Add(1)
 		go func(t tenant, sched interface{ Start(context.Context) error }) {
+			defer wg.Done()
 			if err := sched.Start(ctx); err != nil {
 				log.Error("scheduler stopped", "project", t.String(), "err", err)
 			}
 		}(t, sched)
 	}
-	return nil
+	return stop, nil
 }
+
+/*
+drain waits for in-flight scheduled runs, up to a bound.
+
+The bound is longer than the HTTP drain because the work is longer: a burst is
+one render per recipient and one delivery each, where a request is one render.
+It is shorter than the grace period an orchestrator gives by default —
+Kubernetes allows thirty seconds before SIGKILL, and a drain that outlives that
+never completes. It is only a way to be killed mid-burst with an extra half
+minute of confusion first.
+*/
+func drain(wait func(), log *slog.Logger) {
+	if wait == nil {
+		return
+	}
+	done := make(chan struct{})
+	go func() { wait(); close(done) }()
+
+	select {
+	case <-done:
+	case <-time.After(schedulerDrain):
+		// Said out loud rather than swallowed. A burst that did not finish is
+		// a delivery somebody has to reconcile, and the log is where they will
+		// look for the reason.
+		log.Warn("scheduled runs did not finish before shutdown", "waited", schedulerDrain)
+	}
+}
+
+// schedulerDrain is how long in-flight scheduled runs get after SIGTERM.
+const schedulerDrain = 25 * time.Second
 
 // projectsFor turns the assembled runtimes into what the API resolves against.
 func projectsFor(runtimes map[tenant]*runtime, several bool) api.Projects {
@@ -186,7 +320,7 @@ func projectsFor(runtimes map[tenant]*runtime, several bool) api.Projects {
 			// process that served its definitions to a principal from another
 			// organisation would be the same leak as a multi-tenant one
 			// resolving the wrong runtime; the narrowness is not the check.
-			return api.One{Org: t.org, ProjectID: t.project, Only: rt.project}
+			return &api.One{Org: t.org, ProjectID: t.project, Only: rt.project}
 		}
 	}
 	many := api.NewMany()
@@ -244,28 +378,64 @@ wiring.go, and this is only the part that says whose.
 // Each has its own datasets to check a report against and its own engines to
 // prove a block will run, so publishing into the wrong one would accept a
 // report naming a dataset this project does not have.
-type publishingFor map[tenant]*runtime
+/*
+publishingFor resolves through the same object every other route does.
 
-func (p publishingFor) of(pr principal.Principal) (*publish.Service, error) {
-	rt, ok := p[tenant{org: pr.OrgID, project: pr.ProjectID}]
-	if !ok {
+It used to key its own map by the caller's organisation and project, and that is
+the bug a first run exposed. A fresh install serves whatever CRONOS_ORG defaults
+to; somebody sets it up as "acme/finance"; api.One adopts the name so reads work
+— and this map, built at boot, still had one entry under default/default. Every
+publish, send and share answered "no such project here". A deployment set up
+through the browser could read its reports and change nothing.
+
+Three helpers had their own copy of "which tenant is this", so the fix is not to
+teach three maps about adoption. It is to have one thing decide, which is what
+api.Projects already is, and to key these by the runtime it hands back.
+*/
+type publishingFor struct {
+	projects api.Projects
+	// byProject maps the resolved runtime to its publisher. Keyed by pointer
+	// identity rather than by name, so nothing here has an opinion about
+	// tenancy at all.
+	byProject map[*api.Project]*publish.Service
+}
+
+func (p publishingFor) of(ctx context.Context, pr principal.Principal) (*publish.Service, error) {
+	project, err := p.projects.Project(ctx, pr)
+	if err != nil {
 		return nil, fmt.Errorf("%w: no such project here", publish.ErrForbidden)
 	}
-	return rt.publish, nil
+	svc, ok := p.byProject[project]
+	if !ok {
+		return nil, fmt.Errorf("%w: nothing publishes here", publish.ErrForbidden)
+	}
+	return svc, nil
 }
 
 func (p publishingFor) Publish(ctx context.Context, raw []byte,
 	pr principal.Principal) (publish.Result, error) {
 
-	svc, err := p.of(pr)
+	svc, err := p.of(ctx, pr)
 	if err != nil {
 		return publish.Result{}, err
 	}
 	return svc.Publish(ctx, raw, pr)
 }
 
+// PublishIf resolves the same way, and refuses a save built on a version
+// somebody else has already replaced.
+func (p publishingFor) PublishIf(ctx context.Context, raw []byte,
+	pr principal.Principal, expect string) (publish.Result, error) {
+
+	svc, err := p.of(ctx, pr)
+	if err != nil {
+		return publish.Result{}, err
+	}
+	return svc.PublishIf(ctx, raw, pr, expect)
+}
+
 func (p publishingFor) Delete(ctx context.Context, pr principal.Principal, kind, name string) error {
-	svc, err := p.of(pr)
+	svc, err := p.of(ctx, pr)
 	if err != nil {
 		return err
 	}
@@ -276,18 +446,24 @@ func (p publishingFor) Delete(ctx context.Context, pr principal.Principal, kind,
 //
 // The report a link names must exist in the project the sharer acts in, which
 // is what stops a link to a name that happens to exist somewhere else.
+// sharingFor resolves the same way, so a link minted after a first run names a
+// report in the project the caller is actually in.
 func sharingFor(records *sqlstore.Store, signer *token.Signer,
-	runtimes map[tenant]*runtime) api.Sharing {
+	projects api.Projects, runtimes map[tenant]*runtime) api.Sharing {
 
 	if records == nil {
 		return nil
 	}
-	reports := map[tenant]*file.Repository{}
-	for t, rt := range runtimes {
-		reports[t] = rt.repo
+	reports := map[*api.Project]*file.Repository{}
+	for _, rt := range runtimes {
+		reports[rt.project] = rt.repo
 	}
 	return share.NewPerProject(records, signer, func(pr principal.Principal) share.Reports {
-		if repo, ok := reports[tenant{org: pr.OrgID, project: pr.ProjectID}]; ok {
+		project, err := projects.Project(context.Background(), pr)
+		if err != nil {
+			return nil
+		}
+		if repo, ok := reports[project]; ok {
 			return repo
 		}
 		return nil
@@ -295,26 +471,48 @@ func sharingFor(records *sqlstore.Store, signer *token.Signer,
 }
 
 // sendingFor renders and delivers from the caller's own project.
-func sendingFor(cfg config.Server, runtimes map[tenant]*runtime, log *slog.Logger) api.Sending {
+func sendingFor(cfg config.Server, projects api.Projects,
+	runtimes map[tenant]*runtime, log *slog.Logger) api.Sending {
+
 	chans, err := channels(cfg, log)
 	if err != nil || len(chans) == 0 {
 		return nil
 	}
-	services := map[tenant]*send.Service{}
-	for t, rt := range runtimes {
-		services[t] = send.New(rt.repo, documents(rt.project.Runner), chans...)
+	services := map[*api.Project]*send.Service{}
+	for _, rt := range runtimes {
+		services[rt.project] = send.New(rt.repo, documents(rt.project.Runner), chans...)
 	}
-	return sendPerProject(services)
+	return sendPerProject{projects: projects, byProject: services}
 }
 
-type sendPerProject map[tenant]*send.Service
+// sendPerProject resolves the same way publishingFor does, and for the same
+// reason: its own map of tenants was a second place for "which project is this"
+// to be answered, and a first run made the two disagree.
+type sendPerProject struct {
+	projects  api.Projects
+	byProject map[*api.Project]*send.Service
+}
 
 func (s sendPerProject) Send(ctx context.Context, req send.Request,
 	pr principal.Principal) (send.Result, error) {
 
-	svc, ok := s[tenant{org: pr.OrgID, project: pr.ProjectID}]
+	/*
+	   Forbidden rather than invalid, which publishingFor next door has always
+	   said and this said until now.
+
+	   The request is well formed; the caller is somewhere else. Saying "not a
+	   send" makes it a 400, which tells somebody their request was malformed
+	   when the truth is that they are in the wrong project — and it made the
+	   two sentinels indistinguishable to a caller trying to tell a bad request
+	   from a tenancy refusal.
+	*/
+	project, err := s.projects.Project(ctx, pr)
+	if err != nil {
+		return send.Result{}, fmt.Errorf("%w: no such project here", send.ErrForbidden)
+	}
+	svc, ok := s.byProject[project]
 	if !ok {
-		return send.Result{}, fmt.Errorf("%w: no such project here", send.ErrInvalid)
+		return send.Result{}, fmt.Errorf("%w: nothing sends here", send.ErrForbidden)
 	}
 	return svc.Send(ctx, req, pr)
 }
@@ -344,4 +542,69 @@ func readinessFor(records *sqlstore.Store, runtimes map[tenant]*runtime) []api.C
 		}
 	}
 	return checks
+}
+
+// publishing builds the resolver, once the projects are known.
+func publishingBy(projects api.Projects, runtimes map[tenant]*runtime) api.Publishing {
+	byProject := map[*api.Project]*publish.Service{}
+	for _, rt := range runtimes {
+		byProject[rt.project] = rt.publish
+	}
+	return publishingFor{projects: projects, byProject: byProject}
+}
+
+/*
+resumer re-sends a period to whoever did not get it.
+
+Here rather than in the API package because it is the only place that holds all
+three pieces: the store that knows what was delivered, the scheduler that knows
+the schedule, and the burst runner that does the sending. The API knows none of
+them and asks through a port.
+
+Absent without a store, which is a file-backed deployment: there is no run
+history to resume from, and the endpoint answers 404 like any other run.
+*/
+type resumer struct {
+	records *sqlstore.Store
+	sched   *schedule.Service
+}
+
+func (r resumer) Resume(ctx context.Context, pr principal.Principal, runID string) error {
+	// Tenant-scoped, so a run id from another project reads as absent rather
+	// than as forbidden — the difference tells a caller it exists.
+	run, _, err := r.records.Run(ctx, pr, runID)
+	if err != nil {
+		return err
+	}
+
+	/*
+	   Every attempt at this period, not just the run being resumed.
+
+	   A burst that was cut, resumed, and cut again has two sets of deliveries.
+	   A third attempt reading only the run it was pointed at would send a
+	   duplicate to everybody the other attempt reached — which is the failure
+	   this whole path exists to prevent, arrived at by resuming twice.
+	*/
+	done, err := r.records.DeliveredFor(ctx, pr, run.Schedule, run.PeriodStart, run.PeriodEnd)
+	if err != nil {
+		return err
+	}
+	return r.sched.Resume(ctx, run.Schedule, run.PeriodStart, run.PeriodEnd, done, pr)
+}
+
+/*
+renamed re-keys the single runtime a deployment has, after a first run named it.
+
+Only ever one, which the caller has already established: a deployment serving
+several was told each of their names in configuration, and none of those can be
+renamed by a request. Written as a rebuild rather than a mutation because the
+map is keyed by the very thing that changes.
+*/
+func renamed(runtimes map[tenant]*runtime, to tenant) map[tenant]*runtime {
+	out := make(map[tenant]*runtime, len(runtimes))
+	for _, rt := range runtimes {
+		rt.tenant = to
+		out[to] = rt
+	}
+	return out
 }

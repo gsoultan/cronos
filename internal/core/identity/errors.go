@@ -17,6 +17,21 @@ var (
 	ErrNoUser = errors.New("identity: no such person")
 	// ErrExists means that email already has an account here.
 	ErrExists = errors.New("identity: already registered")
-	// ErrNotFound means no such user.
-	ErrNotFound = errors.New("identity: no such user")
+
+	// ErrNoFactor means this account has no confirmed second factor.
+	ErrNoFactor = errors.New("identity: no second factor")
+	// ErrFactorExists means it already has one, and turning that off is its
+	// own act rather than a side effect of starting another.
+	ErrFactorExists = errors.New("identity: a second factor is already set up")
+	/*
+	   ErrBadCode is a code that is wrong, and is deliberately the same error
+	   for a wrong TOTP code and a wrong recovery code.
+
+	   Telling them apart says which of the two an attacker is closer to, and
+	   the person typing knows perfectly well which box they used.
+	*/
+	ErrBadCode = errors.New("identity: that code is not right")
+	// ErrCodeUsed means this code was already spent. A TOTP code is good for a
+	// whole step, which is long enough to be read off somebody's screen.
+	ErrCodeUsed = errors.New("identity: that code has already been used")
 )

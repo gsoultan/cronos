@@ -75,8 +75,9 @@ func channels(cfg config.Server, log *slog.Logger) ([]burst.Channel, error) {
 }
 
 // scheduler wires the burst pipeline behind a cron loop.
-func scheduler(cfg config.Server, org, project string, repo *file.Repository,
-	runner *run.Service, records *sqlstore.Store, log *slog.Logger) (*schedule.Service, error) {
+func scheduler(cfg config.Server, org, project string, serving func() (string, string),
+	repo *file.Repository, runner *run.Service, records *sqlstore.Store,
+	log *slog.Logger) (*schedule.Service, error) {
 
 	chans, err := channels(cfg, log)
 	if err != nil {
@@ -92,7 +93,10 @@ func scheduler(cfg config.Server, org, project string, repo *file.Repository,
 		bursts = bursts.WithHistory(records)
 	}
 
-	sched := schedule.New(repo, bursts, owner{org: org, project: project}, log)
+	sched := schedule.New(repo, bursts, owner{org: org, project: project, serving: serving}, log)
+	if cfg.SchedulerTick > 0 {
+		sched = sched.WithTick(cfg.SchedulerTick)
+	}
 	if mail := mailer(chans); mail != nil {
 		sched = sched.WithAlerts(alertemail.New(mail))
 	} else {
@@ -102,11 +106,30 @@ func scheduler(cfg config.Server, org, project string, repo *file.Repository,
 		log.Warn("no mail relay — schedule failures will not alert anybody")
 	}
 
-	// Every schedule is parsed before the listener opens. A timezone the host
-	// does not have should stop a deployment, not surprise somebody at six on
-	// the first of the month.
-	if err := schedule.Check(repo); err != nil {
-		return nil, err
+	/*
+	   Every schedule is parsed before the listener opens, and one that will not
+	   parse is named rather than fatal.
+
+	   This used to return the error and stop the process. The reasoning held
+	   while definitions came from a directory an operator controlled: a
+	   timezone the host does not have was a configuration mistake, and failing
+	   loudly beat serving with two of five schedules quietly missing.
+
+	   Definitions come from the store now. An editor publishing "Europe/Berln"
+	   got a 200, the running instance carried on, and the next restart would
+	   not come back — with the API down, so the only way to remove the typo was
+	   a psql prompt. One person's misspelling was an outage for every project in
+	   the deployment, days later, looking like the deploy had broken it.
+
+	   Publishing validates the timezone now. This is the net under the ones
+	   already stored, and it keeps the loudness that made refusing attractive:
+	   each is logged at error and counted for the metric, so a schedule that is
+	   not running is visible rather than absent.
+	*/
+	for _, u := range schedule.Check(repo) {
+		log.Error("schedule will not arm — it is stored but will never run",
+			"schedule", u.Name, "err", u.Err)
+		unarmed.Add(1)
 	}
 	return sched, nil
 }
@@ -134,13 +157,32 @@ func mailer(chans []burst.Channel) alertemail.Sender {
 // The project is carried rather than read from configuration: a process may
 // serve several, and a schedule that ran as the wrong one would read the wrong
 // warehouse and mail the result to the wrong customers.
-type owner struct{ org, project string }
+/*
+owner is who a scheduled run acts as.
+
+The tenancy is asked for rather than remembered, because it can change once: a
+deployment that starts as default/default and is named through /setup is a
+different project afterwards, and a scheduler still holding the old name files
+every run where the people who own it will never see one.
+
+serving is nil for a deployment that named itself in configuration, which is
+every deployment that cannot be adopted — there the two are the same and asking
+would only be a slower way to get the same answer.
+*/
+type owner struct {
+	org, project string
+	serving      func() (string, string)
+}
 
 func (o owner) Owner(s definition.Schedule) principal.Principal {
+	org, project := o.org, o.project
+	if o.serving != nil {
+		org, project = o.serving()
+	}
 	return principal.Principal{
 		Subject:     "schedule:" + s.Name,
-		OrgID:       o.org,
-		ProjectID:   o.project,
+		OrgID:       org,
+		ProjectID:   project,
 		ProjectRole: principal.ProjectEditor,
 		// A schedule runs as a project member. docs/tenancy.md is explicit
 		// that burst targets rely on membership alone.
@@ -259,7 +301,31 @@ func reconcile(ctx context.Context, store publish.Store, repo *file.Repository,
 		docs = append(docs, raw)
 	}
 	if err := repo.Adopt(docs); err != nil {
-		return fmt.Errorf("adopting the stored definitions: %w", err)
+		/*
+		   One stored definition this build will not accept, and forty-nine it
+		   will. Refusing all fifty is not the safer answer: it takes the
+		   deployment down, and with the API down the only way to remove the one
+		   bad definition is a prompt on the database — the shape of every
+		   unrecoverable failure, where fixing the broken thing needs the broken
+		   thing.
+
+		   Validation gets stricter over time and the store outlives any one
+		   build, so this is not hypothetical: a schedule published against a
+		   timezone nobody checked becomes, one release later, a process that
+		   will not start. It happens on the upgrade, which is when nobody is
+		   looking for a definition somebody published in March.
+
+		   The ordinary path is still all or nothing. This runs only when that
+		   one refused, and it is loud — every reason at error, and counted for
+		   cronos_definitions_refused, which should be zero.
+		*/
+		log.Error("the store holds definitions this build will not accept",
+			"project", pr.OrgID+"/"+pr.ProjectID, "err", err)
+		for _, refused := range repo.AdoptUsable(docs) {
+			log.Error("definition refused — it is stored and will not be served",
+				"project", pr.OrgID+"/"+pr.ProjectID, "err", refused)
+			rejected.Add(1)
+		}
 	}
 	// Stated rather than left to be discovered by somebody who edited a file
 	// and could not work out why nothing changed.
@@ -361,16 +427,35 @@ func storeCheck(records *sqlstore.Store) api.Check {
 		Name:     "store",
 		Required: true,
 		Probe: func(ctx context.Context) error {
-			// The schema too, not only the connection. A store answering at a
-			// version this build does not know is one this build must not
-			// write to, and it is the state a half-finished deploy leaves
-			// behind.
+			// The schema too, not only the connection — but only when it is
+			// behind, which is the direction that breaks this build.
+			//
+			// Behind means a table this build reads is not there: the state a
+			// restore of an older dump underneath a running process leaves,
+			// and there is nothing this instance can serve.
+			//
+			// Ahead means a newer cronos has migrated, which is every rolling
+			// deploy for the length of the rollout. This used to report down
+			// for that too, on the reasoning that a schema this build does not
+			// know is one it must not write to. Driving it says otherwise:
+			// scripts/live-upgrade.sh keeps an old build serving while a new
+			// one migrates, and every route still answers — reads, publishes
+			// and sign-ins alike — because migrations only ever add tables.
+			// That is not luck, it is why they add tables rather than columns.
+			//
+			// And reporting down was worse than useless. Readiness is what
+			// decides whether a load balancer sends work here, so the first
+			// new instance to migrate took every old instance out of rotation
+			// at once: an eight-replica deployment served the whole of its
+			// traffic from the one new pod for the rest of the rollout. The
+			// instance that is provably answering correctly is the last one
+			// that should be removed.
 			at, err := records.SchemaVersion(ctx)
 			if err != nil {
 				return err
 			}
-			if at != sqlstore.Wanted() {
-				return fmt.Errorf("schema is at %d, this build wants %d", at, sqlstore.Wanted())
+			if at < sqlstore.Wanted() {
+				return fmt.Errorf("schema is at %d and this build needs %d", at, sqlstore.Wanted())
 			}
 			return nil
 		},
@@ -443,6 +528,88 @@ func channelNames(cfg config.Server, log *slog.Logger) []string {
 // appears there and can be turned off there — an SSO account nobody can revoke
 // is the hole this whole area exists to close.
 func directory(records *sqlstore.Store) api.Directory {
+	if records == nil {
+		return nil
+	}
+	return records
+}
+
+// invitations is where places held for people are recorded.
+//
+// Nil for a file-backed deployment, which has no accounts either — so adding
+// somebody there is the CLI's job, and there is nothing to invite them to.
+func invitations(records *sqlstore.Store) api.Invitations {
+	if records == nil {
+		return nil
+	}
+	return records
+}
+
+/*
+postman is how an invitation is delivered.
+
+The mail channel, or nothing. Nothing is the ordinary case for a deployment that
+has never configured a relay, and it means the portal offers a password field
+instead of an invite button — rather than an invite button that produces an
+error somebody has to interpret.
+
+Built here rather than taken from the channel list because that list is
+addressed by name for deliveries, and reaching into it for "the one that happens
+to be email" would tie invitations to how bursts are configured.
+*/
+func postman(cfg config.Server, log *slog.Logger) api.Postman {
+	if !cfg.SMTP.Configured() {
+		return nil
+	}
+	c, err := emailchannel.New(emailchannel.Config{
+		Host: cfg.SMTP.Host, From: cfg.SMTP.From,
+		Username: cfg.SMTP.Username, Password: cfg.SMTP.Password,
+	})
+	if err != nil {
+		// The same configuration channels() already refused startup over, so
+		// this cannot be reached by a running server. Logged rather than
+		// returned so one bad relay does not take out the whole boot twice.
+		log.Error("no invitation mail", "err", err)
+		return nil
+	}
+	return c
+}
+
+// factors is where second factors are recorded.
+//
+// Nil for a file-backed deployment, which has no accounts either — so there is
+// nothing to protect and sign-in is the password alone.
+func factors(records *sqlstore.Store) api.Factors {
+	if records == nil {
+		return nil
+	}
+	return records
+}
+
+// platform administers the deployment across tenants.
+//
+// Nil for a file-backed deployment, which has no accounts anywhere and so
+// nothing to administer.
+func platform(records *sqlstore.Store) api.Platform {
+	if records == nil {
+		return nil
+	}
+	return records
+}
+
+// accounts counts them, for the first-run check.
+func accounts(records *sqlstore.Store) api.Accounts {
+	if records == nil {
+		return nil
+	}
+	return records
+}
+
+// policies is what each project requires of the people in it.
+//
+// Nil for a file-backed deployment, which has no accounts to require anything
+// of — and where sign-in does not exist at all.
+func policies(records *sqlstore.Store) api.Policies {
 	if records == nil {
 		return nil
 	}

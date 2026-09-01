@@ -390,3 +390,110 @@ func TestOneFailureDoesNotStopTheBurst(t *testing.T) {
 		t.Errorf("the working channel delivered to %d recipients, want 3", len(entries))
 	}
 }
+
+/*
+A burst that stopped halfway is resumed without sending anybody a second copy.
+
+The state a cut burst leaves is the one nobody can reconcile: some customers
+have their statement and some do not, and until now the only recovery was to run
+the whole thing again — which sends a second document to everyone who already
+had one. For an invoice that is worse than the gap it was fixing.
+
+Both halves matter and neither is sufficient. Skipping everybody would "not
+double-send" perfectly and deliver nothing; sending to everybody would resume
+perfectly and duplicate. So the check counts both: the one who was missed gets
+theirs, and the two who already had theirs are not written again.
+*/
+func TestAResumedBurstSkipsWhoeverAlreadyHasTheirs(t *testing.T) {
+	svc, sched, out := setup(t)
+
+	// c-1 and c-3 were delivered before the burst was cut; c-2 was not.
+	done := map[string]bool{
+		burst.DeliveredKey("file", "c-1"): true,
+		burst.DeliveredKey("file", "c-3"): true,
+	}
+
+	result, err := svc.Resume(context.Background(), sched,
+		burst.Run{"period": "2026-07"}, owner(""), done)
+	if err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+
+	// Only the one who was missed has a document on disk.
+	for id, want := range map[string]bool{"c-1": false, "c-2": true, "c-3": false} {
+		path := filepath.Join(out, id, "statement-"+id+"-2026-07.pdf")
+		_, err := os.Stat(path)
+		if want && err != nil {
+			t.Errorf("%s was missed by the first burst and by the resume too: %v", id, err)
+		}
+		if !want && err == nil {
+			t.Errorf("%s already had their statement and was sent a second one", id)
+		}
+	}
+
+	// And the run record still answers "did this period reach everybody".
+	if result.Delivered != 3 {
+		t.Errorf("delivered = %d, want 3 — the period reached all three", result.Delivered)
+	}
+	if result.Skipped != 2 {
+		t.Errorf("skipped = %d, want 2 — two already had theirs", result.Skipped)
+	}
+	if len(result.Failed) != 0 {
+		t.Errorf("failed: %v", result.Failed)
+	}
+}
+
+// Resuming a burst nobody has run yet is the ordinary burst. Otherwise the
+// resume path is a second implementation of delivery, which is the thing that
+// drifts.
+func TestResumingWithNothingDoneIsAnOrdinaryBurst(t *testing.T) {
+	svc, sched, out := setup(t)
+
+	result, err := svc.Resume(context.Background(), sched,
+		burst.Run{"period": "2026-07"}, owner(""), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Delivered != 3 || result.Skipped != 0 {
+		t.Fatalf("delivered %d, skipped %d — want 3 and 0", result.Delivered, result.Skipped)
+	}
+	for _, id := range []string{"c-1", "c-2", "c-3"} {
+		if _, err := os.Stat(filepath.Join(out, id, "statement-"+id+"-2026-07.pdf")); err != nil {
+			t.Errorf("%s was not delivered: %v", id, err)
+		}
+	}
+}
+
+/*
+A resume with everybody done sends nothing, and renders nothing either.
+
+The waste it avoids is the whole reason the skip happens before rendering: eight
+hundred recipients where twenty are outstanding should typeset twenty documents.
+Deciding at the delivery step would typeset eight hundred and throw seven
+hundred and eighty away — most of the cost of the burst that just failed,
+repeated.
+*/
+func TestAResumeWithNothingOutstandingRendersNothing(t *testing.T) {
+	svc, sched, out := setup(t)
+
+	done := map[string]bool{}
+	for _, id := range []string{"c-1", "c-2", "c-3"} {
+		done[burst.DeliveredKey("file", id)] = true
+	}
+
+	result, err := svc.Resume(context.Background(), sched,
+		burst.Run{"period": "2026-07"}, owner(""), done)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Skipped != 3 {
+		t.Errorf("skipped = %d, want 3", result.Skipped)
+	}
+	entries, err := os.ReadDir(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("a resume with nothing outstanding wrote %d directories", len(entries))
+	}
+}

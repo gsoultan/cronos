@@ -5,6 +5,10 @@ import "fmt"
 // drivers are the adapters this build can open a source with.
 var drivers = map[string]bool{
 	"postgres": true, "mysql": true, "sqlite": true, "duckdb": true, "object-store": true,
+	// Both names for the same product. "sqlserver" is what the driver
+	// registers as; "mssql" is what most people type, and refusing it would be
+	// a definition rejected for using the other of two correct words.
+	"sqlserver": true, "mssql": true,
 }
 
 // formats are what an object store may hold.

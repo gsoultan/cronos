@@ -1,4 +1,5 @@
 bin/
+# Release archives and the portal build, both reproducible from a tag.
 dist/
 node_modules/
 shots/
@@ -9,3 +10,6 @@ packages/*/harness/*.js
 .env.local
 
 .DS_Store
+
+# A development deployment: accounts, and the database they live in.
+.dev/

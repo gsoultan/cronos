@@ -16,6 +16,10 @@ import (
 type Runner interface {
 	Run(ctx context.Context, s definition.Schedule, run burst.Run,
 		pr principal.Principal) (burst.Result, error)
+	// Resume runs one again, leaving out whoever already has their document.
+	// See Service.Resume.
+	Resume(ctx context.Context, s definition.Schedule, run burst.Run,
+		pr principal.Principal, done map[string]bool) (burst.Result, error)
 }
 
 // Source supplies the schedules to arm.
@@ -37,17 +41,52 @@ type Owner interface {
 
 // Service arms schedules and fires them when due.
 type Service struct {
-	source  Source
-	runner  Runner
-	owner   Owner
-	log     *slog.Logger
-	now     func() time.Time
-	tick    time.Duration
-	mu      sync.Mutex
-	running map[string]bool
-	due     map[string]time.Time
-	alerter Alerter
-	alerts  *alerts
+	source    Source
+	runner    Runner
+	owner     Owner
+	log       *slog.Logger
+	now       func() time.Time
+	tickEvery time.Duration
+	mu        sync.Mutex
+	running   map[string]bool
+	due       map[string]time.Time
+	alerter   Alerter
+	alerts    *alerts
+	// grace is how long a burst already under way gets after the loop is told
+	// to stop. See fireDue.
+	grace time.Duration
+	/*
+	   ticked is when the loop last completed a pass.
+
+	   The only evidence that this scheduler is working. Everything else a
+	   deployment can measure counts things that happened — runs, deliveries,
+	   failures — and a scheduler that has stopped produces none of them. Zero
+	   failures is what a perfect night looks like and also what a dead loop
+	   looks like, and no alert written against a counter can tell them apart.
+	*/
+	ticked time.Time
+	/*
+	   elector decides whether this process is the one that fires.
+
+	   Absent means yes, which is every deployment that has not asked for
+	   several replicas — and the file-backed one, which is a single process by
+	   construction.
+	*/
+	elector Elector
+	// leading is what the last election said, for the gauge. Cached rather
+	// than asked at scrape time: a scrape should not open a database session.
+	leading bool
+}
+
+/*
+Elector says whether this process should be the one firing schedules.
+
+A port rather than a mechanism, because the mechanism is the store's: leadership
+is a Postgres advisory lock, and its liveness is the database's business rather
+than this loop's. See sqlstore.Lease.
+*/
+type Elector interface {
+	Leading(ctx context.Context) bool
 }
 
 // Tick is how often the loop looks for work.
@@ -56,15 +95,50 @@ type Service struct {
 // loop asking the same question; anything coarser can miss a firing.
 const Tick = time.Minute
 
+/*
+Grace is how long a burst already under way gets after the loop is told to stop.
+
+Bounded, because the process is trying to exit and an orchestrator that sent
+SIGTERM will send SIGKILL — thirty seconds later, by default. A grace longer
+than the drain waiting on it is a grace that is never honoured.
+
+Twenty seconds is one render and one delivery per remaining recipient at a rate
+a deployment can be asked to sustain. A burst too large to finish in it is cut,
+and the run record says so — which is the point: the record is the thing
+somebody reconciles from.
+*/
+const Grace = 20 * time.Second
+
+// WithGrace bounds how long in-flight bursts get after a stop.
+func (s *Service) WithGrace(d time.Duration) *Service { s.grace = d; return s }
+
 // New wires a Service.
 func New(src Source, r Runner, o Owner, log *slog.Logger) *Service {
 	return &Service{
 		source: src, runner: r, owner: o, log: log,
-		now: time.Now, tick: Tick,
+		now: time.Now, tickEvery: Tick, grace: Grace,
 		running: map[string]bool{},
 		due:     map[string]time.Time{},
 		alerts:  newAlerts(),
 	}
+}
+
+/*
+WithElection makes this one of several replicas, of which one fires.
+
+Without it a scheduler fires whatever else is running, which is correct for one
+process and is why CRONOS_SCHEDULER had to be set on exactly one instance — a
+rule held in somebody's head, where setting it twice double-sends to every
+customer and forgetting it sends to nobody.
+*/
+func (s *Service) WithElection(e Elector) *Service { s.elector = e; return s }
+
+// Leading reports what the last election said, for the gauge that tells a
+// deployment which replica is doing the work — and whether any is.
+func (s *Service) Leading() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.leading
 }
 
 // WithAlerts tells somebody when a run does not work.
@@ -76,17 +150,34 @@ func (s *Service) WithAlerts(a Alerter) *Service { s.alerter = a; return s }
 // WithClock and WithTick make the loop testable without waiting for a minute
 // of real time to pass.
 func (s *Service) WithClock(now func() time.Time) *Service { s.now = now; return s }
-func (s *Service) WithTick(d time.Duration) *Service       { s.tick = d; return s }
+func (s *Service) WithTick(d time.Duration) *Service       { s.tickEvery = d; return s }
 
 // Start runs until the context is cancelled.
 //
 // In-flight bursts finish. Killing one mid-render leaves a delivery that half
 // happened, which is worse to reconcile than one that did not start.
 func (s *Service) Start(ctx context.Context) error {
-	s.arm(s.now())
-	s.log.Info("scheduler started", "schedules", len(s.due), "tick", s.tick)
+	/*
+	   Armed before the first tick, where this process is the one scheduling.
 
-	ticker := time.NewTicker(s.tick)
+	   The loop below arms on every pass, so leaving it to the first tick would
+	   work — a minute later. For that minute Due() is empty, which means the
+	   catalogue shows no next firing for any schedule and the armed gauge reads
+	   zero on a scheduler that is perfectly healthy. A browser check caught it;
+	   the unit tests did not, because they run with a five-millisecond tick.
+
+	   A follower arms nothing, here as in the loop.
+	*/
+	if s.elected(ctx) {
+		s.arm(s.now())
+	}
+	// Before the first tick, so a scheduler that has just started does not look
+	// like one that has been stuck since the epoch.
+	s.tick()
+	s.log.Info("scheduler started", "schedules", len(s.due),
+		"tick", s.tickEvery, "electing", s.elector != nil)
+
+	ticker := time.NewTicker(s.tickEvery)
 	defer ticker.Stop()
 
 	var wg sync.WaitGroup
@@ -98,7 +189,26 @@ func (s *Service) Start(ctx context.Context) error {
 			s.log.Info("scheduler draining")
 			return nil
 		case <-ticker.C:
+			/*
+			   Elected on every pass, not once at startup.
+
+			   Leadership is not a thing a process is given; it is a thing it
+			   keeps having, and it can lose it — the database restarted, a
+			   proxy dropped the session, this replica was partitioned away.
+			   Asking each time is what makes a hand-over take one tick rather
+			   than a deploy.
+			*/
+			if !s.elected(ctx) {
+				// A follower arms nothing. Its Due() is empty, so the gauges
+				// report zero schedules armed and nothing overdue — which is
+				// the truth about a replica that is not scheduling, and stops
+				// every follower firing the alert meant for a stuck leader.
+				s.standDown()
+				s.tick()
+				continue
+			}
 			s.fireDue(ctx, &wg)
+			s.tick()
 		}
 	}
 }
@@ -153,8 +263,38 @@ func (s *Service) fireDue(ctx context.Context, wg *sync.WaitGroup) {
 			// month in a loop — three months of downtime became three bursts,
 			// which is the catch-up this is supposed not to do. It also means a
 			// run that overran its own interval does not immediately requeue.
-			defer func() { s.release(p.Schedule.Name, p.Next(s.now())) }()
-			s.fire(ctx, p, at)
+			//
+			// The firing goes in too, because "now" is not enough to know what
+			// has already been sent: when a zone puts its clocks back, the time
+			// that just fired comes round again an hour later and is still
+			// ahead of now. See Plan.NextAfter.
+			defer func() { s.release(p.Schedule.Name, p.NextAfter(at, s.now())) }()
+
+			/*
+			   A run does not inherit the loop's cancellation.
+
+			   This is the whole of the shutdown guarantee, and it was the half
+			   that was missing. Start blocks on these goroutines when the
+			   context is cancelled — but every run was a child of that same
+			   context, so cancelling to stop the loop also cancelled the work
+			   the wait exists to protect. The wait then completed promptly,
+			   because there was nothing left to wait for: eight hundred
+			   recipients failed with "context canceled" in seventy
+			   milliseconds, and twenty of them had a document.
+
+			   Worse, the run record is written at the end and through the same
+			   context, so it failed too. A burst that delivered to a fifth of a
+			   customer list left no record of having run at all — which is
+			   exactly the state nobody can reconcile, arrived at by the code
+			   written to prevent it.
+
+			   Bounded rather than detached: the process is exiting and the
+			   grace must expire before the orchestrator's patience does. A
+			   burst too large to finish is cut, and the record says so.
+			*/
+			runCtx, done := context.WithTimeout(context.WithoutCancel(ctx), s.grace)
+			defer done()
+			s.fire(runCtx, p, at)
 		}(plan, when)
 	}
 }
@@ -266,17 +406,105 @@ func (s *Service) Due() map[string]time.Time {
 	return out
 }
 
-// Check parses every schedule and reports the ones that will not arm.
-//
-// For a startup that should fail loudly rather than serve with two of its five
-// schedules quietly missing.
-func Check(src Source) error {
+/*
+elected asks whether this process should be firing, and says so when it changes.
+
+Logged on the edge rather than every pass: a hand-over is worth a line and a
+follower saying "still not me" once a minute is not.
+*/
+func (s *Service) elected(ctx context.Context) bool {
+	now := true
+	if s.elector != nil {
+		now = s.elector.Leading(ctx)
+	}
+
+	s.mu.Lock()
+	was := s.leading
+	s.leading = now
+	s.mu.Unlock()
+
+	switch {
+	case now && !was:
+		s.log.Info("scheduling here now", "schedules", len(s.source.Schedules()))
+	case !now && was:
+		s.log.Info("another instance is scheduling")
+	}
+	return now
+}
+
+// standDown forgets what was armed, so a follower reports nothing armed and
+// nothing overdue. What it was waiting for is recomputed from the schedules the
+// moment it leads again — arm() is a pure function of now and the definitions.
+func (s *Service) standDown() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.due = map[string]time.Time{}
+}
+
+/*
+tick records that the loop completed a pass.
+
+LastTick below is what a deployment alerts on. The recording is here rather
+than at the top of the loop so it means "a pass finished", not "a pass began" —
+a loop wedged inside fireDue is exactly the case worth catching.
+*/
+func (s *Service) tick() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ticked = s.now()
+}
+
+/*
+LastTick is when this scheduler last completed a pass, or the zero time if it
+has never run.
+
+The signal that has no substitute. A process can serve every request, answer
+health and readiness, and not be running anybody's schedules — because the flag
+was never set, because Start returned early, because the goroutine died. From
+outside, all three look like a quiet night.
+*/
+func (s *Service) LastTick() time.Time {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.ticked
+}
+
+/*
+Check parses every schedule and returns the ones that will not arm.
+
+It used to return the first error, and boot used to refuse to start on it. The
+reasoning was sound and the context changed underneath it: when definitions came
+from a directory an operator controlled, a bad timezone was a configuration
+mistake and refusing to start was the loud, correct answer. Definitions now come
+from the store, published through a browser by anybody who can edit — and a
+misspelled timezone published on a Tuesday became a deployment that would not
+start on Thursday, with the API down and no way to remove the definition except
+a psql prompt.
+
+The timezone is validated at publish now, which closes the door. This is what
+happens to the ones already through it: a definition written before the check
+existed, restored from an older backup, or put there by something other than
+this API. Those schedules do not arm and every other one does, because a report
+does not depend on a schedule and taking every project's reports down for one
+bad cron expression is not a trade anybody would choose.
+
+Not silent, which was the real fear: each is logged at error, counted, and
+reported by the metric — see cronos_schedules_unarmed.
+*/
+func Check(src Source) []Unarmed {
+	var bad []Unarmed
 	for _, sched := range src.Schedules() {
 		if _, err := Parse(sched); err != nil {
-			return fmt.Errorf("schedule %q will not arm: %w", sched.Name, err)
+			bad = append(bad, Unarmed{Name: sched.Name, Err: err})
 		}
 	}
-	return nil
+	return bad
+}
+
+// Unarmed is one schedule that could not be parsed, and why.
+type Unarmed struct {
+	Name string
+	Err  error
 }
 
 // Fire runs one schedule now, as though its time had come.
@@ -334,4 +562,84 @@ func (s *Service) unhold(name string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.running[name] = false
+}
+
+/*
+Resume sends a period's documents to whoever did not get one.
+
+A burst can stop halfway: the process was deployed over, the grace expired, a
+mail relay refused for ten minutes. What that leaves is the state nobody can
+reconcile — some customers have their statement and some do not — and the only
+recovery available was to run the whole thing again, which sends a second copy
+to everybody who already had one. On an invoice that is worse than the gap.
+
+The period comes from the run being resumed rather than from the clock. That is
+the whole point: re-running now would produce this month's statement, and what
+is outstanding is last month's.
+
+`done` is supplied by the caller, which reads it from every attempt at this
+period rather than from the run being resumed. A burst that was cut, resumed,
+and cut again has two sets of deliveries, and a third attempt that saw only one
+of them would send a duplicate to whoever the other reached.
+*/
+func (s *Service) Resume(ctx context.Context, name, periodStart, periodEnd string,
+	done map[string]bool, pr principal.Principal) error {
+
+	var found definition.Schedule
+	for _, sched := range s.source.Schedules() {
+		if sched.Name == name {
+			found = sched
+			break
+		}
+	}
+	if found.Name == "" {
+		return fmt.Errorf("%w: %q", ErrNoSchedule, name)
+	}
+
+	// The same lock a firing takes. Two attempts at one period racing each
+	// other is exactly the double delivery this exists to prevent, and the
+	// skip cannot help — neither has recorded anything the other can see yet.
+	if !s.hold(name) {
+		return fmt.Errorf("%w: %q is already running", ErrRunning, name)
+	}
+	defer s.unhold(name)
+
+	start, err := time.Parse(time.DateOnly, periodStart)
+	if err != nil {
+		return fmt.Errorf("resume: period start %q: %w", periodStart, err)
+	}
+	end, err := time.Parse(time.DateOnly, periodEnd)
+	if err != nil {
+		return fmt.Errorf("resume: period end %q: %w", periodEnd, err)
+	}
+
+	// The same values a firing binds, so a resumed document is the document
+	// that was missed rather than one that merely resembles it — the period in
+	// its heading, the period in its filename, the period in its subject line.
+	run := burst.Run{
+		"periodStart": periodStart,
+		"periodEnd":   periodEnd,
+		"periodLabel": Label(start, end),
+		"period":      Label(start, end),
+		// When this attempt happened, not when the original did. It is the one
+		// value that honestly differs, and a run record claiming otherwise
+		// would make the history unreadable.
+		"firedAt": s.now().Format(time.RFC3339),
+	}
+
+	result, err := s.runner.Resume(ctx, found, run, s.owner.Owner(found), done)
+	if err != nil {
+		s.log.Error("resume failed", "schedule", name, "period", run["periodLabel"], "err", err)
+		return err
+	}
+	s.log.Info("resumed", "schedule", name, "period", run["periodLabel"],
+		"recipients", result.Recipients, "sent", result.Delivered-result.Skipped,
+		"already had theirs", result.Skipped, "failed", len(result.Failed))
+	if len(result.Failed) > 0 {
+		s.alert(ctx, found, run["periodLabel"], Alert{
+			Recipients: result.Recipients, Delivered: result.Delivered,
+			Failures: result.Failed,
+		}, true)
+	}
+	return nil
 }

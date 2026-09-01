@@ -1,41 +1,40 @@
 /*
- * Only the Mantine component styles this app actually renders.
+ * The Mantine component styles the first paint needs, and no others.
  *
  * `@mantine/core/styles.css` is every component in the library — ~231 KB of CSS
- * for the dozen we use, on the first paint.
+ * for the dozen we use. This file was already the hand-picked subset; it is now
+ * the hand-picked subset of *that*, because a subset covering every route is
+ * still every route's CSS on the sign-in page.
  *
- * Mantine's base layer (reset, `--mantine-scale`, colour-scheme variables) is
- * a hard prerequisite for these files and is supplied by the
- * `virtual:mantine-base.css` module, imported from main.tsx — a CSS @import
- * cannot reach a Vite virtual module. See plugins/mantine-base.ts. Without it
- * every `calc(… * var(--mantine-scale))` is invalid and the controls render
- * unstyled.
+ * What the first paint renders is the sign-in form, the first-run form and the
+ * reports list, and between them they use three components: TextInput,
+ * PasswordInput and Button. Everything else — Select and its combobox
+ * machinery, the segmented control, the number input, menus, tooltips — belongs
+ * to routes that are lazily loaded, and its CSS now travels with them. See
+ * mantine-deferred.css.
+ *
+ * Mantine's base layer (reset, `--mantine-scale`, colour-scheme variables) is a
+ * hard prerequisite and is supplied by the `virtual:mantine-base.css` module,
+ * imported from main.tsx — a CSS @import cannot reach a Vite virtual module.
+ * See plugins/mantine-base.ts. Without it every `calc(… * var(--mantine-scale))`
+ * is invalid and the controls render unstyled.
  *
  * These are the `.layer.css` variants: they wrap themselves in `@layer mantine`,
  * which theme/index.css orders below Tailwind's utilities. The unlayered files
  * would sit outside the cascade layers entirely and beat every utility class.
  *
- * Adding a Mantine component means adding its file here (and its own
- * dependencies). `bun run size` fails the build if this list drifts into
- * importing everything again.
+ * Adding a Mantine component means adding its file to one of these two, and
+ * which one is the question worth asking: does the first screen render it?
+ * `bun run size` fails the build if the answer drifts.
  */
 
 /* Primitives the rest depend on */
 @import '@mantine/core/styles/UnstyledButton.layer.css';
 @import '@mantine/core/styles/Input.layer.css';
-@import '@mantine/core/styles/Popover.layer.css';
-@import '@mantine/core/styles/ScrollArea.layer.css';
-@import '@mantine/core/styles/CloseButton.layer.css';
-@import '@mantine/core/styles/Combobox.layer.css';
-@import '@mantine/core/styles/Pill.layer.css';
-@import '@mantine/core/styles/PillsInput.layer.css';
-@import '@mantine/core/styles/FloatingIndicator.layer.css';
 
-/* Components used directly */
+/* Components the first screen renders: TextInput, PasswordInput, Button. */
 @import '@mantine/core/styles/Button.layer.css';
+/* PasswordInput's reveal control is an ActionIcon, and CloseButton is what
+   clearable inputs render — both appear on the sign-in form. */
 @import '@mantine/core/styles/ActionIcon.layer.css';
-@import '@mantine/core/styles/Group.layer.css';
-@import '@mantine/core/styles/Menu.layer.css';
-@import '@mantine/core/styles/Tooltip.layer.css';
-@import '@mantine/core/styles/SegmentedControl.layer.css';
-@import '@mantine/core/styles/NumberInput.layer.css';
+@import '@mantine/core/styles/CloseButton.layer.css';
