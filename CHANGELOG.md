@@ -39,6 +39,32 @@ archives and the container image — because the person holding four hundred
 `.jrxml` files is as likely to be on a host as in a container.
 `examples/jasper/` holds a report to try it on.
 
+**Both JasperReports dialects import.** 6.x writes `<queryString>` and a
+`<textField>` wrapped around a `<reportElement>`; 7 writes `<query>` and
+`<element kind="textField">` with the geometry as attributes. Same information,
+and both are read — query, parameters, fields, columns, headings and grouping
+alike. A Server CE estate is 6.x, since CE stopped there in January 2024, so
+most files will be the older spelling; anything reopened in a newer Studio is
+the newer one, and neither needs converting first.
+
+**How much comes across is measured, not estimated: 79%.** Against the 153
+sample reports JasperReports 6.10 ships in its own `demo/samples` — 67 of which
+have no query at all, and 31 of which query something that is not SQL, leaving
+48 that carry SQL, of which 38 import. Two things that number is not: a promise
+about your estate, since a demo suite is weighted toward the crosstabs and
+components that do not survive and an estate of tabular statements should do
+better; and a claim that four in five files need no work, since all 38 arrived
+with findings. It is the fraction that arrives as something the engine will
+load. See [docs/migrating-from-jasper.md](docs/migrating-from-jasper.md).
+
+**A release and the image are built by the same compiler.** `go.mod`'s `go`
+directive is a minimum rather than a pin, so archives cut on a machine with a
+newer toolchain shipped binaries from one compiler while the image shipped them
+from another. `make dist` now takes the version from the Dockerfile's builder
+and prints which compiler it used. It matters because the pin exists to keep the
+standard library patched: `cronosd -version` on a downloaded binary was the only
+place the drift showed.
+
 **Release archives.** `make dist` cross-compiles `linux/amd64`, `linux/arm64`
 and `darwin/arm64` tarballs with a `SHA256SUMS` beside them, so a deployment
 that already has systemd and a backup story does not have to adopt a container

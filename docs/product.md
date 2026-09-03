@@ -247,10 +247,18 @@ cronos in the path of a recurring business obligation, and that is very hard to 
    first ten design partners.
 2. **Cloud offering.** Self-host only keeps the story simple and margins clean; a
    hosted tier shortens time-to-value but adds infrastructure the team must run.
-3. **`.jrxml` import against a real estate.** It is built and tested against the
-   shapes a report takes, but no four-hundred-file estate has been through it.
-   The number to learn from the first one is what fraction comes back *blocked*:
-   the design bets that subreports are the common blocker, and that is a guess
-   until somebody runs it.
+3. **`.jrxml` import against a real estate.** Partly answered, and not by us.
+   Pointed at the 153 sample reports JasperReports ships, 79% of the ones
+   carrying SQL import — close to the 80% this was scoped to, and measured
+   rather than asserted. It also found what only foreign files could: the newer
+   dialect went unread, a canonical sample splices `$P!{}` into its `ORDER BY`
+   exactly as the refusal predicted, and half the findings were saying only that
+   they were findings.
+   What remains open is the part a sample suite cannot answer. A demo suite
+   exists to demonstrate crosstabs, subreports and components, so it is weighted
+   toward what does not survive; an operational estate is mostly tabular and
+   should do better. The number to learn from the first real one is still what
+   fraction comes back *blocked*, and whether subreports are the common blocker
+   or something nobody has thought of is still a guess.
 4. **Design partners.** Nothing here is proven. Three Priyas and one Marek, committed
    before v0.4, are worth more than any amount of further specification.
