@@ -3,6 +3,7 @@ package jrxml
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/gsoultan/cronos/internal/core/definition"
@@ -59,6 +60,7 @@ func (i Importer) Import(data []byte) (Result, error) {
 	}
 	out.Dataset = ds
 	out.Report = t.report(ds)
+	t.reportJR7Kinds()
 	out.Findings = t.found.sorted()
 	return out, nil
 }
@@ -210,7 +212,44 @@ func (t *translation) query(names map[string]string) (string, error) {
 	return strings.TrimRight(out, " \t\n") + "\n", nil
 }
 
-// allSections is every band-bearing slot in the document, groups included.
+// reportJR7Kinds accounts for the JasperReports 7 element kinds not read.
+//
+// The census works on element names, and this dialect spells every one of them
+// `element` — so the kind attribute is where the information is, and without
+// this a JR7 image or crosstab would be the one construct that vanished
+// quietly. Read kinds are silent here for the same reason they are silent in
+// the census: their meaning is in the emitted definition.
+func (t *translation) reportJR7Kinds() {
+	kinds := map[string]int{}
+	for _, s := range t.allSections() {
+		s.jr7Kinds(kinds)
+	}
+	names := make([]string, 0, len(kinds))
+	for k := range kinds {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+
+	for _, kind := range names {
+		if jr7Read[kind] {
+			continue
+		}
+		if l, known := notCarried[kind]; known {
+			t.found.addN(l.severity, l.as, l.detail, kinds[kind])
+			continue
+		}
+		t.found.addN(Review, kind,
+			"a JasperReports 7 element of this kind, which this importer does not read; "+
+				"whatever it contributed to the report is missing", kinds[kind])
+	}
+}
+
+// jr7Read names the element kinds whose meaning is carried.
+var jr7Read = map[string]bool{
+	"textField": true, "staticText": true, "frame": true,
+}
+
+// allSections is every band-bearing slot in the document, groups included.// allSections is every band-bearing slot in the document, groups included.
 func (t *translation) allSections() []section {
 	out := []section{
 		t.doc.Title, t.doc.PageHeader, t.doc.ColumnHeader, t.doc.Detail,

@@ -86,7 +86,11 @@ type lost struct {
 // lying.
 var handled = map[string]bool{
 	// Structure.
-	"jasperReport": true, "queryString": true, "background": true,
+	"jasperReport": true, "queryString": true, "query": true, "background": true,
+	// JasperReports 7 spells every band element `element` with a kind
+	// attribute. The names say nothing, so reportJR7Kinds accounts for them by
+	// kind instead — silence here would be silence everywhere.
+	"element": true, "expression": true,
 	"title": true, "pageHeader": true, "columnHeader": true, "detail": true,
 	"columnFooter": true, "pageFooter": true, "lastPageFooter": true,
 	"summary": true, "band": true, "elementGroup": true,
@@ -157,11 +161,6 @@ var notCarried = map[string]lost{
 	"table":              {Review, "component", "a Jasper table component is not imported; a cronos table block reads columns from a dataset instead"},
 	"list":               {Review, "component", "a Jasper list component is not imported"},
 
-	// JasperReports 7 introduced a second way to spell a band's contents. A file
-	// written that way parses, imports its query, and infers no layout at all —
-	// which without this entry reads as "this report drew nothing".
-	"element": {Review, "element",
-		`this file uses the JasperReports 7 element syntax — <element kind="textField"> rather than <textField> inside a band — which this importer does not read, so no layout came across; the query did, and the layout has to be rebuilt`},
 	"part": {Review, "part",
 		"a JasperReports Book part is a whole report bound into a sequence; cronos has no book, so each part is imported on its own or not at all"},
 

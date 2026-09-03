@@ -27,6 +27,12 @@ type contents struct {
 	// here so the finding can name how many and where.
 	Subreports []subreport `xml:"subreport"`
 
+	// Elements are JasperReports 7's spelling of everything above: one element
+	// name with a kind attribute, and the geometry as attributes rather than a
+	// reportElement child. Read into the same shapes so the inference that
+	// follows does not know which dialect it came from.
+	Elements []jr7Element `xml:"element"`
+
 	// Charts, one field per element name because that is how the schema spells
 	// them. Interleaving order is lost and does not matter: elements carry
 	// coordinates, and the layout is rebuilt from those rather than from the
@@ -49,6 +55,53 @@ type contents struct {
 type frame struct {
 	Element reportElement `xml:"reportElement"`
 	contents
+}
+
+// jr7Element is a band's content in the JasperReports 7 dialect.
+//
+// `<element kind="textField" x="0" y="0" width="50" height="15">` with an
+// `<expression>` child, where 6.x wrote `<textField>` with a `<reportElement>`
+// and a `<textFieldExpression>`. Same information, fewer nodes.
+//
+// Modelled here rather than as a second parser because the difference is
+// entirely in the spelling: converted to the 6.x shapes at the boundary, every
+// later step — reading order, header overlap, grouping, subtotals — is the code
+// that already worked.
+type jr7Element struct {
+	Kind   string `xml:"kind,attr"`
+	X      int    `xml:"x,attr"`
+	Y      int    `xml:"y,attr"`
+	Width  int    `xml:"width,attr"`
+	Height int    `xml:"height,attr"`
+	Style  string `xml:"style,attr"`
+	// Pattern and EvaluationTime carry the same meaning as on a 6.x textField.
+	Pattern             string `xml:"pattern,attr"`
+	EvaluationTime      string `xml:"evaluationTime,attr"`
+	PrintWhenExpression string `xml:"printWhenExpression"`
+	// Expression is a text field's value; Text is a static text's literal.
+	Expression string `xml:"expression"`
+	Text       string `xml:"text"`
+	// A frame nests, so an element holds elements.
+	contents
+}
+
+// element rebuilds the 6.x reportElement this carries in its attributes.
+func (e jr7Element) element() reportElement {
+	return reportElement{
+		X: e.X, Y: e.Y, Width: e.Width, Height: e.Height,
+		Style: e.Style, PrintWhenExpression: e.PrintWhenExpression,
+	}
+}
+
+func (e jr7Element) asTextField() textField {
+	return textField{
+		Element: e.element(), Pattern: e.Pattern,
+		EvaluationTime: e.EvaluationTime, Expression: e.Expression,
+	}
+}
+
+func (e jr7Element) asStaticText() staticText {
+	return staticText{Element: e.element(), Text: e.Text}
 }
 
 // reportElement is where and how big, plus the two things about it that carry
@@ -151,6 +204,14 @@ func (c contents) textFieldsAt(dx, dy int) []placedField {
 	for _, f := range c.Frames {
 		out = append(out, f.textFieldsAt(dx+f.Element.X, dy+f.Element.Y)...)
 	}
+	for _, e := range c.Elements {
+		switch e.Kind {
+		case "textField":
+			out = append(out, placedField{field: e.asTextField(), x: e.X + dx, y: e.Y + dy})
+		case "frame":
+			out = append(out, e.textFieldsAt(dx+e.X, dy+e.Y)...)
+		}
+	}
 	return out
 }
 
@@ -163,6 +224,14 @@ func (c contents) staticTextsAt(dx, dy int) []placedText {
 	}
 	for _, f := range c.Frames {
 		out = append(out, f.staticTextsAt(dx+f.Element.X, dy+f.Element.Y)...)
+	}
+	for _, e := range c.Elements {
+		switch e.Kind {
+		case "staticText":
+			out = append(out, placedText{text: e.asStaticText(), x: e.X + dx, y: e.Y + dy})
+		case "frame":
+			out = append(out, e.staticTextsAt(dx+e.X, dy+e.Y)...)
+		}
 	}
 	return out
 }
@@ -188,6 +257,21 @@ func (c contents) charts() []placedChart {
 		out = append(out, f.charts()...)
 	}
 	return out
+}
+
+// jr7Kinds counts the JasperReports 7 element kinds present, at any depth.
+//
+// The census reads element names, and in this dialect every one of them is
+// `element` — so without this, a JR7 image, subreport or crosstab would be
+// silent, which is the one thing this importer does not do.
+func (c contents) jr7Kinds(into map[string]int) {
+	for _, e := range c.Elements {
+		into[e.Kind]++
+		e.jr7Kinds(into)
+	}
+	for _, f := range c.Frames {
+		f.jr7Kinds(into)
+	}
 }
 
 // subreportsIn counts subreports at any depth.
@@ -237,6 +321,13 @@ func (s section) texts() []placedText {
 	return out
 }
 
+// jr7Kinds counts the JasperReports 7 element kinds across a section's bands.
+func (s section) jr7Kinds(into map[string]int) {
+	for _, b := range s.Bands {
+		b.jr7Kinds(into)
+	}
+}
+
 // charts flattens every chart across a section's bands.
 func (s section) charts() []placedChart {
 	var out []placedChart
@@ -252,8 +343,10 @@ func (s section) charts() []placedChart {
 // whitespace, and whitespace is appearance.
 func (s section) empty() bool {
 	for _, b := range s.Bands {
+		kinds := map[string]int{}
+		b.jr7Kinds(kinds)
 		if len(b.textFieldsAt(0, 0)) > 0 || len(b.staticTextsAt(0, 0)) > 0 ||
-			len(b.charts()) > 0 || len(b.subreportsIn()) > 0 {
+			len(b.charts()) > 0 || len(b.subreportsIn()) > 0 || len(kinds) > 0 {
 			return false
 		}
 	}

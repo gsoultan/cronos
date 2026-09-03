@@ -122,28 +122,56 @@ func TestTheShapesRealFilesTake(t *testing.T) {
 		}
 	})
 
-	t.Run("the JasperReports 7 element syntax", func(t *testing.T) {
-		// A second way to spell a band's contents, which this importer does not
-		// read. The query still has to come across, and the file has to say why
-		// its layout did not — "a construct this importer does not read" is
-		// true and useless when the answer is "your file is a newer dialect".
+	t.Run("the JasperReports 7 band syntax", func(t *testing.T) {
+		// `<element kind="textField">` with the geometry as attributes and an
+		// `<expression>` child, where 6.x wrote `<textField>` around a
+		// `<reportElement>`. Taken from the shape of JasperReports' own master
+		// samples, where this importer used to read nothing at all.
 		res := importString(t, wrap(`
-			<queryString><![CDATA[SELECT id FROM t]]></queryString>
+			<query language="sql"><![CDATA[SELECT id, name, total FROM t]]></query>
+			<field name="id" class="java.lang.Integer"/>
+			<field name="name" class="java.lang.String"/>
+			<field name="total" class="java.math.BigDecimal"/>
+			<columnHeader><band height="15">
+				<element kind="staticText" x="0" y="0" width="50" height="15"><text><![CDATA[Id]]></text></element>
+				<element kind="staticText" x="50" y="0" width="200" height="15"><text><![CDATA[Name]]></text></element>
+			</band></columnHeader>
+			<detail><band height="15">
+				<element kind="textField" x="0" y="0" width="50" height="15"><expression><![CDATA[$F{id}]]></expression></element>
+				<element kind="textField" x="50" y="0" width="200" height="15"><expression><![CDATA[$F{name}]]></expression></element>
+				<element kind="line" x="0" y="14" width="250" height="1"/>
+			</band></detail>`))
+
+		assertColumns(t, res, "id", "name")
+		// The header band is read in the same dialect, so labels still land.
+		if f, _ := res.Dataset.Field("name"); f.Label != "Name" {
+			t.Errorf("column label = %q, want Name", f.Label)
+		}
+		if res.Blocked() {
+			t.Errorf("a readable JR7 layout was reported as needing a person:\n%s", render(res))
+		}
+	})
+
+	t.Run("a JasperReports 7 kind that is not read still reports", func(t *testing.T) {
+		// Every element in this dialect is named `element`, so the census sees
+		// one name and learns nothing. The kind attribute is where the
+		// information is, and a construct that vanished quietly would be the
+		// only one in the importer that did.
+		res := importString(t, wrap(`
+			<query language="sql"><![CDATA[SELECT id FROM t]]></query>
 			<field name="id" class="java.lang.String"/>
 			<detail><band height="20">
-				<element kind="textField" x="0" y="0" width="100" height="20" expression="$F{id}"/>
+				<element kind="textField" x="0" y="0" width="100" height="20"><expression><![CDATA[$F{id}]]></expression></element>
+				<element kind="crosstab" x="0" y="30" width="300" height="200"/>
+				<element kind="somethingNew" x="0" y="240" width="300" height="20"/>
 			</band></detail>`))
-		if !res.HasDataset() {
-			t.Error("the query was discarded along with the layout")
+
+		assertColumns(t, res, "id")
+		if !hasFinding(res, "crosstab") {
+			t.Errorf("a JR7 crosstab went unreported:\n%s", render(res))
 		}
-		if res.HasReport() {
-			t.Error("a report was invented from a layout that was not read")
-		}
-		if !res.Blocked() {
-			t.Error("a file whose layout did not import is not flagged for a person")
-		}
-		if !hasFindingText(res, "JasperReports 7") {
-			t.Errorf("the finding does not name the dialect:\n%s", render(res))
+		if !hasFinding(res, "somethingNew") {
+			t.Errorf("an unrecognised JR7 kind went unreported:\n%s", render(res))
 		}
 	})
 }
