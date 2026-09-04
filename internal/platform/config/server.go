@@ -29,6 +29,13 @@ type Server struct {
 	// SigningKey signs embed tokens. No default — a default signing key is a
 	// shared trust root across every deployment that forgot to set one.
 	SigningKey []byte
+	/*
+	   PreviousKeys are verified against and never signed with, so a key can be
+	   rotated without ending every session and every embedded reader's token
+	   at once. Drop a key from here once MaxLifetime has passed since the
+	   rotation — nothing it signed can still be valid.
+	*/
+	PreviousKeys [][]byte
 	// Origins are the host pages allowed to embed. No wildcard; see api.CORS.
 	Origins []string
 	// AdminKey enables the management API. Absent means the server is
@@ -114,9 +121,12 @@ func Load() (Server, error) {
 		// finds no tables.
 		DSN:        env("CRONOS_DSN", "file:cronos?mode=memory&cache=shared"),
 		SigningKey: []byte(os.Getenv("CRONOS_SIGNING_KEY")),
-		Seed:       os.Getenv("CRONOS_SEED"),
-		SeedSource: os.Getenv("CRONOS_SEED_SOURCE"),
-		AdminKey:   []byte(os.Getenv("CRONOS_ADMIN_KEY")),
+		// Comma-separated, oldest or newest first makes no difference: they
+		// are all tried and none is minted with.
+		PreviousKeys: keys(os.Getenv("CRONOS_SIGNING_KEY_PREVIOUS")),
+		Seed:         os.Getenv("CRONOS_SEED"),
+		SeedSource:   os.Getenv("CRONOS_SEED_SOURCE"),
+		AdminKey:     []byte(os.Getenv("CRONOS_ADMIN_KEY")),
 		// Where ${secret:name} is looked up. Files first when a directory is
 		// given, because a mounted file is not visible in /proc to everything
 		// running as the same user and does not appear in a crash dump.
@@ -169,6 +179,18 @@ func Load() (Server, error) {
 		return Server{}, fmt.Errorf("config: CRONOS_SIGNING_KEY is required")
 	}
 	return s, nil
+}
+
+// keys splits a comma-separated list of signing keys, dropping empties so a
+// trailing comma is not a zero-length key the signer then refuses.
+func keys(raw string) [][]byte {
+	var out [][]byte
+	for _, k := range strings.Split(raw, ",") {
+		if k = strings.TrimSpace(k); k != "" {
+			out = append(out, []byte(k))
+		}
+	}
+	return out
 }
 
 func env(key, fallback string) string {

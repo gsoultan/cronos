@@ -18,6 +18,31 @@ deployment depends on — each one says so under **Upgrading** below.
 
 ---
 
+## Unreleased
+
+**The SSO state cookie is `Secure` behind a terminating proxy.** It was decided
+from `r.TLS`, which is nil on every request that reached cronos through a proxy
+that terminates TLS — the arrangement this documentation recommends. The cookie
+therefore went out without `Secure` in exactly that deployment, and a browser
+will send such a cookie over `http://`. It now follows `CRONOS_BEHIND_PROXY`,
+which the rate limiter has always read. **If you run behind a proxy and have
+not set `CRONOS_BEHIND_PROXY=1`, set it** — see "Terminating TLS" in
+[docs/deploying.md](docs/deploying.md), which is new and has a working nginx
+and Caddy configuration, including the `X-Forwarded-For` handling that has to
+overwrite rather than append.
+
+**The signing key can be rotated without an outage.**
+`CRONOS_SIGNING_KEY_PREVIOUS` is a comma-separated list of keys that are
+verified against and never minted with. Rotation is now: put the new key in
+`CRONOS_SIGNING_KEY`, the old one in `CRONOS_SIGNING_KEY_PREVIOUS`, wait 24
+hours — the ceiling on any token cronos issues — and unset it. Previously
+replacing the key invalidated every session, every share link and every embed
+token a host application held, at the instant it took effect, so in practice
+nobody rotated. Nothing changes for a deployment that does not set the new
+variable. A retired key under 32 bytes is refused at boot rather than ignored.
+
+---
+
 ## v0.5.0 — 2026-08-17
 
 The first tagged release. Everything through the roadmap's v0.5 is here: the
@@ -42,7 +67,7 @@ rows is the export ceiling and costs about 32MB while the workbook is written.
 **Delivery.** A cron scheduler with per-project isolation and leader election,
 so every replica can be armed and exactly one fires. Bursting renders one
 document per recipient — 560–650 PDFs per second on the machine in
-[docs/deploying.md](docs/deploying.md). Email, Telegram and object-store
+[docs/deploying.md](docs/deploying.md). Email and object-store
 channels, retries per recipient, alerts to a person when a run fails, and run
 history that says what was delivered to whom. A burst cut in half resumes
 without sending anybody two.

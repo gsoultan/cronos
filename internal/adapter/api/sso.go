@@ -37,6 +37,9 @@ type SSO struct {
 	auth Principals
 	log  *slog.Logger
 
+	// behindProxy is the deployment's own statement about its front. See secure().
+	behindProxy bool
+
 	// Where the deployment's people belong when the provider does not say.
 	org, project, role string
 
@@ -82,6 +85,26 @@ func (h *SSO) In(org, project, role string) *SSO {
 	return h
 }
 
+// BehindProxy says something in front terminates TLS, so the state cookie is
+// Secure on a request that reached this process over plaintext.
+func (h *SSO) BehindProxy(trusted bool) *SSO {
+	h.behindProxy = trusted
+	return h
+}
+
+/*
+secure decides the Secure attribute on the state cookie.
+
+r.TLS alone answers the wrong question. It says how the connection to *this
+process* was made, and what the attribute has to describe is how the browser
+reached the deployment — which, behind a terminating proxy, is not the same
+thing. Getting it from the operator is the only way to know: the proxy's own
+X-Forwarded-Proto is a header, and a header is something the caller can set.
+*/
+func (h *SSO) secure(r *http.Request) bool {
+	return r.TLS != nil || h.behindProxy
+}
+
 // stateCookie carries the id of a sign-in in progress.
 //
 // HttpOnly, because nothing in the page needs to read it and a script that can
@@ -120,7 +143,7 @@ func (h *SSO) start(w http.ResponseWriter, r *http.Request) {
 	h.remember(state)
 	http.SetCookie(w, &http.Cookie{
 		Name: stateCookie, Value: state.ID, Path: "/",
-		HttpOnly: true, Secure: r.TLS != nil, SameSite: http.SameSiteLaxMode,
+		HttpOnly: true, Secure: h.secure(r), SameSite: http.SameSiteLaxMode,
 		Expires: state.Expires,
 	})
 	http.Redirect(w, r, redirect, http.StatusFound)
@@ -210,7 +233,7 @@ func (h *SSO) complete(w http.ResponseWriter, r *http.Request) {
 	h.forget(state.ID)
 	http.SetCookie(w, &http.Cookie{
 		Name: stateCookie, Value: "", Path: "/", MaxAge: -1,
-		HttpOnly: true, Secure: r.TLS != nil, SameSite: http.SameSiteLaxMode,
+		HttpOnly: true, Secure: h.secure(r), SameSite: http.SameSiteLaxMode,
 	})
 
 	h.log.Info("signed in", "user", user.ID, "provider", h.flow.Name(),
@@ -265,7 +288,8 @@ func (h *SSO) adopt(ctx context.Context, who extension.Identity) (identity.User,
 // script, and a page of JSON is not an answer to somebody who clicked a button.
 func (h *SSO) refuse(w http.ResponseWriter, r *http.Request, why string) {
 	http.SetCookie(w, &http.Cookie{
-		Name: stateCookie, Value: "", Path: "/", MaxAge: -1, HttpOnly: true,
+		Name: stateCookie, Value: "", Path: "/", MaxAge: -1,
+		HttpOnly: true, Secure: h.secure(r), SameSite: http.SameSiteLaxMode,
 	})
 	http.Redirect(w, r, "/?sso_error="+url.QueryEscape(why), http.StatusFound)
 }

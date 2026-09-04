@@ -41,10 +41,26 @@ const (
 
 var enc = base64.RawURLEncoding
 
-// Signer mints and verifies tokens with one key.
+// Signer mints and verifies tokens with one key, and verifies with any number
+// of keys it no longer mints with.
 type Signer struct {
 	key []byte
-	now func() time.Time
+	/*
+	   retired are accepted on Verify and never minted with.
+
+	   Without them a rotation is an outage. Every embed token in every host
+	   application was signed with the old key, and the moment the new one is
+	   in place all of them fail — for as long as it takes each of our
+	   customers to notice, and then to mint again. That is an outage this
+	   product causes in somebody else's application, so in practice the key
+	   never rotates, which is the worse outcome.
+
+	   With them, the rotation is: add the new key, keep the old one here,
+	   wait out MaxLifetime, drop it. Nothing signed by a retired key can be
+	   longer-lived than that, because Mint would not have issued it.
+	*/
+	retired [][]byte
+	now     func() time.Time
 }
 
 // NewSigner returns a Signer over key, or an error if the key is too weak to
@@ -61,7 +77,28 @@ func NewSigner(key []byte) (*Signer, error) {
 // scheduled mint that must date a token from the run rather than from whenever
 // a worker got to it.
 func (s *Signer) WithClock(now func() time.Time) *Signer {
-	return &Signer{key: s.key, now: now}
+	return &Signer{key: s.key, retired: s.retired, now: now}
+}
+
+/*
+Accepting returns a copy that also verifies tokens signed by keys.
+
+For a rotation, and for nothing else — these keys are never minted with, so a
+token this deployment issues is always signed by the current one. A key too
+short to have been a signing key is refused here too: it was one once, and
+accepting a weak key on the way out is accepting it.
+*/
+func (s *Signer) Accepting(keys ...[]byte) (*Signer, error) {
+	retired := make([][]byte, 0, len(s.retired)+len(keys))
+	retired = append(retired, s.retired...)
+	for _, k := range keys {
+		if len(k) < MinKeyBytes {
+			return nil, fmt.Errorf("%w: retired key of %d bytes, need at least %d",
+				ErrWeakKey, len(k), MinKeyBytes)
+		}
+		retired = append(retired, k)
+	}
+	return &Signer{key: s.key, retired: retired, now: s.now}, nil
 }
 
 // Mint issues a token valid for lifetime.
@@ -114,9 +151,7 @@ func (s *Signer) Verify(raw, audience string) (Claims, error) {
 	if err != nil {
 		return Claims{}, fmt.Errorf("%w: malformed signature", ErrInvalid)
 	}
-	// Constant time: a byte-by-byte comparison leaks how much of a forged
-	// signature was right, which is enough to construct the rest.
-	if subtle.ConstantTimeCompare(got, s.sign(prefix+"."+encoded)) != 1 {
+	if !s.signed(prefix+"."+encoded, got) {
 		return Claims{}, fmt.Errorf("%w: signature", ErrInvalid)
 	}
 
@@ -152,8 +187,30 @@ func (s *Signer) check(c Claims) error {
 	return nil
 }
 
-func (s *Signer) sign(body string) []byte {
-	m := hmac.New(sha256.New, s.key)
+func (s *Signer) sign(body string) []byte { return mac(s.key, body) }
+
+/*
+signed says whether any key this deployment accepts produced got.
+
+The current key first, so the ordinary token costs one HMAC. Every key is
+compared in constant time; the loop's own early exit leaks which key matched,
+which is a fact about this deployment's rotation and not about the secret.
+*/
+func (s *Signer) signed(body string, got []byte) bool {
+	if subtle.ConstantTimeCompare(got, mac(s.key, body)) == 1 {
+		return true
+	}
+	for _, k := range s.retired {
+		if subtle.ConstantTimeCompare(got, mac(k, body)) == 1 {
+			return true
+		}
+	}
+	return false
+}
+
+// mac is the signature over body under key.
+func mac(key []byte, body string) []byte {
+	m := hmac.New(sha256.New, key)
 	m.Write([]byte(body))
 	return m.Sum(nil)
 }
