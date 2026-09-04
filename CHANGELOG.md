@@ -60,6 +60,16 @@ offered it; nothing delivers through it. The claims are withdrawn. The portal's
 Settings → Channels panel still renders a Telegram section against a fixture —
 it is inert, and whether to build the channel or remove the panel is open.
 
+**Tests where there were none.** Nine packages had no test file:
+`internal/adapter/driver/sql` — the executor every query in the product passes
+through, which is where the row-cap bug above was found — plus
+`internal/platform/config`, `internal/app/share`, `internal/core/share`,
+`internal/app/send`, `internal/core/document`, `internal/adapter/deliver/file`,
+`internal/adapter/audit` and `ee/audit`. Nothing changed for a deployment
+except the row cap; the rest is regression cover for behaviour that was already
+correct, including the cross-tenant refusals on share links and the path
+handling that keeps a customer's name out of a delivery path.
+
 **The signing key can be rotated without an outage.**
 `CRONOS_SIGNING_KEY_PREVIOUS` is a comma-separated list of keys that are
 verified against and never minted with. Rotation is now: put the new key in
