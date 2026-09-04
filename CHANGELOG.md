@@ -31,6 +31,27 @@ not set `CRONOS_BEHIND_PROXY=1`, set it** — see "Terminating TLS" in
 and Caddy configuration, including the `X-Forwarded-For` handling that has to
 overwrite rather than append.
 
+**A schedule naming a channel the deployment has not got is refused at
+publish.** It was accepted: `Validate()` asked only that `via` was non-empty,
+and the channel was resolved for the first time in the burst, where a missing
+one is fatal and the hour is 06:00. Publishing now checks the name against what
+the deployment actually configured and says what it has. A deployment with no
+channels at all refuses a schedule that delivers, rather than accepting all of
+them.
+
+**The portal's schedule form never sent the channel you picked.** Every
+schedule it published went out as `email` whatever the picker said, and editing
+an existing `via: file` or `via: s3` schedule silently rewrote it to `email` on
+save. **Check any schedule that was created or edited through the portal and
+was meant to deliver somewhere other than email.** The picker now offers only
+the channels the deployment reports, and submits the one chosen.
+
+**Telegram was never a channel, and three places said it was.** The v0.5.0
+notes above, `docs/report-format.md`, and the schedule form all described or
+offered it; nothing delivers through it. The claims are withdrawn. The portal's
+Settings → Channels panel still renders a Telegram section against a fixture —
+it is inert, and whether to build the channel or remove the panel is open.
+
 **The signing key can be rotated without an outage.**
 `CRONOS_SIGNING_KEY_PREVIOUS` is a comma-separated list of keys that are
 verified against and never minted with. Rotation is now: put the new key in

@@ -242,13 +242,17 @@ func users(records *sqlstore.Store) api.Users {
 // sit in the store and in the catalogue while every render kept using what the
 // process read at startup — until somebody restarted it.
 func publishing(store publish.Store, repo *file.Repository, records *sqlstore.Store,
-	engines run.Engines) *publish.Service {
+	engines run.Engines, channels []string) *publish.Service {
 	svc := publish.New(store, repo).WithReports(repo).
 		// So a delete can say what would break rather than breaking it.
 		WithCatalog(repo).
 		// And so a publish is proved against the database it will read, not
 		// only against the dialect this package compiles for.
-		WithEngines(engines)
+		WithEngines(engines).
+		// And so a schedule naming a channel this deployment has not got is
+		// refused by the person who typed it, rather than by the burst at the
+		// hour it fires.
+		WithChannels(channels)
 	if records != nil {
 		svc = svc.WithLive(repo)
 	}

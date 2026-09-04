@@ -148,7 +148,7 @@ func finish(ctx context.Context, cfg config.Server, rt *runtime,
 		Definitions: rt.repo,
 		Probes:      probing(engines),
 	}
-	rt.publish = publishing(defs, rt.repo, records, engines)
+	rt.publish = publishing(defs, rt.repo, records, engines, channelNames(cfg, log))
 	rt.close = closeEngines
 	return nil
 }
