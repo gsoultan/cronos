@@ -31,6 +31,14 @@ not set `CRONOS_BEHIND_PROXY=1`, set it** — see "Terminating TLS" in
 and Caddy configuration, including the `X-Forwarded-For` handling that has to
 overwrite rather than append.
 
+**A result set of exactly `maxRows` was refused as "more than `maxRows`
+rows".** The row cap declined the limit's own last row instead of looking for
+one beyond it, so a datasource capped at a million refused a million and the
+hundred-thousand-row spreadsheet export refused the hundred thousand it exists
+to allow. Only the boundary was affected; a set under the cap always worked and
+one genuinely over it was always refused. Found by the first test the executor
+has ever had.
+
 **A schedule naming a channel the deployment has not got is refused at
 publish.** It was accepted: `Validate()` asked only that `via` was non-empty,
 and the channel was resolved for the first time in the burst, where a missing

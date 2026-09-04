@@ -27,18 +27,29 @@ type capped struct {
 	err   error
 }
 
+/*
+Next advances, and refuses once there is genuinely a row beyond the cap.
+
+The overflow is detected by finding the row after the limit rather than by
+declining to read the limit's own last row. Refusing at c.read >= c.limit made
+a result set of exactly MaxRows fail — with "more than N rows", about a set
+that held precisely N — so a dataset capped at a million refused a million and
+ExportLimit refused the hundred thousand it exists to allow. The extra row is
+fetched from the driver and never scanned, which is what makes the difference
+between "at the cap" and "over it" observable at all.
+*/
 func (c *capped) Next() bool {
 	if c.err != nil {
-		return false
-	}
-	if c.read >= c.limit {
-		c.err = fmt.Errorf("%w: more than %d rows", ErrTooManyRows, c.limit)
 		return false
 	}
 	if !c.Rows.Next() {
 		return false
 	}
 	c.read++
+	if c.read > c.limit {
+		c.err = fmt.Errorf("%w: more than %d rows", ErrTooManyRows, c.limit)
+		return false
+	}
 	return true
 }
 
