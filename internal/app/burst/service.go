@@ -70,6 +70,7 @@ type Service struct {
 	versions  Versions
 	history   Recorder
 	log       *slog.Logger
+	stages    Stages
 	now       func() time.Time
 	sleep     func(context.Context, time.Duration) error
 }
@@ -114,6 +115,36 @@ func New(r Reports, rec Recipients, d Documents, log *slog.Logger, channels ...C
 
 // WithHistory records what each run delivered.
 func (b *Service) WithHistory(r Recorder) *Service { b.history = r; return b }
+
+/*
+Stages is told how long each part of a run took.
+
+Declared here rather than beside the metrics that implement it, because this is
+the package that knows what a stage is. Optional: a burst with nothing watching
+runs identically, which is what keeps the timing off the critical path in a
+test and in an embedder that wires its own.
+*/
+type Stages interface {
+	Stage(name string, took time.Duration)
+}
+
+// WithStages records how long rendering and delivery took.
+func (b *Service) WithStages(s Stages) *Service { b.stages = s; return b }
+
+// timed runs work and reports how long it took, where anything is listening.
+//
+// The nil check rather than a no-op implementation: this is the data plane, and
+// a burst of five thousand should not pay for an interface call per recipient
+// per stage to reach a method that discards its argument.
+func (b *Service) timed(name string, work func() error) error {
+	if b.stages == nil {
+		return work()
+	}
+	started := b.now()
+	err := work()
+	b.stages.Stage(name, b.now().Sub(started))
+	return err
+}
 
 // WithClock and WithSleep make retry behaviour testable without waiting out a
 // backoff ladder in real time.
@@ -305,7 +336,12 @@ func (b *Service) one(ctx context.Context, s definition.Schedule, report definit
 		return false, err
 	}
 
-	rendered, err := b.documents.Statement(ctx, report, s.Output, params, pr)
+	var rendered StatementResult
+	err = b.timed("render", func() error {
+		var err error
+		rendered, err = b.documents.Statement(ctx, report, s.Output, params, pr)
+		return err
+	})
 	if err != nil {
 		return false, fmt.Errorf("render: %w", err)
 	}
@@ -394,8 +430,13 @@ func (b *Service) deliver(ctx context.Context, s definition.Schedule, spec defin
 		Document: bytes.Clone(doc), Options: spec.Options,
 	}
 
-	attempts, err := attempt(ctx, s.OnFailure, b.sleep, func() error {
-		return channel.Deliver(ctx, d)
+	var attempts int
+	err = b.timed("deliver", func() error {
+		var err error
+		attempts, err = attempt(ctx, s.OnFailure, b.sleep, func() error {
+			return channel.Deliver(ctx, d)
+		})
+		return err
 	})
 
 	b.recordDelivery(ctx, runID, spec.Via, d, attempts, err)

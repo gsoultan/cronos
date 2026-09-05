@@ -9,7 +9,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	yamlcodec "github.com/gsoultan/cronos/internal/adapter/codec/yaml"
 	filechannel "github.com/gsoultan/cronos/internal/adapter/deliver/file"
@@ -495,5 +497,73 @@ func TestAResumeWithNothingOutstandingRendersNothing(t *testing.T) {
 	}
 	if len(entries) != 0 {
 		t.Errorf("a resume with nothing outstanding wrote %d directories", len(entries))
+	}
+}
+
+/*
+A burst says where its time went.
+
+The metric exists so that "last night took four hours" has somewhere to look,
+and it only does that if the burst is actually reporting — a histogram wired to
+nothing is the same as no histogram, and it looks healthier.
+
+Both stages, because the two candidates have their fixes in different places:
+render is this machine and the typesetter, deliver is somebody else's server.
+*/
+type recorded struct {
+	mu   sync.Mutex
+	took map[string][]time.Duration
+}
+
+func (r *recorded) Stage(name string, d time.Duration) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.took == nil {
+		r.took = map[string][]time.Duration{}
+	}
+	r.took[name] = append(r.took[name], d)
+}
+
+func (r *recorded) count(name string) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.took[name])
+}
+
+func TestABurstReportsHowLongEachStageTook(t *testing.T) {
+	svc, sched, _ := setup(t)
+	stages := &recorded{}
+
+	result, err := svc.WithStages(stages).Run(context.Background(), sched,
+		burst.Run{"period": "2026-07"}, owner(""))
+	if err != nil {
+		t.Fatalf("burst: %v", err)
+	}
+	if result.Delivered != 3 {
+		t.Fatalf("delivered %d of %d", result.Delivered, result.Recipients)
+	}
+
+	// One render per recipient, and one delivery per recipient per channel —
+	// this schedule has one channel, so three of each.
+	if got := stages.count("render"); got != 3 {
+		t.Errorf("recorded %d renders for 3 recipients", got)
+	}
+	if got := stages.count("deliver"); got != 3 {
+		t.Errorf("recorded %d deliveries for 3 recipients", got)
+	}
+}
+
+// And a burst with nothing watching runs exactly as before. The nil check is
+// what keeps an interface call per recipient per stage off the data plane.
+func TestABurstWithNothingWatchingStillRuns(t *testing.T) {
+	svc, sched, _ := setup(t)
+
+	result, err := svc.Run(context.Background(), sched,
+		burst.Run{"period": "2026-07"}, owner(""))
+	if err != nil {
+		t.Fatalf("burst: %v", err)
+	}
+	if result.Delivered != 3 {
+		t.Fatalf("delivered %d of %d", result.Delivered, result.Recipients)
 	}
 }

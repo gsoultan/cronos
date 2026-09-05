@@ -20,6 +20,24 @@ deployment depends on — each one says so under **Upgrading** below.
 
 ## Unreleased
 
+**A slow scheduled run can be diagnosed.**
+`cronos_stage_duration_seconds{stage="render"|"deliver"}` is a new histogram
+covering the two halves of a burst. Nothing counted them before: a burst is
+started by the scheduler, so the request histogram sees none of it, and "last
+night took four hours" had one number and three candidates behind it. The two
+stages are separated because their fixes are in different places — rendering is
+your machine and the typesetter, delivery is somebody else's server. See "Where
+a slow burst went" in [docs/deploying.md](docs/deploying.md). No new
+dependency, and not distributed tracing: a burst calls no other service.
+
+**Every API response carries `X-Content-Type-Options: nosniff`.** The bodies
+here are built from a customer's own rows, and one that happens to begin like
+markup should not be something a browser is free to sniff into HTML. The
+proxy configuration under "Terminating TLS" now also sets the portal's headers,
+including `Content-Security-Policy: frame-ancestors 'none'` — cronos has no
+iframe path by design, and nothing was applying that decision to the page with
+the publish button on it.
+
 **Releases are built, catalogued and signed by CI rather than by a laptop.**
 Pushing a `v*` tag now runs `.github/workflows/release.yml`: it cross-compiles
 the archives, writes an SPDX SBOM for each from the binaries that actually

@@ -216,7 +216,8 @@ func startSchedulers(cfg config.Server, runtimes map[tenant]*runtime,
 	}
 
 	for t, rt := range runtimes {
-		sched, err := scheduler(cfg, t.org, t.project, serving, rt.repo, rt.project.Runner, records, log)
+		sched, err := scheduler(cfg, t.org, t.project, serving, rt.repo, rt.project.Runner,
+			records, watch, log)
 		if err != nil {
 			// The schedulers already started keep running until the caller
 			// stops them; returning stop alongside the error means it can.

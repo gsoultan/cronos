@@ -233,6 +233,19 @@ server {
 
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
 
+    # The portal is static files served from here, so its security headers are
+    # this server's job — cronosd serves the API and never the page.
+    #
+    # frame-ancestors is the one that is not boilerplate. cronos has no iframe
+    # path on purpose: embedding is a custom element in a shadow root, because
+    # an iframe is third-party HTML in a browsing context and clickjacking is
+    # the first thing that goes wrong with one. Refusing to be framed is that
+    # decision applied to our own portal, which is the page with the publish
+    # button on it.
+    add_header Content-Security-Policy "frame-ancestors 'none'" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
     location / {
         proxy_pass http://127.0.0.1:8787;
         proxy_set_header Host              $host;
@@ -264,12 +277,20 @@ Caddy, which gets the certificate itself:
 ```caddy
 reports.example.com {
     header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    header Content-Security-Policy "frame-ancestors 'none'"
+    header X-Content-Type-Options "nosniff"
+    header Referrer-Policy "strict-origin-when-cross-origin"
     reverse_proxy 127.0.0.1:8787 {
         header_up X-Forwarded-For {remote_host}
         flush_interval -1
     }
 }
 ```
+
+cronosd sets `X-Content-Type-Options` on its own responses; the rest of the
+list above is for the portal, which this server delivers and cronosd never
+sees. `add_header` in nginx does not inherit into a `location` block that has
+its own, so keep them at `server` level as above or repeat them.
 
 `X-Forwarded-For` is the one header where the proxy has to overwrite rather
 than append. Everything cronos trusts from it, it trusts because the proxy is
@@ -359,6 +380,40 @@ missed:
 3. `/v1/ready` returning `degraded` for longer than a deploy takes.
 4. `cronos_request_duration_seconds` at the 99th percentile crossing whatever
    your customers' patience is.
+
+### Where a slow burst went
+
+`cronos_stage_duration_seconds{stage="render"|"deliver"}` is the histogram the
+request one cannot be: a burst is started by the scheduler, so nothing about it
+is a request and none of its hours are counted above.
+
+Two stages, because the two things that go slow have their fixes in different
+places. `render` is this machine and the typesetter — the answer is CPU, or a
+lower `concurrency`, or a report doing more work per recipient than anybody
+meant. `deliver` is somebody else's server, and no amount of local capacity
+moves it. Comparing the two is the whole diagnosis:
+
+```promql
+# The p99 of each, which says which half the four hours were in.
+histogram_quantile(0.99,
+  sum by (stage, le) (rate(cronos_stage_duration_seconds_bucket[5m])))
+
+# And the total time each stage is costing per second of wall clock, which is
+# the one that finds a slow channel hiding behind a fast median.
+sum by (stage) (rate(cronos_stage_duration_seconds_sum[5m]))
+```
+
+`deliver` spans the retries and their backoff, because that is the wall-clock
+the burst actually spent waiting. How many attempts a delivery took is in the
+run history per recipient, so a rise here that is really a retry storm is one
+query away from being identified as one.
+
+This is not distributed tracing and does not try to be. There are no spans and
+nothing to correlate with another service, because a burst does not call one —
+it reads a database, typesets, and hands bytes to a channel. If cronos ever
+sits in the middle of somebody else's traced request path, OpenTelemetry is the
+answer then; two histograms are the answer to the question that is actually
+being asked now, and they cost no dependency.
 
 ## Running several
 

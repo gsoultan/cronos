@@ -77,7 +77,7 @@ func channels(cfg config.Server, log *slog.Logger) ([]burst.Channel, error) {
 // scheduler wires the burst pipeline behind a cron loop.
 func scheduler(cfg config.Server, org, project string, serving func() (string, string),
 	repo *file.Repository, runner *run.Service, records *sqlstore.Store,
-	log *slog.Logger) (*schedule.Service, error) {
+	stages burst.Stages, log *slog.Logger) (*schedule.Service, error) {
 
 	chans, err := channels(cfg, log)
 	if err != nil {
@@ -88,7 +88,11 @@ func scheduler(cfg config.Server, org, project string, serving func() (string, s
 		// The repository, because it holds what is running rather than what was
 		// last published — and the run record must name the bytes that produced
 		// the document, not the ones somebody stored a moment later.
-		WithVersions(repo)
+		WithVersions(repo).
+		// So "last night took four hours" has somewhere to look. A burst is
+		// started by the scheduler and has no request behind it, so the
+		// request histogram counts none of it.
+		WithStages(stages)
 	if records != nil {
 		bursts = bursts.WithHistory(records)
 	}

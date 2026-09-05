@@ -69,6 +69,18 @@ func (o *Observed) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("X-Request-Id", id)
 
+	/*
+	   Nothing this API returns is ever to be guessed at.
+
+	   Every response here is JSON or a rendered document, and both carry a
+	   Content-Type that says so. nosniff is what makes the browser believe it:
+	   without it a response whose body happens to begin like markup can be
+	   sniffed into HTML and run, and the bodies here are built from a
+	   customer's own rows. It costs one header on a path that already sets
+	   one.
+	*/
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+
 	r = r.WithContext(context.WithValue(r.Context(), requestKey{}, id))
 	rec := &recorder{ResponseWriter: w, status: http.StatusOK}
 	started := o.now()
