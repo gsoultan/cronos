@@ -20,6 +20,22 @@ deployment depends on — each one says so under **Upgrading** below.
 
 ## Unreleased
 
+**Releases are built, catalogued and signed by CI rather than by a laptop.**
+Pushing a `v*` tag now runs `.github/workflows/release.yml`: it cross-compiles
+the archives, writes an SPDX SBOM for each from the binaries that actually
+shipped, signs `SHA256SUMS` — which covers the archives and the SBOMs — and
+publishes the lot as a GitHub Release. Signing is keyless, so there is no key
+in this repository and none for you to fetch: what is attested is the release
+workflow of this repository at that tag, and `cosign verify-blob
+--certificate-identity` is how a download is checked. See "Verifying a
+download" in [docs/deploying.md](docs/deploying.md).
+
+Nothing about running cronos changes. `make dist` still produces the same
+archives and now writes an SBOM beside each where `syft` is installed; the
+release workflow sets `REQUIRE_SBOM=1` so a release without one fails rather
+than ships. The container image is still `make image` and is still published by
+hand — there is no registry here, which is a decision rather than an omission.
+
 **The SSO state cookie is `Secure` behind a terminating proxy.** It was decided
 from `r.TLS`, which is nil on every request that reached cronos through a proxy
 that terminates TLS — the arrangement this documentation recommends. The cookie

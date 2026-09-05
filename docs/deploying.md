@@ -83,6 +83,11 @@ install -m 0755 cronos_v1.0_linux_amd64/cronos* /usr/local/bin/
 cronosd -version
 ```
 
+Check the signature first — see **Verifying a download**. A `SHA256SUMS`
+published beside the archives it describes is checked by an attacker who can
+replace one and can therefore replace both; the signature is what makes the
+checksums worth reading.
+
 The binaries are `CGO_ENABLED=0`, so they do not depend on the host's libc
 version and a release built anywhere runs here. They carry their own copy of the
 timezone database (`time/tzdata`), so "the first of the month at six" resolves
@@ -527,14 +532,90 @@ Dependabot proposes the updates weekly, grouped rather than one pull request per
 dependency — a stream of individual bumps is a stream nobody reviews, and an
 unreviewed dependency bump is the risk it was meant to reduce.
 
+## Verifying a download
+
+Every release is built by the `release` workflow from the tag, and `SHA256SUMS`
+— which covers the archives **and** the SBOMs — is signed there. Checking it
+takes one command and answers a question the checksums alone cannot: not "is
+this file intact" but "did this file come from that tag".
+
+There is no public key to fetch, because there is no key. Signing is keyless:
+the certificate attests an identity — *the release workflow of this repository,
+at this tag* — issued to the workflow run and valid for minutes. That identity
+is what you check against, and unlike a key it cannot be copied out of somebody's
+password manager.
+
+```bash
+# Needs cosign: https://github.com/sigstore/cosign/releases
+VERSION=v1.0
+
+cosign verify-blob \
+  --bundle SHA256SUMS.cosign.bundle \
+  --certificate-identity "https://github.com/gsoultan/cronos/.github/workflows/release.yml@refs/tags/$VERSION" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  SHA256SUMS
+
+# Then the files, which SHA256SUMS now vouches for.
+sha256sum --ignore-missing -c SHA256SUMS
+```
+
+**`--certificate-identity` is the check.** Omitting it, or passing
+`--certificate-identity-regexp '.*'`, verifies that *somebody* signed the file
+and tells you nothing about who — which is the mistake that makes a signature
+decorative. The workflow runs the same two commands against the artifacts
+before it publishes them, so the instructions above are known to work at the
+moment the release is cut rather than the first time somebody follows them.
+
+### The SBOM
+
+One SPDX 2.3 document per archive, `<archive>.spdx.json`, listing every Go
+module in the binaries beside it.
+
+Taken from the built binaries rather than from `go.mod`, and the difference is
+the point. A Go binary carries the module list it was actually built with, so
+what is catalogued is what shipped; `go.mod` describes what a build would
+resolve today, which is a different question and the wrong one to hand a
+security review.
+
+```bash
+# What is in it, and whether a given module is.
+grep -o '"name": "[^"]*"' cronos_v1.0_linux_amd64.spdx.json | sort -u
+grype sbom:./cronos_v1.0_linux_amd64.spdx.json   # or any SPDX-aware scanner
+```
+
+`govulncheck` runs in CI on every push and fails the build on a vulnerability
+this code can actually reach, which is the stronger check because it follows
+the call graph rather than the dependency list. The SBOM is the other half: it
+answers "are you affected by this CVE" for somebody who is asking about your
+deployment and cannot run your test suite.
+
 ## Cutting a release
 
 ```bash
 RELEASE=v0.5.1 make release       # checks the tree and the changelog, then says what to run
 git tag -a v0.5.1 -m v0.5.1
-make dist                         # the Linux archives, stamped with the tag
-make image                        # the container image, stamped the same way
+git push origin v0.5.1            # and the release workflow does the rest
 ```
+
+**The archives are built by CI, not on your laptop.** Pushing a `v*` tag runs
+`.github/workflows/release.yml`, which cross-compiles the archives, generates
+an SBOM per archive, signs `SHA256SUMS` with the workflow's own identity, and
+publishes the lot as a GitHub Release. It re-checks the changelog first, because
+`make release` is a local check and a tag can be pushed without it.
+
+Building somewhere public is most of the value. An archive built on a developer
+machine rests on trusting whoever ran the command; one built from the tag in a
+log anybody can read does not. The signature is what lets a person downloading
+it check that — see **Verifying a download**.
+
+`make dist` still works and is still what CI runs on every push to prove the
+archives build. It writes an SBOM too where `syft` is installed and skips it
+where it is not; the release workflow sets `REQUIRE_SBOM=1` so a release
+without one fails rather than ships.
+
+The container image is still `make image`, built and pushed by hand. There is
+no registry in this repository — a published image is a distribution channel to
+keep current, and that is a decision rather than an omission.
 
 **Two channels, and they carry the same commands.** The image is one way to run
 cronos and not the only one: a deployment that already has systemd, a package
