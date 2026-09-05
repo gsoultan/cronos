@@ -391,8 +391,22 @@ jobs:
       # download. Installing only chrome left the portal suites launching a
       # browser that was never fetched, which is what "the browser check" failed
       # on — every script that says `Needs playwright's chromium` in its header.
+      #
+      # Run from the workspaces rather than from the root, and that is the whole
+      # fix for the next one. A browser download is keyed to the exact Playwright
+      # that asks for it, and the root has no playwright dependency — so `bunx`
+      # there resolved the latest from npm, installed that build's revisions, and
+      # left every suite launching the revision its own pinned Playwright wanted.
+      # The error names a path nobody installed rather than a version anybody can
+      # see, which is why this looked like a broken cache for two days.
+      #
+      # Two directories because there are two resolutions: apps/portal keeps its
+      # own install, packages/* are the root workspace. They agree today, and the
+      # second command is a no-op while they do.
       - name: install chrome and chromium
-        run: bunx playwright install --with-deps chrome chromium
+        run: |
+          (cd apps/portal    && bunx playwright install --with-deps chrome chromium)
+          (cd packages/embed && bunx playwright install --with-deps chrome chromium)
 
       - name: install typst
         run: |
