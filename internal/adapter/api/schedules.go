@@ -55,9 +55,31 @@ func (h *Schedules) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	project, err := h.projects.Project(r.Context(), pr)
-	if err != nil || project.Fires == nil {
-		// No scheduler armed here, or not this caller's project.
+	if err != nil {
+		// Not this caller's project. Refusing to confirm the name is the point:
+		// somebody probing another tenant's deployment learns nothing from a
+		// 404 and learns the schedule exists from anything else.
 		fail(w, http.StatusNotFound, "No such schedule.")
+		return
+	}
+	if project.Fires == nil {
+		/*
+		   Resolved, and this instance is not the one that can run it.
+
+		   Told apart from the 404 above because the two have nothing in common
+		   but the outcome. This caller is in the project and the catalogue has
+		   already shown them the schedule, so denying its existence is a lie
+		   that costs somebody the afternoon they spend checking the spelling —
+		   which is right. Nothing is disclosed by saying so: they could read
+		   the same fact off cronos_scheduler_armed.
+
+		   503 rather than 404 because another replica may well be armed, and a
+		   status that means "not here, try again" is the one a load balancer
+		   reads correctly.
+		*/
+		fail(w, http.StatusServiceUnavailable,
+			"No scheduler is armed on this instance. Set CRONOS_SCHEDULER=1 here, "+
+				"or send this to a replica that has it.")
 		return
 	}
 

@@ -139,11 +139,20 @@ func (h *Runs) resume(w http.ResponseWriter, r *http.Request, pr principal.Princ
 		return
 	}
 	project, err := h.projects.Project(r.Context(), pr)
-	if err != nil || project.Resumes == nil {
-		// No scheduler armed here, or not this caller's project. On a replica
-		// that is not the leader there is nothing to resume with, and saying
-		// "no such run" is the same answer as for a run in another project.
+	if err != nil {
+		// Another tenant's project, which answers the same way a run nobody has
+		// does — confirming either would tell somebody probing that it is there.
 		fail(w, http.StatusNotFound, "No such run.")
+		return
+	}
+	if project.Resumes == nil {
+		// Resolved, and this instance has no scheduler to resume with. The same
+		// distinction the run endpoint makes: the caller is in the project and
+		// can see the run, so denying it exists sends them looking for the
+		// wrong thing. Another replica may be armed, which is what 503 says.
+		fail(w, http.StatusServiceUnavailable,
+			"No scheduler is armed on this instance, so there is nothing here to "+
+				"resume with. Set CRONOS_SCHEDULER=1 here, or send this to a replica that has it.")
 		return
 	}
 

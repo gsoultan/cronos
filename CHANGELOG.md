@@ -20,6 +20,20 @@ needs a deployment to act says so under **Upgrading**.
 
 ---
 
+## Unreleased
+
+**"No such schedule" no longer means "this replica has no scheduler".** Firing a
+schedule or resuming a run answered 404 for three different situations: a name
+nobody has, another tenant's project, and an instance where `CRONOS_SCHEDULER`
+was never set. The last one is a schedule the caller can see in `/v1/catalog`
+being told it does not exist, and the fix it sends them looking for — a typo —
+is not the fix. Those two endpoints now answer **503** with the variable to set,
+and keep the 404 for the cases where refusing to confirm a name is the point.
+Nothing is disclosed by the change: the caller has already resolved the project,
+and `cronos_scheduler_armed` says the same thing.
+
+---
+
 ## v1.0.0 — 2026-09-06
 
 The roadmap's v1.0 — *Migrate* — cut as a release. Everything it named has been
