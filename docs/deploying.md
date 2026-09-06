@@ -83,6 +83,11 @@ install -m 0755 cronos_v1.0_linux_amd64/cronos* /usr/local/bin/
 cronosd -version
 ```
 
+Check the signature first — see **Verifying a download**. A `SHA256SUMS`
+published beside the archives it describes is checked by an attacker who can
+replace one and can therefore replace both; the signature is what makes the
+checksums worth reading.
+
 The binaries are `CGO_ENABLED=0`, so they do not depend on the host's libc
 version and a release built anywhere runs here. They carry their own copy of the
 timezone database (`time/tzdata`), so "the first of the month at six" resolves
@@ -169,7 +174,7 @@ does not need a container to do it — see
 
 | Variable | Why |
 |---|---|
-| `CRONOS_SIGNING_KEY` | 32 bytes minimum. Every token is signed with it; rotating it ends every session and every share. |
+| `CRONOS_SIGNING_KEY` | 32 bytes minimum. Every token is signed with it. Rotate it through `CRONOS_SIGNING_KEY_PREVIOUS` rather than replacing it outright — see Rotating the signing key. |
 | `CRONOS_ORG`, `CRONOS_PROJECT` | The one project this process serves. |
 | `CRONOS_STORE_DSN` | The definition store. Without it, definitions are files and there is no sign-in, no run history and no sharing. |
 | `CRONOS_ORIGINS` | The host applications allowed to call the API. Never `*` — the API reads an Authorization header. |
@@ -180,13 +185,121 @@ And what should be:
 |---|---|
 | `CRONOS_SECRETS_DIR` | A directory of files, one per secret. Preferred over the environment: an environment variable is visible in `/proc` to anything running as the same user and appears in a crash dump. |
 | `CRONOS_HISTORY_RETENTION` | e.g. `2160h`. Unset keeps run history for ever. |
-| `CRONOS_BEHIND_PROXY=1` | Only where something in front sets `X-Forwarded-For`. Believing it without a proxy keys every rate limit by a value the caller chooses. |
+| `CRONOS_BEHIND_PROXY=1` | Required behind a terminating proxy, and only there — see Terminating TLS. It keys rate limits on `X-Forwarded-For` and makes the SSO state cookie `Secure`. Believing it without a proxy keys every limit by a value the caller chooses; omitting it behind one sends that cookie without `Secure`. |
+| `CRONOS_SIGNING_KEY_PREVIOUS` | Comma-separated keys accepted but never minted with, for a rotation. Unset outside one. |
 | `CRONOS_AUDIT` | `log` by default, `off` to stop it. |
 | `CRONOS_SMTP_HOST`, `CRONOS_SMTP_FROM` | A mail relay. Needed to deliver a schedule by email, and to invite anybody. |
 | `CRONOS_PORTAL_URL` | Where the portal is served, for links in email. Without it, invitations are not offered — there would be nothing to put in the link. |
 | `CRONOS_SCHEDULER=1` | Arms schedules. Off by default. Safe to set on every replica — see Running several. |
 | `CRONOS_SCHEDULER_TICK` | e.g. `10s`. How often armed schedules are checked; a minute by default, which is cron's own resolution. Lower it if "06:00" has to mean 06:00 rather than some time in the minute after. |
 | `CRONOS_METRICS_ADDR` | e.g. `127.0.0.1:9090`. Serves the exposition there and nowhere else — see Probes. |
+
+## Terminating TLS
+
+`cronosd` speaks plain HTTP and has no TLS flag. That is deliberate — a
+certificate is a renewal, a reload and a private file, and every deployment
+already has something that does all three. Put that something in front.
+
+Two things have to be true, and the second is the one that gets missed.
+
+**Bind cronosd where only the proxy can reach it.** `CRONOS_ADDR=127.0.0.1:8787`
+on a host install, or an internal network on a container one. A process serving
+plaintext on a public interface is one a client can reach directly, and every
+protection below is then optional from the caller's side.
+
+**Set `CRONOS_BEHIND_PROXY=1`.** It is not only about rate limiting. cronos
+cannot see the browser's connection — behind a terminating proxy every request
+arrives over HTTP, so `r.TLS` is nil and the process has no way to know the
+deployment is served over TLS. This variable is how it is told, and two things
+read it: the rate limiter keys on `X-Forwarded-For`, and the SSO state cookie
+goes out `Secure`. Leave it unset behind a proxy and that cookie is one the
+browser will also send over `http://`.
+
+Set it on a proxy that does *not* terminate TLS and you get the opposite
+problem, with a symptom worth recognising: the cookie is `Secure`, the browser
+declines to send it back over `http://`, and every SSO sign-in fails at the
+callback with "this sign-in did not start here". `CRONOS_BEHIND_PROXY=1` means
+*there is TLS in front*, not merely *there is a proxy in front*.
+
+Nginx:
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name reports.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/reports.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/reports.example.com/privkey.pem;
+
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
+    # The portal is static files served from here, so its security headers are
+    # this server's job — cronosd serves the API and never the page.
+    #
+    # frame-ancestors is the one that is not boilerplate. cronos has no iframe
+    # path on purpose: embedding is a custom element in a shadow root, because
+    # an iframe is third-party HTML in a browsing context and clickjacking is
+    # the first thing that goes wrong with one. Refusing to be framed is that
+    # decision applied to our own portal, which is the page with the publish
+    # button on it.
+    add_header Content-Security-Policy "frame-ancestors 'none'" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+    location / {
+        proxy_pass http://127.0.0.1:8787;
+        proxy_set_header Host              $host;
+        # set, not add. proxy_add_x_forwarded_for appends to whatever the
+        # caller sent, and the limiter reads the first value — so a client
+        # sending its own X-Forwarded-For picks its own rate-limit bucket.
+        proxy_set_header X-Forwarded-For   $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Request-Id      $request_id;
+
+        # A render of a large report is not a slow client.
+        proxy_read_timeout 300s;
+        # An export is streamed. Buffering it puts the whole file on the
+        # proxy's disk before the browser sees a byte.
+        proxy_buffering off;
+    }
+}
+
+# Anything arriving on 80 is redirected, not served.
+server {
+    listen 80;
+    server_name reports.example.com;
+    return 308 https://$host$request_uri;
+}
+```
+
+Caddy, which gets the certificate itself:
+
+```caddy
+reports.example.com {
+    header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    header Content-Security-Policy "frame-ancestors 'none'"
+    header X-Content-Type-Options "nosniff"
+    header Referrer-Policy "strict-origin-when-cross-origin"
+    reverse_proxy 127.0.0.1:8787 {
+        header_up X-Forwarded-For {remote_host}
+        flush_interval -1
+    }
+}
+```
+
+cronosd sets `X-Content-Type-Options` on its own responses; the rest of the
+list above is for the portal, which this server delivers and cronosd never
+sees. `add_header` in nginx does not inherit into a `location` block that has
+its own, so keep them at `server` level as above or repeat them.
+
+`X-Forwarded-For` is the one header where the proxy has to overwrite rather
+than append. Everything cronos trusts from it, it trusts because the proxy is
+the last one to write it — see the rate-limit note under What has to be set.
+
+**`CRONOS_ORIGINS` names the scheme.** `https://app.example.com`, not
+`app.example.com` and not the `http://` the host application used in
+development. An origin that does not match exactly is a CORS refusal that looks
+like an outage.
 
 ## Probes
 
@@ -267,6 +380,40 @@ missed:
 3. `/v1/ready` returning `degraded` for longer than a deploy takes.
 4. `cronos_request_duration_seconds` at the 99th percentile crossing whatever
    your customers' patience is.
+
+### Where a slow burst went
+
+`cronos_stage_duration_seconds{stage="render"|"deliver"}` is the histogram the
+request one cannot be: a burst is started by the scheduler, so nothing about it
+is a request and none of its hours are counted above.
+
+Two stages, because the two things that go slow have their fixes in different
+places. `render` is this machine and the typesetter — the answer is CPU, or a
+lower `concurrency`, or a report doing more work per recipient than anybody
+meant. `deliver` is somebody else's server, and no amount of local capacity
+moves it. Comparing the two is the whole diagnosis:
+
+```promql
+# The p99 of each, which says which half the four hours were in.
+histogram_quantile(0.99,
+  sum by (stage, le) (rate(cronos_stage_duration_seconds_bucket[5m])))
+
+# And the total time each stage is costing per second of wall clock, which is
+# the one that finds a slow channel hiding behind a fast median.
+sum by (stage) (rate(cronos_stage_duration_seconds_sum[5m]))
+```
+
+`deliver` spans the retries and their backoff, because that is the wall-clock
+the burst actually spent waiting. How many attempts a delivery took is in the
+run history per recipient, so a rise here that is really a retry storm is one
+query away from being identified as one.
+
+This is not distributed tracing and does not try to be. There are no spans and
+nothing to correlate with another service, because a burst does not call one —
+it reads a database, typesets, and hands bytes to a channel. If cronos ever
+sits in the middle of somebody else's traced request path, OpenTelemetry is the
+answer then; two histograms are the answer to the question that is actually
+being asked now, and they cost no dependency.
 
 ## Running several
 
@@ -440,14 +587,90 @@ Dependabot proposes the updates weekly, grouped rather than one pull request per
 dependency — a stream of individual bumps is a stream nobody reviews, and an
 unreviewed dependency bump is the risk it was meant to reduce.
 
+## Verifying a download
+
+Every release is built by the `release` workflow from the tag, and `SHA256SUMS`
+— which covers the archives **and** the SBOMs — is signed there. Checking it
+takes one command and answers a question the checksums alone cannot: not "is
+this file intact" but "did this file come from that tag".
+
+There is no public key to fetch, because there is no key. Signing is keyless:
+the certificate attests an identity — *the release workflow of this repository,
+at this tag* — issued to the workflow run and valid for minutes. That identity
+is what you check against, and unlike a key it cannot be copied out of somebody's
+password manager.
+
+```bash
+# Needs cosign: https://github.com/sigstore/cosign/releases
+VERSION=v1.0
+
+cosign verify-blob \
+  --bundle SHA256SUMS.cosign.bundle \
+  --certificate-identity "https://github.com/gsoultan/cronos/.github/workflows/release.yml@refs/tags/$VERSION" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  SHA256SUMS
+
+# Then the files, which SHA256SUMS now vouches for.
+sha256sum --ignore-missing -c SHA256SUMS
+```
+
+**`--certificate-identity` is the check.** Omitting it, or passing
+`--certificate-identity-regexp '.*'`, verifies that *somebody* signed the file
+and tells you nothing about who — which is the mistake that makes a signature
+decorative. The workflow runs the same two commands against the artifacts
+before it publishes them, so the instructions above are known to work at the
+moment the release is cut rather than the first time somebody follows them.
+
+### The SBOM
+
+One SPDX 2.3 document per archive, `<archive>.spdx.json`, listing every Go
+module in the binaries beside it.
+
+Taken from the built binaries rather than from `go.mod`, and the difference is
+the point. A Go binary carries the module list it was actually built with, so
+what is catalogued is what shipped; `go.mod` describes what a build would
+resolve today, which is a different question and the wrong one to hand a
+security review.
+
+```bash
+# What is in it, and whether a given module is.
+grep -o '"name": "[^"]*"' cronos_v1.0_linux_amd64.spdx.json | sort -u
+grype sbom:./cronos_v1.0_linux_amd64.spdx.json   # or any SPDX-aware scanner
+```
+
+`govulncheck` runs in CI on every push and fails the build on a vulnerability
+this code can actually reach, which is the stronger check because it follows
+the call graph rather than the dependency list. The SBOM is the other half: it
+answers "are you affected by this CVE" for somebody who is asking about your
+deployment and cannot run your test suite.
+
 ## Cutting a release
 
 ```bash
 RELEASE=v0.5.1 make release       # checks the tree and the changelog, then says what to run
 git tag -a v0.5.1 -m v0.5.1
-make dist                         # the Linux archives, stamped with the tag
-make image                        # the container image, stamped the same way
+git push origin v0.5.1            # and the release workflow does the rest
 ```
+
+**The archives are built by CI, not on your laptop.** Pushing a `v*` tag runs
+`.github/workflows/release.yml`, which cross-compiles the archives, generates
+an SBOM per archive, signs `SHA256SUMS` with the workflow's own identity, and
+publishes the lot as a GitHub Release. It re-checks the changelog first, because
+`make release` is a local check and a tag can be pushed without it.
+
+Building somewhere public is most of the value. An archive built on a developer
+machine rests on trusting whoever ran the command; one built from the tag in a
+log anybody can read does not. The signature is what lets a person downloading
+it check that — see **Verifying a download**.
+
+`make dist` still works and is still what CI runs on every push to prove the
+archives build. It writes an SBOM too where `syft` is installed and skips it
+where it is not; the release workflow sets `REQUIRE_SBOM=1` so a release
+without one fails rather than ships.
+
+The container image is still `make image`, built and pushed by hand. There is
+no registry in this repository — a published image is a distribution channel to
+keep current, and that is a decision rather than an omission.
 
 **Two channels, and they carry the same commands.** The image is one way to run
 cronos and not the only one: a deployment that already has systemd, a package
@@ -558,9 +781,42 @@ is a restore.
 **The signing key.** Not in the database, and losing it is not recoverable:
 every session ends, every share link stops opening, and every embed token a
 host application holds becomes invalid. Keep it wherever you keep the thing
-that would end your business if you lost it, and rotate it deliberately — a
-rotation is an outage for every embedded reader until the hosts mint new
-tokens.
+that would end your business if you lost it.
+
+### Rotating the signing key
+
+`CRONOS_SIGNING_KEY_PREVIOUS` is a comma-separated list of keys that are
+verified against and never signed with, so a rotation is a rolling change
+rather than an outage. Without it, replacing the key invalidates every token in
+every host application at the instant it takes effect — which is an outage in
+somebody else's product, caused by our housekeeping, and the reason a key that
+cannot be rotated gently is a key that never gets rotated at all.
+
+```bash
+# 1. The new key signs; the old one is still honoured.
+CRONOS_SIGNING_KEY="<new>"
+CRONOS_SIGNING_KEY_PREVIOUS="<old>"
+```
+
+Roll that out. From the moment the last replica has it, everything minted is
+signed by the new key and everything already in the wild still verifies.
+
+```bash
+# 2. After 24 hours — token.MaxLifetime, the longest any token can live.
+CRONOS_SIGNING_KEY="<new>"
+# CRONOS_SIGNING_KEY_PREVIOUS unset
+```
+
+Nothing signed by the old key can still be valid by then, because `Mint` would
+not have issued it: 24 hours is the ceiling on every token cronos produces.
+Waiting is what makes the second step safe, and skipping it is the outage the
+first step existed to avoid.
+
+Two things do not wait out. **Sessions and share links** are the tokens
+that are held longest in practice, and they are bounded by the same 24 hours.
+And a key retired here still has to be a real key — one under 32 bytes is
+refused at boot rather than ignored, because a weak key on the way out is a
+weak key.
 
 The definitions directory is not state. It is a bootstrap: once the store holds
 anything, the directory is not consulted again.

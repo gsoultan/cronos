@@ -85,6 +85,15 @@ func Serve(log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	// Mid-rotation, the keys this deployment still honours but no longer
+	// issues. Refused here rather than ignored: a retired key that is too weak
+	// to sign with is too weak to accept, and silently dropping it would leave
+	// an operator believing the old tokens still work.
+	if len(cfg.PreviousKeys) > 0 {
+		if signer, err = signer.Accepting(cfg.PreviousKeys...); err != nil {
+			return err
+		}
+	}
 	which, err := tenants(cfg)
 	if err != nil {
 		return err

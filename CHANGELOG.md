@@ -18,6 +18,104 @@ deployment depends on — each one says so under **Upgrading** below.
 
 ---
 
+## Unreleased
+
+**A slow scheduled run can be diagnosed.**
+`cronos_stage_duration_seconds{stage="render"|"deliver"}` is a new histogram
+covering the two halves of a burst. Nothing counted them before: a burst is
+started by the scheduler, so the request histogram sees none of it, and "last
+night took four hours" had one number and three candidates behind it. The two
+stages are separated because their fixes are in different places — rendering is
+your machine and the typesetter, delivery is somebody else's server. See "Where
+a slow burst went" in [docs/deploying.md](docs/deploying.md). No new
+dependency, and not distributed tracing: a burst calls no other service.
+
+**Every API response carries `X-Content-Type-Options: nosniff`.** The bodies
+here are built from a customer's own rows, and one that happens to begin like
+markup should not be something a browser is free to sniff into HTML. The
+proxy configuration under "Terminating TLS" now also sets the portal's headers,
+including `Content-Security-Policy: frame-ancestors 'none'` — cronos has no
+iframe path by design, and nothing was applying that decision to the page with
+the publish button on it.
+
+**Releases are built, catalogued and signed by CI rather than by a laptop.**
+Pushing a `v*` tag now runs `.github/workflows/release.yml`: it cross-compiles
+the archives, writes an SPDX SBOM for each from the binaries that actually
+shipped, signs `SHA256SUMS` — which covers the archives and the SBOMs — and
+publishes the lot as a GitHub Release. Signing is keyless, so there is no key
+in this repository and none for you to fetch: what is attested is the release
+workflow of this repository at that tag, and `cosign verify-blob
+--certificate-identity` is how a download is checked. See "Verifying a
+download" in [docs/deploying.md](docs/deploying.md).
+
+Nothing about running cronos changes. `make dist` still produces the same
+archives and now writes an SBOM beside each where `syft` is installed; the
+release workflow sets `REQUIRE_SBOM=1` so a release without one fails rather
+than ships. The container image is still `make image` and is still published by
+hand — there is no registry here, which is a decision rather than an omission.
+
+**The SSO state cookie is `Secure` behind a terminating proxy.** It was decided
+from `r.TLS`, which is nil on every request that reached cronos through a proxy
+that terminates TLS — the arrangement this documentation recommends. The cookie
+therefore went out without `Secure` in exactly that deployment, and a browser
+will send such a cookie over `http://`. It now follows `CRONOS_BEHIND_PROXY`,
+which the rate limiter has always read. **If you run behind a proxy and have
+not set `CRONOS_BEHIND_PROXY=1`, set it** — see "Terminating TLS" in
+[docs/deploying.md](docs/deploying.md), which is new and has a working nginx
+and Caddy configuration, including the `X-Forwarded-For` handling that has to
+overwrite rather than append.
+
+**A result set of exactly `maxRows` was refused as "more than `maxRows`
+rows".** The row cap declined the limit's own last row instead of looking for
+one beyond it, so a datasource capped at a million refused a million and the
+hundred-thousand-row spreadsheet export refused the hundred thousand it exists
+to allow. Only the boundary was affected; a set under the cap always worked and
+one genuinely over it was always refused. Found by the first test the executor
+has ever had.
+
+**A schedule naming a channel the deployment has not got is refused at
+publish.** It was accepted: `Validate()` asked only that `via` was non-empty,
+and the channel was resolved for the first time in the burst, where a missing
+one is fatal and the hour is 06:00. Publishing now checks the name against what
+the deployment actually configured and says what it has. A deployment with no
+channels at all refuses a schedule that delivers, rather than accepting all of
+them.
+
+**The portal's schedule form never sent the channel you picked.** Every
+schedule it published went out as `email` whatever the picker said, and editing
+an existing `via: file` or `via: s3` schedule silently rewrote it to `email` on
+save. **Check any schedule that was created or edited through the portal and
+was meant to deliver somewhere other than email.** The picker now offers only
+the channels the deployment reports, and submits the one chosen.
+
+**Telegram was never a channel, and three places said it was.** The v0.5.0
+notes above, `docs/report-format.md`, and the schedule form all described or
+offered it; nothing delivers through it. The claims are withdrawn. The portal's
+Settings → Channels panel still renders a Telegram section against a fixture —
+it is inert, and whether to build the channel or remove the panel is open.
+
+**Tests where there were none.** Nine packages had no test file:
+`internal/adapter/driver/sql` — the executor every query in the product passes
+through, which is where the row-cap bug above was found — plus
+`internal/platform/config`, `internal/app/share`, `internal/core/share`,
+`internal/app/send`, `internal/core/document`, `internal/adapter/deliver/file`,
+`internal/adapter/audit` and `ee/audit`. Nothing changed for a deployment
+except the row cap; the rest is regression cover for behaviour that was already
+correct, including the cross-tenant refusals on share links and the path
+handling that keeps a customer's name out of a delivery path.
+
+**The signing key can be rotated without an outage.**
+`CRONOS_SIGNING_KEY_PREVIOUS` is a comma-separated list of keys that are
+verified against and never minted with. Rotation is now: put the new key in
+`CRONOS_SIGNING_KEY`, the old one in `CRONOS_SIGNING_KEY_PREVIOUS`, wait 24
+hours — the ceiling on any token cronos issues — and unset it. Previously
+replacing the key invalidated every session, every share link and every embed
+token a host application held, at the instant it took effect, so in practice
+nobody rotated. Nothing changes for a deployment that does not set the new
+variable. A retired key under 32 bytes is refused at boot rather than ignored.
+
+---
+
 ## v0.5.0 — 2026-08-17
 
 The first tagged release. Everything through the roadmap's v0.5 is here: the
@@ -42,7 +140,7 @@ rows is the export ceiling and costs about 32MB while the workbook is written.
 **Delivery.** A cron scheduler with per-project isolation and leader election,
 so every replica can be armed and exactly one fires. Bursting renders one
 document per recipient — 560–650 PDFs per second on the machine in
-[docs/deploying.md](docs/deploying.md). Email, Telegram and object-store
+[docs/deploying.md](docs/deploying.md). Email and object-store
 channels, retries per recipient, alerts to a person when a run fails, and run
 history that says what was delivered to whom. A burst cut in half resumes
 without sending anybody two.

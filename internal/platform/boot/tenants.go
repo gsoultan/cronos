@@ -148,7 +148,7 @@ func finish(ctx context.Context, cfg config.Server, rt *runtime,
 		Definitions: rt.repo,
 		Probes:      probing(engines),
 	}
-	rt.publish = publishing(defs, rt.repo, records, engines)
+	rt.publish = publishing(defs, rt.repo, records, engines, channelNames(cfg, log))
 	rt.close = closeEngines
 	return nil
 }
@@ -216,7 +216,8 @@ func startSchedulers(cfg config.Server, runtimes map[tenant]*runtime,
 	}
 
 	for t, rt := range runtimes {
-		sched, err := scheduler(cfg, t.org, t.project, serving, rt.repo, rt.project.Runner, records, log)
+		sched, err := scheduler(cfg, t.org, t.project, serving, rt.repo, rt.project.Runner,
+			records, watch, log)
 		if err != nil {
 			// The schedulers already started keep running until the caller
 			// stops them; returning stop alongside the error means it can.

@@ -140,3 +140,41 @@ func ok() http.Handler {
 func logger(into *bytes.Buffer) *slog.Logger {
 	return slog.New(slog.NewTextHandler(into, &slog.HandlerOptions{Level: slog.LevelDebug}))
 }
+
+/*
+Every response says not to guess at its type.
+
+The bodies this API returns are built from a customer's own rows, so one that
+happens to begin like markup is one a browser must not be free to sniff into
+HTML and run. Asserted on the shared middleware rather than per route, because
+that is the only place it can be true of every response including the ones
+nobody has written yet.
+*/
+func TestEveryResponseCarriesNosniff(t *testing.T) {
+	for _, c := range []struct {
+		name   string
+		handle http.HandlerFunc
+	}{
+		{"an ordinary answer", func(w http.ResponseWriter, _ *http.Request) {
+			w.Write([]byte(`{"ok":true}`))
+		}},
+		{"a refusal", func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusForbidden)
+		}},
+		// Including the one nobody planned: the recovery path writes its own
+		// response, and a panic is not a reason to drop a security header.
+		{"a panic", func(http.ResponseWriter, *http.Request) {
+			panic("the renderer fell over")
+		}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			api.NewObserved(c.handle, quiet()).
+				ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/v1/anything", nil))
+
+			if got := w.Result().Header.Get("X-Content-Type-Options"); got != "nosniff" {
+				t.Errorf("X-Content-Type-Options is %q, want nosniff", got)
+			}
+		})
+	}
+}

@@ -18,4 +18,8 @@ var (
 	// ErrStale means somebody else saved this definition since the caller read
 	// it, so storing theirs would quietly discard the other edit.
 	ErrStale = errors.New("publish: changed since you read it")
+	// ErrNoSuchChannel means a schedule delivers through a channel this
+	// deployment has not configured, which the burst would only discover at
+	// the hour the schedule fires.
+	ErrNoSuchChannel = errors.New("publish: no such delivery channel")
 )

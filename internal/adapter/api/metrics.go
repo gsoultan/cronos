@@ -41,6 +41,10 @@ type Metrics struct {
 	// summarising at scrape time means holding every request served since the
 	// last one, which on a busy instance is the memory a burst needs.
 	durations map[string]*histogram
+	// stages are the same measurement for work that arrives without a request:
+	// a scheduled burst renders and delivers on the scheduler's clock, and
+	// nothing above counts a second of it.
+	stages map[string]*histogram
 
 	runs       map[string]int64 // by result
 	deliveries map[string]int64 // by result
@@ -119,6 +123,7 @@ func NewMetrics() *Metrics {
 	return &Metrics{
 		requests:   map[requestKey2]int64{},
 		durations:  map[string]*histogram{},
+		stages:     map[string]*histogram{},
 		runs:       map[string]int64{},
 		deliveries: map[string]int64{},
 		started:    now(),
@@ -199,6 +204,23 @@ func (m *Metrics) Request(route string, status int, took time.Duration) {
 	h.observe(took.Seconds())
 }
 
+// Stage records how long one pipeline stage took.
+//
+// A fixed vocabulary of stage names, set by the callers and not by anything a
+// definition can reach — the label is a metric series, and one per report would
+// be one per customer of our customer.
+func (m *Metrics) Stage(stage string, took time.Duration) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	h, ok := m.stages[stage]
+	if !ok {
+		h = newHistogram()
+		m.stages[stage] = h
+	}
+	h.observe(took.Seconds())
+}
+
 // Run records a finished run by its result: delivered, partial or failed.
 func (m *Metrics) Run(result string, recipients, delivered int) {
 	m.mu.Lock()
@@ -229,7 +251,27 @@ func (m *Metrics) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 	out.WriteString("# HELP cronos_request_duration_seconds How long requests took.\n")
 	out.WriteString("# TYPE cronos_request_duration_seconds histogram\n")
 	for _, route := range sortedKeys(m.durations) {
-		m.durations[route].write(&out, route)
+		m.durations[route].write(&out, "cronos_request_duration_seconds", "route", route)
+	}
+
+	/*
+	   Where a scheduled run's time went.
+
+	   The request histogram above cannot answer this: a burst has no request.
+	   It is started by the scheduler, runs for as long as it runs, and the only
+	   thing counted about it was whether it worked — so "last night took four
+	   hours" had one number and three candidates behind it.
+
+	   Two stages, because two things can be slow and the fix for each is
+	   somewhere else: rendering is this machine and the typesetter, delivery is
+	   somebody else's SMTP server. The deliver timing spans the retries and
+	   their backoff, because that is the wall-clock the burst actually spent;
+	   how many attempts it took is recorded per delivery already.
+	*/
+	out.WriteString("# HELP cronos_stage_duration_seconds How long a pipeline stage took.\n")
+	out.WriteString("# TYPE cronos_stage_duration_seconds histogram\n")
+	for _, stage := range sortedKeys(m.stages) {
+		m.stages[stage].write(&out, "cronos_stage_duration_seconds", "stage", stage)
 	}
 
 	out.WriteString("# HELP cronos_runs_total Scheduled runs, by result.\n")
@@ -374,15 +416,19 @@ func (h *histogram) observe(seconds float64) {
 	}
 }
 
-func (h *histogram) write(out *strings.Builder, route string) {
+// write emits one histogram under metric, labelled label=value.
+//
+// The name and the label are parameters because there are two of these now and
+// they are the same shape: how long requests took, by route, and how long a
+// pipeline stage took, by stage.
+func (h *histogram) write(out *strings.Builder, metric, label, value string) {
 	for i, upper := range buckets {
-		fmt.Fprintf(out, "cronos_request_duration_seconds_bucket{route=%q,le=\"%g\"} %d\n",
-			route, upper, h.counts[i])
+		fmt.Fprintf(out, "%s_bucket{%s=%q,le=\"%g\"} %d\n",
+			metric, label, value, upper, h.counts[i])
 	}
-	fmt.Fprintf(out, "cronos_request_duration_seconds_bucket{route=%q,le=\"+Inf\"} %d\n",
-		route, h.total)
-	fmt.Fprintf(out, "cronos_request_duration_seconds_sum{route=%q} %g\n", route, h.sum)
-	fmt.Fprintf(out, "cronos_request_duration_seconds_count{route=%q} %d\n", route, h.total)
+	fmt.Fprintf(out, "%s_bucket{%s=%q,le=\"+Inf\"} %d\n", metric, label, value, h.total)
+	fmt.Fprintf(out, "%s_sum{%s=%q} %g\n", metric, label, value, h.sum)
+	fmt.Fprintf(out, "%s_count{%s=%q} %d\n", metric, label, value, h.total)
 }
 
 func sortedRequests(in map[requestKey2]int64) []requestKey2 {

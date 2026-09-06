@@ -77,7 +77,7 @@ func channels(cfg config.Server, log *slog.Logger) ([]burst.Channel, error) {
 // scheduler wires the burst pipeline behind a cron loop.
 func scheduler(cfg config.Server, org, project string, serving func() (string, string),
 	repo *file.Repository, runner *run.Service, records *sqlstore.Store,
-	log *slog.Logger) (*schedule.Service, error) {
+	stages burst.Stages, log *slog.Logger) (*schedule.Service, error) {
 
 	chans, err := channels(cfg, log)
 	if err != nil {
@@ -88,7 +88,11 @@ func scheduler(cfg config.Server, org, project string, serving func() (string, s
 		// The repository, because it holds what is running rather than what was
 		// last published — and the run record must name the bytes that produced
 		// the document, not the ones somebody stored a moment later.
-		WithVersions(repo)
+		WithVersions(repo).
+		// So "last night took four hours" has somewhere to look. A burst is
+		// started by the scheduler and has no request behind it, so the
+		// request histogram counts none of it.
+		WithStages(stages)
 	if records != nil {
 		bursts = bursts.WithHistory(records)
 	}
@@ -242,13 +246,17 @@ func users(records *sqlstore.Store) api.Users {
 // sit in the store and in the catalogue while every render kept using what the
 // process read at startup — until somebody restarted it.
 func publishing(store publish.Store, repo *file.Repository, records *sqlstore.Store,
-	engines run.Engines) *publish.Service {
+	engines run.Engines, channels []string) *publish.Service {
 	svc := publish.New(store, repo).WithReports(repo).
 		// So a delete can say what would break rather than breaking it.
 		WithCatalog(repo).
 		// And so a publish is proved against the database it will read, not
 		// only against the dialect this package compiles for.
-		WithEngines(engines)
+		WithEngines(engines).
+		// And so a schedule naming a channel this deployment has not got is
+		// refused by the person who typed it, rather than by the burst at the
+		// hour it fires.
+		WithChannels(channels)
 	if records != nil {
 		svc = svc.WithLive(repo)
 	}

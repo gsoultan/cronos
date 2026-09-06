@@ -116,8 +116,13 @@ release: ## Check a tag can be cut: VERSION=v0.5.1 make release
 	@grep -q "^## $(RELEASE) " CHANGELOG.md || \
 		{ echo "CHANGELOG.md has no '## $(RELEASE)' entry — a version an operator cannot look up" >&2; exit 1; }
 	@echo "ready: git tag -a $(RELEASE) -m $(RELEASE) && git push origin $(RELEASE)"
-	@echo "then:  make dist    # the Linux archives, stamped with $(RELEASE)"
-	@echo "       make image   # the container image, stamped the same way"
+	@echo
+	@echo "Pushing the tag runs .github/workflows/release.yml, which builds the"
+	@echo "archives, writes an SBOM for each, signs SHA256SUMS and publishes the"
+	@echo "GitHub Release. Nothing below is needed for that."
+	@echo
+	@echo "local:  make dist    # the same archives, unsigned, to look at"
+	@echo "        make image   # the container image, which CI does not publish"
 
 clean: ## Remove build output
 	rm -rf bin dist $(REACT)/dist $(EMBED)/dist $(EMBED)/harness/*.js $(REACT)/harness/*.js $(PORTAL)/dist $(PORTAL)/dev-dist $(PORTAL)/shots

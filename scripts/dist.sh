@@ -49,6 +49,27 @@ rm -rf "$OUT"
 mkdir -p "$OUT"
 
 # archive builds one tarball: a name, a license, and the commands in it.
+# sbom writes an SPDX document for one archive's binaries, if syft is here.
+#
+# Optional locally and required in the release workflow, because the two have
+# different jobs: `make dist` is run to see whether the archives still build,
+# and a missing tool should not stop that. A release without an SBOM is a
+# different matter — REQUIRE_SBOM=1 makes its absence fatal, and the workflow
+# that cuts a tag sets it.
+sbom() {
+	local name="$1" stage="$2"
+
+	if ! command -v syft >/dev/null 2>&1; then
+		if [ "${REQUIRE_SBOM:-0}" = "1" ]; then
+			die "syft is not installed and REQUIRE_SBOM=1"
+		fi
+		return 0
+	fi
+	syft scan "dir:$stage" -o "spdx-json=$OUT/$name.spdx.json" -q ||
+		die "sbom for $name"
+	printf '  %s %s\n' "$OK" "$name.spdx.json"
+}
+
 archive() {
 	local edition="$1" license="$2" os="$3" arch="$4"; shift 4
 	local name="cronos${edition:+-$edition}_${VERSION}_${os}_${arch}"
@@ -67,6 +88,14 @@ archive() {
 	cp "$license" "$stage/LICENSE"
 	cp CHANGELOG.md "$stage/CHANGELOG.md"
 
+	# The SBOM is taken from the staged binaries rather than from the tarball,
+	# and from the binaries rather than from go.mod. A Go binary carries the
+	# module list it was actually built with, so what is catalogued is what
+	# shipped — go.mod describes what a build would resolve today, which is a
+	# different question and the wrong one to answer on a security
+	# questionnaire.
+	sbom "$name" "$stage"
+
 	tar -czf "$OUT/$name.tar.gz" -C "$OUT" "$name"
 	rm -rf "$stage"
 	printf '  %s %s %s(%s)%s\n' "$OK" "$name.tar.gz" "$DIM" \
@@ -84,8 +113,11 @@ done
 # tarball nobody can verify. Computed over the archives only, so the file can
 # be signed and published beside them.
 say "checksums"
-(cd "$OUT" && shasum -a 256 ./*.tar.gz > SHA256SUMS) 2>/dev/null ||
-	(cd "$OUT" && sha256sum ./*.tar.gz > SHA256SUMS)
+# The SBOMs are covered too. One signature over this file then covers
+# everything published, rather than an SBOM being the one artifact a download
+# cannot check.
+checksum() { (cd "$OUT" && "$@" ./*.tar.gz $(ls ./*.spdx.json 2>/dev/null) > SHA256SUMS); }
+checksum shasum -a 256 2>/dev/null || checksum sha256sum
 printf '  %s SHA256SUMS %s(%s archives)%s\n' "$OK" "$DIM" "$(ls "$OUT"/*.tar.gz | wc -l | tr -d ' ')" "$OFF"
 
 say "dist/"

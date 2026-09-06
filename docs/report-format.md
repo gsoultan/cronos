@@ -344,7 +344,7 @@ and there are only two honest answers:
 
 | | Renders as | Recipient sees |
 | :--- | :--- | :--- |
-| **Send** (email, Telegram) | You, now | A snapshot of **your** rows, frozen |
+| **Send** (whatever channels are configured) | You, now | A snapshot of **your** rows, frozen |
 | **Link — people in the project** | Them, live | Their own rows, after signing in — possibly fewer |
 | **Link — anyone with the link** | You, at creation | A snapshot of **your** rows, frozen, until it expires |
 
@@ -358,11 +358,20 @@ Every option states what the recipient will actually see, next to the control.
 
 ### Channels
 
-`email` needs nothing configured. `telegram` needs a bot registered per project
-and added to each destination chat — the Bot API refuses to message anyone who
-has not added the bot first, which is an anti-spam rule with no way around it,
-so the interface says so rather than presenting an empty recipient box. Telegram
-rejects files over 50 MB; email over 25 MB.
+Three channels ship: `email`, `file` and `s3`. Which of them a deployment has
+depends on what it configured — `email` needs `CRONOS_SMTP_HOST`, `s3` needs an
+endpoint and credentials — and the portal offers the ones it has rather than a
+list compiled into the bundle.
+
+A schedule naming a channel the deployment has not got is refused at publish,
+with the list of what it does have. It used to be accepted and to fail in the
+burst instead, which is the same mistake arriving at 06:00 with nobody watching.
+
+Email rejects attachments over 25 MB.
+
+Telegram is not a channel. A settings panel for it exists in the portal against
+a fixture, and earlier versions of this document and of the v0.5.0 changelog
+described it as shipping; it does not, and nothing delivers through it.
 
 ## Storage and versioning
 

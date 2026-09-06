@@ -2,10 +2,10 @@ import { useEffect, useMemo, useState } from 'react'
 import { Button, MultiSelect, Select, Textarea, TextInput } from '@mantine/core'
 import { Field } from '../form/Field'
 import { ApiError, createShare, sendReport, type SendResult } from '../../lib/api'
-import { useCatalog } from '../../lib/useCatalog'
+import { useChannels } from '../../lib/useChannels'
 import { Tag } from '../StatusPill'
 import {
-  CHANNELS, EXPIRIES, LINK_AUDIENCES, TOKEN_HOURS, channel, invalidEmails, splitRecipients,
+  EXPIRIES, LINK_AUDIENCES, TOKEN_HOURS, channel, invalidEmails, splitRecipients,
   telegramConnection, type Channel, type LinkAudience,
 } from '../../lib/sharing'
 
@@ -60,13 +60,7 @@ export function SharePanel({ reportName, reportLabel, projectName, outputs, onCl
      offers those and nothing else: it offered email and Telegram whatever was
      configured, so a deployment with neither showed two options that could
      only fail — after somebody had typed eight addresses into one of them. */
-  const catalog = useCatalog()
-  const available = catalog.live
-    ? CHANNELS.filter((c) => (catalog.data?.channels ?? []).includes(c.id))
-    : CHANNELS
-  const extra = catalog.live
-    ? (catalog.data?.channels ?? []).filter((n) => !CHANNELS.some((c) => c.id === n))
-    : []
+  const { known: available, extra } = useChannels()
 
   /* What this report can actually be sent as.
      

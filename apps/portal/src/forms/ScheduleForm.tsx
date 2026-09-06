@@ -10,6 +10,7 @@ import { Field, fieldError } from '../components/form/Field'
 import { FormActions, FormSection } from '../components/form/FormShell'
 import { CRON_PRESETS, cronToText } from '../lib/cronText'
 import { useDatasets, useReportChoices } from '../lib/useDatasets'
+import { useChannels } from '../lib/useChannels'
 import { all, cron as cronRule, email, required } from '../lib/validators'
 
 interface Props {
@@ -32,8 +33,19 @@ const TIMEZONES = ['Europe/Berlin', 'Europe/London', 'America/New_York', 'Asia/J
 export function ScheduleForm({ onDone, onCancel, initial }: Props) {
   const stored = initial?.input
   const [burst, setBurst] = useState(!!stored?.burstDataset)
-  const [channelId, setChannelId] = useState<'email' | 'telegram'>(
-    stored?.channel === 'telegram' ? 'telegram' : 'email')
+  /* What this deployment can deliver through, rather than a list compiled in.
+     This form offered email and Telegram unconditionally, and publishing
+     accepted either, so a schedule could be saved against a channel that did
+     not exist and only failed when the burst went looking for it. */
+  const channels = useChannels()
+  const [channelId, setChannelId] = useState<string>(stored?.channel ?? '')
+  /* What will actually be published. The picker's value is only a preference
+     until the served list confirms it exists — a stored schedule can name a
+     channel the deployment has since dropped, and the Select would otherwise
+     show a value it has no option for. */
+  const chosen = channels.options.some((o) => o.value === channelId)
+    ? channelId
+    : (channels.options[0]?.value ?? '')
 
   const { publish, error: publishError, busy } = usePublish()
 
@@ -58,6 +70,10 @@ export function ScheduleForm({ onDone, onCancel, initial }: Props) {
         burstDataset: burst ? value.burstDataset : undefined,
         recipientField: burst ? value.recipientField : undefined,
         to: value.to, subject: value.subject, filename: stored?.filename,
+        // Never sent, so every schedule this form published went out as
+        // email whatever the picker said — and editing a `via: file`
+        // schedule silently rewrote it to email on save.
+        channel: chosen || undefined,
         concurrency: value.concurrency, retries: value.retries, alert: value.alert,
       }), initial), initial?.version)
       if (saved) onDone()
@@ -150,10 +166,13 @@ export function ScheduleForm({ onDone, onCancel, initial }: Props) {
           mb={16} />
 
         <Field label="Send it where" required={false}
-          help="Telegram needs the bot to already be in the chat — see Settings → Channels.">
-          <Select allowDeselect={false} value={channelId} w={220}
-            data={[{ value: 'email', label: 'Email' }, { value: 'telegram', label: 'Telegram' }]}
-            onChange={(next) => setChannelId((next ?? 'email') as 'email' | 'telegram')} />
+          help={channels.options.length === 0
+            ? 'This deployment has no delivery channels configured, so a schedule cannot send anything yet.'
+            : 'Telegram needs the bot to already be in the chat — see Settings → Channels.'}>
+          <Select allowDeselect={false} value={chosen} w={220}
+            data={channels.options} disabled={channels.options.length === 0}
+            placeholder={channels.options.length === 0 ? 'None configured' : 'Choose a channel'}
+            onChange={(next) => setChannelId(next ?? '')} />
         </Field>
 
         {burst ? (

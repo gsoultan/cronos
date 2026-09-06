@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	codec "github.com/gsoultan/cronos/internal/adapter/codec/yaml"
@@ -70,6 +71,16 @@ type Service struct {
 	live     Live
 	catalog  Catalog
 	engines  Engines
+	/*
+	   channels are what this deployment can deliver through.
+
+	   Nil and empty mean different things and the difference is load-bearing.
+	   Empty is a deployment that has no channels, so a schedule that delivers
+	   is broken on it. Nil is a caller that never said, and judging a channel
+	   against a list nobody supplied would refuse every schedule on any
+	   embedder that wires publish itself.
+	*/
+	channels []string
 }
 
 // New wires a Service. The repository satisfies both lookups, so callers pass
@@ -95,6 +106,18 @@ func (s *Service) WithEngines(e Engines) *Service {
 // WithLive makes a publish take effect without a restart.
 func (s *Service) WithLive(l Live) *Service {
 	s.live = l
+	return s
+}
+
+/*
+WithChannels names what this deployment can deliver through, so a schedule
+naming anything else is refused here rather than in the burst.
+
+Pass an empty slice for a deployment with no channels; pass nil only where the
+list genuinely is not known, which switches the check off.
+*/
+func (s *Service) WithChannels(names []string) *Service {
+	s.channels = names
 	return s
 }
 
@@ -288,6 +311,38 @@ func (s *Service) checkSchedule(ctx context.Context, sc definition.Schedule) err
 					"Scope it with a parameter the schedule binds instead — docs/tenancy.md",
 				ErrScopedBySchedule, sc.Name, name)
 		}
+	}
+	return s.checkChannels(sc)
+}
+
+/*
+checkChannels refuses a schedule that delivers through something this
+deployment has not got.
+
+The burst resolves the channel by name and gives up fatally when there is no
+such thing, which is correct and far too late: the schedule has been stored,
+the hour has come, and the person who chose the channel is asleep. The name is
+known when it is typed, and so is the list it has to be in.
+*/
+func (s *Service) checkChannels(sc definition.Schedule) error {
+	if s.channels == nil {
+		return nil
+	}
+	for _, d := range sc.Deliver {
+		if slices.Contains(s.channels, d.Via) {
+			continue
+		}
+		if len(s.channels) == 0 {
+			return fmt.Errorf(
+				"%w: schedule %q delivers via %q, and this deployment has no delivery "+
+					"channels configured — see \"What has to be set\" in docs/deploying.md",
+				ErrNoSuchChannel, sc.Name, d.Via)
+		}
+		// The list, because the alternative is somebody guessing at the
+		// spelling of a channel that is right there.
+		return fmt.Errorf(
+			"%w: schedule %q delivers via %q, which this deployment has not got. It has: %s",
+			ErrNoSuchChannel, sc.Name, d.Via, strings.Join(s.channels, ", "))
 	}
 	return nil
 }

@@ -277,7 +277,8 @@ func Routes(d Deps) http.Handler {
 	   afternoon probing.
 	*/
 	if flow := extension.SignIn(); flow != nil {
-		sso := NewSSO(flow, d.Signer, d.Directory, author, d.Log).In(d.Org, d.Project, "viewer")
+		sso := NewSSO(flow, d.Signer, d.Directory, author, d.Log).
+			In(d.Org, d.Project, "viewer").BehindProxy(d.BehindProxy)
 		// Limited like sign-in: it reaches an identity provider, which is
 		// somebody else's service and somebody else's rate limit.
 		mux.Handle("/v1/auth/sso/start",

@@ -1,0 +1,119 @@
+# Cuts a release from a tag: archives, SBOMs, a signature, a GitHub Release.
+#
+# Until this existed, a release was `make dist` on somebody's laptop and an
+# upload. That is two problems rather than one. The archives were built on a
+# machine nobody else can inspect, so "this tarball came from that tag" rested
+# on trusting whoever ran the command; and there was nothing to check a
+# download against beyond a SHA256SUMS file published next to the thing it
+# describes, which an attacker who can replace one can replace both.
+#
+# Here the build happens where the log is public, the SBOM is generated from
+# the binaries that actually shipped, and SHA256SUMS is signed by the workflow's
+# own identity rather than by a key somebody has to keep.
+name: release
+
+# Tags only. check.yml runs on branches and deliberately not on tags, so the
+# suite does not run twice against the same commit — which means the tag being
+# built here has already been through it on the branch it came from.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: release
+    runs-on: ubuntu-latest
+
+    permissions:
+      # To create the release and attach the artifacts.
+      contents: write
+      # To mint the OIDC token cosign signs with. This is the whole reason
+      # there is no signing key in this repository: the identity being attested
+      # is "the release workflow of this repository at this tag", which is
+      # checkable by anyone and cannot be stolen from a password manager.
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The archives are stamped with `git describe`, which needs the tags
+          # and the history behind them. A shallow clone names the build after
+          # the commit and the tarball is then called something the tag does
+          # not match.
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # A tag on a commit whose CHANGELOG says nothing about it is a version an
+      # operator can read off `cronosd -version` and then not look up. `make
+      # release` checks this locally and nothing enforced it, so the check that
+      # mattered was the one somebody could skip by tagging directly.
+      - name: the changelog names this version
+        run: |
+          version="${GITHUB_REF_NAME}"
+          grep -q "^## ${version} " CHANGELOG.md || {
+            echo "CHANGELOG.md has no '## ${version}' entry."
+            echo "A release an operator cannot look up is not a release."
+            exit 1
+          }
+
+      - uses: anchore/sbom-action/download-syft@v0
+      - uses: sigstore/cosign-installer@v3
+
+      # REQUIRE_SBOM makes a missing syft fatal here, where `make dist` on a
+      # laptop only warns. The two runs have different jobs: one is checking
+      # that the archives still build, this one is the artifact people download.
+      - name: archives and SBOMs
+        env:
+          REQUIRE_SBOM: '1'
+          VERSION: ${{ github.ref_name }}
+        run: ./scripts/dist.sh
+
+      # One signature, over the file that covers everything else. SHA256SUMS
+      # lists the archives and the SBOMs, so verifying the signature and then
+      # the checksums covers every published byte — rather than one signature
+      # per artifact, which is more files and the same guarantee.
+      #
+      # A bundle rather than a bare .sig: it carries the certificate and the
+      # transparency-log entry with it, so verifying needs the file and nothing
+      # fetched from anywhere.
+      - name: sign the checksums
+        run: |
+          cosign sign-blob --yes \
+            --bundle dist/SHA256SUMS.cosign.bundle \
+            dist/SHA256SUMS
+
+      # Verified here rather than trusted, because a signature nobody has
+      # checked is a file. This is the same command the documentation gives a
+      # person downloading a release, run against the artifacts before they are
+      # published — so the instructions are known to work at the moment they
+      # are published rather than the first time somebody follows them.
+      - name: verify what is about to be published
+        run: |
+          cosign verify-blob \
+            --bundle dist/SHA256SUMS.cosign.bundle \
+            --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@${GITHUB_REF}" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            dist/SHA256SUMS
+          (cd dist && sha256sum -c SHA256SUMS)
+
+      - name: publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Notes point at the changelog rather than repeating it. Two copies
+          # of the same text drift, and the one in the repository is the one
+          # that ships inside the archives.
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "${GITHUB_REF_NAME}" \
+            --notes "See [CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_REF_NAME}/CHANGELOG.md) for what changed, and \"Verifying a download\" in [docs/deploying.md](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_REF_NAME}/docs/deploying.md) for how to check these files." \
+            dist/*.tar.gz \
+            dist/*.spdx.json \
+            dist/SHA256SUMS \
+            dist/SHA256SUMS.cosign.bundle
