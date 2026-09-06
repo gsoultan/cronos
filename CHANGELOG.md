@@ -12,13 +12,34 @@ otherwise, with `+dirty` where the tree had uncommitted changes. The container
 answers the same, provided the image was built with `--build-arg
 CRONOS_VERSION=…`; see "The image" in [docs/deploying.md](docs/deploying.md).
 
-Versions are `MAJOR.MINOR.PATCH`. Before 1.0 the minor is the roadmap release in
-[docs/product.md](docs/product.md), and a minor may change behaviour that a
-deployment depends on — each one says so under **Upgrading** below.
+Versions are `MAJOR.MINOR.PATCH`. Up to 1.0 the minor was the roadmap release in
+[docs/product.md](docs/product.md), and a minor could change behaviour a
+deployment depended on. From 1.0 that stops: a breaking change to the API, the
+definition format or a configuration variable takes a major, and anything that
+needs a deployment to act says so under **Upgrading**.
 
 ---
 
-## Unreleased
+## v1.0.0 — 2026-09-06
+
+The roadmap's v1.0 — *Migrate* — cut as a release. Everything it named has been
+in the tree for a while: the JasperReports importer, the HA scheduler with
+leader election, SSO and audit in `ee/`, and the deployment documentation. What
+this tag adds is the part that was still resting on trust.
+
+**Releases now come from the tag rather than from a laptop**, with an SBOM per
+archive and a signature over the checksums — see *Verifying a download* in
+[docs/deploying.md](docs/deploying.md). Before this, an archive was built on a
+machine nobody else could inspect.
+
+**Three defects that were live in v0.5.0** are fixed below, one of which needs
+you to check your schedules. And nine packages that had no test file have one,
+including the executor every query in the product passes through.
+
+The version means the format and the API are now under semver, not that the
+product is finished. `docs/product.md` still lists what is unproven: the
+importer has not met a four-hundred-file estate, and there are no design
+partners yet. Those are commercial questions and this tag does not answer them.
 
 **A slow scheduled run can be diagnosed.**
 `cronos_stage_duration_seconds{stage="render"|"deliver"}` is a new histogram
