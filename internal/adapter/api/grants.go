@@ -45,9 +45,25 @@ type gate struct {
 	log    *slog.Logger
 }
 
+/*
+bypasses reports whether the answer is already known without asking the store.
+
+An administrator is not subject to grants — access.Allowed says so on its own —
+so reading them for one spends a round trip to discard the result. Checked
+before the query rather than after, and that is not only about the round trip:
+docs/deploying.md promises reports keep rendering through an outage of cronos's
+own database, and a grant read that refuses on failure would break exactly the
+person most likely to be reading a report while they fix it.
+
+The refusal still stands for everybody else. A viewer during a store outage is
+refused rather than served a report that might be restricted, which is an
+outage for viewers and the safe direction to fail in.
+*/
+func (g gate) bypasses(pr principal.Principal) bool { return pr.CanAdminProject() }
+
 // may reports whether pr may open report, and whether the answer is trustworthy.
 func (g gate) may(ctx context.Context, pr principal.Principal, report string) (allowed, known bool) {
-	if g.grants == nil {
+	if g.grants == nil || g.bypasses(pr) {
 		return access.Allowed(pr, nil, nil), true
 	}
 
@@ -82,9 +98,9 @@ permission check becomes the reason a page is slow.
 */
 func (g gate) visible(ctx context.Context, pr principal.Principal, reports []string) (map[string]bool, bool) {
 	out := make(map[string]bool, len(reports))
-	if g.grants == nil {
+	if g.grants == nil || g.bypasses(pr) {
 		for _, name := range reports {
-			out[name] = true
+			out[name] = access.Allowed(pr, nil, nil)
 		}
 		return out, true
 	}

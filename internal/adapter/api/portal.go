@@ -170,7 +170,14 @@ func (a *Author) stands(ctx context.Context, claims token.Claims) bool {
 		*/
 		since = time.Time{}
 	}
-	confined, broken := a.confinement(ctx, subject)
+	// Only for a role the answer could apply to. An admin's confinement is a
+	// query whose result is discarded, and on the sign-in path that is a round
+	// trip per request for nothing.
+	var confined map[string]string
+	var broken bool
+	if claims.Principal().Confinable() {
+		confined, broken = a.confinement(ctx, subject)
+	}
 	a.active[subject] = moment{ok: ok, at: now, since: since, confined: confined, broken: broken}
 	return ok && minted(claims, since)
 }
@@ -272,10 +279,26 @@ func (a *Author) Principal(r *http.Request) (principal.Principal, bool) {
 		   which is the failure this whole feature exists to prevent — and an
 		   unreadable scope is a broken deployment, not an unconfined person.
 		*/
-		if scope, broken := a.confinedScope(claims.Subject); broken {
-			return principal.Principal{}, false
-		} else if len(scope) > 0 {
-			pr.Scope = scope
+		if pr.Confinable() {
+			scope, broken := a.confinedScope(claims.Subject)
+			if broken {
+				/*
+				   We cannot tell whether this person is confined, and they are
+				   in the one role that could be. Refused rather than served
+				   unconfined.
+
+				   Asked only of a viewer, and that is what keeps this from
+				   being an outage. An editor or an admin is exempt from row
+				   scope whatever the answer, so a store that has gone away
+				   still serves them — which is the property
+				   scripts/live-failover.sh holds, and the reason somebody can
+				   still read a report while they fix the database.
+				*/
+				return principal.Principal{}, false
+			}
+			if len(scope) > 0 {
+				pr.Scope = scope
+			}
 		}
 		return pr, true
 	}

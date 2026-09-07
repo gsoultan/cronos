@@ -150,7 +150,20 @@ and they read the project's rows exactly as before — so an upgrade changes
 nothing until a scope is set, and the feature is opt-in per person.
 */
 func (p Principal) RowScoped() bool {
-	return p.effective() == ProjectViewer && len(p.Scope) > 0
+	return p.Confinable() && len(p.Scope) > 0
+}
+
+/*
+Confinable reports whether row scope could apply to this principal at all.
+
+The role alone, before any scope is known, which is what makes it useful: it
+answers "is it worth finding out whether this person is confined" without
+having found out. An editor or an admin is exempt whatever the answer, so a
+deployment whose store is unreachable can still serve them rather than refusing
+everybody over a question that does not apply.
+*/
+func (p Principal) Confinable() bool {
+	return p.effective() == ProjectViewer
 }
 
 // effective resolves the project-level role, accounting for org administrators

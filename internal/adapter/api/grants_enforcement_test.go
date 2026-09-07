@@ -198,3 +198,46 @@ func TestAFailedReadHidesTheWholeCatalogue(t *testing.T) {
 		t.Error("a failed read reported a trustworthy catalogue")
 	}
 }
+
+/* -- the outage the failover check holds ----------------------------------- */
+
+/*
+A store that has gone away must not stop an editor reading a report.
+
+docs/deploying.md promises that reports keep rendering through an outage of
+cronos's own database — definitions are in memory and the warehouse is somebody
+else's server. scripts/live-failover.sh holds it, and this is the unit-level
+guard for the way it was broken: refusing everybody whose confinement could not
+be read, including the roles a confinement never applies to.
+
+Only a viewer can be confined. Asking the question of anybody else spends a
+query to discard the answer, and refusing them over it turns a store outage
+into an outage of the whole portal — at the moment somebody is trying to read a
+report to find out what is wrong.
+*/
+func TestOnlyAViewerIsRefusedWhenAConfinementCannotBeRead(t *testing.T) {
+	for _, c := range []struct {
+		role       principal.Role
+		confinable bool
+	}{
+		{principal.ProjectViewer, true},
+		{principal.ProjectEditor, false},
+		{principal.ProjectAdmin, false},
+	} {
+		pr := viewerIn("u-1")
+		pr.ProjectRole = c.role
+
+		if got := pr.Confinable(); got != c.confinable {
+			t.Errorf("%s: Confinable = %v, want %v", c.role, got, c.confinable)
+		}
+	}
+
+	// And an org administrator, who holds no project role at all, is exempt —
+	// which is who is most likely to be reading a report during an incident.
+	org := viewerIn("u-8")
+	org.ProjectRole = principal.None
+	org.OrgRole = principal.OrgAdmin
+	if org.Confinable() {
+		t.Error("an org administrator was treated as confinable")
+	}
+}
