@@ -26,6 +26,41 @@ bun run react    # drive it in a real client-side React app
 bun run check    # typecheck + lint + build + budget
 ```
 
+## Where `token` comes from
+
+From your own backend, over a route your application already authenticates.
+Never from the browser, and never from a signing key in a bundle.
+
+```tsx
+// Your API route — this is the part cronos cannot do for you.
+//   POST /api/reports/token  →  { token, expiresAt }
+// It authenticates the user, decides their scope, and asks cronos for a token
+// pinned to it. The signing key stays on your server.
+
+function Billing() {
+  const { data } = useQuery({
+    queryKey: ['cronos-token'],
+    queryFn: () => fetch('/api/reports/token').then((r) => r.json()),
+    // Tokens last an hour by default. Refetch before they do rather than
+    // after, so a long-lived tab does not show an error it could have avoided.
+    refetchInterval: 45 * 60 * 1000,
+  })
+
+  if (!data) return null
+  return <CronosReport endpoint="https://reports.acme.com"
+    token={data.token} report="monthly-invoice-statement" />
+}
+```
+
+The scope is decided **on your server, per user**. Passing a scope from the
+browser would mean the browser choosing whose rows it sees, which is the whole
+thing this design exists to prevent — `filters` narrows what a token already
+allows and can never widen it.
+
+Set `CRONOS_ORIGINS` to your application's exact origin, scheme included, and
+never `*`. The full account is in `@cronos/embed`'s README under *Getting a
+token*; everything there applies here, because this is the same element.
+
 ## Why a wrapper exists at all
 
 The thing underneath is a standard custom element, and in Vue or Svelte you

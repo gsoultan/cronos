@@ -8,7 +8,7 @@ gzipped** against a 40 KB budget.
 
 <cronos-report
   endpoint="https://reports.acme.com"
-  token="eyJhbGciOi…"
+  token="v1.eyJhdWQiOiJlbWJlZCIsIm9yZyI6ImFjbWUiLCJwcmoiOiJm…"
   report="monthly-invoice-statement"></cronos-report>
 ```
 
@@ -27,6 +27,50 @@ reporting product and should not pay for one in page weight.
 
 That budget makes most of the decisions here, so they are worth stating rather
 than rediscovering.
+
+## Getting a token, and what you must not do with it
+
+Your **server** mints it, against cronos, with your signing key. The browser
+receives a string it cannot read or change.
+
+```
+your backend  ──(signing key, server to server)──>  cronos
+     │                                                 mints a token pinned to
+     │                                                 one report and one scope
+     ▼
+   browser  ──(Authorization: Bearer …)──>  cronos
+```
+
+Three rules, and the first one is the whole of it:
+
+- **The signing key never reaches the browser.** If `CRONOS_SIGNING_KEY` is in
+  a frontend bundle, nothing else on this page matters — anyone can mint a
+  token for any tenant.
+- **`CRONOS_ORIGINS` names your application exactly**, scheme included:
+  `https://app.acme.com`. Never `*`. This API reads an `Authorization` header,
+  and a wildcard origin beside a credential is the oldest hole in CORS.
+- **Keep the lifetime short.** One hour is the default and 24 hours is the
+  ceiling. A token minted by a host carries no id, so there is nothing to
+  revoke — expiry is the only way one stops working, which is why the number
+  matters.
+
+The token travels in a header and there is no way to pass it in a URL. That is
+deliberate: URLs leak through `Referer`, browser history, and every server and
+CDN log between you and here. If you find yourself wanting a link rather than a
+component, use a **share link** — it is a different feature, it is revocable,
+and it refuses the shape that leaks. See `docs/tenancy.md`.
+
+### What a stolen token is worth
+
+Less than it looks, and this is the property to design around. Anyone with
+devtools on your page can copy the token and replay it until it expires — that
+is true of every bearer credential and cronos does not pretend otherwise. But
+the token pins **one report and one row scope**, so what it opens is exactly
+what that user was already looking at. There is no request they can construct
+with it that widens either.
+
+An XSS in your application is therefore a token theft with the same small blast
+radius, rather than a way into somebody else's tenant.
 
 ## The token is opaque
 
