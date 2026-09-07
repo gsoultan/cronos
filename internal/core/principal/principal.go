@@ -131,6 +131,28 @@ only" becomes a sentence in a comment rather than a property of the code.
 */
 func (p Principal) CanAdminPlatform() bool { return p.Platform }
 
+/*
+RowScoped reports whether row-level security applies despite membership.
+
+Member exempts somebody from row scope, and that is right for the person who
+wrote the report: without it an author previewing a scoped dataset sees every
+figure blank. It is wrong for the manager who signs in to read one region's
+numbers — a member of the project who must still not see the other regions.
+
+So the exemption narrows to the roles that need it. An editor or an admin is
+exempt because they build and repair reports and have to see the whole of one.
+A viewer does not, and a viewer carrying a scope is somebody an administrator
+deliberately confined; reading that as permission to see everything would
+invert the one instruction anybody gave about them.
+
+A viewer with no scope is unchanged. Nobody confined them, this returns false,
+and they read the project's rows exactly as before — so an upgrade changes
+nothing until a scope is set, and the feature is opt-in per person.
+*/
+func (p Principal) RowScoped() bool {
+	return p.effective() == ProjectViewer && len(p.Scope) > 0
+}
+
 // effective resolves the project-level role, accounting for org administrators
 // who hold no explicit project membership. An org without an owner who can fix
 // a broken report grows a back door instead.

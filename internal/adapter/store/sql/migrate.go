@@ -328,6 +328,82 @@ CREATE TABLE IF NOT EXISTS cronos_password_resets (
 CREATE INDEX IF NOT EXISTS cronos_password_resets_by_user
   ON cronos_password_resets (user_id, created_at);`,
 	},
+	{
+		ID:   11,
+		Name: "groups, report grants and per-person row scope",
+		/*
+		   Who may open which report, and which rows they read inside it.
+
+		   Until now a project role decided both: any viewer could open every
+		   report in the project, and every member was exempt from row scope. That
+		   is the right model for a team who all see the same numbers and the
+		   wrong one for a finance department where a regional manager should read
+		   their own region and nobody else's.
+
+		   Four tables rather than columns on cronos_users, because migrations are
+		   append-only and every one has to be idempotent — Schema() is the
+		   concatenation of all of them, and ALTER TABLE ADD COLUMN is not.
+
+		   Grants are absent by default and that is deliberate. A report nobody
+		   has granted stays readable by the project, so an upgrade changes
+		   nothing; it becomes restricted the moment it has its first grant. The
+		   alternative — closed until granted — makes an upgrade an outage for
+		   every report in every deployment, which is not a thing to do to
+		   somebody at 06:00 for a feature they did not ask for.
+		*/
+		SQL: `
+CREATE TABLE IF NOT EXISTS cronos_groups (
+  id         TEXT PRIMARY KEY,
+  org        TEXT NOT NULL,
+  project    TEXT NOT NULL,
+  name       TEXT NOT NULL,
+  -- The row scope every member reads through, as a JSON object. '{}' is a
+  -- group that grants access to reports without confining any rows, which is
+  -- the ordinary case for a team that shares one view of the data.
+  scope      TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  -- One name per project. Two groups called "finance" in one project is an
+  -- ambiguity every grant referring to either would inherit.
+  UNIQUE (org, project, name)
+);
+
+CREATE TABLE IF NOT EXISTS cronos_group_members (
+  group_id TEXT NOT NULL,
+  user_id  TEXT NOT NULL,
+  added_at TEXT NOT NULL,
+  PRIMARY KEY (group_id, user_id)
+);
+
+-- Resolving a principal reads this by user, which the primary key above cannot
+-- serve: it leads with group_id, and every sign-in would scan.
+CREATE INDEX IF NOT EXISTS cronos_group_members_by_user
+  ON cronos_group_members (user_id);
+
+CREATE TABLE IF NOT EXISTS cronos_report_grants (
+  org        TEXT NOT NULL,
+  project    TEXT NOT NULL,
+  report     TEXT NOT NULL,
+  -- 'user' or 'group'. Kept in the key so one person may be granted directly
+  -- and through a group without the two colliding.
+  kind       TEXT NOT NULL,
+  subject    TEXT NOT NULL,
+  granted_at TEXT NOT NULL,
+  -- Who did it. A grant is a permission somebody gave, and an audit that
+  -- cannot say who gave it answers half the question.
+  granted_by TEXT NOT NULL,
+  PRIMARY KEY (org, project, report, kind, subject)
+);
+
+CREATE TABLE IF NOT EXISTS cronos_user_scopes (
+  user_id TEXT PRIMARY KEY,
+  -- Overrides whatever the person's groups would give them, rather than
+  -- merging with it. Two sources for one answer is how somebody ends up
+  -- reading a region nobody meant to grant.
+  scope   TEXT NOT NULL DEFAULT '{}',
+  set_at  TEXT NOT NULL,
+  set_by  TEXT NOT NULL
+);`,
+	},
 }
 
 // migrationTable records what has run. Created outside the ordered list,

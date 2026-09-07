@@ -57,11 +57,15 @@ func (b Builder) BuildWith(ds definition.Dataset, in map[string]any, f Filters,
 	}
 
 	bd := &binder{
-		ph:       b.dialect,
-		params:   params,
-		scope:    pr.Scope,
+		ph:     b.dialect,
+		params: params,
+		scope:  pr.Scope,
+		// member is the exemption from row scope, not the fact of membership,
+		// and the two stopped being the same thing when a viewer could carry a
+		// scope. RowScoped names the case where somebody is inside the project
+		// and confined anyway — see principal.Principal.RowScoped.
 		declared: declaredNames(ds),
-		member:   pr.Member,
+		member:   pr.Member && !pr.RowScoped(),
 	}
 
 	inner, err := bd.render(ds.Query, false)
