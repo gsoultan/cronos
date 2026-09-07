@@ -13,12 +13,25 @@ import (
 // call sites, because an audit is queried by action and a typo makes one
 // action into two that nobody notices until the query returns half of it.
 const (
-	ActionRead          = "report.read"
-	ActionPublish       = "definition.publish"
-	ActionDelete        = "definition.delete"
-	ActionShare         = "share.create"
-	ActionShareOpen     = "share.open"
-	ActionRevoke        = "share.revoke"
+	ActionRead      = "report.read"
+	ActionPublish   = "definition.publish"
+	ActionDelete    = "definition.delete"
+	ActionShare     = "share.create"
+	ActionShareOpen = "share.open"
+	ActionRevoke    = "share.revoke"
+	// Who may see what. Recorded because a grant is a permission somebody gave
+	// and a scope is a room full of people reading different rows from their
+	// next request — an audit that cannot say who changed either answers half
+	// the question an auditor asks.
+	ActionGrant       = "access.grant"
+	ActionRevokeGrant = "access.revoke"
+	ActionGroupCreate = "access.group.create"
+	ActionGroupDelete = "access.group.delete"
+	ActionGroupScope  = "access.group.scope"
+	ActionGroupJoin   = "access.group.join"
+	ActionGroupLeave  = "access.group.leave"
+	ActionUserScope   = "access.person.scope"
+
 	ActionSignIn        = "auth.signin"
 	ActionSignOut       = "auth.signout"
 	ActionSessionsEnd   = "auth.sessions.end"

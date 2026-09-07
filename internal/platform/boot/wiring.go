@@ -634,7 +634,8 @@ rendering. The failure mode of a permission that quietly switches itself off is
 the one worth spending three lines on.
 */
 var (
-	_ api.Granting  = (*sqlstore.Store)(nil)
-	_ api.Confining = (*sqlstore.Store)(nil)
-	_ api.Standing  = (*sqlstore.Store)(nil)
+	_ api.Granting      = (*sqlstore.Store)(nil)
+	_ api.Administering = (*sqlstore.Store)(nil)
+	_ api.Confining     = (*sqlstore.Store)(nil)
+	_ api.Standing      = (*sqlstore.Store)(nil)
 )

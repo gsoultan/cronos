@@ -207,6 +207,22 @@ func Routes(d Deps) http.Handler {
 	mux.Handle("/v1/catalog",
 		NewCatalog(d.Projects, author, d.Log).WithChannels(d.Channels).WithGrants(granting))
 
+	/*
+	   Managing who sees what, where there is somewhere to record it.
+
+	   Not mounted on a file-backed deployment: there is no table to hold a
+	   grant, so every one of these routes could only ever say so — and an
+	   endpoint that exists to say no is one somebody spends an afternoon
+	   probing.
+	*/
+	if admin, ok := d.Roster.(Administering); ok {
+		groups := NewGroups(admin, author, d.Log)
+		mux.Handle("/v1/groups", groups)
+		mux.Handle("/v1/groups/{id}", groups)
+		mux.Handle("/v1/groups/{id}/members", groups)
+		mux.Handle("/v1/reports/{name}/grants", NewReportGrants(admin, author, d.Log))
+	}
+
 	// Sharing needs somewhere to record what was handed out, so that it can be
 	// withdrawn. A deployment without one has no way to take a link back, and
 	// a link that cannot be taken back is not a link anybody should be offered.

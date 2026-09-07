@@ -27,14 +27,6 @@ caller remembering to. A grant is a permission, and a permission query that can
 be written without its tenancy is one that eventually is.
 */
 
-// Group is a named set of people and the rows they read through.
-type Group struct {
-	ID      string            `json:"id"`
-	Name    string            `json:"name"`
-	Scope   map[string]string `json:"scope,omitempty"`
-	Members int               `json:"members"`
-}
-
 // ErrScopeConflict means two groups confine the same field differently, so
 // there is no single answer to what their shared member may read.
 var ErrScopeConflict = errors.New("store: two groups disagree about the same scope field")
@@ -168,8 +160,8 @@ func (s *Store) Grant(ctx context.Context, pr principal.Principal, g access.Gran
 		// one is a permission that looks granted and is not.
 		return fmt.Errorf("a grant names a report and a subject")
 	}
-	if g.Kind != access.User && g.Kind != access.Group {
-		return fmt.Errorf("a grant is to a %q or a %q, not %q", access.User, access.Group, g.Kind)
+	if g.Kind != access.KindUser && g.Kind != access.KindGroup {
+		return fmt.Errorf("a grant is to a %q or a %q, not %q", access.KindUser, access.KindGroup, g.Kind)
 	}
 
 	_, err := s.db.ExecContext(ctx, s.sql(`
@@ -218,7 +210,7 @@ func confinementFrom(raw string) (map[string]string, error) {
 /* -- managing groups ------------------------------------------------------- */
 
 // Groups lists a project's groups with their membership counts.
-func (s *Store) Groups(ctx context.Context, org, project string) ([]Group, error) {
+func (s *Store) Groups(ctx context.Context, org, project string) ([]access.Group, error) {
 	rows, err := s.db.QueryContext(ctx, s.sql(`
 		SELECT g.id, g.name, g.scope,
 		       (SELECT COUNT(*) FROM cronos_group_members m WHERE m.group_id = g.id)
@@ -230,9 +222,9 @@ func (s *Store) Groups(ctx context.Context, org, project string) ([]Group, error
 	}
 	defer rows.Close()
 
-	var out []Group
+	var out []access.Group
 	for rows.Next() {
-		var g Group
+		var g access.Group
 		var raw string
 		if err := rows.Scan(&g.ID, &g.Name, &raw, &g.Members); err != nil {
 			return nil, err
@@ -247,17 +239,17 @@ func (s *Store) Groups(ctx context.Context, org, project string) ([]Group, error
 
 // CreateGroup adds one, with the scope its members will read through.
 func (s *Store) CreateGroup(ctx context.Context, pr principal.Principal, name string,
-	scope map[string]string) (Group, error) {
+	scope map[string]string) (access.Group, error) {
 
 	if name == "" {
-		return Group{}, fmt.Errorf("a group has a name")
+		return access.Group{}, fmt.Errorf("a group has a name")
 	}
 	raw, err := json.Marshal(scopeOrEmpty(scope))
 	if err != nil {
-		return Group{}, err
+		return access.Group{}, err
 	}
 
-	g := Group{ID: groupID(), Name: name, Scope: scope}
+	g := access.Group{ID: groupID(), Name: name, Scope: scope}
 	_, err = s.db.ExecContext(ctx, s.sql(`
 		INSERT INTO cronos_groups (id, org, project, name, scope, created_at)
 		VALUES (?, ?, ?, ?, ?, ?)`),

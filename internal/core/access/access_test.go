@@ -50,7 +50,7 @@ func TestAReportNobodyGrantedStaysOpenToTheProject(t *testing.T) {
 }
 
 func TestAGrantToThePersonOpensIt(t *testing.T) {
-	grants := []access.Grant{grant("payroll", access.User, "u1")}
+	grants := []access.Grant{grant("payroll", access.KindUser, "u1")}
 
 	if !access.Allowed(person(principal.ProjectViewer, "u1"), grants, nil) {
 		t.Error("the person named in the grant was refused")
@@ -64,7 +64,7 @@ func TestAGrantToThePersonOpensIt(t *testing.T) {
 }
 
 func TestAGrantToAGroupOpensItForItsMembers(t *testing.T) {
-	grants := []access.Grant{grant("payroll", access.Group, "finance")}
+	grants := []access.Grant{grant("payroll", access.KindGroup, "finance")}
 
 	if !access.Allowed(person(principal.ProjectViewer, "u1"), grants, []string{"finance", "ops"}) {
 		t.Error("a member of the granted group was refused")
@@ -86,7 +86,7 @@ grants are an administrator's, so restricting a report from an editor is a
 statement that actually holds.
 */
 func TestAnEditorIsSubjectToGrants(t *testing.T) {
-	grants := []access.Grant{grant("payroll", access.Group, "finance")}
+	grants := []access.Grant{grant("payroll", access.KindGroup, "finance")}
 
 	if access.Allowed(person(principal.ProjectEditor, "u9"), grants, nil) {
 		t.Error("an editor read a report nobody granted them")
@@ -101,7 +101,7 @@ out of a report has a recovery path that ends at a psql prompt — the same
 reasoning docs/tenancy.md gives for an org owner entering any project.
 */
 func TestAnAdministratorIsNotSubjectToGrants(t *testing.T) {
-	grants := []access.Grant{grant("payroll", access.Group, "finance")}
+	grants := []access.Grant{grant("payroll", access.KindGroup, "finance")}
 
 	if !access.Allowed(person(principal.ProjectAdmin, "u9"), grants, nil) {
 		t.Error("a project admin was locked out of a report they administer")
@@ -128,7 +128,7 @@ func TestAGrantDoesNotAdmitSomebodyWhoIsNotInTheProject(t *testing.T) {
 	if outsider.CanRead() {
 		t.Fatal("the fixture is wrong: this principal has a role")
 	}
-	if access.Allowed(outsider, []access.Grant{grant("payroll", access.User, "u1")}, nil) {
+	if access.Allowed(outsider, []access.Grant{grant("payroll", access.KindUser, "u1")}, nil) {
 		t.Fatal("a grant admitted somebody with no membership")
 	}
 }
@@ -142,8 +142,8 @@ everything to anybody holding one.
 */
 func TestGrantsAreScopedToOneReport(t *testing.T) {
 	all := []access.Grant{
-		grant("payroll", access.User, "u1"),
-		grant("billing", access.User, "u2"),
+		grant("payroll", access.KindUser, "u1"),
+		grant("billing", access.KindUser, "u2"),
 	}
 
 	if got := access.For("payroll", all); len(got) != 1 || got[0].Subject != "u1" {
@@ -163,8 +163,8 @@ func TestGrantsAreScopedToOneReport(t *testing.T) {
 // reading it as a wildcard is how one bad insert opens a report to everyone.
 func TestABlankSubjectMatchesNobody(t *testing.T) {
 	for _, g := range []access.Grant{
-		grant("payroll", access.User, ""),
-		grant("payroll", access.Group, ""),
+		grant("payroll", access.KindUser, ""),
+		grant("payroll", access.KindGroup, ""),
 	} {
 		if access.Allowed(person(principal.ProjectViewer, ""), []access.Grant{g}, []string{""}) {
 			t.Errorf("a blank %s subject matched", g.Kind)

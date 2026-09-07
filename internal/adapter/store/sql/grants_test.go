@@ -21,7 +21,7 @@ so a malformed value read as empty would lift a confinement somebody set.
 */
 
 func group(t *testing.T, s *store.Store, pr principal.Principal,
-	name string, scope map[string]string) store.Group {
+	name string, scope map[string]string) access.Group {
 
 	t.Helper()
 	g, err := s.CreateGroup(context.Background(), pr, name, scope)
@@ -160,7 +160,7 @@ func TestAGrantIsRecordedAndReadBack(t *testing.T) {
 	s := open(t)
 	ctx := context.Background()
 
-	want := access.Grant{Report: "payroll", Kind: access.Group, Subject: "finance"}
+	want := access.Grant{Report: "payroll", Kind: access.KindGroup, Subject: "finance"}
 	if err := s.Grant(ctx, acme, want); err != nil {
 		t.Fatal(err)
 	}
@@ -191,8 +191,8 @@ func TestAGrantMustNameAReportAndASubject(t *testing.T) {
 	s := open(t)
 
 	for _, g := range []access.Grant{
-		{Report: "", Kind: access.User, Subject: "u-1"},
-		{Report: "payroll", Kind: access.User, Subject: ""},
+		{Report: "", Kind: access.KindUser, Subject: "u-1"},
+		{Report: "payroll", Kind: access.KindUser, Subject: ""},
 		{Report: "payroll", Kind: "everyone", Subject: "u-1"},
 	} {
 		if err := s.Grant(context.Background(), acme, g); err == nil {
@@ -217,7 +217,7 @@ func TestAnotherTenantSeesAndTouchesNoneOfIt(t *testing.T) {
 
 	g := group(t, s, acme, "finance", map[string]string{"region": "west"})
 	if err := s.Grant(ctx, acme, access.Grant{
-		Report: "payroll", Kind: access.Group, Subject: "finance",
+		Report: "payroll", Kind: access.KindGroup, Subject: "finance",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -249,7 +249,7 @@ func TestAnotherTenantSeesAndTouchesNoneOfIt(t *testing.T) {
 
 	// And revoking by naming the grant.
 	if err := s.RevokeGrant(ctx, rival, access.Grant{
-		Report: "payroll", Kind: access.Group, Subject: "finance",
+		Report: "payroll", Kind: access.KindGroup, Subject: "finance",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -274,7 +274,7 @@ func TestDeletingAGroupRemovesItsGrantsAndMembership(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := s.Grant(ctx, acme, access.Grant{
-		Report: "payroll", Kind: access.Group, Subject: "finance",
+		Report: "payroll", Kind: access.KindGroup, Subject: "finance",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -323,7 +323,7 @@ func TestGroupsOfNamesWhatTheAccessDecisionNeeds(t *testing.T) {
 	}
 }
 
-func mustGroup(t *testing.T, s *store.Store, name string) store.Group {
+func mustGroup(t *testing.T, s *store.Store, name string) access.Group {
 	t.Helper()
 	all, err := s.Groups(context.Background(), "acme", "finance")
 	if err != nil {
@@ -335,7 +335,7 @@ func mustGroup(t *testing.T, s *store.Store, name string) store.Group {
 		}
 	}
 	t.Fatalf("no group named %q", name)
-	return store.Group{}
+	return access.Group{}
 }
 
 func contains(haystack, needle string) bool {

@@ -34,11 +34,28 @@ import "github.com/gsoultan/cronos/internal/core/principal"
 type Kind string
 
 const (
-	// User grants one person by account id.
-	User Kind = "user"
-	// Group grants everybody in a named group.
-	Group Kind = "group"
+	// KindUser grants one person by account id.
+	KindUser Kind = "user"
+	// KindGroup grants everybody in a named group.
+	KindGroup Kind = "group"
 )
+
+/*
+Group is a named set of people and the row scope its members read through.
+
+Here rather than in the store or the API because both need to name it and Go
+interfaces match on exact types: a consumer-declared interface returning the
+API's copy is one the store cannot satisfy, and the failure is silent — the
+assertion fails, the handler is never wired, and every test stays green.
+*/
+type Group struct {
+	ID    string            `json:"id"`
+	Name  string            `json:"name"`
+	Scope map[string]string `json:"scope,omitempty"`
+	// Members is how many people are in it, for a list that would otherwise
+	// need a query per row to say anything useful.
+	Members int `json:"members"`
+}
 
 // Grant is one permission an administrator gave.
 type Grant struct {
@@ -79,11 +96,11 @@ func Allowed(pr principal.Principal, grants []Grant, groups []string) bool {
 
 	for _, g := range grants {
 		switch g.Kind {
-		case User:
+		case KindUser:
 			if g.Subject != "" && g.Subject == pr.Subject {
 				return true
 			}
-		case Group:
+		case KindGroup:
 			for _, in := range groups {
 				if g.Subject != "" && g.Subject == in {
 					return true

@@ -75,7 +75,7 @@ the deployment precisely when the database is least well — which is the one
 time nobody is reading the logs.
 */
 func TestAGrantStoreThatFailsRefusesRatherThanOpens(t *testing.T) {
-	restricted := []access.Grant{{Report: "payroll", Kind: access.Group, Subject: "finance"}}
+	restricted := []access.Grant{{Report: "payroll", Kind: access.KindGroup, Subject: "finance"}}
 
 	for _, c := range []struct {
 		name  string
@@ -112,7 +112,7 @@ func TestADeploymentWithNoStoreOpensEverything(t *testing.T) {
 func TestAnUngrantedReportOpensForTheProject(t *testing.T) {
 	store := grantStore{grants: []access.Grant{
 		// Another report is restricted; this one is not.
-		{Report: "payroll", Kind: access.Group, Subject: "finance"},
+		{Report: "payroll", Kind: access.KindGroup, Subject: "finance"},
 	}}
 
 	if allowed, known := ask(t, store, viewerIn("u-1"), "billing"); !allowed || !known {
@@ -122,7 +122,7 @@ func TestAnUngrantedReportOpensForTheProject(t *testing.T) {
 
 func TestAGrantedReportOpensOnlyForThoseNamed(t *testing.T) {
 	store := grantStore{
-		grants: []access.Grant{{Report: "payroll", Kind: access.Group, Subject: "finance"}},
+		grants: []access.Grant{{Report: "payroll", Kind: access.KindGroup, Subject: "finance"}},
 		groups: map[string][]string{"u-1": {"finance"}, "u-2": {"ops"}},
 	}
 
@@ -145,7 +145,7 @@ locked out of a report has a recovery path that ends at a psql prompt.
 */
 func TestAnAdministratorIsNotGatedByGrants(t *testing.T) {
 	store := grantStore{
-		grants: []access.Grant{{Report: "payroll", Kind: access.Group, Subject: "finance"}},
+		grants: []access.Grant{{Report: "payroll", Kind: access.KindGroup, Subject: "finance"}},
 	}
 	admin := viewerIn("u-9")
 	admin.ProjectRole = principal.ProjectAdmin
@@ -166,8 +166,8 @@ slow, and a slow page is how somebody ends up caching an access decision.
 func TestTheCatalogueDecidesTheWholeListInOnePass(t *testing.T) {
 	store := grantStore{
 		grants: []access.Grant{
-			{Report: "payroll", Kind: access.Group, Subject: "finance"},
-			{Report: "board", Kind: access.User, Subject: "u-9"},
+			{Report: "payroll", Kind: access.KindGroup, Subject: "finance"},
+			{Report: "board", Kind: access.KindUser, Subject: "u-9"},
 		},
 		groups: map[string][]string{"u-1": {"finance"}},
 	}
