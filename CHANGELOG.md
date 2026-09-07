@@ -20,7 +20,11 @@ needs a deployment to act says so under **Upgrading**.
 
 ---
 
-## Unreleased
+## v1.1.0 — 2026-09-07
+
+A minor rather than a patch because the API gained endpoints, and not a major
+because nothing an existing deployment depends on behaves differently. Upgrading
+changes nothing until you create your first group.
 
 **A report can be restricted to named people or groups, and a viewer can be
 confined to their own rows.** Two things a project role could not express: a
