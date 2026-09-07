@@ -1184,3 +1184,79 @@ export interface CatalogView {
 export function readCatalog() {
   return call<CatalogView>('/v1/catalog')
 }
+
+/* -- Groups, grants and confinement --------------------------------------- */
+
+/**
+ * A named set of people and the rows they read through.
+ *
+ * `scope` empty is the ordinary case: a group that decides which reports its
+ * members can open without narrowing what they see inside them.
+ */
+export interface Group {
+  id: string
+  name: string
+  scope?: Record<string, string>
+  members: number
+}
+
+export type GrantKind = 'user' | 'group'
+
+export interface Grant {
+  report: string
+  kind: GrantKind
+  subject: string
+}
+
+export function listGroups() {
+  return call<{ groups: Group[] }>('/v1/groups')
+}
+
+export function createGroup(name: string, scope?: Record<string, string>) {
+  return call<Group>('/v1/groups', {
+    method: 'POST',
+    body: JSON.stringify({ name, scope }),
+  })
+}
+
+export function setGroupScope(id: string, scope: Record<string, string>) {
+  return call<{ ok: true }>(`/v1/groups/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ scope }),
+  })
+}
+
+export function deleteGroup(id: string) {
+  return call<{ ok: true }>(`/v1/groups/${encodeURIComponent(id)}`, { method: 'DELETE' })
+}
+
+export function groupMembers(id: string) {
+  return call<{ members: string[] }>(`/v1/groups/${encodeURIComponent(id)}/members`)
+}
+
+export function changeGroupMember(id: string, user: string, join: boolean) {
+  return call<{ ok: true }>(`/v1/groups/${encodeURIComponent(id)}/members`, {
+    method: join ? 'POST' : 'DELETE',
+    body: JSON.stringify({ user }),
+  })
+}
+
+/**
+ * Who may open a report.
+ *
+ * `restricted` is served rather than derived from `grants.length`, because
+ * "nobody has narrowed this" and "this is narrowed to nobody" are opposite
+ * states that both arrive as an empty list — and a padlock drawn from the wrong
+ * one tells somebody the opposite of the truth.
+ */
+export function reportGrants(report: string) {
+  return call<{ grants: Grant[]; restricted: boolean }>(
+    `/v1/reports/${encodeURIComponent(report)}/grants`)
+}
+
+export function changeGrant(report: string, kind: GrantKind, subject: string, give: boolean) {
+  return call<{ ok: true }>(`/v1/reports/${encodeURIComponent(report)}/grants`, {
+    method: give ? 'POST' : 'DELETE',
+    body: JSON.stringify({ kind, subject }),
+  })
+}

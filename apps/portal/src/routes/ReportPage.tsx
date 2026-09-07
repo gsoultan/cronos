@@ -10,6 +10,8 @@ import { Panel } from '../components/Panel'
 import { FilterPanel } from '../components/FilterPanel'
 import { EmptyState } from '../components/EmptyState'
 import { SharePanel } from '../components/share/SharePanel'
+import { AccessPanel } from '../components/share/AccessPanel'
+import { currentUser } from '../lib/api'
 import type { Group } from '../lib/types'
 import {
   billedByMonth, collectionsTrend, datasets, invoiceRows, outstandingTrend,
@@ -217,6 +219,12 @@ function ServerReport({ name, filters, onFilter, query }: {
           <SharePanel reportName={name} reportLabel={query.data.title}
             projectName={name} outputs={outputs}
             onClose={() => setSharing(false)} />
+          {/* Beside sharing, because they are the same question asked outward
+              and inward: who outside this project gets a copy, and who inside
+              it may open the original. */}
+          <div className="mt-4">
+            <AccessPanel report={name} canAdmin={administers()} />
+          </div>
         </div>
       )}
       {/* The filters the report declares. Present here for the first time:
@@ -227,4 +235,18 @@ function ServerReport({ name, filters, onFilter, query }: {
       <LiveReport view={query.data} applied={Object.keys(filters)} />
     </>
   )
+}
+
+/**
+ * Whether the signed-in person may change who sees a report.
+ *
+ * Read from the session rather than asked of the server, because the panel it
+ * gates is a convenience: the endpoints behind it refuse a non-administrator
+ * on their own, so the worst a stale role here can do is show somebody a
+ * control that then says no. The reverse — hiding it from an administrator —
+ * costs a reload.
+ */
+function administers(): boolean {
+  const role = currentUser()?.role
+  return role === 'admin' || role === 'owner'
 }

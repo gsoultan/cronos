@@ -18,11 +18,12 @@ import {
 import { relativeTime } from '../lib/format'
 import { SecurityPolicy } from '../components/settings/SecurityPolicy'
 import { ChannelsPanel } from '../components/settings/ChannelsPanel'
+import { GroupsPanel } from '../components/settings/GroupsPanel'
 import { OrganizationPanel } from '../components/settings/OrganizationPanel'
 import { LivePlatform } from '../components/LivePlatform'
 import { ApiError, platformAdmins, policy, profile, setPolicy } from '../lib/api'
 
-type Tab = 'organization' | 'people' | 'projects' | 'security' | 'channels' | 'platform'
+type Tab = 'organization' | 'people' | 'groups' | 'projects' | 'security' | 'channels' | 'platform'
 type Panel = 'none' | 'invite' | 'new-project'
 
 const CARD = 'mb-4 overflow-hidden rounded-lg border border-line bg-surface shadow-card'
@@ -204,6 +205,8 @@ export function SettingsPage() {
           Without this the fields keep the previous org's values after a switch. */}
       {tab === 'organization' && <OrganizationPanel key={org.id} canAdmin={canAdminOrg} />}
 
+      {tab === 'groups' && <GroupsPanel canAdmin={canAdminOrg} />}
+
       {tab === 'channels' && <ChannelsPanel canAdmin={canAdminOrg} />}
 
       {/* The policy panel is the designed shape of a feature the engine does
@@ -322,6 +325,10 @@ function tabs(isPlatformAdmin: boolean): (readonly [Tab, string])[] {
   const always: (readonly [Tab, string])[] = [
     ['organization', 'Organization'],
     ['people', 'People'],
+    // Beside People rather than under Security: a group is who somebody is,
+    // and an administrator arriving to confine a person looks where the people
+    // are.
+    ['groups', 'Groups'],
     ['projects', 'Projects'],
     ['security', 'Security'],
     ['channels', 'Channels'],
