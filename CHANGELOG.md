@@ -22,6 +22,36 @@ needs a deployment to act says so under **Upgrading**.
 
 ## Unreleased
 
+**A report can be restricted to named people or groups, and a viewer can be
+confined to their own rows.** Two things a project role could not express: a
+finance department where some people read the receivables summary and others do
+not, and a regional manager who signs in to read their own region.
+
+**Nothing changes until you use it.** A report nobody has granted stays
+readable by the whole project and becomes restricted by its first grant; a
+viewer with no scope reads exactly what they read before. An upgrade is a
+no-op.
+
+Grants live against a report rather than inside its YAML, so changing who may
+read something is an administrator's action and not a new version of the
+report — and an editor cannot edit their way past one. A report somebody may
+not open is hidden from the catalogue and answers 404 rather than 403, because
+a list of names they cannot open is an enumeration oracle. Project
+administrators are not subject to grants; they are who adds and removes them.
+
+Confinement is set on a group or on one person, using the same
+`rowLevelSecurity` fields an embed token's scope uses. Only viewers are
+confined — editors and admins stay exempt so authoring and preview still work.
+A person's own scope overrides their groups' rather than merging, and two
+groups disagreeing about one field is refused rather than resolved. Changes
+take effect within five seconds, the same delay disabling an account has.
+
+Manage it through `/v1/groups` and `/v1/reports/{name}/grants`, both
+administrator-only and neither mounted without a store — a file-backed
+deployment has nowhere to record a grant, so nobody is restricted and nobody is
+confined. See "Who may open which report" and "Confining a member" in
+[docs/tenancy.md](docs/tenancy.md).
+
 **"No such schedule" no longer means "this replica has no scheduler".** Firing a
 schedule or resuming a run answered 404 for three different situations: a name
 nobody has, another tenant's project, and an instance where `CRONOS_SCHEDULER`

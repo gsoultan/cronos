@@ -49,9 +49,9 @@ project roles govern content.
 
 | Project role | Can |
 | :--- | :--- |
-| `admin` | Manage project members, datasources, and settings |
+| `admin` | Manage project members, groups, grants, datasources and settings. Not subject to grants — see Who may open which report |
 | `editor` | Create and edit datasets, reports and schedules |
-| `viewer` | Run and view; export if the report allows it |
+| `viewer` | Run and view — the reports they were granted, through the rows they were confined to; export if the report allows it |
 
 Org `owner` and `admin` may enter any project in their organization without a
 project membership — the alternative is an administrator who cannot fix a broken
@@ -100,12 +100,14 @@ A filter narrows. It never widens.
 
 ## Scope fails closed
 
-Row scope applies to **end customers**, which is to say holders of an embed
-token. A project member reading in the app, or a schedule running as its owner,
-is exempt: they are protected by membership and by the project owning its
-resources, which this document already calls sufficient. Applying it to them
-would mean an author cannot preview their own report — every figure on the page
-an em dash.
+Row scope applies to **end customers** — holders of an embed token — and to
+**a project viewer somebody confined**. See *Confining a member* below.
+
+Everybody else is exempt: an editor, an admin, an org administrator, or a
+schedule running as its owner. They are protected by membership and by the
+project owning its resources, which this document already calls sufficient, and
+applying it to them would mean an author cannot preview their own report —
+every figure on the page an em dash.
 
 The exemption comes from a signed audience and never from an absent claim, and
 that distinction is the whole of it. "This token says it belongs to a project
@@ -114,6 +116,100 @@ statement nobody made, and reading the second as permission is how one missing
 claim becomes a full-table disclosure. A principal nobody marked is treated as
 an end customer, so forgetting costs a blank report rather than everybody's
 data.
+
+## Who may open which report
+
+A project role answers "may this person read reports here", which is one
+question short. A finance department has people who should read the receivables
+summary and people who should not, and the only way to express that used to be
+a second project — which splits the datasets too, and is a sledgehammer for a
+permission.
+
+**A report nobody has granted is readable by the whole project.** It becomes
+restricted by its first grant and not a moment before.
+
+That is the opposite of the usual instinct and it is deliberate.
+Closed-until-granted makes an upgrade an outage for every report in every
+deployment, first noticed when a burst delivers nothing at 06:00 and a customer
+asks where their statement went. The cost is that restricting a report is an act
+somebody has to take, which is the cost every allow-list has.
+
+```bash
+# Grant it to a group, or to one person.
+curl -X POST localhost:8787/v1/reports/receivables/grants \
+  -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -d '{"kind":"group","subject":"finance"}'
+
+# Who may open it, and whether anybody has narrowed it at all.
+curl localhost:8787/v1/reports/receivables/grants -H "Authorization: Bearer $TOKEN"
+# {"grants":[{"report":"receivables","kind":"group","subject":"finance"}],"restricted":true}
+```
+
+Grants are recorded against the report and never inside it. A definition is
+content-addressed and versioned, so access in the YAML would make every
+permission change a new version of the report and every grant an editor's job.
+Who may read something is an administrator's decision about people, not an
+author's decision about content — and because a grant is not in the definition,
+an editor cannot edit their way past one.
+
+**A report somebody may not open is hidden and answers 404.** Not 403: telling
+somebody a report exists and that they are not on its list is a fact about the
+project nobody granted them, and across a list of names it is an enumeration
+oracle for whatever an operator called their most sensitive report.
+
+**Project administrators are not subject to grants.** They are who adds and
+removes them, and a deployment where an admin can be locked out of a report has
+a recovery path that ends at a psql prompt. The same reasoning this document
+already gives for an org owner entering any project.
+
+## Confining a member
+
+A grant decides whether somebody opens a report. Confinement decides which rows
+they see inside it, and it is the answer for the regional manager who signs in
+to read their own region and must not read the others.
+
+A scope is set on a **group**, or on **one person** where they need an
+exception:
+
+```bash
+# Everybody in this group reads the west region and nothing else.
+curl -X POST localhost:8787/v1/groups \
+  -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -d '{"name":"west","scope":{"region":"west"}}'
+```
+
+The fields a scope names are the ones the dataset's `rowLevelSecurity`
+predicates read, exactly as an embed token's scope is — the same mechanism,
+bound rather than interpolated, reaching the same place in the compiled query.
+
+**Only viewers are confined.** An editor or an admin carrying a scope is still
+exempt, because they build and repair reports and have to see the whole of one.
+A viewer with no scope is unchanged from before the feature existed, so a
+deployment that sets none sees no difference at all — it is opt-in per person.
+
+**A person's own scope overrides their groups' rather than merging with it**,
+and two groups that confine the same field differently are refused rather than
+resolved. Picking one silently is how somebody reads a region nobody granted
+them; picking the union is how adding a group widens a confinement that was
+meant to narrow. Neither is an answer, so the sign-in fails and names both
+groups.
+
+**A change takes effect on the next principal lookup**, within five seconds —
+the same delay disabling an account already has. Confinement is resolved where
+the principal is built rather than minted into the token, because there are six
+places a portal token is issued and a scope threaded through all six is one
+somebody eventually forgets to thread. A missed site would be a viewer reading
+every region.
+
+**Both readings fail closed.** A confinement that cannot be read refuses the
+request rather than serving an unconfined one, and grants that cannot be read
+refuse the report and hide the catalogue. Reading a failure as "nothing is
+restricted" would open every restricted report in the deployment at the one
+moment nobody is watching the logs.
+
+None of this is mounted without a store. A file-backed deployment has nowhere to
+record a grant, so nobody is restricted and nobody is confined — which is not a
+degraded mode, it is the deployment working exactly as it did before.
 
 ## One process, or several
 
@@ -216,8 +312,9 @@ report called `monthly-statement`, and they are unrelated.
   explicit grant model, and guessing at it now would bake the wrong one in.
 - **Nested organizations.** Two levels is enough structure for the buyers in
   [product.md](product.md); a tree is a support burden with no named demand.
-- **Custom roles.** Three project roles cover create/edit/view. Custom roles
-  arrive when a design partner can name the permission they are missing.
+- **Custom roles.** Three project roles cover create/edit/view, now narrowed
+  further per report by grants. A fourth role arrives when somebody can name a
+  permission that grants and confinement together cannot express.
 
 ## Pricing
 

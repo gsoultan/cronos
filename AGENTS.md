@@ -75,6 +75,7 @@ internal/
     history/             What a run actually delivered          ✓
     query/               Compilation: binding, row scope, filters, blocks  ✓
     principal/           Identity, tenancy                      ✓
+    access/              Who may open which report              ✓
     identity/            Users and passwords (SSO is ee/)       ✓
   app/                 Use cases. Declares the ports it needs, as consumer-side interfaces.
     run/                 Report → SQL → rows → view             ✓
