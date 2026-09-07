@@ -1,7 +1,10 @@
 import { useState } from 'react'
-import { Button, Select, TextInput } from '@mantine/core'
+import { Button, Select } from '@mantine/core'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { changeGrant, connected, listGroups, reportGrants, type GrantKind } from '../../lib/api'
+import {
+  changeGrant, connected, listGroups, listPeople, reportGrants,
+  type GrantKind, type Person,
+} from '../../lib/api'
 import { Tag } from '../StatusPill'
 
 /**
@@ -34,6 +37,14 @@ export function AccessPanel({ report, canAdmin }: { report: string; canAdmin: bo
     queryFn: listGroups,
     enabled: connected() && canAdmin,
   })
+  // And the roster, for the same reason: a grant typed as an account id is a
+  // permission nobody can read back, and one typo makes it a permission
+  // nobody holds.
+  const roster = useQuery({
+    queryKey: ['people'],
+    queryFn: listPeople,
+    enabled: connected() && canAdmin,
+  })
 
   const change = useMutation({
     mutationFn: ({ k, s, give }: { k: GrantKind; s: string; give: boolean }) =>
@@ -51,6 +62,18 @@ export function AccessPanel({ report, canAdmin }: { report: string; canAdmin: bo
 
   const grants = access.data?.grants ?? []
   const restricted = access.data?.restricted ?? false
+
+  const people = roster.data?.people ?? []
+  const named = (g: { kind: GrantKind; subject: string }) => {
+    if (g.kind !== 'user') return g.subject
+    const p = people.find((x) => x.id === g.subject)
+    return p ? personLabel(p) : g.subject
+  }
+  // Somebody who already holds a grant is not worth offering: the server is
+  // idempotent, so granting again succeeds and changes nothing, which reads as
+  // a button that did not work.
+  const already = new Set(grants.filter((g) => g.kind === 'user').map((g) => g.subject))
+  const ungranted = people.filter((p) => !already.has(p.id) && !p.disabled)
 
   return (
     <section className="rounded-lg border border-line bg-surface p-4" data-testid="access-panel">
@@ -74,7 +97,7 @@ export function AccessPanel({ report, canAdmin }: { report: string; canAdmin: bo
             <li key={`${g.kind}:${g.subject}`}>
               <span className="inline-flex items-center gap-1.5 rounded-full border border-line px-2.5 py-1 text-small">
                 <Tag>{g.kind}</Tag>
-                <span className="text-ink">{g.subject}</span>
+                <span className="text-ink">{named(g)}</span>
                 <button type="button" aria-label={`Remove ${g.subject}`}
                   className="cursor-pointer text-ink-secondary hover:text-bad"
                   onClick={() => change.mutate({ k: g.kind, s: g.subject, give: false })}>
@@ -92,14 +115,19 @@ export function AccessPanel({ report, canAdmin }: { report: string; canAdmin: bo
           value={kind} onChange={(v) => { setKind((v ?? 'group') as GrantKind); setSubject('') }} />
 
         {kind === 'group' ? (
-          <Select size="xs" label="Group" w={200} searchable
+          <Select size="xs" label="Group" w={220} searchable
             placeholder={groups.data?.groups.length ? 'Choose a group' : 'No groups yet'}
             disabled={!groups.data?.groups.length}
+            nothingFoundMessage="No group by that name"
             data={(groups.data?.groups ?? []).map((g) => ({ value: g.name, label: g.name }))}
             value={subject || null} onChange={(v) => setSubject(v ?? '')} />
         ) : (
-          <TextInput size="xs" label="Account id" w={240} placeholder="usr_…"
-            value={subject} onChange={(e) => setSubject(e.currentTarget.value)} />
+          <Select size="xs" label="Person" w={260} searchable
+            placeholder={ungranted.length ? 'Choose somebody' : 'Everybody is already named'}
+            disabled={!ungranted.length}
+            nothingFoundMessage="Nobody by that name"
+            data={ungranted.map((p) => ({ value: p.id, label: personLabel(p) }))}
+            value={subject || null} onChange={(v) => setSubject(v ?? '')} />
         )}
 
         <Button size="xs" disabled={!subject} loading={change.isPending}
@@ -120,4 +148,15 @@ export function AccessPanel({ report, canAdmin }: { report: string; canAdmin: bo
       )}
     </section>
   )
+}
+
+/**
+ * Somebody's name, falling back to what we have.
+ *
+ * A grant reads as a permission somebody gave to a person, so it should name
+ * one. "usr_42b2ab168bade063" is the key the server stores it under and cannot
+ * be checked against the person who was meant.
+ */
+function personLabel(p: Person): string {
+  return p.name ? `${p.name} (${p.email})` : p.email
 }

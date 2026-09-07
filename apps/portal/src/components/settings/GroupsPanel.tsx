@@ -1,9 +1,9 @@
 import { useState } from 'react'
-import { Button, Modal, TextInput } from '@mantine/core'
+import { Button, Modal, Select, TextInput } from '@mantine/core'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   changeGroupMember, createGroup, deleteGroup, groupMembers, listGroups,
-  setGroupScope, type Group,
+  listPeople, setGroupScope, type Group, type Person,
 } from '../../lib/api'
 import { connected } from '../../lib/api'
 import { Tag } from '../StatusPill'
@@ -156,6 +156,18 @@ function GroupRow({ group, canAdmin, onChange }: {
   )
 }
 
+/**
+ * Somebody's name, falling back to what we have.
+ *
+ * An account id is what the server keys membership on and the last thing an
+ * administrator should have to read: "usr_42b2ab168bade063" and
+ * "dewi@acme.example" identify the same person, and only one of them can be
+ * checked against the person you meant.
+ */
+function label(p: Person): string {
+  return p.name ? `${p.name} (${p.email})` : p.email
+}
+
 function GroupDetail({ group, canAdmin, onChange }: {
   group: Group
   canAdmin: boolean
@@ -170,6 +182,14 @@ function GroupDetail({ group, canAdmin, onChange }: {
     queryKey: ['group-members', group.id],
     queryFn: () => groupMembers(group.id),
   })
+  // The roster, so a member reads as a person rather than as the key the
+  // server happens to store them under.
+  const roster = useQuery({ queryKey: ['people'], queryFn: listPeople })
+  const people = roster.data?.people ?? []
+  const named = (id: string) => {
+    const p = people.find((x) => x.id === id)
+    return p ? label(p) : id
+  }
   const refreshBoth = () => {
     void client.invalidateQueries({ queryKey: ['group-members', group.id] })
     onChange()
@@ -185,6 +205,18 @@ function GroupDetail({ group, canAdmin, onChange }: {
     onSuccess: refreshBoth,
   })
 
+  /*
+     Who can still be added: the roster, less whoever is already in, less
+     anybody disabled.
+
+     Offering somebody already in the group makes the Add button do nothing —
+     the server is idempotent, so it succeeds and changes nothing, which reads
+     as a bug. Offering a disabled account puts somebody in a group they cannot
+     sign in to use, which reads as one later.
+  */
+  const inAlready = new Set(members.data?.members ?? [])
+  const joinable = people.filter((p) => !inAlready.has(p.id) && !p.disabled)
+
   return (
     <div className="border-t border-line bg-surface-sunken p-4">
       <div className="grid gap-6 md:grid-cols-2">
@@ -194,7 +226,7 @@ function GroupDetail({ group, canAdmin, onChange }: {
           <ul className="mb-3 space-y-1">
             {(members.data?.members ?? []).map((id) => (
               <li key={id} className="flex items-center justify-between gap-2 text-small">
-                <code className="font-mono text-ink">{id}</code>
+                <span className="text-ink">{named(id)}</span>
                 {canAdmin && (
                   <button type="button"
                     className="cursor-pointer text-micro text-ink-secondary hover:text-bad"
@@ -210,8 +242,12 @@ function GroupDetail({ group, canAdmin, onChange }: {
           </ul>
           {canAdmin && (
             <div className="flex gap-2">
-              <TextInput size="xs" placeholder="Account id" value={account}
-                onChange={(e) => setAccount(e.currentTarget.value)} className="grow" />
+              <Select size="xs" searchable className="grow"
+                placeholder={joinable.length ? 'Add somebody…' : 'Everybody is already in'}
+                disabled={!joinable.length}
+                nothingFoundMessage="Nobody by that name"
+                data={joinable.map((p) => ({ value: p.id, label: label(p) }))}
+                value={account || null} onChange={(v) => setAccount(v ?? '')} />
               <Button size="xs" disabled={!account} loading={member.isPending}
                 onClick={() => member.mutate({ user: account, join: true })}>
                 Add
