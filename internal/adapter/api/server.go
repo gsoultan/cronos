@@ -161,6 +161,11 @@ func Routes(d Deps) http.Handler {
 	if standing, ok := d.Roster.(Standing); ok {
 		author = author.WithStanding(standing)
 	}
+	// And against the scope somebody confined them to, resolved on that same
+	// cached lookup rather than minted into the token — see Author.moment.
+	if confining, ok := d.Roster.(Confining); ok {
+		author = author.WithConfinement(confining)
+	}
 
 	// One limiter per concern, shared by the routes that serve it: an embed
 	// render and a portal render cost the same warehouse the same, so they
@@ -182,7 +187,12 @@ func Routes(d Deps) http.Handler {
 	// two have different callers and different audiences, and the audience
 	// check should be the first thing a handler does rather than a branch
 	// inside it.
-	mux.Handle("/v1/reports/{name}", perReader(NewPortalReports(embed, author, d.Log)))
+	// Grants, where there is a store to have recorded any. A report nobody
+	// granted opens for the whole project, so a deployment that sets none sees
+	// no change at all.
+	granting, _ := d.Roster.(Granting)
+	mux.Handle("/v1/reports/{name}",
+		perReader(NewPortalReports(embed, author, d.Log).WithGrants(granting)))
 
 	// Sending renders a document and hands it to a delivery channel, so it is
 	// limited like a render rather than not at all: the cost is a typesetter
@@ -194,7 +204,8 @@ func Routes(d Deps) http.Handler {
 	// What the project contains, in one request. A browsing interface asking
 	// for the names and then once per name is a page that loads in a hundred
 	// round trips.
-	mux.Handle("/v1/catalog", NewCatalog(d.Projects, author, d.Log).WithChannels(d.Channels))
+	mux.Handle("/v1/catalog",
+		NewCatalog(d.Projects, author, d.Log).WithChannels(d.Channels).WithGrants(granting))
 
 	// Sharing needs somewhere to record what was handed out, so that it can be
 	// withdrawn. A deployment without one has no way to take a link back, and

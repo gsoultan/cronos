@@ -26,8 +26,12 @@ type Author struct {
 	// Absent, a token is governed by its expiry alone — which is correct for a
 	// deployment with no user store, where nobody can be disabled.
 	standing Standing
-	mu       sync.Mutex
-	active   map[string]moment
+	// confining resolves the row scope an account reads through. Read on the
+	// same cached path as standing, because both answer questions about the
+	// account rather than about the token.
+	confining Confining
+	mu        sync.Mutex
+	active    map[string]moment
 
 	signer *token.Signer
 	// admin lets a deployment pipeline use the same endpoints server to server.
@@ -38,6 +42,21 @@ type Author struct {
 func NewAuthor(s *token.Signer, admin *AdminKey) *Author {
 	return &Author{signer: s, admin: admin}
 }
+
+/*
+Confining resolves the row scope an account reads through.
+
+Declared here because this is the package that needs it, and optional because a
+file-backed deployment has no store to ask — where it is absent nobody is
+confined, which is exactly the behaviour before the feature existed.
+*/
+type Confining interface {
+	Confinement(ctx context.Context, userID string) (map[string]string, error)
+}
+
+// WithConfinement makes a viewer read through the scope their administrator
+// set for them, or their group's.
+func (a *Author) WithConfinement(c Confining) *Author { a.confining = c; return a }
 
 // Standing is whether the person a token names is an account here, and
 // whether it may still act.
@@ -81,6 +100,24 @@ type moment struct {
 	// since is when this account's sessions became valid, held so the cached
 	// answer can still refuse a token minted before it.
 	since time.Time
+	/*
+	   confined is the row scope this account reads through, from its own
+	   scope or its groups'.
+
+	   Resolved here rather than minted into the token, and that is the whole
+	   reason it is in this struct. There are six places a portal token is
+	   issued, and a confinement threaded through all of them is one somebody
+	   eventually forgets to thread — a fail-open that shows a viewer every
+	   region. Resolving it where the principal is built is one place, and it
+	   rides the cache this check already keeps.
+
+	   The cost is that a scope change takes effect on the next lookup rather
+	   than instantly, which is the same five seconds a disabled account takes.
+	*/
+	confined map[string]string
+	// broken records that the confinement could not be read at all. A person
+	// whose scope is unreadable must not be treated as unconfined.
+	broken bool
 }
 
 // stands reports whether this token may still act, from a short cache.
@@ -133,8 +170,40 @@ func (a *Author) stands(ctx context.Context, claims token.Claims) bool {
 		*/
 		since = time.Time{}
 	}
-	a.active[subject] = moment{ok: ok, at: now, since: since}
+	confined, broken := a.confinement(ctx, subject)
+	a.active[subject] = moment{ok: ok, at: now, since: since, confined: confined, broken: broken}
 	return ok && minted(claims, since)
+}
+
+/*
+confinement reads the scope this account is held to, and says so if it cannot.
+
+broken rather than an error return, because the caller's question is "may this
+token act" and an unreadable confinement is not a no to that — it is a yes with
+no scope, which is the one answer that must not be given. Principal refuses
+instead, so a store that cannot answer costs a viewer their session rather than
+costing them their confinement.
+*/
+func (a *Author) confinement(ctx context.Context, subject string) (map[string]string, bool) {
+	if a.confining == nil {
+		return nil, false
+	}
+	scope, err := a.confining.Confinement(ctx, subject)
+	if err != nil {
+		return nil, true
+	}
+	return scope, false
+}
+
+// confinedScope returns the cached scope for a subject, and whether reading it
+// failed. Called after stands, so the entry is present.
+func (a *Author) confinedScope(subject string) (map[string]string, bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if m, ok := a.active[subject]; ok {
+		return m.confined, m.broken
+	}
+	return nil, false
 }
 
 /*
@@ -188,7 +257,27 @@ func (a *Author) Principal(r *http.Request) (principal.Principal, bool) {
 		if !a.stands(r.Context(), claims) {
 			return principal.Principal{}, false
 		}
-		return claims.Principal(), true
+
+		pr := claims.Principal()
+		/*
+		   The scope an administrator confined this person to.
+
+		   Applied after the claims rather than inside them: a portal token
+		   carries no scope of its own, and if one ever did, a confinement set
+		   in the deployment must win over anything a token asserts about
+		   itself.
+
+		   A confinement that could not be read refuses the request. The
+		   alternative is serving a viewer every region because a query failed,
+		   which is the failure this whole feature exists to prevent — and an
+		   unreadable scope is a broken deployment, not an unconfined person.
+		*/
+		if scope, broken := a.confinedScope(claims.Subject); broken {
+			return principal.Principal{}, false
+		} else if len(scope) > 0 {
+			pr.Scope = scope
+		}
+		return pr, true
 	}
 	if a.admin != nil {
 		return a.admin.Principal(r)
@@ -206,6 +295,7 @@ func (a *Author) Enabled() bool { return a.signer != nil }
 // messages and different futures, and collapsing them would make the audience
 // check a branch inside a handler rather than the first thing it does.
 type PortalReports struct {
+	gate  gate
 	embed *Embed
 	auth  *Author
 	log   *slog.Logger
@@ -214,6 +304,14 @@ type PortalReports struct {
 // NewPortalReports wires the handler.
 func NewPortalReports(e *Embed, a *Author, log *slog.Logger) *PortalReports {
 	return &PortalReports{embed: e, auth: a, log: log}
+}
+
+// WithGrants restricts reports somebody has granted to named people or groups.
+// Absent, every report in the project opens for anybody who may read it, which
+// is the behaviour before grants existed.
+func (p *PortalReports) WithGrants(g Granting) *PortalReports {
+	p.gate = gate{grants: g, log: p.log}
+	return p
 }
 
 // ServeHTTP handles POST /v1/reports/{name}.
@@ -227,7 +325,30 @@ func (p *PortalReports) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusForbidden, "You do not have access to this project.")
 		return
 	}
-	p.embed.render(w, r, pr, r.PathValue("name"))
+
+	name := r.PathValue("name")
+	allowed, known := p.gate.may(r.Context(), pr, name)
+	if !known {
+		// The grants could not be read. Refusing costs somebody a report;
+		// guessing would open every restricted one in the deployment at the
+		// moment the database is least well.
+		fail(w, http.StatusServiceUnavailable, "Could not check who may open this report.")
+		return
+	}
+	if !allowed {
+		/*
+		   The same answer a report that does not exist would give.
+
+		   A 403 here tells somebody a report is there and that they are not on
+		   its list, which is a fact about the project nobody granted them —
+		   and on a list of report names it is an enumeration oracle.
+		*/
+		audit(r.Context(), p.log, pr, ActionRead, name, Refused,
+			map[string]any{"reason": "not granted"})
+		fail(w, http.StatusNotFound, "No such report.")
+		return
+	}
+	p.embed.render(w, r, pr, name)
 }
 
 // ForgetStanding drops the cached answers, so a test does not wait five seconds

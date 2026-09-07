@@ -623,3 +623,18 @@ func policies(records *sqlstore.Store) api.Policies {
 	}
 	return records
 }
+
+/*
+The store satisfies the seams the API resolves it through.
+
+Asserted at compile time because the API reaches these by type assertion, and a
+failed assertion is silent: grants would stop being enforced and confinements
+would stop applying, with every test still green and every report still
+rendering. The failure mode of a permission that quietly switches itself off is
+the one worth spending three lines on.
+*/
+var (
+	_ api.Granting  = (*sqlstore.Store)(nil)
+	_ api.Confining = (*sqlstore.Store)(nil)
+	_ api.Standing  = (*sqlstore.Store)(nil)
+)

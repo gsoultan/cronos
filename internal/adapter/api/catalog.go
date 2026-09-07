@@ -165,8 +165,19 @@ type CatalogHandler struct {
 	projects Projects
 	// channels are the delivery channels this deployment has configured.
 	channels []string
-	auth     Principals
-	log      *slog.Logger
+	// gate hides reports the caller may not open, so a list is not a way to
+	// learn the names of the ones they were not granted.
+	gate gate
+	auth Principals
+	log  *slog.Logger
+}
+
+// WithGrants hides reports the caller has not been granted. Absent, every
+// report in the project is listed, which is the behaviour before grants
+// existed.
+func (c *CatalogHandler) WithGrants(g Granting) *CatalogHandler {
+	c.gate = gate{grants: g, log: c.log}
+	return c
 }
 
 // NewCatalog wires the handler.
@@ -203,10 +214,27 @@ func (c *CatalogHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusForbidden, "You do not have access to this project.")
 		return
 	}
-	send(w, http.StatusOK, c.build(project))
+	/*
+	   What this caller may open, decided before the list is built.
+
+	   Hidden rather than shown-and-refused. A restricted report a viewer can
+	   see the name of is a fact about the project nobody granted them, and a
+	   list of them is an enumeration oracle for whatever an operator called
+	   their most sensitive report.
+	*/
+	names := make([]string, 0)
+	for _, rep := range project.Definitions.Reports() {
+		names = append(names, rep.Name)
+	}
+	open, known := c.gate.visible(r.Context(), pr, names)
+	if !known {
+		fail(w, http.StatusServiceUnavailable, "Could not check which reports you may open.")
+		return
+	}
+	send(w, http.StatusOK, c.build(project, open))
 }
 
-func (c *CatalogHandler) build(project *Project) Catalog {
+func (c *CatalogHandler) build(project *Project, open map[string]bool) Catalog {
 	out := Catalog{
 		Sources: []SourceSummary{}, Datasets: []DatasetSummary{},
 		Reports: []ReportSummary{}, Schedules: []ScheduleSummary{},
@@ -265,6 +293,9 @@ func (c *CatalogHandler) build(project *Project) Catalog {
 		for _, o := range rep.Outputs {
 			outputs = append(outputs, o.Name)
 			blocks += len(o.Layout)
+		}
+		if !open[rep.Name] {
+			continue
 		}
 		out.Reports = append(out.Reports, ReportSummary{
 			Name: rep.Name, Title: rep.Title, Description: rep.Description,
