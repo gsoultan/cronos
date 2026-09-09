@@ -20,6 +20,33 @@ needs a deployment to act says so under **Upgrading**.
 
 ---
 
+## Unreleased
+
+**Linux packages.** `.deb`, `.rpm` and `.apk` for amd64 and arm64, alongside the
+tarballs. They install the binaries, a systemd unit that is already correct, and
+`/etc/cronos/env` as a config file — so an upgrade replaces the binary and
+leaves your signing key alone. The unit ships from `packaging/linux/` rather
+than being copied out of the documentation, because two copies of a unit drift
+and the one that drifts is the one nobody runs. `typst` is a recommendation, not
+a dependency: every path except paginated output works without it.
+
+Nothing is enabled or started on install. A server with no signing key would
+only crash-loop, and an operator reading that instead of a configuration file is
+worse off than one reading nothing.
+
+**Releases are cut by goreleaser.** `.goreleaser.yaml` replaces
+`scripts/dist.sh`. The archives, their names, the SBOMs and the signature are
+unchanged, so nothing an existing download depends on has moved.
+`scripts/check-release-parity.sh` now reads the new config and gained two
+checks: that every command reaches the packages as well as the tarball and the
+image, and that the enterprise archive still carries `ee/LICENSE` — the
+distribution half of the licence boundary, which a build graph cannot see.
+
+`make dist` is now `goreleaser release --snapshot --skip=sign` and needs
+`goreleaser` and `syft` on PATH.
+
+---
+
 ## v1.1.0 — 2026-09-07
 
 A minor rather than a patch because the API gained endpoints, and not a major

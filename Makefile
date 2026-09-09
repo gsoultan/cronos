@@ -47,6 +47,8 @@ check: ## Everything CI runs — build, vet, test, boundary, typecheck, lint, bu
 	CRONOS_XLSX_PYTHON=$(XLSX_PY) $(GO) test ./...
 	@./scripts/check-license-boundary.sh
 	@./scripts/check-release-parity.sh
+	@command -v goreleaser >/dev/null && goreleaser check || \
+		echo "  goreleaser not installed — skipping the release config check"
 	cd $(PORTAL) && bun run check
 	cd $(EMBED) && bun run check
 	cd $(REACT) && bun run check
@@ -79,9 +81,14 @@ lint: ## Lint the portal and the embed package
 fmt: ## Format Go sources
 	$(GO) fmt ./...
 
-boundary: ## Verify no BSL artifact depends on ee/, and that both channels ship the same commands
+boundary: ## Verify no BSL artifact depends on ee/, and that every channel ships the same commands
 	@./scripts/check-license-boundary.sh
 	@./scripts/check-release-parity.sh
+	@# The release config can be wrong in ways parity does not see — a bad
+	@# template, an id nothing builds — and the first sign would be a tag that
+	@# fails to release.
+	@command -v goreleaser >/dev/null && goreleaser check || \
+		echo "  goreleaser not installed — skipping the release config check"
 
 live: ## Drive the embed component and the portal against a real cronosd
 	@./scripts/live-embed.sh
@@ -100,8 +107,13 @@ shots: ## Drive the portal in headless Chrome and write screenshots
 load: ## Measure under load — needs a postgres on 5433, or WAREHOUSE=sqlite
 	@./scripts/load.sh
 
-dist: ## Cross-compile the release archives into dist/
-	@./scripts/dist.sh
+dist: ## Build the release artifacts into dist/, unsigned
+	@command -v goreleaser >/dev/null || \
+		{ echo "goreleaser is not installed: https://goreleaser.com/install/" >&2; exit 1; }
+	@# A snapshot, and no signing. Signing is keyless and needs the OIDC token
+	@# only the release workflow has, so the local build is for looking at what
+	@# a release will contain rather than for producing one.
+	goreleaser release --snapshot --clean --skip=sign
 
 image: ## Build the container image, and prove the typesetter is in it
 	$(CONTAINER) build -t cronos:$(VERSION) --build-arg CRONOS_VERSION=$(VERSION) .
@@ -121,7 +133,7 @@ release: ## Check a tag can be cut: VERSION=v0.5.1 make release
 	@echo "archives, writes an SBOM for each, signs SHA256SUMS and publishes the"
 	@echo "GitHub Release. Nothing below is needed for that."
 	@echo
-	@echo "local:  make dist    # the same archives, unsigned, to look at"
+	@echo "local:  make dist    # the same artifacts, unsigned, to look at"
 	@echo "        make image   # the container image, which CI does not publish"
 
 clean: ## Remove build output

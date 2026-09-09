@@ -98,10 +98,29 @@ jobs:
       - name: release parity
         run: ./scripts/check-release-parity.sh
 
+      # The release config itself: a bad template or an id nothing builds is a
+      # tag that fails to release, and the first sign would otherwise be the tag.
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          version: '~> v2'
+          args: check
+
       # The archives are a release artifact, so they have to build on every
       # push rather than for the first time on the day a tag is cut.
-      - name: release archives
-        run: make dist
+      # syft, because the snapshot below generates the SBOMs for real. Skipping
+      # them here would leave scripts/sbom.sh exercised for the first time by a
+      # tag — and its whole reason to exist is that syft fails at this quietly.
+      - uses: anchore/sbom-action/download-syft@v0
+
+      - name: release artifacts
+        # goreleaser rather than `make dist`, so this needs it on PATH. A
+        # snapshot with signing skipped: signing is keyless and wants the OIDC
+        # token only the release workflow has, and what this job is checking is
+        # that the artifacts still build.
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          version: '~> v2'
+          args: release --snapshot --clean --skip=sign
 
       # Known vulnerabilities, and only the ones this code can actually reach.
       #

@@ -1,4 +1,4 @@
-# Cuts a release from a tag: archives, SBOMs, a signature, a GitHub Release.
+# Cuts a release from a tag: archives, Linux packages, SBOMs, a signature.
 #
 # Until this existed, a release was `make dist` on somebody's laptop and an
 # upload. That is two problems rather than one. The archives were built on a
@@ -10,6 +10,11 @@
 # Here the build happens where the log is public, the SBOM is generated from
 # the binaries that actually shipped, and SHA256SUMS is signed by the workflow's
 # own identity rather than by a key somebody has to keep.
+#
+# What runs it is goreleaser, against .goreleaser.yaml. The rule that file has
+# to keep is the licence boundary — two archives, each carrying the LICENSE that
+# covers the binary beside it — and scripts/check-release-parity.sh holds it
+# from the other side.
 name: release
 
 # Tags only. check.yml runs on branches and deliberately not on tags, so the
@@ -30,19 +35,17 @@ jobs:
     permissions:
       # To create the release and attach the artifacts.
       contents: write
-      # To mint the OIDC token cosign signs with. This is the whole reason
-      # there is no signing key in this repository: the identity being attested
-      # is "the release workflow of this repository at this tag", which is
+      # To mint the OIDC token cosign signs with. This is the whole reason there
+      # is no signing key in this repository: the identity being attested is
+      # "the release workflow of this repository at this tag", which is
       # checkable by anyone and cannot be stolen from a password manager.
       id-token: write
 
     steps:
       - uses: actions/checkout@v7
         with:
-          # The archives are stamped with `git describe`, which needs the tags
-          # and the history behind them. A shallow clone names the build after
-          # the commit and the tarball is then called something the tag does
-          # not match.
+          # goreleaser derives the version from the tag and refuses a shallow
+          # clone that cannot see it.
           fetch-depth: 0
 
       - uses: actions/setup-go@v7
@@ -63,38 +66,29 @@ jobs:
             exit 1
           }
 
+      # The licence boundary, in the artifacts rather than only in the build
+      # graph. Checked before anything is built, so a config that would ship
+      # cronosd-ee beside the community binaries fails in ten seconds rather
+      # than after a five-minute cross-compile.
+      - name: release parity
+        run: ./scripts/check-release-parity.sh
+
       - uses: anchore/sbom-action/download-syft@v0
       - uses: sigstore/cosign-installer@v3
 
-      # REQUIRE_SBOM makes a missing syft fatal here, where `make dist` on a
-      # laptop only warns. The two runs have different jobs: one is checking
-      # that the archives still build, this one is the artifact people download.
-      - name: archives and SBOMs
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          version: '~> v2'
+          args: release --clean
         env:
-          REQUIRE_SBOM: '1'
-          VERSION: ${{ github.ref_name }}
-        run: ./scripts/dist.sh
-
-      # One signature, over the file that covers everything else. SHA256SUMS
-      # lists the archives and the SBOMs, so verifying the signature and then
-      # the checksums covers every published byte — rather than one signature
-      # per artifact, which is more files and the same guarantee.
-      #
-      # A bundle rather than a bare .sig: it carries the certificate and the
-      # transparency-log entry with it, so verifying needs the file and nothing
-      # fetched from anywhere.
-      - name: sign the checksums
-        run: |
-          cosign sign-blob --yes \
-            --bundle dist/SHA256SUMS.cosign.bundle \
-            dist/SHA256SUMS
+          GITHUB_TOKEN: ${{ github.token }}
 
       # Verified here rather than trusted, because a signature nobody has
       # checked is a file. This is the same command the documentation gives a
-      # person downloading a release, run against the artifacts before they are
-      # published — so the instructions are known to work at the moment they
-      # are published rather than the first time somebody follows them.
-      - name: verify what is about to be published
+      # person downloading a release, run against the artifacts before anybody
+      # can download them — so the instructions are known to work at the moment
+      # they are published rather than the first time somebody follows them.
+      - name: verify what was published
         run: |
           cosign verify-blob \
             --bundle dist/SHA256SUMS.cosign.bundle \
@@ -103,17 +97,10 @@ jobs:
             dist/SHA256SUMS
           (cd dist && sha256sum -c SHA256SUMS)
 
-      - name: publish
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          # Notes point at the changelog rather than repeating it. Two copies
-          # of the same text drift, and the one in the repository is the one
-          # that ships inside the archives.
-          gh release create "${GITHUB_REF_NAME}" \
-            --title "${GITHUB_REF_NAME}" \
-            --notes "See [CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_REF_NAME}/CHANGELOG.md) for what changed, and \"Verifying a download\" in [docs/deploying.md](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_REF_NAME}/docs/deploying.md) for how to check these files." \
-            dist/*.tar.gz \
-            dist/*.spdx.json \
-            dist/SHA256SUMS \
-            dist/SHA256SUMS.cosign.bundle
+          # And that an SBOM was actually catalogued. syft exits 0 having
+          # written an empty file when it cannot read a source, which is the
+          # failure scripts/sbom.sh exists to refuse — this is the second pair
+          # of eyes on it, at the only moment it still matters.
+          for f in dist/*.spdx.json; do
+            grep -q '"packages"' "$f" || { echo "$f catalogued nothing"; exit 1; }
+          done

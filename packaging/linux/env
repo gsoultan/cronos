@@ -1,0 +1,29 @@
+# cronos configuration. Read by the systemd unit as EnvironmentFile.
+#
+# In a file rather than in the unit because CRONOS_SIGNING_KEY is a secret and a
+# unit is world-readable. This file is installed 0600 and owned by root; the
+# package does not overwrite it on upgrade.
+#
+# The server will not start until CRONOS_SIGNING_KEY is set. That is deliberate:
+# a key generated at startup invalidates every token on restart, and one
+# defaulted in the source is the same key as every other deployment's.
+#
+# Generate one:  head -c 32 /dev/urandom | base64
+CRONOS_SIGNING_KEY=
+
+# The one project this process serves.
+CRONOS_ORG=default
+CRONOS_PROJECT=default
+
+# Where definitions are read from, and where the store lives. See
+# /usr/share/doc/cronos/deploying.md for the full list.
+CRONOS_DEFINITIONS=/var/lib/cronos/definitions
+# CRONOS_STORE_DSN=postgres://cronos:...@localhost/cronos?sslmode=disable
+
+# Only where something in front terminates TLS. It keys rate limits on
+# X-Forwarded-For and makes the SSO state cookie Secure.
+# CRONOS_BEHIND_PROXY=1
+
+# Arms schedules on this instance. Safe on every replica: they elect one leader
+# per project and only the leader fires.
+# CRONOS_SCHEDULER=1

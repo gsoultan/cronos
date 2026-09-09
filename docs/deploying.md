@@ -76,10 +76,33 @@ backup story wants binaries rather than a runtime to adopt, and `make dist`
 produces them — see Cutting a release for what is in each archive and why there
 are two.
 
+**A package, where the host has a package manager.** It installs the binaries,
+a systemd unit that is already correct, and an environment file the next
+upgrade will not overwrite.
+
+```bash
+# .deb, .rpm and .apk, for amd64 and arm64.
+sudo dpkg -i cronos_1.1.0_linux_amd64.deb      # or: rpm -i / apk add --allow-untrusted
+
+# It is installed and not started, because a server with no signing key would
+# only crash-loop. Set one, then start it.
+sudo sh -c 'echo "CRONOS_SIGNING_KEY=$(head -c 32 /dev/urandom | base64)" >> /etc/cronos/env'
+sudo systemctl enable --now cronos
+```
+
+The package creates a `cronos` system account with no login, owns
+`/var/lib/cronos` to it, and installs `/etc/cronos/env` as a config file at
+`0640` — so an upgrade replaces the binary and leaves your signing key alone.
+`typst` is a recommendation rather than a dependency: every path except
+paginated output works without it, so a package that refused to install without
+it would be wrong more often than right.
+
+**An archive, where it does not.**
+
 ```bash
 sha256sum --ignore-missing -c SHA256SUMS   # the archive, before it is opened
-tar xzf cronos_v1.0_linux_amd64.tar.gz
-install -m 0755 cronos_v1.0_linux_amd64/cronos* /usr/local/bin/
+tar xzf cronos_1.1.0_linux_amd64.tar.gz
+install -m 0755 cronos_1.1.0_linux_amd64/cronos* /usr/local/bin/
 cronosd -version
 ```
 
@@ -117,7 +140,10 @@ build` in `apps/portal` and serve `dist/` from whatever already serves static
 files. The image bundles a copy only because a single-container demo has nowhere
 else to put one.
 
-A unit to start from. The environment goes in a file rather than the unit,
+A unit to start from — and the one the `.deb` and `.rpm` already install, from
+`packaging/linux/cronos.service`. There is one of it rather than a copy here
+and a copy in the package, because the two would drift and the one that drifts
+is the one nobody runs. The environment goes in a file rather than the unit,
 because `CRONOS_SIGNING_KEY` in a unit is a secret in a world-readable file:
 
 ```ini
@@ -652,11 +678,15 @@ git tag -a v0.5.1 -m v0.5.1
 git push origin v0.5.1            # and the release workflow does the rest
 ```
 
-**The archives are built by CI, not on your laptop.** Pushing a `v*` tag runs
-`.github/workflows/release.yml`, which cross-compiles the archives, generates
-an SBOM per archive, signs `SHA256SUMS` with the workflow's own identity, and
-publishes the lot as a GitHub Release. It re-checks the changelog first, because
-`make release` is a local check and a tag can be pushed without it.
+**The artifacts are built by CI, not on your laptop.** Pushing a `v*` tag runs
+`.github/workflows/release.yml`, which runs `goreleaser` against
+`.goreleaser.yaml`: it cross-compiles the archives, builds `.deb`, `.rpm` and
+`.apk` for Linux, generates an SBOM per archive, signs `SHA256SUMS` with the
+workflow's own identity, and publishes the lot as a GitHub Release. It re-checks
+the changelog first, because `make release` is a local check and a tag can be
+pushed without it, and it runs the parity gate before building anything so a
+config that would ship `cronosd-ee` beside the community binaries fails in ten
+seconds rather than after a cross-compile.
 
 Building somewhere public is most of the value. An archive built on a developer
 machine rests on trusting whoever ran the command; one built from the tag in a
@@ -664,9 +694,10 @@ log anybody can read does not. The signature is what lets a person downloading
 it check that — see **Verifying a download**.
 
 `make dist` still works and is still what CI runs on every push to prove the
-archives build. It writes an SBOM too where `syft` is installed and skips it
-where it is not; the release workflow sets `REQUIRE_SBOM=1` so a release
-without one fails rather than ships.
+artifacts build. It is `goreleaser release --snapshot --skip=sign`, so it
+produces everything a real release does except the signature — which is keyless
+and wants an OIDC token only the workflow has. Building locally therefore needs
+`goreleaser` and `syft` on PATH.
 
 The container image is still `make image`, built and pushed by hand. There is
 no registry in this repository — a published image is a distribution channel to
@@ -680,6 +711,10 @@ archives, and anything that ships has to be in both — a tool that exists in th
 image and not the tarball is documentation that is wrong for half its readers.
 
 **Two archives per platform, because there are two licenses.**
+
+Plus `.deb`, `.rpm` and `.apk` for `linux/amd64` and `linux/arm64`, holding the
+community binaries only — a package in a public repository is the wrong shape
+for something somebody has to be sold.
 
 | Archive | Holds | License |
 | :--- | :--- | :--- |

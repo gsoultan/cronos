@@ -1,0 +1,211 @@
+# Cuts the release. Replaces scripts/dist.sh, which did the same job by hand.
+#
+# The rule this file exists to keep is the licence boundary. cronosd is BSL and
+# cronosd-ee is commercial, and scripts/check-license-boundary.sh enforces in
+# the build graph that the community binary cannot reach ee/. Distribution is
+# the other half of that: one tarball holding both would put commercially
+# licensed code inside the artifact somebody downloads expecting the community
+# edition. So there are two builds, two archives, and each carries the LICENSE
+# that covers the binary next to it.
+#
+# scripts/check-release-parity.sh reads this file to hold the same rule from the
+# other side — every command in cmd/ ships in the channel that should carry it.
+version: 2
+
+project_name: cronos
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  # The community edition.
+  #
+  # CGO off everywhere: a release binary has to run on a host that is not the
+  # one that built it, and a glibc version is not something a download should
+  # depend on. Federation needs cgo and is a build tag, so it is not in a
+  # release archive for the same reason — a deployment that federates builds
+  # its own with -tags duckdb.
+  - id: bsl
+    binary: cronosd
+    main: ./cmd/cronosd
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    ignore:
+      # Nobody is running cronos on an amd64 Mac in 2026, and every extra
+      # platform is a build that has to be verified before a release is cut.
+      - goos: darwin
+        goarch: amd64
+    flags: [-trimpath]
+    # Stamped the same way the Dockerfile stamps it, so a binary from either
+    # channel answers -version identically.
+    ldflags:
+      - -s -w -X github.com/gsoultan/cronos/internal/platform/build.version={{ .Version }}
+
+  - id: cronos-token
+    binary: cronos-token
+    main: ./cmd/cronos-token
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    ignore: [{goos: darwin, goarch: amd64}]
+    flags: [-trimpath]
+    ldflags:
+      - -s -w -X github.com/gsoultan/cronos/internal/platform/build.version={{ .Version }}
+
+  - id: cronos-user
+    binary: cronos-user
+    main: ./cmd/cronos-user
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    ignore: [{goos: darwin, goarch: amd64}]
+    flags: [-trimpath]
+    ldflags:
+      - -s -w -X github.com/gsoultan/cronos/internal/platform/build.version={{ .Version }}
+
+  # In the archive rather than only in the image: the person holding four
+  # hundred .jrxml files is as likely to be on a host as in a container.
+  - id: cronos-import
+    binary: cronos-import
+    main: ./cmd/cronos-import
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    ignore: [{goos: darwin, goarch: amd64}]
+    flags: [-trimpath]
+    ldflags:
+      - -s -w -X github.com/gsoultan/cronos/internal/platform/build.version={{ .Version }}
+
+  # Commercially licensed, and kept apart from everything above.
+  - id: ee
+    binary: cronosd-ee
+    main: ./cmd/cronosd-ee
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    ignore: [{goos: darwin, goarch: amd64}]
+    flags: [-trimpath]
+    ldflags:
+      - -s -w -X github.com/gsoultan/cronos/internal/platform/build.version={{ .Version }}
+
+archives:
+  - id: community
+    ids: [bsl, cronos-token, cronos-user, cronos-import]
+    name_template: 'cronos_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
+    files:
+      - src: LICENSE
+      - src: CHANGELOG.md
+
+  - id: enterprise
+    ids: [ee]
+    name_template: 'cronos-ee_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
+    files:
+      # Its own licence, not the repository's. This is the whole reason the
+      # EE binary is in an archive of its own.
+      - src: ee/LICENSE
+        dst: LICENSE
+      - src: CHANGELOG.md
+
+# Native packages, Linux only.
+#
+# A deployment that already has systemd and a package mirror wants `apt install`
+# and a unit that is already correct, not a tarball and a unit copied out of the
+# documentation — which is how the two drift. packaging/linux/cronos.service is
+# the file the documentation now points at, so there is one of it.
+#
+# Community only. cronosd-ee is licensed separately and a package in a public
+# repository is the wrong shape for something somebody has to be sold.
+nfpms:
+  - id: linux
+    ids: [bsl, cronos-token, cronos-user, cronos-import]
+    package_name: cronos
+    vendor: cronos
+    homepage: https://github.com/gsoultan/cronos
+    maintainer: gsoultan <gembit.soultan@gmail.com>
+    description: |-
+      A report engine and repository.
+      Definitions are files, queries are governed, and a report can be embedded
+      in someone else's application.
+    license: BSL-1.1
+    formats: [deb, rpm, apk]
+    bindir: /usr/bin
+    # typst is not a dependency the package can declare: paginated output shells
+    # out to it and every other path works without it, so it is a recommendation
+    # rather than a requirement. Named here so `apt show` says so.
+    recommends:
+      - typst
+    contents:
+      - src: packaging/linux/cronos.service
+        dst: /lib/systemd/system/cronos.service
+
+      # Not overwritten on upgrade. It holds the signing key, and a package
+      # that replaces it turns an upgrade into an outage nobody can explain.
+      - src: packaging/linux/env
+        dst: /etc/cronos/env
+        type: config|noreplace
+        file_info: {mode: 0640}
+
+      - src: docs/deploying.md
+        dst: /usr/share/doc/cronos/deploying.md
+      - src: CHANGELOG.md
+        dst: /usr/share/doc/cronos/CHANGELOG.md
+      - src: LICENSE
+        dst: /usr/share/doc/cronos/LICENSE
+
+    scripts:
+      postinstall: packaging/linux/postinstall.sh
+      preremove: packaging/linux/preremove.sh
+
+# One SBOM per archive, catalogued from the built binaries rather than from
+# go.mod. A Go binary carries the module list it was actually built with, so
+# what is described is what shipped; go.mod describes what a build would resolve
+# today, which is a different question and the wrong one for a security review.
+sboms:
+  - id: archives
+    artifacts: archive
+    # Through a wrapper, because syft will not read a .tar.gz of loose binaries:
+    # handed one it resolves the name as a container image, tries nine sources,
+    # and exits 0 having written an empty file. scripts/sbom.sh unpacks first
+    # and refuses to publish a document that catalogued nothing.
+    cmd: ../scripts/sbom.sh
+    args: ['${artifact}', '${document}']
+    documents: ['${artifact}.spdx.json']
+
+checksum:
+  name_template: 'SHA256SUMS'
+
+# Keyless, so there is no signing key in this repository and none to distribute.
+# What the certificate attests is an identity — the release workflow of this
+# repository at this tag — issued for the length of the run, checkable by
+# anybody and impossible to lift out of a password manager.
+#
+# One signature over the checksum file, which covers every other artifact.
+signs:
+  - cmd: cosign
+    signature: '${artifact}.cosign.bundle'
+    artifacts: checksum
+    output: true
+    args:
+      - sign-blob
+      - '--yes'
+      - '--bundle=${signature}'
+      - '${artifact}'
+
+release:
+  # The notes point at the changelog rather than repeating it. Two copies of the
+  # same text drift, and the one in the repository is what ships inside the
+  # archives and the packages. `changelog.disable` below is what stops
+  # goreleaser generating its own from commit subjects.
+  header: |
+    See [CHANGELOG.md](https://github.com/gsoultan/cronos/blob/{{ .Tag }}/CHANGELOG.md)
+    for what changed, and "Verifying a download" in
+    [docs/deploying.md](https://github.com/gsoultan/cronos/blob/{{ .Tag }}/docs/deploying.md)
+    for how to check these files.
+
+changelog:
+  disable: true
+
+snapshot:
+  version_template: '{{ incpatch .Version }}-snapshot'
