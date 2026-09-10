@@ -3,6 +3,8 @@ package api
 import (
 	"log/slog"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/gsoultan/cronos/internal/core/identity"
@@ -161,6 +163,34 @@ func (h *FirstRun) configure(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	/*
+	   Where definitions live, always written explicitly.
+
+	   Left out, Definitions falls back to config's default of "examples" — a
+	   relative path that suits running from a checkout and does not exist for
+	   a service started from /. Setup is writing the configuration for a real
+	   deployment, so it resolves the value rather than leaving it to a default
+	   chosen for development: a first run that ends in a server refusing to
+	   start over a path nobody chose is the worst possible first impression,
+	   and it is only fixable by hand-editing the file setup just wrote.
+
+	   Beside the configuration, which is the directory the package already
+	   creates and owns.
+	*/
+	definitions := strings.TrimSpace(in.Definitions)
+	if definitions == "" {
+		definitions = filepath.Join(filepath.Dir(h.path), "definitions")
+	}
+	// Created, because the next boot reads it and an empty deployment has
+	// nothing to have made it.
+	if err := os.MkdirAll(definitions, 0o750); err != nil {
+		h.log.Error("could not create the definitions directory",
+			"path", definitions, "err", err)
+		fail(w, http.StatusInternalServerError,
+			"Could not create "+definitions+". Check the server can write there.")
+		return
+	}
+
 	file := config.File{
 		SigningKey:  key,
 		Org:         in.Org,
@@ -169,7 +199,7 @@ func (h *FirstRun) configure(w http.ResponseWriter, r *http.Request) {
 		DSN:         in.DSN,
 		StoreDriver: in.StoreDriver,
 		StoreDSN:    in.StoreDSN,
-		Definitions: in.Definitions,
+		Definitions: definitions,
 		Origins:     in.Origins,
 		Portal:      strings.TrimRight(in.PortalURL, "/"),
 		BehindProxy: in.BehindProxy,

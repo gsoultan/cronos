@@ -20,6 +20,24 @@ needs a deployment to act says so under **Upgrading**.
 
 ---
 
+## v1.2.1 — 2026-09-10
+
+**Fixes a first run that could not finish.** On v1.2.0, leaving the definitions
+field blank in `/setup` wrote a configuration with no `definitions:` value. The
+next boot fell back to config's default of `examples` — a relative path that
+suits running from a checkout and does not exist for a service started from `/`
+— and the server refused to start with `lstat examples: no such file or
+directory`. The only way out was hand-editing the file setup had just written,
+which is precisely what the page exists to avoid.
+
+Setup now always writes an absolute path, defaulting to a `definitions`
+directory beside the configuration, and creates it. **If you set up a
+deployment on v1.2.0 and it would not start, add a `definitions:` line to
+`/var/lib/cronos/config.yaml` or upgrade and set up again.**
+
+Found by installing the published `.deb` rather than by any test. There is a
+test now.
+
 ## v1.2.0 — 2026-09-10
 
 A minor: cronos gained a way to configure itself and a way to be installed, and
