@@ -51,7 +51,7 @@ file-backed deployment has no store to ask — where it is absent nobody is
 confined, which is exactly the behaviour before the feature existed.
 */
 type Confining interface {
-	Confinement(ctx context.Context, userID string) (map[string]string, error)
+	Confinement(ctx context.Context, org, project, userID string) (map[string]string, error)
 }
 
 // WithConfinement makes a viewer read through the scope their administrator
@@ -176,7 +176,7 @@ func (a *Author) stands(ctx context.Context, claims token.Claims) bool {
 	var confined map[string]string
 	var broken bool
 	if claims.Principal().Confinable() {
-		confined, broken = a.confinement(ctx, subject)
+		confined, broken = a.confinement(ctx, claims)
 	}
 	a.active[subject] = moment{ok: ok, at: now, since: since, confined: confined, broken: broken}
 	return ok && minted(claims, since)
@@ -191,11 +191,13 @@ no scope, which is the one answer that must not be given. Principal refuses
 instead, so a store that cannot answer costs a viewer their session rather than
 costing them their confinement.
 */
-func (a *Author) confinement(ctx context.Context, subject string) (map[string]string, bool) {
+func (a *Author) confinement(ctx context.Context, claims token.Claims) (map[string]string, bool) {
 	if a.confining == nil {
 		return nil, false
 	}
-	scope, err := a.confining.Confinement(ctx, subject)
+	// The project the token names, so a membership row belonging to another
+	// cannot confine — or fail to confine — somebody here.
+	scope, err := a.confining.Confinement(ctx, claims.Org, claims.Project, claims.Subject)
 	if err != nil {
 		return nil, true
 	}

@@ -26,7 +26,10 @@ is one copy that gets a fix.
 // and nobody is restricted — the behaviour before this existed.
 type Granting interface {
 	Grants(ctx context.Context, org, project string) ([]access.Grant, error)
-	GroupsOf(ctx context.Context, userID string) ([]string, error)
+	// GroupsOf takes the project as well as the person. A grant names a group
+	// by name and names are unique per project only, so a membership resolved
+	// without one can satisfy a grant it was never meant to.
+	GroupsOf(ctx context.Context, org, project, userID string) ([]string, error)
 }
 
 /*
@@ -81,7 +84,7 @@ func (g gate) may(ctx context.Context, pr principal.Principal, report string) (a
 		return access.Allowed(pr, nil, nil), true
 	}
 
-	groups, err := g.grants.GroupsOf(ctx, pr.Subject)
+	groups, err := g.grants.GroupsOf(ctx, pr.OrgID, pr.ProjectID, pr.Subject)
 	if err != nil {
 		g.log.Error("could not read group membership", "err", err, "subject", pr.Subject)
 		return false, false
@@ -114,7 +117,7 @@ func (g gate) visible(ctx context.Context, pr principal.Principal, reports []str
 
 	var groups []string
 	if len(all) > 0 {
-		if groups, err = g.grants.GroupsOf(ctx, pr.Subject); err != nil {
+		if groups, err = g.grants.GroupsOf(ctx, pr.OrgID, pr.ProjectID, pr.Subject); err != nil {
 			g.log.Error("could not read group membership", "err", err, "subject", pr.Subject)
 			return nil, false
 		}

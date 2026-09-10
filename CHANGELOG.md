@@ -20,6 +20,41 @@ needs a deployment to act says so under **Upgrading**.
 
 ---
 
+## Unreleased
+
+**Security: per-report grants were bypassable through four other routes.** The
+grant check introduced in v1.1.0 was wired to the report read and the
+catalogue, and nothing else. A security review of that release found the rest:
+
+- **`GET /v1/definitions` had no authorization beyond tenancy.** Any project
+  member could list every report and read the full YAML of one they had been
+  refused — and through its dataset, the query behind it, the table and column
+  names, and the row-level predicates. This made the whole feature advisory:
+  the catalogue hid a report and this endpoint served it. Now gated the same
+  way, answering 404 for a report the caller may not open. **Datasets and
+  datasources remain readable** — a grant restricts a report, not the
+  warehouse.
+- **`POST /v1/reports/{name}/send`, `POST /v1/shares` and
+  `POST /v1/schedules/{name}/run` consulted no grant.** An editor refused a
+  report could still mail it to arbitrary addresses, turn it into a share link
+  that opens with no account at all, or run its schedule. All three are gated
+  now.
+- **The catalogue's schedule list named restricted reports.** The filter was
+  applied to the report list and not to the schedules thirteen lines below,
+  which carry the report's name, cadence and delivery channel.
+
+**Security: group membership was resolved without tenancy.** `GroupsOf` and
+`Confinement` joined group membership by account alone. A grant names a group
+by *name*, and names are unique per project only — so a membership row
+belonging to another project satisfied a grant here. `AddToGroup` also never
+checked that the account it was given belonged to the caller's project, so an
+administrator could bind any account in the deployment to a group whose name
+they chose. Both are fixed, and moving somebody between projects now clears
+their membership.
+
+Nothing here changes behaviour for a deployment that has created no groups and
+no grants.
+
 ## v1.2.1 — 2026-09-10
 
 **Fixes a first run that could not finish.** On v1.2.0, leaving the definitions

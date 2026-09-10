@@ -55,6 +55,17 @@ type Definitions struct {
 	store publish.Store
 	auth  Principals
 	log   *slog.Logger
+	/*
+	   gate hides the definitions of reports the caller may not open.
+
+	   This path had no authorization beyond tenancy, which made the whole
+	   grant feature advisory: /v1/catalog hid a restricted report and
+	   /v1/reports/{name} answered 404, while GET /v1/definitions listed its
+	   name and GET /v1/definitions/report/{name} returned the entire YAML —
+	   and through its dataset, the SQL, the table and column names and the
+	   row-level predicates.
+	*/
+	gate gate
 	// projects resolves the caller's own running view, for the read that falls
 	// back to it. A directory is not multi-tenant, so serving one to any
 	// principal that asked would be a cross-project read through the one path
@@ -145,11 +156,23 @@ func (d *Definitions) publish(w http.ResponseWriter, r *http.Request, pr princip
 	send(w, http.StatusOK, result)
 }
 
+// WithGrants hides the definitions of reports the caller has not been granted.
+// Absent, every definition in the project is readable by anybody in it, which
+// is the behaviour before grants existed.
+func (d *Definitions) WithGrants(g Granting) *Definitions {
+	d.gate = gate{grants: g, log: d.log}
+	return d
+}
+
 func (d *Definitions) list(w http.ResponseWriter, r *http.Request, pr principal.Principal) {
 	entries, err := d.store.List(r.Context(), pr)
 	if err != nil {
 		d.log.Error("listing definitions failed", "err", err)
 		fail(w, http.StatusInternalServerError, "Could not read the definitions.")
+		return
+	}
+	if entries, err = d.readable(r.Context(), pr, entries); err != nil {
+		fail(w, http.StatusServiceUnavailable, "Could not check which reports you may open.")
 		return
 	}
 	if entries == nil {
@@ -166,6 +189,27 @@ func (d *Definitions) list(w http.ResponseWriter, r *http.Request, pr principal.
 // and a management API that hands back its own rendering makes every round
 // trip a diff.
 func (d *Definitions) get(w http.ResponseWriter, r *http.Request, pr principal.Principal, kind, name string) {
+	/*
+	   A report the caller may not open is one they may not read either.
+
+	   404 rather than 403, the same answer /v1/reports/{name} gives — telling
+	   somebody a definition is there and that they are not on its list is the
+	   fact the grant was made to withhold.
+	*/
+	if canonicalKind(kind) == "Report" {
+		allowed, known := d.gate.may(r.Context(), pr, name)
+		if !known {
+			fail(w, http.StatusServiceUnavailable, "Could not check who may open this report.")
+			return
+		}
+		if !allowed {
+			audit(r.Context(), d.log, pr, ActionRead, name, Refused,
+				map[string]any{"reason": "not granted", "via": "definitions"})
+			fail(w, http.StatusNotFound, "No such definition.")
+			return
+		}
+	}
+
 	raw, err := d.store.Get(r.Context(), pr, canonicalKind(kind), name)
 	if err != nil {
 		// The store first, so a published edit wins over the file it was read
@@ -276,3 +320,50 @@ func canonicalKind(urlKind string) string {
 	}
 	return urlKind
 }
+
+/*
+readable narrows a listing to the definitions the caller may see.
+
+Only reports are grant-controlled, so only reports are filtered — a dataset or
+a datasource is not something a grant names, and hiding one would break an
+editor who may legitimately author over it.
+
+That is a deliberate limit worth stating: a restricted report's *dataset*
+remains readable, and with it the query behind the numbers. Grants restrict a
+report, not the warehouse.
+*/
+func (d *Definitions) readable(ctx context.Context, pr principal.Principal,
+	entries []publish.Entry) ([]publish.Entry, error) {
+
+	if d.gate.grants == nil {
+		return entries, nil
+	}
+
+	reports := make([]string, 0, len(entries))
+	for _, e := range entries {
+		if e.Kind == "Report" {
+			reports = append(reports, e.Name)
+		}
+	}
+	if len(reports) == 0 {
+		return entries, nil
+	}
+
+	open, known := d.gate.visible(ctx, pr, reports)
+	if !known {
+		return nil, errUnknownAccess
+	}
+
+	out := make([]publish.Entry, 0, len(entries))
+	for _, e := range entries {
+		if e.Kind == "Report" && !open[e.Name] {
+			continue
+		}
+		out = append(out, e)
+	}
+	return out, nil
+}
+
+// errUnknownAccess means the grants could not be read, so no listing can be
+// trusted. Refusing beats serving one that might be complete.
+var errUnknownAccess = errors.New("api: could not read report grants")

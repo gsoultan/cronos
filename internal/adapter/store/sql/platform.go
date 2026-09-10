@@ -125,6 +125,26 @@ func (s *Store) MovePerson(ctx context.Context, id, org, project, role string) e
 	if n, err := out.RowsAffected(); err == nil && n == 0 {
 		return identity.ErrNoUser
 	}
+
+	/*
+	   And their group memberships, which belong to the project they left.
+
+	   A group is a project's, and cronos_group_members carries no tenancy of
+	   its own — so a row that survives a move points from an account in the new
+	   project at a group in the old one. Grants match a group by name, and the
+	   two projects may well both have a "finance", so the stale row is somebody
+	   arriving with access nobody in their new project granted.
+
+	   Not fatal if it fails. The move has happened, and the reads that consume
+	   these rows are scoped by project as well, so a leftover row is inert
+	   rather than dangerous — this is the second of the two defences, kept
+	   because a table that accumulates rows nobody can explain is one somebody
+	   eventually trusts.
+	*/
+	if _, err := s.db.ExecContext(ctx, s.sql(`
+		DELETE FROM cronos_group_members WHERE user_id = ?`), id); err != nil {
+		return fmt.Errorf("moved %s, but could not clear their group membership: %w", id, err)
+	}
 	return nil
 }
 

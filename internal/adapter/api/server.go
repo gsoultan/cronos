@@ -198,7 +198,11 @@ func Routes(d Deps) http.Handler {
 	// limited like a render rather than not at all: the cost is a typesetter
 	// and somebody else's mail relay.
 	if d.Sends != nil {
-		mux.Handle("/v1/reports/{name}/send", perReader(NewSend(d.Sends, author, d.Log)))
+		// Gated like the read it renders. Sending is how a restricted report
+		// leaves as a PDF to an address somebody typed, and it consulted no
+		// grant at all — an editor refused the report could still mail it.
+		mux.Handle("/v1/reports/{name}/send",
+			perReader(NewSend(d.Sends, author, d.Log).WithGrants(granting)))
 	}
 
 	// What the project contains, in one request. A browsing interface asking
@@ -227,7 +231,14 @@ func Routes(d Deps) http.Handler {
 	// withdrawn. A deployment without one has no way to take a link back, and
 	// a link that cannot be taken back is not a link anybody should be offered.
 	if d.Shares != nil {
-		h := NewShares(d.Shares, author, d.Log)
+		/*
+		   And sharing, which is the same report reached by a different door.
+
+		   A share is a durable link that opens without an account — the one
+		   unauthenticated route in this API — so creating one for a report the
+		   caller may not open converts a refusal into anonymous access.
+		*/
+		h := NewShares(d.Shares, author, d.Log).WithGrants(granting)
 		mux.Handle("/v1/shares", h)
 		mux.Handle("/v1/shares/{id}", h)
 		// Opening is the only route here with no credential but the id itself,
@@ -451,7 +462,11 @@ func Routes(d Deps) http.Handler {
 		// deployment answering for a report that plainly renders. Resolved per
 		// request now, so the fallback is this caller's project and not
 		// whichever one the process was configured with.
-		handler := NewDefinitions(d.Publish, d.Store, author, d.Log).WithProjects(d.Projects)
+		// Grants here too. Without them this path served the full YAML of a
+		// report the catalogue had just hidden and /v1/reports had just
+		// refused, which made the whole control advisory.
+		handler := NewDefinitions(d.Publish, d.Store, author, d.Log).
+			WithProjects(d.Projects).WithGrants(granting)
 		mux.Handle("/v1/definitions", handler)
 		mux.Handle("/v1/definitions/{kind}/{name}", handler)
 
@@ -459,7 +474,10 @@ func Routes(d Deps) http.Handler {
 		// sources, or no scheduler armed, answers from the project rather than
 		// from a nil check here — see Project.
 		mux.Handle("/v1/datasources/{name}/test", NewDataSources(d.Projects, author, d.Log))
-		mux.Handle("/v1/schedules/{name}/run", NewSchedules(d.Projects, author, d.Log))
+		// Running a schedule renders and delivers a report on demand, so it is
+		// the same question as sending one.
+		mux.Handle("/v1/schedules/{name}/run",
+			NewSchedules(d.Projects, author, d.Log).WithGrants(granting))
 
 		// Behind the admin key and never the embed token: a run record names
 		// every recipient of a burst.

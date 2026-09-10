@@ -7,6 +7,7 @@ import (
 
 	store "github.com/gsoultan/cronos/internal/adapter/store/sql"
 	"github.com/gsoultan/cronos/internal/core/access"
+	"github.com/gsoultan/cronos/internal/core/identity"
 	"github.com/gsoultan/cronos/internal/core/principal"
 )
 
@@ -31,12 +32,33 @@ func group(t *testing.T, s *store.Store, pr principal.Principal,
 	return g
 }
 
+/*
+joins makes sure an account exists in acme/finance and returns its id.
+
+AddToGroup verifies the target belongs to the caller's project now — an id that
+is merely well-formed is refused, which is the whole point of the check — so
+membership tests need a real account. Idempotent, because a person can be in
+two groups and the second call would otherwise fail on the unique email.
+*/
+func joins(t *testing.T, s *store.Store, id string) string {
+	t.Helper()
+
+	err := s.CreateUser(context.Background(), identity.User{
+		ID: id, Email: id + "@acme.example",
+		Org: "acme", Project: "finance", Role: "viewer",
+	}, "n0t-a-real-password")
+	if err != nil && !errors.Is(err, identity.ErrExists) {
+		t.Fatalf("creating %s: %v", id, err)
+	}
+	return id
+}
+
 /* -- confinement ----------------------------------------------------------- */
 
 func TestSomebodyInNoGroupIsConfinedByNothing(t *testing.T) {
 	s := open(t)
 
-	got, err := s.Confinement(context.Background(), "u-1")
+	got, err := s.Confinement(context.Background(), "acme", "finance", "u-1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,11 +74,11 @@ func TestAGroupConfinesItsMembers(t *testing.T) {
 	ctx := context.Background()
 
 	g := group(t, s, acme, "west", map[string]string{"region": "west"})
-	if err := s.AddToGroup(ctx, acme, g.ID, "u-1"); err != nil {
+	if err := s.AddToGroup(ctx, acme, g.ID, joins(t, s, "u-1")); err != nil {
 		t.Fatal(err)
 	}
 
-	got, err := s.Confinement(ctx, "u-1")
+	got, err := s.Confinement(ctx, "acme", "finance", "u-1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +86,7 @@ func TestAGroupConfinesItsMembers(t *testing.T) {
 		t.Fatalf("confinement is %v, want region=west", got)
 	}
 	// And somebody who is not in it is not confined by it.
-	if other, _ := s.Confinement(ctx, "u-2"); other != nil {
+	if other, _ := s.Confinement(ctx, "acme", "finance", "u-2"); other != nil {
 		t.Errorf("a non-member was confined: %v", other)
 	}
 }
@@ -76,14 +98,14 @@ func TestAPersonsOwnScopeOverridesTheirGroups(t *testing.T) {
 	ctx := context.Background()
 
 	g := group(t, s, acme, "west", map[string]string{"region": "west"})
-	if err := s.AddToGroup(ctx, acme, g.ID, "u-1"); err != nil {
+	if err := s.AddToGroup(ctx, acme, g.ID, joins(t, s, "u-1")); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.SetUserScope(ctx, acme, "u-1", map[string]string{"region": "east"}); err != nil {
 		t.Fatal(err)
 	}
 
-	got, err := s.Confinement(ctx, "u-1")
+	got, err := s.Confinement(ctx, "acme", "finance", "u-1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +117,7 @@ func TestAPersonsOwnScopeOverridesTheirGroups(t *testing.T) {
 	if err := s.SetUserScope(ctx, acme, "u-1", nil); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ = s.Confinement(ctx, "u-1"); got["region"] != "west" {
+	if got, _ = s.Confinement(ctx, "acme", "finance", "u-1"); got["region"] != "west" {
 		t.Fatalf("after clearing, confinement is %v, want the group's west", got)
 	}
 }
@@ -113,12 +135,12 @@ func TestTwoGroupsDisagreeingAboutAFieldIsRefused(t *testing.T) {
 
 	for name, region := range map[string]string{"west": "west", "east": "east"} {
 		g := group(t, s, acme, name, map[string]string{"region": region})
-		if err := s.AddToGroup(ctx, acme, g.ID, "u-1"); err != nil {
+		if err := s.AddToGroup(ctx, acme, g.ID, joins(t, s, "u-1")); err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	_, err := s.Confinement(ctx, "u-1")
+	_, err := s.Confinement(ctx, "acme", "finance", "u-1")
 	if !errors.Is(err, store.ErrScopeConflict) {
 		t.Fatalf("got %v, want ErrScopeConflict", err)
 	}
@@ -140,12 +162,12 @@ func TestGroupsThatConfineDifferentFieldsAreMerged(t *testing.T) {
 		"retail": {"line": "retail"},
 	} {
 		g := group(t, s, acme, name, scope)
-		if err := s.AddToGroup(ctx, acme, g.ID, "u-1"); err != nil {
+		if err := s.AddToGroup(ctx, acme, g.ID, joins(t, s, "u-1")); err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	got, err := s.Confinement(ctx, "u-1")
+	got, err := s.Confinement(ctx, "acme", "finance", "u-1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -270,7 +292,7 @@ func TestDeletingAGroupRemovesItsGrantsAndMembership(t *testing.T) {
 	ctx := context.Background()
 
 	g := group(t, s, acme, "finance", nil)
-	if err := s.AddToGroup(ctx, acme, g.ID, "u-1"); err != nil {
+	if err := s.AddToGroup(ctx, acme, g.ID, joins(t, s, "u-1")); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.Grant(ctx, acme, access.Grant{
@@ -286,10 +308,10 @@ func TestDeletingAGroupRemovesItsGrantsAndMembership(t *testing.T) {
 	if got, _ := s.Grants(ctx, "acme", "finance"); len(got) != 0 {
 		t.Errorf("the group's grants outlived it: %v", got)
 	}
-	if got, _ := s.GroupsOf(ctx, "u-1"); len(got) != 0 {
+	if got, _ := s.GroupsOf(ctx, "acme", "finance", "u-1"); len(got) != 0 {
 		t.Errorf("a member still belongs to a deleted group: %v", got)
 	}
-	if got, _ := s.Confinement(ctx, "u-1"); got != nil {
+	if got, _ := s.Confinement(ctx, "acme", "finance", "u-1"); got != nil {
 		t.Errorf("a deleted group still confines: %v", got)
 	}
 }
@@ -300,12 +322,12 @@ func TestGroupsOfNamesWhatTheAccessDecisionNeeds(t *testing.T) {
 
 	for _, name := range []string{"finance", "west"} {
 		g := group(t, s, acme, name, nil)
-		if err := s.AddToGroup(ctx, acme, g.ID, "u-1"); err != nil {
+		if err := s.AddToGroup(ctx, acme, g.ID, joins(t, s, "u-1")); err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	got, err := s.GroupsOf(ctx, "u-1")
+	got, err := s.GroupsOf(ctx, "acme", "finance", "u-1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -318,7 +340,7 @@ func TestGroupsOfNamesWhatTheAccessDecisionNeeds(t *testing.T) {
 		mustGroup(t, s, "west").ID, "u-1"); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ = s.GroupsOf(ctx, "u-1"); len(got) != 1 || got[0] != "finance" {
+	if got, _ = s.GroupsOf(ctx, "acme", "finance", "u-1"); len(got) != 1 || got[0] != "finance" {
 		t.Fatalf("after removal, groups are %v", got)
 	}
 }
@@ -347,4 +369,84 @@ func contains(haystack, needle string) bool {
 		}
 		return false
 	}()
+}
+
+/*
+A group in one project never answers for a person in another.
+
+The gap this closes: cronos_group_members carries no tenancy of its own, and a
+grant names a group by *name* — unique per project only. So a membership row
+pointing at a same-named group in another project satisfied a grant here, and
+the two ways such a row came to exist were an administrator adding a foreign
+account to their own group, and an account being moved between projects with
+its rows left behind. Both are closed below.
+*/
+func TestAGroupInAnotherProjectDoesNotAnswerHere(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+	rival := who("rival", "ops")
+
+	// The same name in two projects, which the unique index permits.
+	mine := group(t, s, acme, "finance", map[string]string{"region": "west"})
+	if _, err := s.CreateGroup(ctx, rival, "finance", map[string]string{"region": "east"}); err != nil {
+		t.Fatal(err)
+	}
+
+	u := joins(t, s, "u-1") // an account in acme/finance
+	if err := s.AddToGroup(ctx, acme, mine.ID, u); err != nil {
+		t.Fatal(err)
+	}
+
+	// The other project's administrator tries to bind this account to a group
+	// of theirs. Refused: the group is theirs, the person is not.
+	foreign, err := s.Groups(ctx, "rival", "ops")
+	if err != nil || len(foreign) != 1 {
+		t.Fatalf("fixture: rival has %d groups, %v", len(foreign), err)
+	}
+	if err := s.AddToGroup(ctx, rival, foreign[0].ID, u); err == nil {
+		t.Error("an administrator added somebody from another project to their group")
+	}
+
+	// The reads are scoped too, which tenancy_internal_test.go asserts against
+	// a row planted directly — the write guard above and the read predicate are
+	// two defences and either alone would leave the other untested.
+	groups, err := s.GroupsOf(ctx, "acme", "finance", u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(groups) != 1 || groups[0] != "finance" {
+		t.Fatalf("groups are %v — the other project's membership answered here", groups)
+	}
+
+	// The confinement likewise: acme's west, never rival's east.
+	scope, err := s.Confinement(ctx, "acme", "finance", u)
+	if err != nil {
+		t.Fatalf("the foreign group's scope conflicted: %v", err)
+	}
+	if scope["region"] != "west" {
+		t.Errorf("confinement is %v, want acme's west", scope)
+	}
+}
+
+// Moving somebody between projects takes their membership with them, so a
+// stale row cannot arrive with them.
+func TestMovingSomebodyClearsTheirGroupMembership(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+
+	g := group(t, s, acme, "finance", nil)
+	u := joins(t, s, "u-1")
+	if err := s.AddToGroup(ctx, acme, g.ID, u); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.GroupsOf(ctx, "acme", "finance", u); len(got) != 1 {
+		t.Fatalf("membership was not recorded: %v", got)
+	}
+
+	if err := s.MovePerson(ctx, u, "rival", "ops", "viewer"); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.GroupsOf(ctx, "acme", "finance", u); len(got) != 0 {
+		t.Errorf("membership survived the move: %v", got)
+	}
 }

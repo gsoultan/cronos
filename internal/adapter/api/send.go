@@ -31,11 +31,21 @@ type Send struct {
 	sends Sending
 	auth  Principals
 	log   *slog.Logger
+	// gate refuses a report the caller may not open. Sending renders the
+	// original and mails it, so a grant that does not reach here is a grant
+	// with a door beside it.
+	gate gate
 }
 
 // NewSend wires the handler.
 func NewSend(s Sending, a Principals, log *slog.Logger) *Send {
 	return &Send{sends: s, auth: a, log: log}
+}
+
+// WithGrants refuses to send a report the caller has not been granted.
+func (h *Send) WithGrants(g Granting) *Send {
+	h.gate = gate{grants: g, log: h.log}
+	return h
 }
 
 type sendRequest struct {
@@ -65,6 +75,17 @@ func (h *Send) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	name := r.PathValue("name")
+	// The same question /v1/reports/{name} asks, and the same answer: a report
+	// somebody may not open is one they may not mail to eight addresses.
+	if allowed, known := h.gate.may(r.Context(), pr, name); !known {
+		fail(w, http.StatusServiceUnavailable, "Could not check who may open this report.")
+		return
+	} else if !allowed {
+		audit(r.Context(), h.log, pr, ActionRead, name, Refused,
+			map[string]any{"reason": "not granted", "via": "send"})
+		fail(w, http.StatusNotFound, "No such report.")
+		return
+	}
 	result, err := h.sends.Send(r.Context(), app.Request{
 		Report: name, Output: in.Output, Via: in.Via,
 		To: in.To, Subject: in.Subject, Note: in.Note,

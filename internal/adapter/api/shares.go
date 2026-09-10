@@ -27,6 +27,21 @@ type Shares struct {
 	auth   Principals
 	log    *slog.Logger
 	now    func() time.Time
+	/*
+	   gate refuses to share a report the caller may not open.
+
+	   Creating is where this belongs rather than opening: a share token is
+	   pinned to its report when it is minted, and opening is deliberately
+	   unauthenticated — whoever holds the link is nobody cronos has heard of,
+	   so there is no principal there to judge.
+	*/
+	gate gate
+}
+
+// WithGrants refuses to share a report the caller has not been granted.
+func (h *Shares) WithGrants(g Granting) *Shares {
+	h.gate = gate{grants: g, log: h.log}
+	return h
 }
 
 // NewShares wires the handler.
@@ -75,6 +90,25 @@ func (h *Shares) create(w http.ResponseWriter, r *http.Request, pr principal.Pri
 	var req createRequest
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&req); err != nil {
 		fail(w, http.StatusBadRequest, "That is not a share request.")
+		return
+	}
+
+	/*
+	   A report the caller may not open is one they may not hand out.
+
+	   Checked at creation rather than at opening: the token a share mints is
+	   pinned to its report, and opening is deliberately unauthenticated —
+	   whoever follows the link is nobody cronos has heard of, so there is no
+	   principal there to judge. Without this, a refusal on /v1/reports became
+	   anonymous access through two more requests.
+	*/
+	if allowed, known := h.gate.may(r.Context(), pr, req.Report); !known {
+		fail(w, http.StatusServiceUnavailable, "Could not check who may open this report.")
+		return
+	} else if !allowed {
+		audit(r.Context(), h.log, pr, ActionShare, req.Report, Refused,
+			map[string]any{"reason": "not granted"})
+		fail(w, http.StatusNotFound, "No such report.")
 		return
 	}
 

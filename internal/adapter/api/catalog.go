@@ -308,6 +308,17 @@ func (c *CatalogHandler) build(project *Project, open map[string]bool) Catalog {
 		due = project.Due.Due()
 	}
 	for _, s := range project.Definitions.Schedules() {
+		/*
+		   The same filter the reports above get.
+
+		   It was missing here, thirteen lines below the loop that has it, and
+		   a schedule names its report — so a viewer granted nothing saw every
+		   restricted report's name, cadence and delivery channel in a list the
+		   comment above promises is filtered.
+		*/
+		if !open[s.Report] {
+			continue
+		}
 		summary := ScheduleSummary{
 			Name: s.Name, Title: s.Title, Description: s.Description, Report: s.Report,
 			Output: s.Output, Cron: s.Cron, Timezone: s.Timezone,

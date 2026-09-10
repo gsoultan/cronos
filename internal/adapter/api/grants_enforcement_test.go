@@ -41,7 +41,7 @@ func (g grantStore) Grants(context.Context, string, string) ([]access.Grant, err
 	return g.grants, nil
 }
 
-func (g grantStore) GroupsOf(_ context.Context, id string) ([]string, error) {
+func (g grantStore) GroupsOf(_ context.Context, _, _, id string) ([]string, error) {
 	if g.failGroups {
 		return nil, errors.New("the database is not answering")
 	}

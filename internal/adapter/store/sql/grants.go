@@ -40,7 +40,7 @@ rather than resolved: picking one silently is how somebody ends up reading a
 region nobody granted them, and picking the union is how a confinement widens
 by adding a group that was supposed to narrow.
 */
-func (s *Store) Confinement(ctx context.Context, userID string) (map[string]string, error) {
+func (s *Store) Confinement(ctx context.Context, org, project, userID string) (map[string]string, error) {
 	own, err := s.userScope(ctx, userID)
 	if err != nil {
 		return nil, err
@@ -49,10 +49,20 @@ func (s *Store) Confinement(ctx context.Context, userID string) (map[string]stri
 		return own, nil
 	}
 
+	/*
+	   The caller's own project, and this join is why the argument exists.
+
+	   cronos_group_members carries no tenancy of its own — it is a group id and
+	   a user id — so without the predicate below a membership row created in
+	   another project answers here. A person's account is bound to one tenant
+	   and cannot act in two, but a row can outlive a move and an administrator
+	   in another project can create one, so the query has to say which project
+	   it is asking about rather than trusting the rows it finds.
+	*/
 	rows, err := s.db.QueryContext(ctx, s.sql(`
 		SELECT g.name, g.scope FROM cronos_groups g
 		JOIN cronos_group_members m ON m.group_id = g.id
-		WHERE m.user_id = ?`), userID)
+		WHERE m.user_id = ? AND g.org = ? AND g.project = ?`), userID, org, project)
 	if err != nil {
 		return nil, err
 	}
@@ -102,13 +112,21 @@ func (s *Store) userScope(ctx context.Context, userID string) (map[string]string
 	return confinementFrom(raw)
 }
 
-// GroupsOf names the groups somebody belongs to, for the access decision.
-func (s *Store) GroupsOf(ctx context.Context, userID string) ([]string, error) {
+/*
+GroupsOf names the groups somebody belongs to in one project, for the access
+decision.
+
+Scoped by project, and that is load-bearing rather than tidy. A grant to a group
+names it by *name*, and names are unique per project only — so a membership row
+pointing at a same-named group in another project would satisfy a grant here.
+See Confinement for how such a row comes to exist.
+*/
+func (s *Store) GroupsOf(ctx context.Context, org, project, userID string) ([]string, error) {
 	rows, err := s.db.QueryContext(ctx, s.sql(`
 		SELECT g.name FROM cronos_groups g
 		JOIN cronos_group_members m ON m.group_id = g.id
-		WHERE m.user_id = ?
-		ORDER BY g.name`), userID)
+		WHERE m.user_id = ? AND g.org = ? AND g.project = ?
+		ORDER BY g.name`), userID, org, project)
 	if err != nil {
 		return nil, err
 	}
@@ -318,6 +336,18 @@ func (s *Store) AddToGroup(ctx context.Context, pr principal.Principal, id, user
 	if !s.ownsGroup(ctx, pr, id) {
 		return fmt.Errorf("no such group")
 	}
+	/*
+	   And the person, which this did not check.
+
+	   ownsGroup proves the group is the caller's. Nothing proved the same of
+	   the account, and the id comes straight from a request body — so an
+	   administrator could bind any account in the deployment to a group whose
+	   name they choose. Paired with a grant to that name in the account's own
+	   project, that is somebody granting themselves a report they were refused.
+	*/
+	if !s.inProject(ctx, pr, userID) {
+		return fmt.Errorf("no such person in this project")
+	}
 	_, err := s.db.ExecContext(ctx, s.sql(`
 		INSERT INTO cronos_group_members (group_id, user_id, added_at) VALUES (?, ?, ?)
 		ON CONFLICT (group_id, user_id) DO NOTHING`),
@@ -377,6 +407,18 @@ func (s *Store) SetUserScope(ctx context.Context, pr principal.Principal,
 		ON CONFLICT (user_id) DO UPDATE SET scope = ?, set_at = ?, set_by = ?`),
 		userID, string(raw), now, pr.Subject, string(raw), now, pr.Subject)
 	return err
+}
+
+// inProject reports whether an account belongs to the caller's project.
+//
+// Membership rows carry no tenancy, so this is where it is established: a row
+// may only ever join two things that are already in the same project.
+func (s *Store) inProject(ctx context.Context, pr principal.Principal, userID string) bool {
+	var one int
+	err := s.db.QueryRowContext(ctx, s.sql(`
+		SELECT 1 FROM cronos_users WHERE id = ? AND org = ? AND project = ?`),
+		userID, pr.OrgID, pr.ProjectID).Scan(&one)
+	return err == nil
 }
 
 // ownsGroup reports whether the group is the caller's project's, so every
