@@ -20,7 +20,12 @@ needs a deployment to act says so under **Upgrading**.
 
 ---
 
-## Unreleased
+## v1.2.0 — 2026-09-10
+
+A minor: cronos gained a way to configure itself and a way to be installed, and
+nothing an existing deployment depends on behaves differently. A container or a
+unit that already sets `CRONOS_SIGNING_KEY` reads no configuration file, never
+sees `/setup`, and boots exactly as it did on v1.1.0.
 
 **A first run configures itself through /setup.** A deployment with no signing
 key now starts and serves that one page instead of refusing to boot. Set the
