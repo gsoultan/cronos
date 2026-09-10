@@ -41,7 +41,7 @@ region nobody granted them, and picking the union is how a confinement widens
 by adding a group that was supposed to narrow.
 */
 func (s *Store) Confinement(ctx context.Context, org, project, userID string) (map[string]string, error) {
-	own, err := s.userScope(ctx, userID)
+	own, err := s.userScope(ctx, org, project, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -98,10 +98,15 @@ func (s *Store) Confinement(ctx context.Context, org, project, userID string) (m
 	return merged, nil
 }
 
-func (s *Store) userScope(ctx context.Context, userID string) (map[string]string, error) {
+func (s *Store) userScope(ctx context.Context, org, project, userID string) (map[string]string, error) {
 	var raw string
+	// Joined to the account so the row and the project agree. A token's org and
+	// project come from the account's own row, so these always match today —
+	// the join is here so that stays true of a deployment where they might not.
 	err := s.db.QueryRowContext(ctx, s.sql(`
-		SELECT scope FROM cronos_user_scopes WHERE user_id = ?`), userID).Scan(&raw)
+		SELECT s.scope FROM cronos_user_scopes s
+		JOIN cronos_users u ON u.id = s.user_id
+		WHERE s.user_id = ? AND u.org = ? AND u.project = ?`), userID, org, project).Scan(&raw)
 
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
@@ -391,6 +396,24 @@ func (s *Store) MembersOf(ctx context.Context, pr principal.Principal, id string
 // SetUserScope confines one person directly, overriding their groups'.
 func (s *Store) SetUserScope(ctx context.Context, pr principal.Principal,
 	userID string, scope map[string]string) error {
+
+	/*
+	   The person, before their confinement is touched at all.
+
+	   cronos_user_scopes is keyed by account and carries no tenancy of its own,
+	   and the principal was read only for set_by — so this changed, and more to
+	   the point *deleted*, the personal scope of any account in the deployment.
+	   Deleting one widens what somebody sees: a person's own scope overrides
+	   their groups', so removing it drops them back to whatever their groups
+	   say, or to nothing at all.
+
+	   Not reachable today — nothing routes here — and fixed anyway, because the
+	   gap is in the method rather than in the route, and the route is the part
+	   somebody adds later without re-reading this.
+	*/
+	if !s.inProject(ctx, pr, userID) {
+		return fmt.Errorf("no such person in this project")
+	}
 
 	if len(scope) == 0 {
 		_, err := s.db.ExecContext(ctx, s.sql(`

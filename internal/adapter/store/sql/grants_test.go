@@ -450,3 +450,43 @@ func TestMovingSomebodyClearsTheirGroupMembership(t *testing.T) {
 		t.Errorf("membership survived the move: %v", got)
 	}
 }
+
+/*
+A personal confinement belongs to the project the person is in.
+
+cronos_user_scopes is keyed by account alone, and SetUserScope read the
+principal only for set_by — so an administrator in one project could change, and
+more to the point delete, the personal scope of an account in another. Deleting
+one *widens* what somebody sees: a person's own scope overrides their groups',
+so removing it drops them back to their groups' or to nothing.
+
+Nothing routes to SetUserScope today. The test exists because the gap was in
+the method, and the route is the part somebody adds later without re-reading it.
+*/
+func TestOnlyThePersonsOwnProjectMaySetTheirScope(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+	rival := who("rival", "ops")
+
+	u := joins(t, s, "u-1") // an account in acme/finance
+	if err := s.SetUserScope(ctx, acme, u, map[string]string{"region": "west"}); err != nil {
+		t.Fatalf("their own administrator could not set it: %v", err)
+	}
+
+	// Another project's administrator may not change it...
+	if err := s.SetUserScope(ctx, rival, u, map[string]string{"region": "east"}); err == nil {
+		t.Error("an administrator in another project rewrote somebody's confinement")
+	}
+	// ...and may not remove it, which is the direction that widens.
+	if err := s.SetUserScope(ctx, rival, u, nil); err == nil {
+		t.Error("an administrator in another project deleted somebody's confinement")
+	}
+
+	scope, err := s.Confinement(ctx, "acme", "finance", u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if scope["region"] != "west" {
+		t.Errorf("confinement is %v, want the west it was set to", scope)
+	}
+}

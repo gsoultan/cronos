@@ -152,6 +152,20 @@ Who may read something is an administrator's decision about people, not an
 author's decision about content — and because a grant is not in the definition,
 an editor cannot edit their way past one.
 
+**Every route that reaches a report asks.** The catalogue, the read, the
+definitions API, sending, sharing and running a schedule. That list is the fix
+for a real gap: the check first shipped on the read and the catalogue alone, so
+an editor refused a report could still fetch its YAML, mail it to an arbitrary
+address, or turn it into a share link that opens with no account at all. A
+refusal on one path while the data leaves through another is not a control.
+
+**What a grant does not restrict is the dataset.** A grant names a report, so
+the dataset behind it — and the query, the table and column names, and the
+row-level predicates — stays readable to anybody in the project. That is
+deliberate: an editor may legitimately author over a dataset they cannot open a
+particular report on. If the query itself must be hidden, a grant is not the
+mechanism.
+
 **A report somebody may not open is hidden and answers 404.** Not 403: telling
 somebody a report exists and that they are not on its list is a fact about the
 project nobody granted them, and across a list of names it is an enumeration
@@ -186,6 +200,10 @@ bound rather than interpolated, reaching the same place in the compiled query.
 exempt, because they build and repair reports and have to see the whole of one.
 A viewer with no scope is unchanged from before the feature existed, so a
 deployment that sets none sees no difference at all — it is opt-in per person.
+
+A personal scope, like a group's, belongs to the project the person is in — an
+administrator elsewhere can neither set one nor remove one, and removing one is
+the direction that widens.
 
 **A person's own scope overrides their groups' rather than merging with it**,
 and two groups that confine the same field differently are refused rather than

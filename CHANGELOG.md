@@ -20,6 +20,22 @@ needs a deployment to act says so under **Upgrading**.
 
 ---
 
+## Unreleased
+
+**A personal confinement is now tenant-scoped too.** `SetUserScope` read the
+principal only to record who set it, so it changed — and deleted — the personal
+scope of any account in the deployment. Deleting one widens what somebody sees,
+because a person's own scope overrides their groups'. Nothing routes to it
+today, which is why this is a follow-up rather than part of v1.2.2; the gap was
+in the method, and the route is the part somebody adds later.
+
+`docs/tenancy.md` now lists every route that consults a grant, and states
+plainly what a grant does not restrict: the dataset behind a report stays
+readable, so the query, the table and column names and the row-level predicates
+are visible to anybody in the project. A grant names a report, not a warehouse.
+
+---
+
 ## v1.2.2 — 2026-09-10
 
 A security patch. Upgrade if you use per-report grants; nothing here changes
