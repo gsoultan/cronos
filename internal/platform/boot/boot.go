@@ -78,6 +78,23 @@ func Serve(log *slog.Logger) error {
 		return err
 	}
 
+	/*
+	   Nothing configured anywhere, so serve the one endpoint that can fix that.
+
+	   Returns when setup has written a configuration, and Serve returns with
+	   it — the service manager starts cronosd again and the next boot is an
+	   ordinary one. Restarting rather than reconfiguring in place is what
+	   keeps every path below this line unaware that a first run exists.
+	*/
+	if cfg.Unconfigured {
+		return serveSetup(cfg, log)
+	}
+	if cfg.FromFile {
+		// Which file, because "why is it using the old value" is a support
+		// question that a path in the startup line answers.
+		log.Info("configuration file", "path", config.Path())
+	}
+
 	// Every failure below is a configuration failure, and each one is raised
 	// before the listener opens. A server that starts and then rejects every
 	// request looks like a broken deployment rather than a missing variable.
@@ -161,6 +178,13 @@ func Serve(log *slog.Logger) error {
 			cfg.Org, cfg.Project = org, project
 			runtimes = renamed(runtimes, tenant{org: org, project: project})
 		}
+	}
+
+	// The administrator first-run setup collected, now that there is a database
+	// to put them in. Before the listener opens, so the deployment is never
+	// briefly up with nobody able to sign in.
+	if err := adoptPendingAdmin(ctx, records, log); err != nil {
+		return err
 	}
 
 	for _, rt := range runtimes {

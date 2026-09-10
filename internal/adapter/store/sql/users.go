@@ -19,6 +19,19 @@ func (s *Store) CreateUser(ctx context.Context, u identity.User, password string
 	if err != nil {
 		return err
 	}
+	return s.CreateUserWithHash(ctx, u, hash)
+}
+
+/*
+CreateUserWithHash is CreateUser for a password that was hashed elsewhere.
+
+For first-run setup, which collects the administrator's password in a process
+that has no database to put it in — the configured server creates the account
+on its next boot. Handing that between two processes means writing it down, and
+what gets written down is this hash rather than the password.
+*/
+func (s *Store) CreateUserWithHash(ctx context.Context, u identity.User, hash string) error {
+	var err error
 	email := normalise(u.Email)
 	if email == "" {
 		return fmt.Errorf("%w: no email", identity.ErrBadCredentials)
