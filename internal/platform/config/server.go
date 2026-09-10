@@ -1,7 +1,6 @@
 package config
 
 import (
-	"fmt"
 	"os"
 	"strings"
 	"time"
@@ -29,6 +28,20 @@ type Server struct {
 	// SigningKey signs embed tokens. No default — a default signing key is a
 	// shared trust root across every deployment that forgot to set one.
 	SigningKey []byte
+	/*
+	   Unconfigured means no signing key was found in the environment or in a
+	   file, so this deployment has never been set up. The server serves
+	   /v1/setup and nothing else until it is.
+
+	   A field rather than an error, because "not configured yet" and "the
+	   configuration is wrong" want different answers and a caller that gets an
+	   error for both cannot tell them apart.
+	*/
+	Unconfigured bool
+	// FromFile records that some of this came from a configuration file, so the
+	// startup line can say which file — "why is it using the old value" is a
+	// support question a path in the log answers.
+	FromFile bool
 	/*
 	   PreviousKeys are verified against and never signed with, so a key can be
 	   rotated without ending every session and every embedded reader's token
@@ -172,11 +185,38 @@ func Load() (Server, error) {
 	if origins := os.Getenv("CRONOS_ORIGINS"); origins != "" {
 		s.Origins = strings.Split(origins, ",")
 	}
+	/*
+	   Then the file, for whatever the environment left unset.
+
+	   After, not before, and that ordering is the whole compatibility story: a
+	   deployment that sets CRONOS_SIGNING_KEY never reads a file and behaves
+	   exactly as it did before this existed, so there is no deployment whose
+	   behaviour this changes.
+	*/
+	if file, found, err := ReadFile(Path()); err != nil {
+		return Server{}, err
+	} else if found {
+		file.fill(&s)
+		s.FromFile = true
+	}
+
 	if len(s.SigningKey) == 0 {
-		// Refused rather than generated. A key generated at startup silently
-		// invalidates every token on restart, and one baked in as a default is
-		// the same key everyone else's deployment is using.
-		return Server{}, fmt.Errorf("config: CRONOS_SIGNING_KEY is required")
+		/*
+		   No key anywhere, so this deployment has never been set up.
+
+		   Reported rather than returned as a failure. It used to be an error
+		   because there was nothing a server could usefully do without a key;
+		   there is now — serve /v1/setup, and nothing else, until somebody
+		   provides one. boot decides that, because whether an unconfigured
+		   server should wait or refuse is a question about the deployment and
+		   not about the environment.
+
+		   Still never generated silently. A key that appears on its own
+		   invalidates every token on the next restart, and one defaulted in
+		   the source is the same key as every other deployment's — setup
+		   generates one and writes it down, which is a different thing.
+		*/
+		s.Unconfigured = true
 	}
 	return s, nil
 }

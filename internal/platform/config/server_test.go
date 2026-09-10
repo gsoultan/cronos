@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -25,6 +26,9 @@ itself the first thing asserted.
 func signed(t *testing.T) {
 	t.Helper()
 	t.Setenv("CRONOS_SIGNING_KEY", "0123456789abcdef0123456789abcdef")
+	// And no configuration file, so a test never reads the one belonging to a
+	// cronos installed on the machine running it.
+	t.Setenv("CRONOS_CONFIG", filepath.Join(t.TempDir(), "config.yaml"))
 }
 
 func load(t *testing.T) config.Server {
@@ -37,17 +41,31 @@ func load(t *testing.T) config.Server {
 }
 
 /*
-No key, no server.
+No key anywhere means a first run, not a failure.
 
-Refused rather than generated, and this is the assertion that keeps it that
-way. A key generated at startup invalidates every token on restart; a key
-defaulted in the source is the same key as everybody else's deployment.
+The contract moved when setup gained the ability to write one: a server with no
+key now serves /v1/setup and nothing else, so Load reports the state rather than
+refusing. What has not moved is that a key is never invented — Unconfigured is
+true and SigningKey is empty, so nothing downstream can mistake this for a
+deployment that has one.
 */
-func TestLoadRefusesWithoutASigningKey(t *testing.T) {
+func TestNoSigningKeyAnywhereIsAFirstRun(t *testing.T) {
 	t.Setenv("CRONOS_SIGNING_KEY", "")
+	// A directory with no config in it, so the file fallback finds nothing.
+	t.Setenv("CRONOS_CONFIG", filepath.Join(t.TempDir(), "config.yaml"))
 
-	if _, err := config.Load(); err == nil {
-		t.Fatal("a server with no signing key was configured")
+	s, err := config.Load()
+	if err != nil {
+		t.Fatalf("a first run was an error: %v", err)
+	}
+	if !s.Unconfigured {
+		t.Error("a deployment with no signing key does not report itself unconfigured")
+	}
+	// Never generated. A key that appears on its own invalidates every token
+	// on the next restart, and one defaulted in the source is the same key as
+	// every other deployment's.
+	if len(s.SigningKey) != 0 {
+		t.Errorf("a signing key was invented: %q", s.SigningKey)
 	}
 }
 
