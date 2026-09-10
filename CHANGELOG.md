@@ -20,7 +20,10 @@ needs a deployment to act says so under **Upgrading**.
 
 ---
 
-## Unreleased
+## v1.2.2 — 2026-09-10
+
+A security patch. Upgrade if you use per-report grants; nothing here changes
+behaviour for a deployment that has created none.
 
 **Security: per-report grants were bypassable through four other routes.** The
 grant check introduced in v1.1.0 was wired to the report read and the
