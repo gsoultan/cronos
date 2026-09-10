@@ -24,12 +24,23 @@ if [ -f /etc/cronos/env ]; then
 	chmod 0640 /etc/cronos/env
 fi
 
-# Not enabled and not started. A package that starts a server the moment it is
-# installed starts one with no signing key, which fails, and leaves an operator
-# reading a crash loop instead of a configuration file.
+# Not enabled and not started, still. Starting a server the moment a package
+# lands means starting one nobody has decided the address or the tenancy of, on
+# a machine whose operator may be part-way through a script.
 if [ -d /run/systemd/system ]; then
 	systemctl daemon-reload >/dev/null 2>&1 || true
 fi
 
-echo "cronos installed. Set CRONOS_SIGNING_KEY in /etc/cronos/env, then:"
-echo "  systemctl enable --now cronos"
+cat <<'MESSAGE'
+cronos installed. To configure it:
+
+  systemctl enable --now cronos
+  journalctl -u cronos -n 5     # names the setup token file
+  cat /var/lib/cronos/setup-token
+
+Then open http://<this-host>:8787/setup, paste the token, and set the
+administrator. cronos writes /var/lib/cronos/config.yaml and restarts into it.
+
+Configuring by hand instead: put the variables in /etc/cronos/env, which
+overrides anything setup wrote. See /usr/share/doc/cronos/deploying.md.
+MESSAGE

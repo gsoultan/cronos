@@ -83,12 +83,15 @@ upgrade will not overwrite.
 ```bash
 # .deb, .rpm and .apk, for amd64 and arm64.
 sudo dpkg -i cronos_1.1.0_linux_amd64.deb      # or: rpm -i / apk add --allow-untrusted
-
-# It is installed and not started, because a server with no signing key would
-# only crash-loop. Set one, then start it.
-sudo sh -c 'echo "CRONOS_SIGNING_KEY=$(head -c 32 /dev/urandom | base64)" >> /etc/cronos/env'
 sudo systemctl enable --now cronos
+
+# It starts unconfigured and serves one page. The token proves you are on this
+# machine — see First run, below.
+sudo cat /var/lib/cronos/setup-token
 ```
+
+Then open `http://<host>:8787/setup`, paste the token, and set the
+administrator. cronos writes its configuration and restarts into it.
 
 The package creates a `cronos` system account with no login, owns
 `/var/lib/cronos` to it, and installs `/etc/cronos/env` as a config file at
@@ -326,6 +329,67 @@ the last one to write it — see the rate-limit note under What has to be set.
 `app.example.com` and not the `http://` the host application used in
 development. An origin that does not match exactly is a CORS refusal that looks
 like an outage.
+
+## First run
+
+A deployment with no signing key starts anyway and serves `/setup` and nothing
+else. That is new: `CRONOS_SIGNING_KEY` used to have no default and cronosd
+refused without one, which is right for a container — configuration arrives
+with the container — and a wall for whoever installed a package and was handed
+a URL.
+
+```
+$ sudo systemctl enable --now cronos
+$ sudo journalctl -u cronos -n 3
+  WARN this deployment has no configuration — open /setup to configure it
+       token=/var/lib/cronos/setup-token
+$ sudo cat /var/lib/cronos/setup-token
+  9f3c…
+```
+
+Paste that into `/setup` along with an administrator and where the data lives.
+cronos writes `/var/lib/cronos/config.yaml`, records the administrator, and
+exits; systemd starts it again and the second boot is an ordinary one.
+
+**The token is the whole of the security here.** Setting the signing key
+through a web page means that for a moment the deployment's root of trust
+belongs to whoever finishes the form, and nothing else in the request proves
+who they are. The token is a random secret in a file only the `cronos` account
+can read, so the bar to bootstrap is what it has always been — shell access on
+the box. It is single use and deleted the moment setup succeeds.
+
+Setup mode answers `/v1/ready` with **503**, so a load balancer does not send
+anybody to a server that cannot render a report and is about to restart.
+
+### What setup writes, and what overrides it
+
+`/var/lib/cronos/config.yaml`, mode 0600. Under the state directory rather than
+`/etc` because the process writes it and the unit runs `ProtectSystem=strict` —
+`/etc` is read-only to it, and widening that so a server can rewrite its own
+configuration is a larger permission than this is worth.
+
+**The environment wins.** Anything in `/etc/cronos/env` overrides the file, so
+a deployment that already sets `CRONOS_SIGNING_KEY` never sees `/setup` at all
+and behaves exactly as it did before this existed. That is what makes it safe
+to upgrade into: there is no deployment whose behaviour changes. The setup form
+shows any variable the environment has already fixed as read-only, because a
+field you fill in that is then ignored is worse than one you were told you
+cannot change.
+
+The signing key is **generated**, not typed. It is the root of trust for every
+token the deployment will issue, and a person choosing one chooses a memorable
+one.
+
+cronos refuses to start if `config.yaml` is readable by anybody but its owner.
+It holds the key, and a key every account on the host can read is one that has
+been published.
+
+### Configuring by hand instead
+
+Nothing here is required. Put the variables in `/etc/cronos/env` before the
+first start and cronosd boots straight into them — no setup page, no token, no
+`config.yaml`. That is what a container deployment does, and what a
+configuration-managed host should keep doing.
 
 ## Probes
 

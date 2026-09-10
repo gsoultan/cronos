@@ -3,7 +3,8 @@ import { Outlet, useRouterState } from '@tanstack/react-router'
 import { Header } from './Header'
 import { SampleBanner } from './SampleBanner'
 import {
-  adoptSessionFromFragment, mustEnrol, needsSignIn, setupNeeded, SIGNED_OUT,
+  adoptSessionFromFragment, mustEnrol, needsSignIn, setupState, SIGNED_OUT,
+  type SetupState,
 } from '../lib/api'
 
 /* Lazy, because the sign-in page pulls Mantine's password field and most loads
@@ -90,14 +91,23 @@ export function Shell() {
   void adopted
 
   /* Undefined until the server has answered. */
-  const [setupWanted, setSetupWanted] = useState<boolean | undefined>(undefined)
+  /*
+     What the server says about a first run.
+
+     The whole state rather than a boolean, because there are two first runs and
+     the page has to tell them apart: a deployment with no configuration wants a
+     token and writes one, a configured deployment with no accounts wants an
+     administrator. Undefined until asked, so nothing renders on a guess.
+  */
+  const [setup, setSetup] = useState<SetupState | undefined>(undefined)
+  const setupWanted = setup?.needed
   useEffect(() => {
     if (!needsSignIn()) {
-      setSetupWanted(false)
+      setSetup({ needed: false, unconfigured: false })
       return
     }
     let live = true
-    void setupNeeded().then((yes) => { if (live) setSetupWanted(yes) })
+    void setupState().then((s) => { if (live) setSetup(s) })
     return () => { live = false }
   }, [session])
 
@@ -146,7 +156,11 @@ export function Shell() {
     return (
       <Suspense fallback={<main className="min-h-screen bg-canvas" />}>
         {setupWanted
-          ? <SetupPage onDone={() => { setSetupWanted(false); setSession((n) => n + 1) }} />
+          ? <SetupPage state={setup}
+              onDone={() => {
+                setSetup({ needed: false, unconfigured: false })
+                setSession((n) => n + 1)
+              }} />
           : <SignInPage onSignedIn={() => setSession((n) => n + 1)} />}
       </Suspense>
     )

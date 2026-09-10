@@ -836,17 +836,101 @@ export async function endOtherSessions(): Promise<void> {
  * protect yet — the whole point is that no credential exists.
  */
 export async function setupNeeded(): Promise<boolean> {
+  return (await setupState()).needed
+}
+
+/**
+ * What kind of first run this is, if any.
+ *
+ * Two of them, and the page needs to tell them apart. `unconfigured` is a
+ * server with no signing key: it is serving nothing but this endpoint, it needs
+ * a token from the machine, and it will restart once it has one. Otherwise the
+ * deployment is configured and only wants its first account, which is the flow
+ * that has always existed here.
+ */
+export interface SetupState {
+  needed: boolean
+  /** The server has no configuration at all, so setup writes one. */
+  unconfigured: boolean
+  /** Where the configuration will be written, for the page to name. */
+  config?: string
+  /** Variables the environment has already fixed. Names only, never values. */
+  fixed?: string[]
+}
+
+export async function setupState(): Promise<SetupState> {
   const base = apiBase()
-  if (!base) return false
+  if (!base) return { needed: false, unconfigured: false }
   try {
     const res = await fetch(base + '/v1/setup')
-    if (!res.ok) return false
-    return ((await res.json()) as { needed?: boolean }).needed === true
+    if (!res.ok) return { needed: false, unconfigured: false }
+    const out = (await res.json()) as SetupState
+    return {
+      needed: out.needed === true,
+      unconfigured: out.unconfigured === true,
+      config: out.config,
+      fixed: out.fixed ?? [],
+    }
   } catch {
     // Unreachable server. Offering to set up a deployment nobody can talk to
     // ends in a form that fails on submit, so the answer is no.
-    return false
+    return { needed: false, unconfigured: false }
   }
+}
+
+/**
+ * Configures a deployment that has none, and records its administrator.
+ *
+ * Unlike setUp, this hands back no session: the server writes its
+ * configuration and restarts, so there is nothing yet to be signed in to. The
+ * page waits for it to come back and then sends somebody to sign in.
+ *
+ * The token is the whole of the security here. It is in a file on the server,
+ * readable only by the account cronos runs as, and the server's log says where.
+ */
+export async function configureFirstRun(first: {
+  token: string
+  email: string; name: string; password: string
+  org: string; project: string
+  storeDriver?: string; storeDsn?: string
+  driver?: string; dsn?: string
+  definitions?: string; portalUrl?: string
+  origins?: string[]; behindProxy?: boolean
+}): Promise<{ message: string }> {
+  const base = apiBase()
+  if (!base) throw new ApiError(0, 'This portal is not connected to a server.')
+
+  const res = await fetch(base + '/v1/setup', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(first),
+  })
+  if (!res.ok) throw new ApiError(res.status, await serverMessage(res))
+  return (await res.json()) as { message: string }
+}
+
+/**
+ * Waits for a server that is restarting into its new configuration.
+ *
+ * Polls readiness rather than guessing at a delay: the second boot runs
+ * migrations and opens a warehouse connection, and how long that takes belongs
+ * to the deployment rather than to this page.
+ */
+export async function waitForRestart(seconds = 60): Promise<boolean> {
+  const base = apiBase()
+  if (!base) return false
+
+  const deadline = Date.now() + seconds * 1000
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(base + '/v1/ready')
+      if (res.ok) return true
+    } catch {
+      // Expected while it is down. The loop is the wait.
+    }
+    await new Promise((r) => setTimeout(r, 1000))
+  }
+  return false
 }
 
 /**

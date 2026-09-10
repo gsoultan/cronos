@@ -4,12 +4,21 @@ Description=cronos
 # so it is reached immediately and the unit starts before there is a route.
 Wants=network-online.target
 After=network-online.target
+# A bound on Restart=always below, so a configuration cronosd refuses is a
+# service that gives up and says so rather than a restart loop nobody notices.
+# These are [Unit] directives: systemd ignores them under [Service].
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
 User=cronos
 EnvironmentFile=/etc/cronos/env
 ExecStart=/usr/bin/cronosd
-Restart=on-failure
+# always, not on-failure. First-run setup writes the configuration and then
+# exits 0 so the next start is an ordinary boot — on-failure would leave the
+# service stopped at exactly the moment somebody finished configuring it.
+Restart=always
+RestartSec=2
 
 ProtectSystem=strict
 ProtectHome=true

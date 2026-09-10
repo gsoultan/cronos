@@ -4,20 +4,20 @@
 # unit is world-readable. This file is installed 0600 and owned by root; the
 # package does not overwrite it on upgrade.
 #
-# The server will not start until CRONOS_SIGNING_KEY is set. That is deliberate:
-# a key generated at startup invalidates every token on restart, and one
-# defaulted in the source is the same key as every other deployment's.
+# Everything here is optional.
 #
-# Generate one:  head -c 32 /dev/urandom | base64
-CRONOS_SIGNING_KEY=
+# Left empty, cronosd starts in setup mode and serves /setup, which writes
+# /var/lib/cronos/config.yaml for you — including a signing key it generates.
+# The server's log names a token file you will need to prove you are on this
+# machine; nothing can be configured without it.
+#
+# Anything set here wins over that file, so this is where to pin a value you
+# want to survive whatever setup wrote. Leave it commented to let setup decide.
 
-# The one project this process serves.
-CRONOS_ORG=default
-CRONOS_PROJECT=default
-
-# Where definitions are read from, and where the store lives. See
-# /usr/share/doc/cronos/deploying.md for the full list.
-CRONOS_DEFINITIONS=/var/lib/cronos/definitions
+# CRONOS_SIGNING_KEY=
+# CRONOS_ORG=default
+# CRONOS_PROJECT=default
+# CRONOS_DEFINITIONS=/var/lib/cronos/definitions
 # CRONOS_STORE_DSN=postgres://cronos:...@localhost/cronos?sslmode=disable
 
 # Only where something in front terminates TLS. It keys rate limits on

@@ -22,6 +22,37 @@ needs a deployment to act says so under **Upgrading**.
 
 ## Unreleased
 
+**A first run configures itself through /setup.** A deployment with no signing
+key now starts and serves that one page instead of refusing to boot. Set the
+administrator and where the data lives, and cronos writes
+`/var/lib/cronos/config.yaml` — generating the signing key itself, because it is
+the root of trust for every token the deployment issues and nobody should be
+choosing a memorable one — then restarts into it.
+
+**The environment still wins, so nothing changes for an existing deployment.**
+A container or unit that already sets `CRONOS_SIGNING_KEY` never reads a
+configuration file and never sees `/setup`. This is a pure addition: there is
+no deployment whose behaviour is different.
+
+**Setup needs a token from the machine.** Setting the signing key through a web
+page means that for a moment the deployment's root of trust belongs to whoever
+finishes the form, so cronosd writes a random secret to
+`/var/lib/cronos/setup-token`, mode 0600, and logs the path — never the value.
+Nothing can be configured without it. It is single use and deleted on success.
+The bar to bootstrap stays what it has always been: shell access on the box.
+
+While unconfigured, `/v1/ready` answers **503** so a load balancer does not send
+anybody to a server that cannot render a report and is about to restart.
+
+The administrator is created on the second boot, by the configured server that
+has a database — what passes between the two is a bcrypt hash, never a
+password. `config.yaml` is refused if it is readable by anybody but its owner.
+
+The systemd unit is now `Restart=always` with a start limit, because setup
+finishes by exiting cleanly and `Restart=on-failure` would leave the service
+stopped at exactly that moment. See "First run" in
+[docs/deploying.md](docs/deploying.md).
+
 **Linux packages.** `.deb`, `.rpm` and `.apk` for amd64 and arm64, alongside the
 tarballs. They install the binaries, a systemd unit that is already correct, and
 `/etc/cronos/env` as a config file — so an upgrade replaces the binary and
