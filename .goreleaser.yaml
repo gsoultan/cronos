@@ -194,6 +194,16 @@ signs:
       - '${artifact}'
 
 release:
+  # Published as a draft, and made visible by the workflow only after it has
+  # verified what it just built.
+  #
+  # goreleaser signs and uploads in one step, so the verification that used to
+  # run before `gh release create` now runs after the upload — which means it
+  # gates nothing unless the upload is invisible. A draft is invisible: a
+  # release whose signature or SBOM does not check out stays a draft and a red
+  # tick, rather than being downloadable with a red tick beside it.
+  draft: true
+
   # The notes point at the changelog rather than repeating it. Two copies of the
   # same text drift, and the one in the repository is what ships inside the
   # archives and the packages. `changelog.disable` below is what stops

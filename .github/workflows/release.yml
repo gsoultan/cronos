@@ -83,12 +83,16 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
-      # Verified here rather than trusted, because a signature nobody has
-      # checked is a file. This is the same command the documentation gives a
-      # person downloading a release, run against the artifacts before anybody
-      # can download them — so the instructions are known to work at the moment
-      # they are published rather than the first time somebody follows them.
-      - name: verify what was published
+      # Verified before anybody can download it, which is why the release above
+      # is created as a draft. goreleaser signs and uploads in one step, so this
+      # check runs after the upload — and a check after the fact gates nothing
+      # unless what was uploaded is still invisible.
+      #
+      # These are the same two commands the documentation gives a person
+      # downloading a release, so the instructions are known to work at the
+      # moment the release is cut rather than the first time somebody follows
+      # them.
+      - name: verify before anybody can download it
         run: |
           cosign verify-blob \
             --bundle dist/SHA256SUMS.cosign.bundle \
@@ -104,3 +108,11 @@ jobs:
           for f in dist/*.spdx.json; do
             grep -q '"packages"' "$f" || { echo "$f catalogued nothing"; exit 1; }
           done
+
+      # Only now is it a release. Anything that failed above leaves a draft,
+      # which nobody can download and which says plainly that it was not
+      # finished.
+      - name: publish the verified release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "${GITHUB_REF_NAME}" --draft=false

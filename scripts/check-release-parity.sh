@@ -97,11 +97,48 @@ for dir in cmd/*/; do
 		bad "$cmd is built by $IMAGE but never copied into the final image"
 done
 
-# The archives carry the licence that covers the binary beside them. This is the
-# distribution half of scripts/check-license-boundary.sh, and the half a build
-# graph cannot see.
-grep -q 'src: ee/LICENSE' "$CONFIG" ||
-	bad "the enterprise archive does not carry ee/LICENSE"
+# licenceIn reports which LICENSE an archive section carries.
+#
+# Asked per section rather than of the file. A file-wide `grep src: ee/LICENSE`
+# was the first version of this and it passed with the two blocks swapped —
+# community carrying the commercial licence and enterprise carrying the BSL —
+# which is exactly the "wrong LICENSE beside a binary" this is here to catch.
+licenceIn() {
+	awk -v section="$1" '
+		$0 ~ "^  - id: " section "$" { inside = 1; next }
+		inside && /^  - id: / { exit }
+		inside && $1 == "-" && $2 == "src:" { print $3 }
+		inside && $1 == "src:" { print $2 }
+	' "$CONFIG" | grep -E 'LICENSE$' | head -1
+}
+
+case "$(licenceIn community)" in
+	LICENSE) ;;
+	"") bad "the community archive carries no LICENSE" ;;
+	*)  bad "the community archive carries $(licenceIn community), not the BSL LICENSE" ;;
+esac
+case "$(licenceIn enterprise)" in
+	ee/LICENSE) ;;
+	"") bad "the enterprise archive carries no LICENSE" ;;
+	*)  bad "the enterprise archive carries $(licenceIn enterprise), not ee/LICENSE" ;;
+esac
+
+# And no archive mixes the two editions, whatever it is called.
+#
+# inList only ever answers about the three section names written above, so a
+# fourth archive was invisible to it: adding `- id: bundle` with every build id
+# in it shipped cronosd-ee beside the community binaries and this script said
+# ok. The ids are read out of the file now rather than assumed.
+eeBuild=$(buildID cronosd-ee)
+for section in $(awk '/^archives:/ { inside = 1; next }
+	inside && /^[a-z]/ { exit }
+	inside && $0 ~ /^  - id: / { print $NF }' "$CONFIG"); do
+
+	[ "$section" = enterprise ] && continue
+	if inList "$section" "$eeBuild"; then
+		bad "archive \"$section\" ships $eeBuild beside community binaries"
+	fi
+done
 
 [ "$status" -eq 0 ] && ok "every command ships in the channels that should carry it"
 exit $status

@@ -12,6 +12,12 @@ StartLimitBurst=5
 
 [Service]
 User=cronos
+# systemd creates and owns /var/lib/cronos before each start, which is the
+# safe way to get a state directory: it will not follow a symlink somebody
+# left there. The package creates it too, for the moment between installing
+# and first starting.
+StateDirectory=cronos
+StateDirectoryMode=0750
 EnvironmentFile=/etc/cronos/env
 ExecStart=/usr/bin/cronosd
 # always, not on-failure. First-run setup writes the configuration and then

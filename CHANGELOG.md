@@ -22,6 +22,34 @@ needs a deployment to act says so under **Upgrading**.
 
 ## Unreleased
 
+**Security: a local privilege escalation in the Linux packages.** The
+postinstall script created `/var/lib/cronos/definitions` with `install -d`,
+which follows a symlink at the target and applies the requested ownership to
+whatever it points at. That directory lives inside one the `cronos` service
+account owns, so that account could replace it with a link to `/etc` and wait:
+the next `apt upgrade` re-ran postinstall as root and handed `/etc` over,
+which is root by way of `/etc/cron.d` or `/etc/ld.so.preload`. It defeated
+every hardening line in the systemd unit.
+
+**Affects the `.deb`, `.rpm` and `.apk` in v1.2.0, v1.2.1 and v1.2.2.** It
+requires an attacker to already control the `cronos` service account, so a
+compromised cronos became a compromised host rather than a contained one. The
+tarballs and the container image are unaffected. The script now refuses to
+follow a symlink and never re-permissions a path that already exists, and the
+unit uses systemd's `StateDirectory=`, which creates the directory safely
+before every start.
+
+**The release is published as a draft and made visible only after it verifies.**
+goreleaser signs and uploads in one step, so the check that used to run before
+publication now runs after it — and a check after the fact gates nothing. A
+release whose signature or SBOM does not check out now stays a draft.
+
+**The licence-boundary gate had two silent passes.** Swapping the two `files:`
+blocks — community carrying the commercial licence and enterprise carrying the
+BSL — and adding a third archive bundling `cronosd-ee` with the community
+binaries both reported ok. The licence is now checked per archive rather than
+per file, and archive ids are read from the config rather than assumed.
+
 **A personal confinement is now tenant-scoped too.** `SetUserScope` read the
 principal only to record who set it, so it changed — and deleted — the personal
 scope of any account in the deployment. Deleting one widens what somebody sees,
