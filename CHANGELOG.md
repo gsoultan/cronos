@@ -20,7 +20,11 @@ needs a deployment to act says so under **Upgrading**.
 
 ---
 
-## Unreleased
+## v1.2.4 — 2026-09-11
+
+A security release, and the one to be on. **Upgrade.** The row-scope fix below
+matters to any deployment that embeds a report, and the flaw is older than
+v1.0.0.
 
 A security review of the code that predates the recent work — the tenancy and
 row-scope engine, and authentication. Four findings, all fixed. They are older
