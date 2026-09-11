@@ -20,7 +20,10 @@ needs a deployment to act says so under **Upgrading**.
 
 ---
 
-## Unreleased
+## v1.2.3 — 2026-09-11
+
+A security release. **Upgrade if you installed the `.deb`, `.rpm` or `.apk` of
+v1.2.0, v1.2.1 or v1.2.2.** The tarballs and the container image are unaffected.
 
 **Security: a local privilege escalation in the Linux packages.** The
 postinstall script created `/var/lib/cronos/definitions` with `install -d`,
