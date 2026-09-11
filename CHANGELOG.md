@@ -20,6 +20,47 @@ needs a deployment to act says so under **Upgrading**.
 
 ---
 
+## Unreleased
+
+A security review of the code that predates the recent work — the tenancy and
+row-scope engine, and authentication. Four findings, all fixed. They are older
+than any release in this changelog.
+
+**Security: a row scope could confine on a value the caller supplied.** The
+check that refuses a row-scope predicate which reads no `.scope` value tested
+only that the predicate had *some* template hole, so one reading
+`{{ .params.customer_id }}` was accepted. Parameters are merged from the request
+body wherever the host did not pin them, so an end user could send
+`{"params":{"customer_id":"c-2"}}` with a token confining them to `c-1` and read
+another customer's rows. **This inverts the product's central claim.** It needed
+a dataset written that way, which `docs/tenancy.md` pushes authors towards for
+datasets a schedule also reads. Publishing now refuses such a definition, and
+the compiler independently matches no rows — because publishing validates only
+at publish, and a deployment that already stored one would otherwise keep
+serving it.
+
+**Security: a second factor could be bypassed three ways.**
+
+- Ending sessions minted a replacement that dropped the enrolment fence. On a
+  project requiring a second factor, an account with none gets a session
+  restricted to the enrolment routes — and `/v1/auth/sessions/end` is one of
+  them. The replacement it handed back was unrestricted, so a password alone
+  reached the whole portal with no factor ever enrolled.
+- Replacing recovery codes required no proof. Those codes are accepted as the
+  second factor at sign-in, so a stolen session could mint itself ten, sign in
+  with one, and remove the factor with another. It also silently invalidated
+  the codes the account holder had printed. It now needs a current code, the
+  same as removing the factor does.
+- `DELETE /v1/auth/factor` was the one factor route taking a guessable code with
+  no rate limit, while the comment above it said removal was limited. It is now.
+
+Also reviewed and sound, checked rather than assumed: SQL injection across the
+query builder and every dialect, token forgery and audience confusion, tenancy
+isolation, reset and invitation tokens, TOTP drift and replay, account
+enumeration, and OIDC state, nonce, issuer and audience validation.
+
+---
+
 ## v1.2.3 — 2026-09-11
 
 A security release. **Upgrade if you installed the `.deb`, `.rpm` or `.apk` of

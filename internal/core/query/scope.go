@@ -83,13 +83,29 @@ func (b *binder) predicate(s definition.RowScope) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	/*
+	   A predicate that reads no scope at all confines nobody, so it matches
+	   nothing.
+
+	   Check refuses to store one, which is where this should be caught. It is
+	   caught here too because Check runs at publish: a deployment that stored
+	   such a dataset before that gate was corrected would go on serving it, and
+	   the caller's own parameter would go on being the value they are confined
+	   to. Re-deriving it per compile costs one pass over the refs the renderer
+	   is about to walk anyway.
+	*/
+	scoped := false
 	for _, r := range refs {
 		if r.source != fromScope {
 			continue
 		}
+		scoped = true
 		if _, ok := b.scope[r.name]; !ok {
 			return noRows, nil
 		}
+	}
+	if !scoped {
+		return noRows, nil
 	}
 	return b.render(s.Predicate, true)
 }

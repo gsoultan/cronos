@@ -434,11 +434,17 @@ func Routes(d Deps) http.Handler {
 		if d.Factors != nil {
 			factor := NewFactor(d.Factors, d.Roster, author, d.Org, d.Log).
 				Upgrading(d.Signer)
-			mux.Handle("/v1/auth/factor", factor)
-			// Confirming and removing both take a code, so both are limited
-			// like sign-in: an unbounded rate here is an unbounded number of
-			// guesses at six digits from inside a borrowed session.
+			// Confirming, removing and replacing codes all take a code, so all
+			// of them are limited like sign-in: an unbounded rate here is an
+			// unbounded number of guesses at six digits from inside a borrowed
+			// session.
+			//
+			// Removal is DELETE on the bare path, and it used to be mounted
+			// outside this loop while the comment above it said otherwise —
+			// the one route taking a guessable code with nothing bounding the
+			// guesses.
 			for _, path := range []string{
+				"/v1/auth/factor",
 				"/v1/auth/factor/start", "/v1/auth/factor/confirm", "/v1/auth/factor/codes",
 			} {
 				mux.Handle(path, limited(factor, NewLimit(signInRate, signInBurst),

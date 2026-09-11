@@ -542,6 +542,20 @@ func (h *Sessions) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			// demotes whoever pressed it — and the only way back is another
 			// administrator, which on a deployment with one is nobody.
 			Platform: pr.Platform,
+			/*
+			   Carried across for the opposite reason, and it was not.
+
+			   An enrolment session exists because the project requires a second
+			   factor and this account has none, and OnlyEnrolment fences it to
+			   a handful of routes — this one among them, so somebody enrolling
+			   can still end a stolen session. Minting the replacement without
+			   Enrol handed back an unfenced session: password, one request, and
+			   the requirement was gone. The factor was never enrolled.
+
+			   factors.go upgrades a session this way too, deliberately, after
+			   proving a code. Here there is nothing proved, so nothing changes.
+			*/
+			Enrol: pr.Enrol,
 		}, SessionLifetime)
 	if err != nil {
 		// The sessions did end — that write already happened. This browser is

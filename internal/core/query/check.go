@@ -41,12 +41,32 @@ func checkPredicates(ds definition.Dataset, declared map[string]bool) error {
 		if err != nil {
 			return err
 		}
-		if len(refs) == 0 {
-			// A predicate with no hole is the same text for everybody, which
-			// means it is a filter the author wanted applied always — not row
-			// scope. Saying so beats letting them believe it isolates anyone.
+		/*
+		   A row scope has to read the token's scope, and this tested something
+		   weaker than the sentence below it.
+
+		   The condition was len(refs) == 0, so any hole satisfied it — a
+		   `.params` hole included. But .params is merged from the request body
+		   wherever the host did not pin the name, so a predicate reading
+		   `{{ .params.customer_id }}` let the caller choose the value they are
+		   confined to: send customer_id=c-2 with a token that says c-1 and read
+		   another customer's rows. That is the product's one claim, inverted,
+		   through the gate written to protect it.
+
+		   A shape an author is pushed towards, too: docs/tenancy.md tells them
+		   a dataset a schedule reads must not carry a .scope predicate and to
+		   use a parameter instead, which is exactly this if the same dataset is
+		   also embedded.
+		*/
+		scoped := false
+		for _, r := range refs {
+			if r.source == fromScope {
+				scoped = true
+			}
+		}
+		if !scoped {
 			return fmt.Errorf("%w: dataset %q row scope %d reads no .scope value, "+
-				"so it restricts every caller identically", ErrBadTemplate, ds.Name, i)
+				"so it confines every caller to whatever they ask for", ErrBadTemplate, ds.Name, i)
 		}
 		for _, r := range refs {
 			if r.source == fromParams && !declared[r.name] {

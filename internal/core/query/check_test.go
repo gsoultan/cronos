@@ -30,7 +30,13 @@ func TestCheckRejects(t *testing.T) {
 
 		{"a predicate that reads no scope", func(d *definition.Dataset) {
 			d.RowLevelSecurity = []definition.RowScope{{Predicate: "status <> 'draft'"}}
-		}, "restricts every caller identically"},
+		}, "reads no .scope value"},
+
+		// The same rule, and the case it used to miss: a hole is not enough,
+		// because .params comes from the request. See paramscope_test.go.
+		{"a predicate confining on a request parameter", func(d *definition.Dataset) {
+			d.RowLevelSecurity = []definition.RowScope{{Predicate: "id = {{ .params.region }}"}}
+		}, "reads no .scope value"},
 
 		{"a predicate that will not parse", func(d *definition.Dataset) {
 			d.RowLevelSecurity = []definition.RowScope{{Predicate: "x = {{ .scope.a"}}

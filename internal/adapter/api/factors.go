@@ -260,6 +260,32 @@ func (h *Factor) regenerate(w http.ResponseWriter, r *http.Request, pr principal
 		return
 	}
 
+	/*
+	   A current code, for the same reason remove asks for one.
+
+	   This mints ten credentials that are accepted as the second factor at
+	   sign-in, so a session alone was enough to issue itself a way past the
+	   factor that session is supposed to be behind — and then to remove the
+	   factor with one of them. remove says it plainly: a stolen session that
+	   can strip the second factor makes the factor protect nothing at the
+	   moment it matters most. Minting a replacement for it is the same act
+	   wearing a different name.
+
+	   It also silently invalidated the codes the account holder had printed,
+	   which they would discover while locked out.
+	*/
+	var in struct {
+		Code string `json:"code"`
+	}
+	if err := decodeJSON(w, r, &in); err != nil {
+		fail(w, http.StatusBadRequest, "Send a current code to replace your recovery codes.")
+		return
+	}
+	if err := h.prove(r.Context(), pr.Subject, in.Code); err != nil {
+		h.refuse(w, err, "Could not replace your recovery codes.")
+		return
+	}
+
 	codes, err := h.issueCodes(r.Context(), pr.Subject)
 	if err != nil {
 		h.log.Error("could not regenerate recovery codes", "err", err)

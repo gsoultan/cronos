@@ -396,13 +396,19 @@ func TestRegeneratingRetiresTheOldSet(t *testing.T) {
 	rows, h, mine := factorHandler(t)
 	old := confirmFactor(t, rows, h, mine)
 
-	w := ask(h, http.MethodPost, "/v1/auth/factor/codes", mine, nil)
+	// Replacing the set needs a current code now, the same as removing the
+	// factor does: these codes are accepted as the second factor at sign-in, so
+	// minting ten of them from a session alone was a way past the factor that
+	// session sits behind.
+	w := ask(h, http.MethodPost, "/v1/auth/factor/codes", mine,
+		map[string]string{"code": old[0]})
 	var out struct{ RecoveryCodes []string }
 	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
 		t.Fatalf("%d %s", w.Code, w.Body)
 	}
 
-	if err := rows.SpendRecoveryCode(context.Background(), "usr_ada", old[0]); !errors.Is(err, identity.ErrBadCode) {
+	// old[0] was spent proving the request above, so check one that was not.
+	if err := rows.SpendRecoveryCode(context.Background(), "usr_ada", old[1]); !errors.Is(err, identity.ErrBadCode) {
 		t.Fatal("an old code still works")
 	}
 	if err := rows.SpendRecoveryCode(context.Background(), "usr_ada", out.RecoveryCodes[0]); err != nil {
