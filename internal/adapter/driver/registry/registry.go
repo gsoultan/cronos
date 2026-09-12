@@ -134,8 +134,15 @@ func open(def definition.DataSource, secrets secret.Resolver) (*source, error) {
 		   The driver name is what a person needs anyway: this fails when the
 		   build cannot open that kind of database, and no DSN would have told
 		   them that.
+
+		   Redacted rather than merely omitted, because leaving it out of the
+		   format string is only half of it: the driver puts it back. A build
+		   with the duckdb driver registered answers `driver: duckdb` with
+		   `Cannot open file "duckdb://user:password@host/db"`, and that is the
+		   text this wraps.
 		*/
-		return nil, fmt.Errorf("datasource %q (driver %q): %w", def.Name, def.Driver, err)
+		return nil, fmt.Errorf("datasource %q (driver %q): %w",
+			def.Name, def.Driver, secret.Redact(err, dsn))
 	}
 
 	// The pool is bounded because somebody else operates this database. A
