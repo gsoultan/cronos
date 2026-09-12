@@ -6,9 +6,11 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
 
 	sqldriver "github.com/gsoultan/cronos/internal/adapter/driver/sql"
 	"github.com/gsoultan/cronos/internal/core/definition"
+	"github.com/gsoultan/cronos/internal/platform/secret"
 
 	_ "github.com/marcboeker/go-duckdb/v2"
 )
@@ -28,21 +30,67 @@ func Open(ctx context.Context, sources map[string]definition.DataSource) (*Feder
 	if err != nil {
 		return nil, err
 	}
+	bound(db, sources)
 
 	for name, src := range sources {
-		stmt, err := mount(name, src)
+		stmts, err := mount(name, src)
 		if err != nil {
 			db.Close()
 			return nil, err
 		}
-		if _, err := db.ExecContext(ctx, stmt); err != nil {
-			db.Close()
-			// The statement is named but the DSN is not: it is in the text and
-			// it holds a password.
-			return nil, fmt.Errorf("duckdb: mounting %q (%s): %w", name, src.Driver, err)
+		for _, stmt := range stmts {
+			if _, err := db.ExecContext(ctx, stmt.sql); err != nil {
+				db.Close()
+				// The source is named and the statement is not. DuckDB prints
+				// the line it could not parse, and for an ATTACH that line
+				// holds a password and for a CREATE SECRET it holds a key.
+				return nil, fmt.Errorf("duckdb: mounting %q (%s): %w",
+					name, src.Driver, secret.Redact(err, stmt.holds...))
+			}
 		}
 	}
 	return &Federation{db: db}, nil
+}
+
+/*
+bound limits the pool to the tightest of what the mounted sources allow.
+
+DuckDB runs in this process and its own connections are cheap, which is the
+reason this looked like it did not need bounding. What is not cheap is what
+they are attached to: every connection DuckDB opens to a federation carries its
+own connection to each warehouse mounted into it, so an unbounded pool here is
+an unbounded connection count in somebody else's production database — the
+thing the registry bounds each source for, arrived at the long way round.
+
+The tightest rather than the sum, for the same reason the row and time limits
+are: each of those numbers is an answer about one database, and a federation
+reads several at once.
+*/
+func bound(db *sql.DB, sources map[string]definition.DataSource) {
+	var open, idle int
+	var idleFor, lifetime time.Duration
+	first := true
+	for _, src := range sources {
+		p := src.Pool
+		if first {
+			open, idle, idleFor, lifetime = p.Open(), p.Idle(), p.IdleFor(), p.LifetimeOf()
+			first = false
+			continue
+		}
+		open = min(open, p.Open())
+		idle = min(idle, p.Idle())
+		idleFor = min(idleFor, p.IdleFor())
+		lifetime = min(lifetime, p.LifetimeOf())
+	}
+	if first {
+		// No sources is not reachable through the registry, which refuses a
+		// dataset with none. Left correct rather than assumed.
+		return
+	}
+	db.SetMaxOpenConns(open)
+	db.SetMaxIdleConns(idle)
+	db.SetConnMaxIdleTime(idleFor)
+	db.SetConnMaxLifetime(lifetime)
 }
 
 // Executor returns something that can run plans against the federation.

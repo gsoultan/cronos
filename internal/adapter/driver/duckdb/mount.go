@@ -4,23 +4,34 @@ package duckdb
 
 import (
 	"fmt"
-	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/gsoultan/cronos/internal/core/definition"
 )
 
-// alias is the shape a mount name may take.
-//
-// The alias becomes a SQL identifier in an ATTACH, which is the one place a
-// definition's text reaches a statement here. definition.Validate enforces the
-// same shape; this is the check that makes it structural rather than trusted.
-var alias = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
+/*
+statement is one thing to execute, and the values in it that must not escape.
+
+DuckDB echoes a failing statement back inside its error text — a parser error
+prints the line it could not parse. For a CREATE SECRET that line holds the
+key, so the caller needs to know which values to strip before the error reaches
+a log. Carrying them beside the SQL beats guessing at the far end.
+*/
+type statement struct {
+	sql string
+	// holds are substrings of sql that are credentials.
+	holds []string
+}
 
 // mount is the SQL that makes one source readable under its alias.
-func mount(name string, src definition.DataSource) (string, error) {
-	if !alias.MatchString(name) {
-		return "", fmt.Errorf("duckdb: %q is not a mount name", name)
+//
+// A slice rather than one string: an object store needs an extension, then a
+// credential, then a view, and the credential's failure has to be reported
+// differently from the other two.
+func mount(name string, src definition.DataSource) ([]statement, error) {
+	if !MountName(name) {
+		return nil, fmt.Errorf("duckdb: %q is not a mount name", name)
 	}
 	switch src.Driver {
 	case "postgres":
@@ -32,11 +43,12 @@ func mount(name string, src definition.DataSource) (string, error) {
 	case "duckdb":
 		// Already this engine. Attaching a DuckDB file needs no extension and
 		// no type.
-		return fmt.Sprintf("ATTACH %s AS %s (READ_ONLY);", quote(src.DSN), name), nil
+		return []statement{{sql: fmt.Sprintf(
+			"ATTACH %s AS %s (READ_ONLY);", quote(src.DSN), name)}}, nil
 	case "object-store":
 		return view(name, src)
 	}
-	return "", fmt.Errorf("duckdb: cannot mount a %s source", src.Driver)
+	return nil, fmt.Errorf("duckdb: cannot mount a %s source", src.Driver)
 }
 
 // attach loads the extension and mounts the database, read-only.
@@ -44,31 +56,163 @@ func mount(name string, src definition.DataSource) (string, error) {
 // INSTALL then LOAD every time: both are idempotent, and the alternative is
 // tracking which extensions a connection has seen — state that is wrong the
 // first time a pooled connection is replaced.
-func attach(extension, name, dsn string) string {
-	return fmt.Sprintf(
-		"INSTALL %s; LOAD %s; ATTACH %s AS %s (TYPE %s, READ_ONLY);",
-		extension, extension, quote(dsn), name, strings.ToUpper(extension))
+func attach(extension, name, dsn string) []statement {
+	return []statement{{
+		sql: fmt.Sprintf(
+			"INSTALL %s; LOAD %s; ATTACH %s AS %s (TYPE %s, READ_ONLY);",
+			extension, extension, quote(dsn), name, strings.ToUpper(extension)),
+		// The DSN holds the password, and an ATTACH that fails to parse prints
+		// the line it choked on.
+		holds: []string{dsn},
+	}}
 }
 
-// view exposes an object store as a table.
-//
-// A view rather than an attachment, because a bucket of Parquet is not a
-// database: there is no catalogue to mount, only files to read. The glob is
-// recursive so a lake partitioned by date does not need one view per day.
-func view(name string, src definition.DataSource) (string, error) {
+/*
+view exposes an object store as a table.
+
+A view rather than an attachment, because a bucket of Parquet is not a
+database: there is no catalogue to mount, only files to read. The glob is
+recursive so a lake partitioned by date does not need one view per day.
+
+union_by_name because that is what a lake partitioned by date does to a schema.
+Without it the reader takes its types from whichever file it globs first and
+imposes them on every other, so the day somebody widened a column is the day
+every query over the whole range starts failing — and the error names a file,
+not a schema change.
+*/
+func view(name string, src definition.DataSource) ([]statement, error) {
 	reader, ok := readers[src.Format]
 	if !ok {
-		return "", fmt.Errorf("duckdb: cannot read %q from an object store", src.Format)
+		return nil, fmt.Errorf("duckdb: cannot read %q from an object store", src.Format)
 	}
+
+	var out []statement
+	if scheme := remote(src.URI); scheme != "" {
+		out = append(out, statement{sql: "INSTALL httpfs; LOAD httpfs;"})
+		cred, err := credential(name, scheme, src)
+		if err != nil {
+			return nil, err
+		}
+		if cred != nil {
+			out = append(out, *cred)
+		}
+	} else if src.Credentials != "" {
+		// A local path with a credential on it is a definition that means
+		// something its author would not recognise. Refused rather than
+		// ignored: a credential that does nothing is one nobody rotates.
+		return nil, fmt.Errorf(
+			"duckdb: source %q has credentials and a uri that is not a remote store", src.Name)
+	}
+
 	uri := strings.TrimSuffix(src.URI, "/") + "/**/*." + src.Format
-	return fmt.Sprintf("CREATE OR REPLACE VIEW %s AS SELECT * FROM %s(%s);",
-		name, reader, quote(uri)), nil
+	out = append(out, statement{sql: fmt.Sprintf(
+		"CREATE OR REPLACE VIEW %s AS SELECT * FROM %s(%s, union_by_name=true);",
+		name, reader, quote(uri))})
+	return out, nil
 }
 
 var readers = map[string]string{
 	"parquet": "read_parquet",
 	"csv":     "read_csv_auto",
 	"json":    "read_json_auto",
+}
+
+// remote returns the URI's scheme when it names an object store, and "" when
+// the URI is a local path.
+func remote(uri string) string {
+	scheme, _, ok := strings.Cut(uri, "://")
+	if !ok {
+		return ""
+	}
+	return strings.ToLower(scheme)
+}
+
+// stores maps a URI scheme to the DuckDB secret type that reads it.
+//
+// A closed table. A scheme absent from it reaches the reader without a
+// credential, which is right for http and for a public bucket, and which is
+// why credentials on one are an error rather than a silent omission.
+var stores = map[string]string{
+	"s3":  "s3",
+	"gs":  "gcs",
+	"gcs": "gcs",
+	"r2":  "r2",
+}
+
+/*
+credential is what the store is read with, or nil for a public one.
+
+Scoped to the source's own URI. An unscoped secret is the default for every
+bucket on the connection, so two datasources in one dataset — a lake each, with
+a key each — would resolve to whichever was created last. The scope is what
+makes two of them mean two.
+*/
+func credential(name, scheme string, src definition.DataSource) (*statement, error) {
+	typ, ok := stores[scheme]
+	if !ok {
+		if src.Credentials != "" || src.Region != "" {
+			return nil, fmt.Errorf(
+				"duckdb: source %q is %s://, which takes no credentials or region here",
+				src.Name, scheme)
+		}
+		return nil, nil
+	}
+	if src.Credentials == "" {
+		if src.Region == "" {
+			return nil, nil
+		}
+		// A region and no credentials is a public bucket in a named region,
+		// which is a real thing and needs a secret to carry the region.
+		return &statement{sql: fmt.Sprintf(
+			"CREATE OR REPLACE SECRET %s_store (TYPE %s, REGION %s, SCOPE %s);",
+			name, typ, quote(src.Region), quote(scope(src.URI)))}, nil
+	}
+
+	if src.Credentials == definition.CredentialChain {
+		// No key in the definition at all: DuckDB asks the environment, which
+		// is how an instance with a role attached reads its own bucket.
+		return &statement{sql: fmt.Sprintf(
+			"CREATE OR REPLACE SECRET %s_store (TYPE %s, PROVIDER credential_chain%s, SCOPE %s);",
+			name, typ, region(src.Region), quote(scope(src.URI)))}, nil
+	}
+
+	pairs, err := definition.ParseCredentials(src.Credentials)
+	if err != nil {
+		return nil, fmt.Errorf("duckdb: source %q: %w", src.Name, err)
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "CREATE OR REPLACE SECRET %s_store (TYPE %s", name, typ)
+	var holds []string
+	for _, k := range sorted(pairs) {
+		fmt.Fprintf(&b, ", %s %s", strings.ToUpper(k), quote(pairs[k]))
+		if k != "account_id" {
+			holds = append(holds, pairs[k])
+		}
+	}
+	b.WriteString(region(src.Region))
+	fmt.Fprintf(&b, ", SCOPE %s);", quote(scope(src.URI)))
+	return &statement{sql: b.String(), holds: holds}, nil
+}
+
+// region is the clause, or nothing when the definition did not say.
+func region(r string) string {
+	if r == "" {
+		return ""
+	}
+	return ", REGION " + quote(r)
+}
+
+// scope is the prefix a secret applies to: the source's own bucket and path.
+func scope(uri string) string { return strings.TrimSuffix(uri, "/") + "/" }
+
+func sorted(m map[string]string) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // quote makes a string literal.

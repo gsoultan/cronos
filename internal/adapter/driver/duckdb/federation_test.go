@@ -23,20 +23,21 @@ func TestMountSQL(t *testing.T) {
 
 		{"a parquet lake", definition.DataSource{
 			Driver: "object-store", URI: "s3://acme-lake/events/", Format: "parquet"}, "events",
-			[]string{"CREATE OR REPLACE VIEW events",
-				"read_parquet('s3://acme-lake/events/**/*.parquet')"}},
+			[]string{"INSTALL httpfs", "LOAD httpfs", "CREATE OR REPLACE VIEW events",
+				"read_parquet('s3://acme-lake/events/**/*.parquet', union_by_name=true)"}},
 
 		{"a csv bucket", definition.DataSource{
 			Driver: "object-store", URI: "s3://b/x", Format: "csv"}, "sheets",
-			[]string{"read_csv_auto('s3://b/x/**/*.csv')"}},
+			[]string{"read_csv_auto('s3://b/x/**/*.csv', union_by_name=true)"}},
 	}
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got, err := mount(c.mount, c.src)
+			stmts, err := mount(c.mount, c.src)
 			if err != nil {
 				t.Fatal(err)
 			}
+			got := sqlOf(stmts)
 			for _, want := range c.expect {
 				if !strings.Contains(got, want) {
 					t.Errorf("missing %q in:\n%s", want, got)
@@ -51,10 +52,11 @@ func TestMountSQL(t *testing.T) {
 // the difference between a reviewable risk and an unreviewable one.
 func TestEveryAttachmentIsReadOnly(t *testing.T) {
 	for _, driver := range []string{"postgres", "mysql", "sqlite", "duckdb"} {
-		got, err := mount("src", definition.DataSource{Driver: driver, DSN: "x"})
+		stmts, err := mount("src", definition.DataSource{Driver: driver, DSN: "x"})
 		if err != nil {
 			t.Fatal(err)
 		}
+		got := sqlOf(stmts)
 		if !strings.Contains(got, "READ_ONLY") {
 			t.Errorf("%s mounts writable:\n%s", driver, got)
 		}
@@ -64,11 +66,12 @@ func TestEveryAttachmentIsReadOnly(t *testing.T) {
 // A password with an apostrophe would otherwise end the literal, and the
 // statement with it.
 func TestDSNsAreQuotedNotConcatenated(t *testing.T) {
-	got, err := mount("w", definition.DataSource{
+	stmts, err := mount("w", definition.DataSource{
 		Driver: "postgres", DSN: "postgres://u:pa'ss@h/db"})
 	if err != nil {
 		t.Fatal(err)
 	}
+	got := sqlOf(stmts)
 	if !strings.Contains(got, "'postgres://u:pa''ss@h/db'") {
 		t.Errorf("the apostrophe was not doubled:\n%s", got)
 	}
@@ -106,4 +109,14 @@ func TestMountingAnUnknownDriverIsAnError(t *testing.T) {
 	if _, err := mount("x", definition.DataSource{Driver: "oracle", DSN: "x"}); err == nil {
 		t.Error("a driver nobody implemented was mounted")
 	}
+}
+
+// sqlOf joins what a mount will execute, for a test that asserts on the text.
+func sqlOf(stmts []statement) string {
+	var b strings.Builder
+	for _, s := range stmts {
+		b.WriteString(s.sql)
+		b.WriteByte('\n')
+	}
+	return b.String()
 }

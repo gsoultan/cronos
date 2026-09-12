@@ -4,17 +4,10 @@ package duckdb
 
 import (
 	"context"
-	"errors"
 
+	sqldriver "github.com/gsoultan/cronos/internal/adapter/driver/sql"
 	"github.com/gsoultan/cronos/internal/core/definition"
 )
-
-// ErrNotBuilt is what federation is without the build tag.
-//
-// A clear error and not a missing package: a deployment that wants federation
-// should learn it needs `-tags duckdb` from a message, not from a compiler.
-var ErrNotBuilt = errors.New(
-	"duckdb: this build has no federation — rebuild with -tags duckdb")
 
 // Federation is the shape the tagged build provides.
 type Federation struct{}
@@ -26,3 +19,7 @@ func Open(context.Context, map[string]definition.DataSource) (*Federation, error
 
 // Close is a no-op.
 func (*Federation) Close() error { return nil }
+
+// Executor is never reached: Open above never returns a Federation to call it
+// on. It exists so the registry compiles against one package rather than two.
+func (*Federation) Executor() *sqldriver.Executor { return nil }
