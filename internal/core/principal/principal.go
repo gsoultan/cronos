@@ -36,8 +36,21 @@ type Principal struct {
 	OrgID     string
 	ProjectID string
 
-	// Grants at each level. ProjectRole may be None while OrgRole is owner or
-	// admin — those roles enter any project in their organization.
+	/*
+	   Grants at each level. ProjectRole may be None while OrgRole is owner or
+	   admin — those roles enter any project in their organization, through
+	   effective() below.
+
+	   Nothing in this build sets OrgRole. No token carries it: Claims has one
+	   role field and it is the project role. So the tier is defined, and
+	   CanAdminOrg is always false, and the promotion in effective() never
+	   fires — see TestNoTokenCarriesAnOrgRole, which is what stands between
+	   that and somebody wiring the claim straight through.
+
+	   It fails closed, which is why it is not a hole. It is also not a feature
+	   yet, whatever docs/tenancy.md says about an org owner entering any
+	   project: they cannot, because nobody can be one.
+	*/
 	OrgRole     Role
 	ProjectRole Role
 
@@ -170,6 +183,11 @@ func (p Principal) Confinable() bool {
 // who hold no explicit project membership. An org without an owner who can fix
 // a broken report grows a back door instead.
 func (p Principal) effective() Role {
+	// Unreachable today: nothing sets OrgRole. Kept rather than deleted
+	// because it is the documented model, and dangerous rather than dormant —
+	// it grants ProjectAdmin in whatever project the request named, with no
+	// membership in it, so whoever gives OrgRole a source owes this line a
+	// second look and a test.
 	if p.OrgRole == OrgOwner || p.OrgRole == OrgAdmin {
 		return ProjectAdmin
 	}

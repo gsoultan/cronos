@@ -283,3 +283,53 @@ func TestOnlyAPortalTokenIsAProjectMember(t *testing.T) {
 		t.Error("a portal token is not a project member")
 	}
 }
+
+/*
+TestNoTokenCarriesAnOrgRole pins a tier that is defined and not wired.
+
+principal has org roles beside project roles, and effective() promotes an org
+owner or admin to ProjectAdmin — in whatever project the request names, with no
+membership in it. Nothing in this build ever sets OrgRole, so that promotion
+cannot fire and CanAdminOrg is always false. It fails closed, which is why it
+is not a hole today.
+
+The day somebody implements the tier, the obvious place is here: Claims has one
+role field, and reading it into OrgRole as well is a one-line change that reads
+like a fix. It would grant ProjectAdmin across every project in the
+organization, from a claim, and for an embed token that claim belongs to an end
+customer of a customer. So this fails rather than lets that arrive quietly —
+the tier needs a source of authority that a token is not, and a test that says
+what it grants.
+
+OrgOwner and OrgAdmin are also the same strings as the project roles, so a
+claim of "admin" is already believed as one thing and must not become two.
+*/
+func TestNoTokenCarriesAnOrgRole(t *testing.T) {
+	for _, audience := range []string{Embed, Portal} {
+		for _, claimed := range []string{
+			string(principal.OrgOwner), string(principal.OrgAdmin),
+			string(principal.OrgMember), string(principal.ProjectAdmin),
+		} {
+			c := claims()
+			c.Audience, c.Role = audience, claimed
+			pr := c.Principal()
+
+			if pr.OrgRole != principal.None {
+				t.Errorf("%s token claiming %q became org %q",
+					audience, claimed, pr.OrgRole)
+			}
+			if pr.CanAdminOrg() {
+				t.Errorf("%s token claiming %q administers the organization",
+					audience, claimed)
+			}
+		}
+	}
+
+	// And an embed token gets nothing from the claim at all, which is the
+	// boundary the rest of this file exists to hold.
+	end := claims()
+	end.Role = string(principal.OrgOwner)
+	if pr := end.Principal(); pr.CanAdminProject() || pr.CanEdit() {
+		t.Error("an end customer claiming org owner was let into the project")
+	}
+}

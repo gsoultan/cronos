@@ -57,6 +57,18 @@ Org `owner` and `admin` may enter any project in their organization without a
 project membership — the alternative is an administrator who cannot fix a broken
 report, and every product that tries it grows a back door instead.
 
+> **Org roles are not implemented yet.** The table above is the model; nothing
+> in the current build assigns an org role. A token carries a project role and
+> no other, so `CanAdminOrg` is always false and the promotion described in the
+> paragraph above never happens. It fails closed — an org administrator gets no
+> access rather than too much — but it means support access to a project today
+> is project membership, granted and audited like anybody else's.
+>
+> Whoever implements the tier should read `Principal.effective`: promotion
+> applies to whatever project a request names, so the source of an org role has
+> to be authority the caller cannot assert. `TestNoTokenCarriesAnOrgRole` holds
+> that line.
+
 An org `member` with no project membership sees an empty project list. That is
 correct, not a bug.
 
