@@ -20,6 +20,55 @@ needs a deployment to act says so under **Upgrading**.
 
 ---
 
+## Unreleased
+
+**Object stores and cross-database joins actually run now.** A dataset with
+`driver: object-store`, or with more than one source, resolved to "rebuild with
+`-tags duckdb`" — in every build, *including* one made with that tag. The
+federation engine was complete and tested and nothing imported it, so the
+message named a rebuild that changed nothing. It is wired into the registry,
+and a `-tags duckdb` build reads a Parquet, CSV or JSON lake and joins it
+against a warehouse. A pure-Go build still says `-tags duckdb`, and now that is
+true.
+
+Nothing to do for a deployment reading one SQL database per dataset: that path
+is unchanged and the default build stays pure Go with no cgo.
+
+**Object-store credentials reach the store.** `credentials:` was parsed into
+the definition and never passed to anything, so a private bucket could not be
+read at all — and `${secret:…}` in it was not resolved either, which would have
+signed requests with the literal text of the reference. It now takes
+`key_id=…;secret=…` pairs, plus `session_token` and `account_id` where the
+store wants them, scoped to that source's own URI so two lakes with a key each
+authenticate as themselves. `credentials: chain` takes them from the instance's
+own identity instead, with no key in the definition. Bad pairs are refused when
+the definition is saved rather than as a 403 months later, and a credential on
+a URI that cannot use one is an error rather than silently ignored.
+
+**A lake whose schema drifted keeps reading.** Partitions are unioned by name,
+so a column added in one month and a decimal widened in another no longer fail
+every query over the whole range with a cast error naming a file.
+
+**A failed connection no longer prints the password.** The reason a datasource
+would not open was assembled without the DSN, but the driver puts it back:
+`Cannot open file "duckdb://user:password@host/db"` is the driver's own text,
+and it went to the startup log. Resolved secret values are now removed from the
+error. This was reachable for any `driver: duckdb` source in a federation
+build.
+
+### Upgrading
+
+`uri:` on an object store is a prefix and has always been read as one — it is
+now documented as one and refused at startup when it names a single file,
+naming the pattern it looked for. A definition pointing at `events/2026-01.parquet`
+should point at `events/`.
+
+A dataset that joins sources must name each one with something SQL can use. A
+datasource whose name holds a dash needs `as:` on the reference; the error says
+so. Datasets reading a single ordinary database are unaffected.
+
+---
+
 ## v1.2.4 — 2026-09-11
 
 A security release, and the one to be on. **Upgrade.** The row-scope fix below

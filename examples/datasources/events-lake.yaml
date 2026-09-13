@@ -6,9 +6,13 @@ metadata:
     env: prod
 spec:
   driver: object-store
+  # A prefix. Everything under it is read as one table, recursively, so the
+  # date partitions below it do not each need a datasource.
   uri: s3://acme-lake/events/
   format: parquet
   region: eu-central-1
+  # key_id=…;secret=… , kept in a secret rather than in this file. Use the
+  # literal `chain` instead to take them from the instance's own identity.
   credentials: ${secret:lake_creds}
   limits:
     statementTimeout: 120s

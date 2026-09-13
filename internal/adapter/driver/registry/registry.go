@@ -34,6 +34,13 @@ type Registry struct {
 	// logged here, because whether this is fatal is the caller's decision and
 	// a library that exits is a library nobody can embed.
 	unavailable []error
+
+	// federations are the mounted connections, keyed by the set of sources
+	// they hold. Their own lock, because opening one reaches other people's
+	// databases and must not queue every unrelated dataset behind it.
+	fedMu       sync.Mutex
+	federations map[string]*federation
+	closed      bool
 }
 
 // Unavailable is every source this build could not open, and why.
@@ -71,7 +78,11 @@ count, and every report that does not read it keeps working. One that does read
 it fails with a message naming the source, which is where somebody can act.
 */
 func New(defs []definition.DataSource, secrets secret.Resolver, log *slog.Logger) (*Registry, error) {
-	r := &Registry{sources: map[string]*source{}, log: log}
+	r := &Registry{
+		sources:     map[string]*source{},
+		federations: map[string]*federation{},
+		log:         log,
+	}
 
 	for _, def := range defs {
 		if def.Federated() {
@@ -89,6 +100,17 @@ func New(defs []definition.DataSource, secrets secret.Resolver, log *slog.Logger
 				continue
 			}
 			def.URI = uri
+			// And its credentials, for the same reason and with more at stake:
+			// a key left as literal ${secret:…} text is sent to the object
+			// store as the key, which is a 403 that reads like a rotated
+			// credential rather than an unset one.
+			creds, err := secret.Resolve(def.Credentials, secrets)
+			if err != nil {
+				r.unavailable = append(r.unavailable,
+					fmt.Errorf("datasource %q: %w", def.Name, err))
+				continue
+			}
+			def.Credentials = creds
 			r.sources[def.Name] = &source{def: def}
 			continue
 		}
@@ -134,8 +156,15 @@ func open(def definition.DataSource, secrets secret.Resolver) (*source, error) {
 		   The driver name is what a person needs anyway: this fails when the
 		   build cannot open that kind of database, and no DSN would have told
 		   them that.
+
+		   Redacted rather than merely omitted, because leaving it out of the
+		   format string is only half of it: the driver puts it back. A build
+		   with the duckdb driver registered answers `driver: duckdb` with
+		   `Cannot open file "duckdb://user:password@host/db"`, and that is the
+		   text this wraps.
 		*/
-		return nil, fmt.Errorf("datasource %q (driver %q): %w", def.Name, def.Driver, err)
+		return nil, fmt.Errorf("datasource %q (driver %q): %w",
+			def.Name, def.Driver, secret.Redact(err, dsn))
 	}
 
 	// The pool is bounded because somebody else operates this database. A
@@ -190,32 +219,52 @@ func memoryDatabase(dsn string) bool {
 	return strings.Contains(dsn, "mode=memory") || strings.Contains(dsn, ":memory:")
 }
 
-// Engine resolves how to compile and run queries for a dataset.
-func (r *Registry) Engine(_ context.Context, ds definition.Dataset) (run.Engine, error) {
+/*
+Engine resolves how to compile and run queries for a dataset.
+
+One connection when one database can answer, which is the common report and
+the cheap path. A federation when the dataset joins across databases or reads
+an object store — neither of which a single connection can do, and both of
+which need the engine that mounts them.
+*/
+func (r *Registry) Engine(ctx context.Context, ds definition.Dataset) (run.Engine, error) {
+	if len(ds.Sources) == 0 {
+		return run.Engine{}, fmt.Errorf("%w: %q", ErrNoSources, ds.Name)
+	}
+	if len(ds.Sources) == 1 && !r.needsFederation(ds.Sources[0]) {
+		return r.single(ds, ds.Sources[0])
+	}
+	return r.federate(ctx, ds)
+}
+
+// needsFederation reports whether a lone source still needs an engine that can
+// mount it — an object store holds files rather than a catalogue, so there is
+// nothing to connect to.
+func (r *Registry) needsFederation(ref definition.SourceRef) bool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	switch len(ds.Sources) {
-	case 0:
-		return run.Engine{}, fmt.Errorf("%w: %q", ErrNoSources, ds.Name)
-	case 1:
-		return r.single(ds, ds.Sources[0])
-	}
-	// More than one source in one query is a join across databases, and that
-	// needs an engine that can hold both. Named rather than attempted, so the
-	// message says what to build with instead of what could not be found.
-	return run.Engine{}, fmt.Errorf("%w: dataset %q reads %d sources — rebuild with -tags duckdb",
-		ErrNoFederation, ds.Name, len(ds.Sources))
+	s, ok := r.sources[ref.Ref]
+	// An unknown source is not federated, so single reports it by name rather
+	// than as a federation that could not mount something nobody registered.
+	return ok && s.def.Federated()
 }
 
 func (r *Registry) single(ds definition.Dataset, ref definition.SourceRef) (run.Engine, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
 	s, ok := r.sources[ref.Ref]
 	if !ok {
 		return run.Engine{}, fmt.Errorf("%w: dataset %q reads %q", ErrUnknownSource, ds.Name, ref.Ref)
 	}
 	if s.db == nil {
-		// An object store on its own still needs an engine to read files.
-		return run.Engine{}, fmt.Errorf("%w: %q is an object store — rebuild with -tags duckdb",
+		// Engine routes federated sources away before reaching this, so a nil
+		// connection here means a kind of source that was registered without
+		// one and without anything knowing it needs mounting. An error beats
+		// an executor over a nil database, which fails at the first query with
+		// the driver's words rather than with the source's name.
+		return run.Engine{}, fmt.Errorf("%w: %q has no connection and was not federated",
 			ErrNoFederation, ref.Ref)
 	}
 	return run.Engine{
@@ -289,6 +338,9 @@ func (r *Registry) Close() error {
 		if err := s.db.Close(); err != nil && first == nil {
 			first = err
 		}
+	}
+	if err := r.closeFederations(); err != nil && first == nil {
+		first = err
 	}
 	return first
 }

@@ -145,46 +145,6 @@ func TestAnUnknownSourceIsRefused(t *testing.T) {
 	}
 }
 
-// Two sources in one query is a join across databases. Named rather than
-// attempted, so the message says what to build with.
-func TestFederationSaysWhatItNeeds(t *testing.T) {
-	reg, err := registry.New([]definition.DataSource{
-		source("warehouse", seed(t, "warehouse", "a", 1)),
-		source("archive", seed(t, "archive", "b", 1)),
-	}, nil, quiet())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer reg.Close()
-
-	ds := dataset("joined", "warehouse")
-	ds.Sources = append(ds.Sources, definition.SourceRef{Ref: "archive"})
-
-	_, err = reg.Engine(context.Background(), ds)
-	if !errors.Is(err, registry.ErrNoFederation) {
-		t.Fatalf("got %v, want ErrNoFederation", err)
-	}
-	if !strings.Contains(err.Error(), "-tags duckdb") {
-		t.Errorf("the message should say how to get it: %v", err)
-	}
-}
-
-// An object store holds files rather than a catalogue, so reading one needs an
-// engine that can address them even when it is the only source.
-func TestAnObjectStoreAloneStillNeedsAnEngine(t *testing.T) {
-	reg, err := registry.New([]definition.DataSource{{
-		Name: "lake", Driver: "object-store", URI: "s3://b/x", Format: "parquet",
-	}}, nil, quiet())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer reg.Close()
-
-	if _, err := reg.Engine(context.Background(), dataset("events", "lake")); !errors.Is(err, registry.ErrNoFederation) {
-		t.Fatalf("got %v, want ErrNoFederation", err)
-	}
-}
-
 /*
 A source that will not open is reported, and does not stop startup.
 
@@ -367,5 +327,56 @@ func TestAFileBackedSourceKeepsItsPoolLimits(t *testing.T) {
 	var n int
 	if err := db.QueryRow(`SELECT count(*) FROM invoices`).Scan(&n); err != nil {
 		t.Fatalf("reopening a file-backed source: %v", err)
+	}
+}
+
+// secrets is a resolver holding what a deployment would have set.
+type secrets map[string]string
+
+func (s secrets) Secret(name string) (string, bool) { v, ok := s[name]; return v, ok }
+
+/*
+TestAnObjectStoreResolvesItsCredentials is the half of a lake's definition that
+used to be carried past the resolver untouched.
+
+The URI was resolved and the credentials were not, so a deployment doing what
+the example shows — `credentials: ${secret:lake_creds}` — signed its requests
+with the twenty characters of that literal text. What comes back from the
+object store is a 403, which reads like a key that was rotated rather than one
+that was never read.
+
+Checked through Unavailable rather than by reading the source back, because
+that is the observable behaviour: a reference nobody set makes the source
+unavailable, and a source that is unavailable for a reason is one whose
+credentials were looked at.
+*/
+func TestAnObjectStoreResolvesItsCredentials(t *testing.T) {
+	lake := definition.DataSource{
+		Name: "lake", Driver: "object-store", URI: "s3://b/x", Format: "parquet",
+		Credentials: "${secret:lake_creds}",
+	}
+
+	reg, err := registry.New([]definition.DataSource{lake},
+		secrets{"lake_creds": "key_id=A;secret=B"}, quiet())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reg.Close()
+	if why := reg.Unavailable(); len(why) > 0 {
+		t.Fatalf("a lake whose secret is set was refused: %v", why)
+	}
+
+	// And the reverse: nobody set it, so the source cannot be read and says so
+	// at startup rather than signing a request with the reference.
+	unset, err := registry.New([]definition.DataSource{lake}, secrets{}, quiet())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unset.Close()
+	if len(unset.Unavailable()) == 0 {
+		t.Fatal("a lake whose credentials reference nothing was registered as readable")
+	}
+	if names := unset.Names(); len(names) != 0 {
+		t.Errorf("it is still offered to datasets: %v", names)
 	}
 }

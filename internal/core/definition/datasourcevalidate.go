@@ -42,6 +42,18 @@ func (d DataSource) validateObjectStore() error {
 		return fmt.Errorf("%w: source %q holds %q, want parquet, csv or json",
 			ErrInvalid, d.Name, d.Format)
 	}
+	// Credentials are checked at save rather than at mount. A typo in a key
+	// name reaches the object store as a request signed with nothing and comes
+	// back as a 403, which reads like the key is wrong rather than unread.
+	//
+	// Unless the pairs are still inside a ${secret:…}, which is the whole
+	// point of one: what shape they have is not knowable until something can
+	// read the secret, so that check belongs where it is resolved.
+	if d.Credentials != "" && d.Credentials != CredentialChain && !unresolved(d.Credentials) {
+		if _, err := ParseCredentials(d.Credentials); err != nil {
+			return fmt.Errorf("source %q: %w", d.Name, err)
+		}
+	}
 	return d.validateLimits()
 }
 

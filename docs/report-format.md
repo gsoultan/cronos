@@ -101,13 +101,60 @@ metadata:
   name: events-lake
 spec:
   driver: object-store
-  uri: s3://acme-lake/events/
-  format: parquet          # parquet | csv | ndjson
+  uri: s3://acme-lake/events/    # a prefix, never a single file
+  format: parquet                # parquet | csv | json
   region: eu-central-1
   credentials: ${secret:lake_creds}
 ```
 
+**`uri` is a prefix, not a file.** Everything under it matching the format is
+read as one table, recursively, so a lake partitioned by date needs one
+datasource rather than one per day. Pointing it at `events/2026-01.parquet` is
+refused at startup with the pattern it looked for — put the file in a directory
+and name the directory.
+
+Partitions are unioned by name, so a column added in March and a decimal
+widened in June both keep reading. A column that means two different things in
+two partitions is still two different things; this reconciles schemas, not
+mistakes.
+
+**`credentials` holds `key=value` pairs**, and belongs in a secret rather than
+in the file:
+
+| Field | For |
+| :--- | :--- |
+| `key_id`, `secret` | Together, always. Either alone is refused. |
+| `session_token` | Temporary credentials. |
+| `account_id` | Cloudflare R2, which addresses a bucket by account. |
+
+```
+key_id=AKIAEXAMPLE;secret=wJalrXUtnFEMI/K7MDENG
+```
+
+Set `credentials: chain` instead to take them from the environment — an
+instance profile, a projected service-account token, a local AWS profile.
+Nothing is read from the definition then, which is the shape to prefer where
+the deployment already has an identity.
+
+Omit `credentials` entirely for a public bucket. A `region` on its own is fine
+and still creates the secret that carries it.
+
+Credentials are scoped to the `uri` they were given with, so two lakes with a
+key each authenticate as themselves rather than as whichever loaded last. They
+reach `s3://`, `gs://` and `r2://`; on any other scheme a credential is refused
+rather than ignored, because one that does nothing is one nobody rotates.
+
 ## Dataset
+
+A dataset reading more than one source, or reading an object store, is compiled
+against a query engine that mounts them — which needs a build made with
+`-tags duckdb`. Without one the error says so and names the sources it could not
+join, rather than failing to find a table.
+
+Each source is mounted under the name the query uses for it. A datasource name
+is a slug and may hold dashes; a mounted name becomes an identifier in SQL and
+may not, so `as:` is required wherever the two differ. A dataset reading one
+ordinary database needs none of this and is compiled straight against it.
 
 ```yaml
 apiVersion: cronos.dev/v1
@@ -118,7 +165,7 @@ spec:
   sources:
     - ref: warehouse
     - ref: events-lake
-      as: events
+      as: events        # `events-lake` is a datasource name, not a SQL one
 
   query: |
     SELECT i.id, i.customer_id, c.name AS customer_name, i.issued_at,
