@@ -200,3 +200,36 @@ func TestAQueryAfterCloseDoesNotOpenAnything(t *testing.T) {
 		t.Fatalf("got %v, want ErrClosed", err)
 	}
 }
+
+// The gauge behind cronos_federations_mounted. Process-wide, so it is asserted
+// as a delta rather than an absolute — another test in this package may hold a
+// federation open at the same time.
+func TestFederationsAreCountedForTheMetric(t *testing.T) {
+	before := registry.Federations()
+
+	dir := lake(t, "('EU', 1.0)")
+	reg, err := registry.New([]definition.DataSource{{
+		Name: "events-lake", Driver: "object-store", URI: dir, Format: "parquet",
+	}}, nil, quiet())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := registry.Federations() - before; got != 0 {
+		t.Fatalf("registering counted %d federations before anything queried", got)
+	}
+
+	if _, err := reg.Engine(context.Background(), lakeDataset("events")); err != nil {
+		t.Fatal(err)
+	}
+	if got := registry.Federations() - before; got != 1 {
+		t.Errorf("a mounted federation counted %d, want 1", got)
+	}
+
+	if err := reg.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if got := registry.Federations() - before; got != 0 {
+		t.Errorf("closing left %d counted — the gauge climbs for the life of "+
+			"the process and the alert it exists for never fires", got)
+	}
+}

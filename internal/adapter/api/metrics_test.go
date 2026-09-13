@@ -143,3 +143,35 @@ func TestMovingMetricsDoesNotStopTheCounting(t *testing.T) {
 		t.Fatalf("the request was not counted:\n%s", w.Body.String())
 	}
 }
+
+/*
+TestTheFederationGaugeIsWiredAndHonest covers the one gauge here that is not
+meant to be zero.
+
+The other three count failures, so an unwired one reads as good news — which is
+why boot wires them and the builders are the only way to set them. This one
+counts engines mounted over other people's databases: zero is what a build that
+cannot federate reports, and a number that climbs is datasets mounting per query
+instead of sharing a mount. Both readings need the series to exist, so it is
+emitted whether or not anything wired it.
+*/
+func TestTheFederationGaugeIsWiredAndHonest(t *testing.T) {
+	bare := httptest.NewRecorder()
+	api.NewMetrics().ServeHTTP(bare,
+		httptest.NewRequest(http.MethodGet, "/v1/metrics", nil))
+	for _, want := range []string{
+		"# TYPE cronos_federations_mounted gauge",
+		"cronos_federations_mounted 0",
+	} {
+		if !strings.Contains(bare.Body.String(), want) {
+			t.Errorf("an unwired build does not emit %q", want)
+		}
+	}
+
+	rec := httptest.NewRecorder()
+	api.NewMetrics().CountingFederations(func() int64 { return 3 }).
+		ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/metrics", nil))
+	if !strings.Contains(rec.Body.String(), "cronos_federations_mounted 3") {
+		t.Errorf("the wired count did not reach the exposition:\n%s", rec.Body.String())
+	}
+}

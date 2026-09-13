@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gsoultan/cronos/internal/adapter/driver/duckdb"
@@ -59,7 +60,11 @@ func (r *Registry) federate(ctx context.Context, ds definition.Dataset) (run.Eng
 	}
 	r.fedMu.Unlock()
 
-	f.once.Do(func() { f.fed, f.err = duckdb.Open(ctx, mounts) })
+	f.once.Do(func() {
+		if f.fed, f.err = duckdb.Open(ctx, mounts); f.err == nil {
+			mounted.Add(1)
+		}
+	})
 
 	if f.err != nil {
 		/*
@@ -206,6 +211,7 @@ func (r *Registry) closeFederations() error {
 		if f.fed == nil {
 			continue
 		}
+		mounted.Add(-1)
 		if err := f.fed.Close(); err != nil && first == nil {
 			first = err
 		}
@@ -214,16 +220,28 @@ func (r *Registry) closeFederations() error {
 	return first
 }
 
-/*
-Mounted is how many federations are currently held open.
-
-Operational rather than diagnostic. Each one is a set of attachments to
-databases somebody else runs, so it is a number their DBA is effectively also
-watching — and the thing to alert on is growth, which would mean datasets are
-mounting per query rather than sharing.
-*/
+// Mounted is how many federations this registry holds open.
 func (r *Registry) Mounted() int {
 	r.fedMu.Lock()
 	defer r.fedMu.Unlock()
 	return len(r.federations)
 }
+
+/*
+mounted counts them across every registry in the process.
+
+Per process rather than per tenant, because that is the question being asked.
+Each federation is a set of attachments to databases somebody else runs, so
+this is a number their DBA is effectively watching too — and one deployment
+serving nine projects reaches those databases nine ways, which a per-tenant
+count would report as nine small numbers nobody adds up.
+
+What to alert on is growth. The mounts are cached per set of sources, so a
+steady deployment reaches a number and stays there; a rising one means datasets
+are mounting per query, which is the failure the cache exists to prevent and is
+invisible from the outside until somebody's connection limit is reached.
+*/
+var mounted atomic.Int64
+
+// Federations is that count, for the metric. See cronos_federations_mounted.
+func Federations() int64 { return mounted.Load() }

@@ -75,6 +75,11 @@ type Metrics struct {
 	// of these, and the third distinct fix: a report missing from the
 	// catalogue, a send that never happens, a report that is listed and errors.
 	unopenable func() int64
+	// federations answers how many query engines this process holds mounted
+	// over somebody else's databases. Not a failure count like the three
+	// above: the number is expected to be non-zero, and what matters is that
+	// it settles rather than climbs.
+	federations func() int64
 }
 
 /*
@@ -157,6 +162,13 @@ func (m *Metrics) CountingRefused(count func() int64) *Metrics {
 // CountingUnopenable wires the count of datasources this build could not open.
 func (m *Metrics) CountingUnopenable(count func() int64) *Metrics {
 	m.unopenable = count
+	return m
+}
+
+// CountingFederations wires the count of mounted query engines. Unset it
+// reports zero, which is what a build that cannot federate reports anyway.
+func (m *Metrics) CountingFederations(count func() int64) *Metrics {
+	m.federations = count
 	return m
 }
 
@@ -335,6 +347,24 @@ func (m *Metrics) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 		shut = m.unopenable()
 	}
 	fmt.Fprintf(&out, "cronos_datasources_unavailable %d\n", shut)
+
+	/*
+	   And the engines mounted over them.
+
+	   Unlike the three above, this one is not meant to be zero — a deployment
+	   that joins a warehouse to a lake mounts one and keeps it. What it should
+	   do is settle. Mounts are cached per set of sources, so a climbing number
+	   means datasets are mounting per query instead of sharing one, and the
+	   first anybody hears of that otherwise is a connection limit reached on a
+	   database this deployment does not operate.
+	*/
+	out.WriteString("# HELP cronos_federations_mounted Query engines mounted over other databases. Should settle, not climb.\n")
+	out.WriteString("# TYPE cronos_federations_mounted gauge\n")
+	joined := int64(0)
+	if m.federations != nil {
+		joined = m.federations()
+	}
+	fmt.Fprintf(&out, "cronos_federations_mounted %d\n", joined)
 
 	out.WriteString("# HELP cronos_uptime_seconds How long this process has been serving.\n")
 	out.WriteString("# TYPE cronos_uptime_seconds gauge\n")
