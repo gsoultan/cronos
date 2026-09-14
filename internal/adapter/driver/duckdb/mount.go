@@ -158,22 +158,25 @@ func credential(name, scheme string, src definition.DataSource) (*statement, err
 		return nil, nil
 	}
 	if src.Credentials == "" {
-		if src.Region == "" {
+		if src.Region == "" && src.Endpoint == "" {
 			return nil, nil
 		}
-		// A region and no credentials is a public bucket in a named region,
-		// which is a real thing and needs a secret to carry the region.
+		// No credentials is a public bucket, and one can still need a secret:
+		// it is what carries the region, and what carries the address of a
+		// store that is not the cloud's own.
 		return &statement{sql: fmt.Sprintf(
-			"CREATE OR REPLACE SECRET %s_store (TYPE %s, REGION %s, SCOPE %s);",
-			name, typ, quote(src.Region), quote(scope(src.URI)))}, nil
+			"CREATE OR REPLACE SECRET %s_store (TYPE %s%s%s, SCOPE %s);",
+			name, typ, region(src.Region), endpoint(src.Endpoint),
+			quote(scope(src.URI)))}, nil
 	}
 
 	if src.Credentials == definition.CredentialChain {
 		// No key in the definition at all: DuckDB asks the environment, which
 		// is how an instance with a role attached reads its own bucket.
 		return &statement{sql: fmt.Sprintf(
-			"CREATE OR REPLACE SECRET %s_store (TYPE %s, PROVIDER credential_chain%s, SCOPE %s);",
-			name, typ, region(src.Region), quote(scope(src.URI)))}, nil
+			"CREATE OR REPLACE SECRET %s_store (TYPE %s, PROVIDER credential_chain%s%s, SCOPE %s);",
+			name, typ, region(src.Region), endpoint(src.Endpoint),
+			quote(scope(src.URI)))}, nil
 	}
 
 	pairs, err := definition.ParseCredentials(src.Credentials)
@@ -191,6 +194,7 @@ func credential(name, scheme string, src definition.DataSource) (*statement, err
 		}
 	}
 	b.WriteString(region(src.Region))
+	b.WriteString(endpoint(src.Endpoint))
 	fmt.Fprintf(&b, ", SCOPE %s);", quote(scope(src.URI)))
 	return &statement{sql: b.String(), holds: holds}, nil
 }
@@ -201,6 +205,29 @@ func region(r string) string {
 		return ""
 	}
 	return ", REGION " + quote(r)
+}
+
+/*
+endpoint is the clauses that point a read somewhere other than the cloud.
+
+Three of them, because one is never enough. ENDPOINT is the host; USE_SSL comes
+from the scheme the operator wrote, so a plain-text store is one somebody asked
+for rather than one they got; and URL_STYLE is path, because bucket-as-subdomain
+needs DNS for every bucket and an appliance on an internal address does not have
+it. Every S3-compatible store this is for wants path style, and the ones that
+want vhost are the cloud's own, which take no endpoint at all.
+*/
+func endpoint(e string) string {
+	if e == "" {
+		return ""
+	}
+	host := strings.TrimPrefix(strings.TrimPrefix(e, "https://"), "http://")
+	ssl := "true"
+	if strings.HasPrefix(e, "http://") {
+		ssl = "false"
+	}
+	return fmt.Sprintf(", ENDPOINT %s, URL_STYLE 'path', USE_SSL %s",
+		quote(strings.TrimSuffix(host, "/")), ssl)
 }
 
 // scope is the prefix a secret applies to: the source's own bucket and path.

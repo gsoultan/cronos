@@ -1,6 +1,9 @@
 package definition
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // drivers are the adapters this build can open a source with.
 var drivers = map[string]bool{
@@ -49,6 +52,17 @@ func (d DataSource) validateObjectStore() error {
 	// Unless the pairs are still inside a ${secret:…}, which is the whole
 	// point of one: what shape they have is not knowable until something can
 	// read the secret, so that check belongs where it is resolved.
+	// An endpoint decides where the request goes and whether it is encrypted,
+	// and a host with no scheme leaves the second one to the reader. Refused
+	// here rather than defaulted, because defaulting it either sends a key
+	// over plaintext or fails to reach a store that has no TLS, and both are
+	// answers somebody should have given on purpose.
+	if d.Endpoint != "" && !unresolved(d.Endpoint) {
+		if !strings.HasPrefix(d.Endpoint, "http://") && !strings.HasPrefix(d.Endpoint, "https://") {
+			return fmt.Errorf("%w: source %q has endpoint %q, which needs http:// or https://",
+				ErrInvalid, d.Name, d.Endpoint)
+		}
+	}
 	if d.Credentials != "" && d.Credentials != CredentialChain && !unresolved(d.Credentials) {
 		if _, err := ParseCredentials(d.Credentials); err != nil {
 			return fmt.Errorf("source %q: %w", d.Name, err)

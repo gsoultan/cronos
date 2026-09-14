@@ -105,6 +105,7 @@ spec:
   format: parquet                # parquet | csv | json
   region: eu-central-1
   credentials: ${secret:lake_creds}
+  # endpoint: http://minio.internal:9000   # only when the store is not the cloud's own
 ```
 
 **`uri` is a prefix, not a file.** Everything under it matching the format is
@@ -143,6 +144,21 @@ Credentials are scoped to the `uri` they were given with, so two lakes with a
 key each authenticate as themselves rather than as whichever loaded last. They
 reach `s3://`, `gs://` and `r2://`; on any other scheme a credential is refused
 rather than ignored, because one that does nothing is one nobody rotates.
+
+**`endpoint` is for a store that is not the cloud's own** — MinIO, Ceph, an
+appliance on an internal address. Give it a scheme: it decides TLS, and a
+plaintext store should be one somebody asked for rather than one they were
+given. Buckets are then addressed by path, because bucket-as-subdomain needs a
+DNS entry per bucket and an internal address does not have one.
+
+Leave it out for AWS, GCS or R2. Setting it wrongly is worth recognising: the
+request goes somewhere that is not your store, and an object listing that finds
+nothing comes back as an empty lake rather than as a store that was never
+reached.
+
+`scripts/live-objectstore.sh` exercises this against a real server — that a key
+authenticates, that a wrong one stops the read, that a refusal does not carry
+the secret into a log, and that two lakes with a key each stay separate.
 
 ## Dataset
 
