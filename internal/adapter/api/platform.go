@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -42,6 +43,13 @@ type Platform interface {
 	PlatformAdmins(ctx context.Context) ([]identity.User, error)
 	GrantPlatform(ctx context.Context, id, by string) error
 	RevokePlatform(ctx context.Context, id string) error
+
+	// Organization roles are granted here rather than inside a project,
+	// because the role reaches every project in the organization and nobody
+	// inside one of them should be able to widen their own reach to all of
+	// them. A platform administrator is authority the holder cannot assert.
+	GrantOrgRole(ctx context.Context, id string, role principal.Role, by string) error
+	RevokeOrgRole(ctx context.Context, id string) error
 }
 
 // PlatformAPI serves /v1/platform.
@@ -103,6 +111,10 @@ func (h *PlatformAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.grant(w, r, pr, id)
 	case strings.HasPrefix(path, "/admins/") && r.Method == http.MethodDelete:
 		h.revoke(w, r, pr, id)
+	case strings.HasPrefix(path, "/org-roles/") && r.Method == http.MethodPut:
+		h.grantOrg(w, r, pr, id)
+	case strings.HasPrefix(path, "/org-roles/") && r.Method == http.MethodDelete:
+		h.revokeOrg(w, r, pr, id)
 	default:
 		fail(w, http.StatusMethodNotAllowed, "Not a method this endpoint takes.")
 	}
@@ -327,4 +339,62 @@ func (h *PlatformAPI) refuse(w http.ResponseWriter, err error) {
 	}
 	h.log.Error("platform administration", "err", err)
 	fail(w, http.StatusInternalServerError, "Could not do that.")
+}
+
+/*
+grantOrg gives somebody a role across their own organization.
+
+PUT rather than POST: the body names which role, and sending it twice should
+land on the same grant rather than on an error or a second one. Which
+organization is not a parameter — it is read from the account's own row, so a
+typo cannot grant administration of somebody else's.
+*/
+func (h *PlatformAPI) grantOrg(w http.ResponseWriter, r *http.Request,
+	pr principal.Principal, id string) {
+
+	var in struct {
+		Role string `json:"role"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&in); err != nil {
+		fail(w, http.StatusBadRequest, "Send a role.")
+		return
+	}
+	// Checked here as well as in the store. This is the message somebody
+	// reads, and "owner, admin or member" is a better answer than whatever a
+	// constraint violation is called.
+	switch principal.Role(in.Role) {
+	case principal.OrgOwner, principal.OrgAdmin, principal.OrgMember:
+	default:
+		fail(w, http.StatusBadRequest, "An organization role is owner, admin or member.")
+		return
+	}
+	if err := h.store.GrantOrgRole(r.Context(), id, principal.Role(in.Role), pr.Subject); err != nil {
+		h.refuse(w, err)
+		return
+	}
+	/*
+	   At warning level, like a platform grant, and for a nearer reason: owner
+	   and admin enter every project in the organization without a membership
+	   in any of them, so this is the line in the log that explains how
+	   somebody came to be reading a project nobody added them to.
+	*/
+	h.log.Warn("organization role granted", "user", id, "role", in.Role, "by", pr.Subject)
+	audit(r.Context(), h.log, pr, ActionOrgRoleGrant, id, Allowed,
+		map[string]any{"role": in.Role})
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// revokeOrg takes it away. The store ends that account's sessions in the same
+// transaction, because the role travels in the token and would otherwise
+// outlive its revocation by the rest of the working day.
+func (h *PlatformAPI) revokeOrg(w http.ResponseWriter, r *http.Request,
+	pr principal.Principal, id string) {
+
+	if err := h.store.RevokeOrgRole(r.Context(), id); err != nil {
+		h.refuse(w, err)
+		return
+	}
+	h.log.Warn("organization role revoked", "user", id, "by", pr.Subject)
+	audit(r.Context(), h.log, pr, ActionOrgRoleRevoke, id, Allowed, nil)
+	w.WriteHeader(http.StatusNoContent)
 }

@@ -333,3 +333,54 @@ func TestNoTokenCarriesAnOrgRole(t *testing.T) {
 		t.Error("an end customer claiming org owner was let into the project")
 	}
 }
+
+/*
+TestOnlyAPortalTokenCarriesAnOrgRole is the boundary on the field that does
+carry one.
+
+An org role promotes to ProjectAdmin in whatever project the request names,
+with no membership in it — so of the claims here it is the most valuable to
+forge and the one whose audience check matters most. An embed token is minted
+by a host application for one of its customers; if this were honoured there, a
+customer's customer would administer every project that customer owns.
+
+The unknown-word case is not pedantry either. `admin` is both a project role
+and an org role, and a build that took the field as written would promote on
+any string a later version might add.
+*/
+func TestOnlyAPortalTokenCarriesAnOrgRole(t *testing.T) {
+	forged := claims()
+	forged.OrgRole = string(principal.OrgOwner)
+	if pr := forged.Principal(); pr.OrgRole != principal.None || pr.CanAdminOrg() {
+		t.Errorf("an embed token claiming org owner became %q", pr.OrgRole)
+	}
+	if pr := forged.Principal(); pr.CanAdminProject() {
+		t.Error("and it reached a project it is not a member of")
+	}
+
+	granted := claims()
+	granted.Audience, granted.OrgRole = Portal, string(principal.OrgAdmin)
+	pr := granted.Principal()
+	if !pr.CanAdminOrg() {
+		t.Error("a portal token granted org admin does not administer its organization")
+	}
+	// The whole point of the tier: into a project without a membership in it.
+	if !pr.CanAdminProject() {
+		t.Error("and it cannot enter a project, which is what the role is for")
+	}
+
+	// A word this build does not know is no grant, not an unrecognised one.
+	odd := claims()
+	odd.Audience, odd.OrgRole = Portal, "superowner"
+	if pr := odd.Principal(); pr.OrgRole != principal.None || pr.CanAdminOrg() {
+		t.Errorf("an unknown org role became %q", pr.OrgRole)
+	}
+
+	// An org member administers nothing, and is still not a project admin by
+	// virtue of belonging to the organization.
+	member := claims()
+	member.Audience, member.OrgRole = Portal, string(principal.OrgMember)
+	if pr := member.Principal(); pr.CanAdminOrg() || pr.CanAdminProject() {
+		t.Error("an org member was promoted")
+	}
+}

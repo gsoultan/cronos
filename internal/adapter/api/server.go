@@ -70,6 +70,9 @@ type Deps struct {
 	// Platform administers the deployment across tenants. Absent for a
 	// file-backed deployment, which has no accounts to administer.
 	Platform Platform
+	// OrgProjects answers which projects an organization has, for an
+	// administrator entering one they are not a member of.
+	OrgProjects OrgProjects
 	// Policies is what a project requires of the people in it — today, whether
 	// everybody needs a second factor.
 	Policies Policies
@@ -413,11 +416,26 @@ func Routes(d Deps) http.Handler {
 			for _, path := range []string{
 				"/v1/platform/tenants", "/v1/platform/people", "/v1/platform/people/{id}",
 				"/v1/platform/admins", "/v1/platform/admins/{id}",
+				"/v1/platform/org-roles/{id}",
 			} {
 				mux.Handle(path, platform)
 			}
 		}
 		mux.Handle("/v1/auth/sessions/end", NewSessions(d.Roster, author, d.Signer, d.Log))
+
+		/*
+		   Entering another project in the same organization.
+
+		   Beside the session routes because that is what it does: it mints a
+		   new session naming a different project, having checked the one
+		   grant that allows it. Registered only where there is something to
+		   ask about the organization — a deployment that never grants an org
+		   role has no use for it and is better off answering 404.
+		*/
+		if d.OrgProjects != nil {
+			mux.Handle("/v1/auth/project",
+				NewEnterProject(d.OrgProjects, author, d.Signer, d.Log))
+		}
 
 		/*
 		   Second factors, all four routes about the caller's own account.

@@ -28,10 +28,13 @@ nothing must reopen it.
 
 // empty is a deployment with a roster and, at first, nobody in it.
 type empty struct {
-	mu      sync.Mutex
-	people  []identity.User
-	admins  map[string]bool
-	created []string
+	// what the last org-role call asked for
+	orgRole    string
+	orgRoleFor string
+	mu         sync.Mutex
+	people     []identity.User
+	admins     map[string]bool
+	created    []string
 	// setUp is the marker row: one deployment is configured once.
 	setUp   bool
 	rekeyed []string
@@ -150,6 +153,18 @@ func (e *empty) PlatformAdmins(context.Context) ([]identity.User, error) {
 	return nil, nil
 }
 func (e *empty) RevokePlatform(context.Context, string) error { return nil }
+
+func (e *empty) GrantOrgRole(_ context.Context, id string, role principal.Role, by string) error {
+	e.orgRole = string(role)
+	e.orgRoleFor = id
+	return nil
+}
+
+func (e *empty) RevokeOrgRole(_ context.Context, id string) error {
+	e.orgRole = ""
+	e.orgRoleFor = id
+	return nil
+}
 
 func firstRun(t *testing.T) (*empty, *api.Setup, *token.Signer) {
 	t.Helper()

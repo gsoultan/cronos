@@ -605,6 +605,16 @@ func platform(records *sqlstore.Store) api.Platform {
 	return records
 }
 
+// orgProjects answers which projects an organization has, for an administrator
+// entering one they are not a member of. Nil without a records store, which is
+// the development path, and the route is then not registered at all.
+func orgProjects(records *sqlstore.Store) api.OrgProjects {
+	if records == nil {
+		return nil
+	}
+	return records
+}
+
 // accounts counts them, for the first-run check.
 func accounts(records *sqlstore.Store) api.Accounts {
 	if records == nil {

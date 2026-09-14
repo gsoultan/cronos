@@ -41,15 +41,12 @@ type Principal struct {
 	   admin — those roles enter any project in their organization, through
 	   effective() below.
 
-	   Nothing in this build sets OrgRole. No token carries it: Claims has one
-	   role field and it is the project role. So the tier is defined, and
-	   CanAdminOrg is always false, and the promotion in effective() never
-	   fires — see TestNoTokenCarriesAnOrgRole, which is what stands between
-	   that and somebody wiring the claim straight through.
-
-	   It fails closed, which is why it is not a hole. It is also not a feature
-	   yet, whatever docs/tenancy.md says about an org owner entering any
-	   project: they cannot, because nobody can be one.
+	   OrgRole is granted out of band by a platform administrator, read at
+	   sign-in and carried in its own claim — never derived from the project
+	   role, which is the same three words at a different level. A portal
+	   token may carry it and an embed token may not: see
+	   TestOnlyAPortalTokenCarriesAnOrgRole, which is what stands between an
+	   end customer of a customer and every project that customer owns.
 	*/
 	OrgRole     Role
 	ProjectRole Role
@@ -183,11 +180,11 @@ func (p Principal) Confinable() bool {
 // who hold no explicit project membership. An org without an owner who can fix
 // a broken report grows a back door instead.
 func (p Principal) effective() Role {
-	// Unreachable today: nothing sets OrgRole. Kept rather than deleted
-	// because it is the documented model, and dangerous rather than dormant —
-	// it grants ProjectAdmin in whatever project the request named, with no
-	// membership in it, so whoever gives OrgRole a source owes this line a
-	// second look and a test.
+	// This grants ProjectAdmin in whatever project the request named, with no
+	// membership in it. That is the point of the tier and the reason its
+	// source is a platform administrator rather than anything the holder
+	// sends — and the reason api.EnterProject checks CanAdminOrg rather than
+	// the project permission this line produces.
 	if p.OrgRole == OrgOwner || p.OrgRole == OrgAdmin {
 		return ProjectAdmin
 	}

@@ -404,6 +404,45 @@ CREATE TABLE IF NOT EXISTS cronos_user_scopes (
   set_by  TEXT NOT NULL
 );`,
 	},
+	{
+		ID:   12,
+		Name: "organization roles",
+		/*
+		   Who administers an organization, as opposed to a project.
+
+		   principal has had org roles since the beginning and nothing ever set
+		   one, so CanAdminOrg was always false and the promotion in
+		   effective() never fired. docs/tenancy.md described the capability
+		   anyway: an org owner or admin may enter any project in their
+		   organization without a project membership, which is what a support
+		   engineer needs at 06:00 and what every product that lacks it grows a
+		   back door instead of.
+
+		   A table rather than a column on cronos_users, because the grant
+		   belongs to a person and an organization, and a user row belongs to a
+		   person and a project. The same person administering two
+		   organizations is a row each; a column would make it a column each.
+
+		   Granted out of band, by a platform administrator, and never by
+		   anything the holder sends. The role enters every project in the
+		   organization, so a claim that could set it would be a claim that
+		   grants administration of everything the organization owns.
+		*/
+		SQL: `
+CREATE TABLE IF NOT EXISTS cronos_org_roles (
+  org        TEXT NOT NULL,
+  user_id    TEXT NOT NULL,
+  -- owner, admin or member. Checked in Go rather than by the database: both
+  -- databases spell a CHECK constraint differently, and the list is one this
+  -- code owns.
+  role       TEXT NOT NULL,
+  granted_at TEXT NOT NULL,
+  -- Who granted it. The audit log has this too; keeping it here means the
+  -- answer survives a log rotation.
+  granted_by TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY (org, user_id)
+);`,
+	},
 }
 
 // migrationTable records what has run. Created outside the ordered list,

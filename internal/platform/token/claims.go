@@ -16,6 +16,20 @@ type Claims struct {
 	// Role is the project role a portal token carries. Ignored for embed
 	// tokens, which are always viewers whatever they claim.
 	Role string `json:"rol,omitempty"`
+	/*
+	   OrgRole is what they administer in their organization, if anything.
+
+	   Separate from Role and not a spelling of it. `admin` means one thing at
+	   project level and another at organization level, and they are the same
+	   string — so one field carrying both would make a project admin an org
+	   admin on the first line that forgot which it was reading.
+
+	   Set from the database at sign-in and honoured only for a portal
+	   audience, for the same reason Platform is: it enters every project in
+	   the organization, so an embed token able to claim it would hand an end
+	   customer of a customer administration of everything that customer owns.
+	*/
+	OrgRole string `json:"org_rol,omitempty"`
 
 	Org     string `json:"org"`
 	Project string `json:"prj"`
