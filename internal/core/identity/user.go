@@ -19,6 +19,18 @@ type User struct {
 	Org     string `json:"org"`
 	Project string `json:"project"`
 	Role    string `json:"role"`
+	/*
+	   OrgRole is what they administer across the organization, if anything.
+
+	   Separate from Role and not a wider spelling of it. `admin` means one
+	   thing about a project and another about an organization, and they are
+	   the same string — one field holding both would make a project admin an
+	   org admin on the first line that forgot which it was reading.
+
+	   Empty for every account in a deployment that has never granted one,
+	   which is every deployment until somebody does.
+	*/
+	OrgRole string `json:"orgRole,omitempty"`
 
 	CreatedAt time.Time  `json:"createdAt"`
 	LastSeen  *time.Time `json:"lastSeen,omitempty"`

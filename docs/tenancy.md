@@ -57,17 +57,41 @@ Org `owner` and `admin` may enter any project in their organization without a
 project membership — the alternative is an administrator who cannot fix a broken
 report, and every product that tries it grows a back door instead.
 
-> **Org roles are not implemented yet.** The table above is the model; nothing
-> in the current build assigns an org role. A token carries a project role and
-> no other, so `CanAdminOrg` is always false and the promotion described in the
-> paragraph above never happens. It fails closed — an org administrator gets no
-> access rather than too much — but it means support access to a project today
-> is project membership, granted and audited like anybody else's.
->
-> Whoever implements the tier should read `Principal.effective`: promotion
-> applies to whatever project a request names, so the source of an org role has
-> to be authority the caller cannot assert. `TestNoTokenCarriesAnOrgRole` holds
-> that line.
+An org role is granted by a **platform administrator**, at
+`PUT /v1/platform/org-roles/{id}` with `{"role": "admin"}`, and taken away with
+`DELETE`. Not from inside a project, and never from anything the holder sends:
+the role reaches every project in the organization, so nobody inside one of
+them should be able to widen their own reach to all of them.
+
+Which organization is not a parameter. It is read from the account's own row,
+so a typo cannot grant administration of somebody else's.
+
+The grant is read at sign-in and travels in the session. Changing or revoking
+it **ends that account's sessions** in the same transaction — the alternative
+is a revoked administrator who keeps every project in the organization until
+their token expires, and a revocation that takes a working day is not one.
+
+Standing is cached for five seconds on the request path, so a revoked session
+can make one or two more requests before it stops. That window is the same for
+a revoked platform administrator and a disabled account, and it is the cost of
+not asking the database who you are on every request.
+
+### Entering a project
+
+`POST /v1/auth/project` with `{"project": "ops"}` returns a new session naming
+that project. Only an org `owner` or `admin` may call it, and only for a
+project in their own organization — which comes from their token and never from
+the body.
+
+The check is `CanAdminOrg`, deliberately, and this is the one place where using
+the obvious permission would be wrong: `CanAdminProject` is true for an org
+admin *and* for every project admin, because `effective` promotes the first
+into the second. Checking it would let every project administrator in the
+deployment walk into every other project of their organization.
+
+The new session carries no project role at all. Everything the holder may do
+there comes from the org role, so revoking that takes this away too rather than
+leaving a project grant behind.
 
 An org `member` with no project membership sees an empty project list. That is
 correct, not a bug.

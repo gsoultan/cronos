@@ -229,10 +229,32 @@ func (c Claims) Principal() principal.Principal {
 			role = principal.Role(c.Role)
 		}
 	}
+	/*
+	   An organization role, for a portal token only.
+
+	   The same rule as Member and Platform below, and the strictest reason
+	   yet: this one promotes to ProjectAdmin in whatever project the request
+	   names, with no membership in it. An embed token belongs to an end
+	   customer of our customer, and a claim it could raise to organization
+	   administrator would hand it every project that customer owns.
+
+	   Matched against the org roles by name rather than taken as written.
+	   `admin` is both a project role and an org role, so a token carrying one
+	   must not become the other by arriving in the wrong field, and a word
+	   this build does not know must read as no grant at all.
+	*/
+	org := principal.None
+	if c.Audience == Portal {
+		switch principal.Role(c.OrgRole) {
+		case principal.OrgOwner, principal.OrgAdmin, principal.OrgMember:
+			org = principal.Role(c.OrgRole)
+		}
+	}
 	return principal.Principal{
 		Subject:     c.Subject,
 		OrgID:       c.Org,
 		ProjectID:   c.Project,
+		OrgRole:     org,
 		ProjectRole: role,
 		Scope:       c.Scope,
 		// Only a portal token. An embed token belongs to an end customer, and

@@ -272,7 +272,7 @@ func (a *Auth) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	issued, err := a.signer.Mint(token.Claims{
-		Audience: token.Portal, Role: user.Role,
+		Audience: token.Portal, Role: user.Role, OrgRole: user.OrgRole,
 		Org: user.Org, Project: user.Project, Subject: user.ID,
 		Platform: user.Platform,
 		Enrol:    mustEnrol,

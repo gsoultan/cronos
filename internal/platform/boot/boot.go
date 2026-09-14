@@ -273,6 +273,7 @@ func Serve(log *slog.Logger) error {
 
 		Factors:     factors(records),
 		Platform:    platform(records),
+		OrgProjects: orgProjects(records),
 		Policies:    policies(records),
 		Accounts:    accounts(records),
 		Invitations: invitations(records),

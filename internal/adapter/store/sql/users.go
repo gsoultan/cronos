@@ -86,6 +86,19 @@ func (s *Store) Authenticate(ctx context.Context, email, password string) (ident
 	// request. Taking it away cuts their sessions, so the claim never outlives
 	// the grant by more than the moment between the two writes.
 	u.Platform = s.IsPlatformAdmin(ctx, u.ID)
+	/*
+	   And the organization role, for the same reason and with the same
+	   consequence: revoking it cuts their sessions, so the claim never
+	   outlives the grant by more than the moment between the two writes.
+
+	   A failure here is not a failure to sign in. The role is an addition to
+	   what the account already has, so answering None leaves them with their
+	   project and their project role — which is the same thing every account
+	   in every deployment had before this table existed.
+	*/
+	if role, err := s.OrgRoleOf(ctx, u.ID); err == nil {
+		u.OrgRole = string(role)
+	}
 	return u, s.seen(ctx, u.ID)
 }
 
