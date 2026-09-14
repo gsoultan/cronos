@@ -22,9 +22,24 @@ type DataSource struct {
 	DSN string `json:"dsn,omitempty" yaml:"dsn,omitempty"`
 
 	// Object stores are addressed rather than connected to.
-	URI         string `json:"uri,omitempty" yaml:"uri,omitempty"`
-	Format      string `json:"format,omitempty" yaml:"format,omitempty"`
-	Region      string `json:"region,omitempty" yaml:"region,omitempty"`
+	URI    string `json:"uri,omitempty" yaml:"uri,omitempty"`
+	Format string `json:"format,omitempty" yaml:"format,omitempty"`
+	Region string `json:"region,omitempty" yaml:"region,omitempty"`
+	/*
+	   Endpoint is the object store to talk to, when it is not the cloud's own.
+
+	   `http://minio.internal:9000`, scheme included — it decides TLS, and a
+	   host with no scheme is a deployment guessing on somebody's behalf about
+	   whether their data crosses the network in clear.
+
+	   Empty means AWS, or whichever provider the scheme implies. An S3 API is
+	   not the same thing as Amazon: MinIO, Ceph and every appliance that
+	   speaks it are the deployments that have a lake on-premises, and without
+	   this their requests go to Amazon instead and come back empty — which
+	   reads as a lake with nothing in it rather than as a source that was
+	   never reached.
+	*/
+	Endpoint    string `json:"endpoint,omitempty" yaml:"endpoint,omitempty"`
 	Credentials string `json:"credentials,omitempty" yaml:"credentials,omitempty"`
 
 	Pool   Pool   `json:"pool,omitzero" yaml:"pool,omitempty"`

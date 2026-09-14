@@ -496,3 +496,72 @@ func TestTheFederationPoolIsBounded(t *testing.T) {
 		t.Errorf("the pool allows %d connections, the source allows 3", got)
 	}
 }
+
+/*
+TestAnEndpointReachesAStoreThatIsNotAmazon covers the clauses that decide where
+a read goes.
+
+Three of them from one field, because one is never enough: the host, whether it
+is encrypted, and how the bucket is addressed. The scheme decides TLS so that a
+plaintext store is one somebody asked for; path style because bucket-as-subdomain
+needs DNS per bucket and an appliance on an internal address does not have it.
+
+Without any of this a read of an on-premises store went to Amazon and came back
+"No files found" — a lake that reads as empty rather than as never reached, and
+the reason no credential in this package had ever been tried against a server.
+See scripts/live-objectstore.sh, which now does.
+*/
+func TestAnEndpointReachesAStoreThatIsNotAmazon(t *testing.T) {
+	for _, c := range []struct {
+		name, endpoint string
+		want           []string
+	}{
+		{"plaintext, as an appliance on an internal address is",
+			"http://minio.internal:9000",
+			[]string{"ENDPOINT 'minio.internal:9000'", "URL_STYLE 'path'", "USE_SSL false"}},
+		{"and TLS where the operator asked for it",
+			"https://s3.acme.internal",
+			[]string{"ENDPOINT 's3.acme.internal'", "USE_SSL true"}},
+		{"a trailing slash is not part of the host",
+			"http://minio.internal:9000/",
+			[]string{"ENDPOINT 'minio.internal:9000'"}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			stmts, err := mount("events", definition.DataSource{
+				Name: "events", Driver: "object-store",
+				URI: "s3://acme-lake/events/", Format: "parquet",
+				Endpoint:    c.endpoint,
+				Credentials: "key_id=AKIAEXAMPLE;secret=SUPERSECRETVALUE",
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := sqlOf(stmts)
+			for _, want := range c.want {
+				if !strings.Contains(got, want) {
+					t.Errorf("missing %q in:\n%s", want, got)
+				}
+			}
+		})
+	}
+}
+
+// A public bucket on a store that is not Amazon still needs the secret that
+// carries its address, even with no key to put in one.
+func TestAnEndpointAloneStillCreatesASecret(t *testing.T) {
+	stmts, err := mount("events", definition.DataSource{
+		Name: "events", Driver: "object-store",
+		URI: "s3://open-data/events/", Format: "parquet",
+		Endpoint: "http://minio.internal:9000",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := sqlOf(stmts)
+	if !strings.Contains(got, "ENDPOINT 'minio.internal:9000'") {
+		t.Errorf("a public bucket lost its endpoint:\n%s", got)
+	}
+	if strings.Contains(got, "KEY_ID") {
+		t.Errorf("it invented a credential:\n%s", got)
+	}
+}

@@ -11,7 +11,7 @@ VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 GO     := go
 
 .DEFAULT_GOAL := help
-.PHONY: help setup dev dev-web dev-api build check test xlsx-oracle duckdb pdf lint fmt boundary live ui shots image load release clean import dist
+.PHONY: help setup dev dev-web dev-api build check test xlsx-oracle duckdb pdf lint fmt boundary live objectstore ui shots image load release clean import dist
 
 help: ## Show this help
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage: make <target>\n\n"} \
@@ -93,6 +93,9 @@ boundary: ## Verify no BSL artifact depends on ee/, and that every channel ships
 live: ## Drive the embed component and the portal against a real cronosd
 	@./scripts/live-embed.sh
 	@./scripts/live-portal.sh
+
+objectstore: ## Read a lake out of a real object store (MinIO, needs -tags duckdb)
+	@./scripts/live-objectstore.sh
 
 ui: ## Run every browser suite against a running portal (make dev-web first)
 	cd $(PORTAL) && bun run build && bun run verify

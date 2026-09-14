@@ -113,3 +113,27 @@ func TestAnUnresolvedReferenceIsNotAShapeError(t *testing.T) {
 		t.Fatalf("a definition using a secret reference could not be saved: %v", err)
 	}
 }
+
+// An endpoint decides where a request goes and whether it is encrypted. A host
+// with no scheme leaves the second to whoever reads the file.
+func TestValidateChecksTheEndpointScheme(t *testing.T) {
+	with := func(endpoint string) DataSource {
+		d := lake("key_id=A;secret=B")
+		d.Endpoint = endpoint
+		return d
+	}
+	for _, ok := range []string{"", "http://minio.internal:9000", "https://s3.acme.internal"} {
+		if err := with(ok).Validate(); err != nil {
+			t.Errorf("endpoint %q was refused: %v", ok, err)
+		}
+	}
+	for _, bad := range []string{"minio.internal:9000", "s3://minio.internal", "//minio.internal"} {
+		if err := with(bad).Validate(); err == nil {
+			t.Errorf("endpoint %q was stored without a scheme", bad)
+		}
+	}
+	// Still a reference at save time, so its shape is not knowable yet.
+	if err := with("${secret:lake_endpoint}").Validate(); err != nil {
+		t.Errorf("an endpoint held in a secret could not be saved: %v", err)
+	}
+}
