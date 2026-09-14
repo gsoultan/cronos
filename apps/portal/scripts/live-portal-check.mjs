@@ -222,7 +222,20 @@ ok('and the shared filter the form never writes', saved.includes('name: region')
    table that could equally mean a broken query. */
 
 await page.goto(`${B}/activity`, { waitUntil: 'domcontentloaded' })
-await page.locator('text=Activity').first().waitFor({ timeout: 15000 })
+/* Wait for the fetch, not for the word.
+
+   `text=Activity` matches the nav rail entry and the breadcrumb, both of which
+   render with the shell and neither of which says anything about whether the
+   run history has arrived. ActivityPage returns Loading… until it has, so this
+   read the body between the two and asserted an empty state against the text
+   "Loading…" — passing whenever the request happened to be quick and failing
+   when it did not. It lost that race on one run of a pull request while the
+   identical commit passed on push, which is the only reason it was looked at.
+
+   Waiting for the loading element to detach is the same statement the page
+   makes: the query settled. It resolves immediately if the fetch beat the
+   assertion and the element never appeared. */
+await page.locator('[data-testid=runs-loading]').waitFor({ state: 'detached', timeout: 15000 })
 ok('an empty history says nothing has run',
   (await page.locator('body').innerText()).includes('Nothing has run yet'))
 
