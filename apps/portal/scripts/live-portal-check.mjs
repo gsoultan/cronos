@@ -222,7 +222,27 @@ ok('and the shared filter the form never writes', saved.includes('name: region')
    table that could equally mean a broken query. */
 
 await page.goto(`${B}/activity`, { waitUntil: 'domcontentloaded' })
+/* Two waits, and both are load-bearing.
+
+   The first says React mounted. `text=Activity` matches the nav rail entry and
+   the breadcrumb, which render with the shell — it proves the app is on screen
+   and nothing about whether the run history arrived.
+
+   The second says the query settled. ActivityPage returns a Loading… element
+   until it does, so waiting only for the word read the body in between and
+   asserted an empty state against the text "Loading…" — passing whenever the
+   request happened to be quick. That is the flake this came from.
+
+   Waiting only for the loader to detach fails the other way, and worse: at
+   domcontentloaded React has not mounted, so the element is not there yet,
+   `detached` is satisfied at once, and the body being read is an empty shell.
+   That was tried here and failed every run rather than some of them.
+
+   Order matters. Once the nav is on screen the route has rendered in the same
+   commit, so the loader is present if the query is pending and already gone if
+   it is not — and detached resolves immediately in that second case. */
 await page.locator('text=Activity').first().waitFor({ timeout: 15000 })
+await page.locator('[data-testid=runs-loading]').waitFor({ state: 'detached', timeout: 15000 })
 ok('an empty history says nothing has run',
   (await page.locator('body').innerText()).includes('Nothing has run yet'))
 
