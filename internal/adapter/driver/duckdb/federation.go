@@ -98,13 +98,3 @@ func (f *Federation) Executor() *sqldriver.Executor { return sqldriver.NewExecut
 
 // Close releases the connection and every attachment with it.
 func (f *Federation) Close() error { return f.db.Close() }
-
-// Mounts returns the names a dataset's query may reference, for a caller that
-// wants to say so in an error rather than let the database do it.
-func Mounts(ds definition.Dataset) []string {
-	out := make([]string, 0, len(ds.Sources))
-	for _, s := range ds.Sources {
-		out = append(out, s.Name())
-	}
-	return out
-}

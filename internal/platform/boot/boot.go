@@ -200,7 +200,8 @@ func Serve(log *slog.Logger) error {
 	// Wired here and only here, so the count can never be a zero nobody set —
 	// which on this metric is the same shape as a healthy deployment.
 	metrics := api.NewMetrics().
-		CountingUnarmed(Unarmed).CountingRefused(Rejected).CountingUnopenable(Unopenable)
+		CountingUnarmed(Unarmed).CountingRefused(Rejected).CountingUnopenable(Unopenable).
+		CountingFederations(registry.Federations)
 
 	/*
 	   Every project's connection pools, for every replica.

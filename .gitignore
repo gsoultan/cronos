@@ -1,4 +1,12 @@
 bin/
+# And the same binaries built into the tree instead. `go build ./cmd/cronosd`
+# with no -o writes to the working directory, so a 20MB file lands beside the
+# source and is one `git add -A` away from the history.
+/cronosd
+/cronosd-ee
+/cronos-import
+/cronos-token
+/cronos-user
 # Release archives and the portal build, both reproducible from a tag.
 dist/
 node_modules/
