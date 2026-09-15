@@ -100,7 +100,7 @@ jobs:
 
       # The release config itself: a bad template or an id nothing builds is a
       # tag that fails to release, and the first sign would otherwise be the tag.
-      - uses: goreleaser/goreleaser-action@v6
+      - uses: goreleaser/goreleaser-action@v7
         with:
           version: '~> v2'
           args: check
@@ -117,7 +117,7 @@ jobs:
         # snapshot with signing skipped: signing is keyless and wants the OIDC
         # token only the release workflow has, and what this job is checking is
         # that the artifacts still build.
-        uses: goreleaser/goreleaser-action@v6
+        uses: goreleaser/goreleaser-action@v7
         with:
           version: '~> v2'
           args: release --snapshot --clean --skip=sign
