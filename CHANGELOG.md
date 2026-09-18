@@ -56,6 +56,33 @@ and it went to the startup log. Resolved secret values are now removed from the
 error. This was reachable for any `driver: duckdb` source in a federation
 build.
 
+**Organization roles exist, and a support engineer can reach a project.**
+`principal` has had org roles since before 1.0 and nothing ever set one, so
+`CanAdminOrg` was always false and the promotion it guards never fired — while
+`docs/tenancy.md` described an org owner or admin entering any project in their
+organization without a project membership. The capability was documented and
+absent. It is granted by a platform administrator now, carried in the session,
+and spent through `POST /v1/auth/project`, which mints a new session naming the
+project rather than widening the one in hand.
+
+Nothing is granted by anything the holder sends: an org role enters every
+project in the organization, so a claim that could set it would be a claim that
+grants administration of everything the organization owns. A deployment that
+grants none is unchanged.
+
+**A lake can live somewhere other than Amazon.** `endpoint:` on an object-store
+source points reads at MinIO, Ceph or an appliance on an internal address; the
+scheme decides TLS, and buckets are addressed by path. Without it every request
+went to AWS, and a bucket that is not there comes back as an empty lake rather
+than as a store that was never reached — so a deployment with an on-premises
+lake was reading nothing and being told nothing.
+
+**`cronos_federations_mounted` counts the query engines held open** over other
+people's databases. The only gauge here not meant to be zero: what matters is
+that it settles rather than climbs, because mounts are cached per set of
+sources and a rising number means datasets are mounting per query. See
+[docs/deploying.md](docs/deploying.md).
+
 ### Upgrading
 
 `uri:` on an object store is a prefix and has always been read as one — it is
@@ -66,6 +93,15 @@ should point at `events/`.
 A dataset that joins sources must name each one with something SQL can use. A
 datasource whose name holds a dash needs `as:` on the reference; the error says
 so. Datasets reading a single ordinary database are unaffected.
+
+Organization roles add a table, applied on first start after the upgrade.
+Nothing else changes for a deployment that grants none, and there is nothing to
+do unless you want one.
+
+An on-premises object store that was silently reading nothing needs `endpoint:`
+adding to its datasource. It will have been failing as an empty result rather
+than an error, so a lake that has "no data" and should have some is the shape
+to look for.
 
 ---
 
