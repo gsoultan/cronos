@@ -37,15 +37,43 @@ func (s *Store) CreateUserWithHash(ctx context.Context, u identity.User, hash st
 		return fmt.Errorf("%w: no email", identity.ErrBadCredentials)
 	}
 
-	_, err = s.db.ExecContext(ctx, s.sql(`
+	/*
+	   The account and its first membership, together.
+
+	   Migration 13 backfilled a membership for every account that existed, and
+	   an account created afterwards needs one for the same reason: the project
+	   somebody was created in is a project they belong to. Without this the
+	   backfill would be a one-time fix for a bug that keeps happening, and the
+	   symptom is an account that signs in and is offered nowhere to go.
+
+	   In one transaction, because an account with no membership is not a state
+	   anything else here knows how to read.
+	*/
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	now := stamp(s.now())
+	_, err = tx.ExecContext(ctx, s.sql(`
 		INSERT INTO cronos_users (id, email, name, password, org, project, role, created_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`),
-		u.ID, email, u.Name, hash, u.Org, u.Project, u.Role, stamp(s.now()))
+		u.ID, email, u.Name, hash, u.Org, u.Project, u.Role, now)
 
 	if duplicate(err) {
 		return fmt.Errorf("%w: %s", identity.ErrExists, email)
 	}
-	return err
+	if err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, s.sql(`
+		INSERT INTO cronos_memberships (user_id, org, project, role, granted_at, granted_by)
+		VALUES (?, ?, ?, ?, ?, ?)`),
+		u.ID, u.Org, u.Project, u.Role, now, "creation"); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // Authenticate checks an email and password.

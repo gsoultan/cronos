@@ -13,9 +13,10 @@ type User struct {
 	Email string `json:"email"`
 	Name  string `json:"name,omitempty"`
 
-	// Org and Project are where they act. One of each for now: a person in
-	// several projects needs a picker and a membership table, and inventing
-	// half of that would be worse than not having it.
+	// Org and Project are where the account was created, and where a session
+	// starts. Not the only place they may act: memberships say where else, and
+	// a session moves between them by minting a new token rather than by
+	// widening this one. See Membership.
 	Org     string `json:"org"`
 	Project string `json:"project"`
 	Role    string `json:"role"`
@@ -60,4 +61,22 @@ type Tenant struct {
 	Project  string `json:"project"`
 	People   int    `json:"people"`
 	Disabled int    `json:"disabled"`
+}
+
+/*
+Membership is a project somebody belongs to, and what they may do there.
+
+A table rather than more columns on the account, because the email on an
+account is unique across the deployment: somebody working in two projects
+needed two accounts with two addresses, which is a workaround an administrator
+invents once and then maintains for ever.
+
+The role travels with the membership. An editor in one project and a viewer in
+another is the ordinary case, and one role on the account would make the wider
+of the two apply in both.
+*/
+type Membership struct {
+	Org     string `json:"org"`
+	Project string `json:"project"`
+	Role    string `json:"role"`
 }

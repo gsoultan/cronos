@@ -43,13 +43,36 @@ Administering is admin-only, which is a narrower bar than everything else in
 this API: an editor may change what a report says, and that is a mistake
 somebody can see and undo. Adding a person, or removing one, is neither.
 */
+/*
+Memberships is what People needs to add somebody who already has an account.
+
+A different question about a different table from Roster: that one answers who
+is in this project, and this answers which projects a person is in. Nil where
+the deployment has no records store, and the handler then gives the answer it
+always gave — that the address is taken.
+*/
+type Memberships interface {
+	ByEmail(ctx context.Context, email string) (identity.User, error)
+	GrantMembership(ctx context.Context, userID, org, project, role, by string) error
+}
+
 type People struct {
 	roster Roster
 	auth   Principals
 	// invitations is nil where this deployment cannot send mail, in which case
 	// adding somebody still means choosing their password.
 	invitations *Invite
+	// memberships is nil without a records store. Adding an account that
+	// already exists to a second project needs one.
+	memberships Memberships
 	log         *slog.Logger
+}
+
+// Admitting lets People add an existing account to this project rather than
+// refusing the address as taken.
+func (h *People) Admitting(m Memberships) *People {
+	h.memberships = m
+	return h
 }
 
 // NewPeople wires the handler.
@@ -180,7 +203,7 @@ func (h *People) add(w http.ResponseWriter, r *http.Request, pr principal.Princi
 
 	if err := h.roster.CreateUser(r.Context(), user, in.Password); err != nil {
 		if errors.Is(err, identity.ErrExists) {
-			fail(w, http.StatusConflict, "That email already has an account here.")
+			h.admit(w, r, pr, in)
 			return
 		}
 		h.log.Error("could not add a person", "err", err)
@@ -436,6 +459,70 @@ A whole-roster read for one address. A project's roster is tens of rows and this
 happens once per invitation, which is a worse trade than a query would be and a
 better one than a second method on the interface for it.
 */
+/*
+admit adds an account that already exists to this project.
+
+An email is unique across a deployment, so "that address already has an
+account" used to be the end of it: somebody working in two projects needed two
+addresses, which is a workaround an administrator invents once and maintains
+for ever. What they were asking for is a membership, and this is where they ask
+for it.
+
+Their own organization, and only that. The account is looked up by address and
+refused unless it is already in the acting principal's org — an administrator
+of one tenant's project naming another tenant's address is the one thing this
+must not do, and the check is here rather than in the store because the store
+is answering a question about an email and not about who asked.
+
+The role is the one in the request, applied to this project alone. Somebody who
+is an editor in finance and is added to ops as a viewer is a viewer in ops.
+*/
+func (h *People) admit(w http.ResponseWriter, r *http.Request,
+	pr principal.Principal, in newPerson) {
+
+	if h.memberships == nil {
+		// A build or a deployment without a records store cannot hold one.
+		// The old answer, rather than a promise this cannot keep.
+		fail(w, http.StatusConflict, "That email already has an account here.")
+		return
+	}
+
+	existing, err := h.memberships.ByEmail(r.Context(), in.Email)
+	if err != nil || existing.ID == "" {
+		// Including "no such account", which cannot happen on this path and
+		// would be a lie to report as anything but a conflict.
+		fail(w, http.StatusConflict, "That email already has an account here.")
+		return
+	}
+	if existing.Org != pr.OrgID {
+		/*
+		   404 and not 403.
+
+		   They are an administrator of their own project asking about an
+		   address in somebody else's organization, and the two honest answers
+		   — "that is not yours" and "no such account" — are the same answer
+		   from here. Telling them apart turns this endpoint into a way to test
+		   whether an address has an account in the deployment.
+		*/
+		fail(w, http.StatusNotFound, "No such account in this organization.")
+		return
+	}
+
+	if err := h.memberships.GrantMembership(r.Context(),
+		existing.ID, pr.OrgID, pr.ProjectID, in.Role, pr.Subject); err != nil {
+		h.log.Error("could not add an existing account to a project", "err", err)
+		fail(w, http.StatusInternalServerError, "Could not add them.")
+		return
+	}
+
+	h.log.Info("person admitted to a project", "user", existing.ID,
+		"project", pr.OrgID+"/"+pr.ProjectID, "role", in.Role, "by", pr.Subject)
+	audit(r.Context(), h.log, pr, ActionPersonAdd, in.Email, Allowed,
+		map[string]any{"role": in.Role, "via": "membership"})
+	existing.Project, existing.Role = pr.ProjectID, in.Role
+	send(w, http.StatusCreated, existing)
+}
+
 func (h *People) addressOf(ctx context.Context, pr principal.Principal) string {
 	if pr.Email != "" {
 		return pr.Email

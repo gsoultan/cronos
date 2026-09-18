@@ -605,10 +605,22 @@ func platform(records *sqlstore.Store) api.Platform {
 	return records
 }
 
-// orgProjects answers which projects an organization has, for an administrator
-// entering one they are not a member of. Nil without a records store, which is
-// the development path, and the route is then not registered at all.
+// orgProjects answers which projects an organization has and which of them one
+// person belongs to — the two ways a session moves between projects.
+//
+// Nil without a records store, which is the development path: memberships live
+// in that store, so without one there is nowhere to read them from and the
+// route is not registered at all.
 func orgProjects(records *sqlstore.Store) api.OrgProjects {
+	if records == nil {
+		return nil
+	}
+	return records
+}
+
+// memberships lets an administrator add an existing account to their project.
+// Nil without a records store, where there is no table to put one in.
+func memberships(records *sqlstore.Store) api.Memberships {
 	if records == nil {
 		return nil
 	}
