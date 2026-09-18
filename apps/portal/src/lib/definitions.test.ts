@@ -73,6 +73,43 @@ test('an object store is addressed rather than connected to', () => {
   expect(yaml).not.toContain('dsn:')
 })
 
+/* A private bucket needs a key, and the form had nowhere to put one — so the
+   only way to define a readable lake was to write the YAML by hand, which is
+   where somebody pastes the key instead of a reference to it. */
+test('a lake carries how it is reached', () => {
+  const yaml = dataSource({
+    name: 'Lake', slug: 'lake', kind: 'objectstore', uri: 's3://acme/events',
+    region: 'eu-central-1', storeEndpoint: 'http://minio.internal:9000',
+    credentials: '${secret:lake_creds}',
+  })
+  expect(yaml).toContain('region: eu-central-1')
+  expect(yaml).toContain('endpoint: http://minio.internal:9000')
+  expect(yaml).toContain('credentials: ${secret:lake_creds}')
+})
+
+/* Blank is not the same as absent. A region written out empty is a key in the
+   file that means nothing and reads as though it did. */
+test('a public bucket writes no key it does not have', () => {
+  const yaml = dataSource({ name: 'Open', slug: 'open', kind: 'objectstore', uri: 's3://open/data' })
+  expect(yaml).not.toContain('region:')
+  expect(yaml).not.toContain('endpoint:')
+  expect(yaml).not.toContain('credentials:')
+})
+
+/* Unlike a password, which the server never returns. What the file holds is
+   the reference, so reopening shows it and saving keeps it — blanking it on an
+   edit would quietly drop the credential from a working source. */
+test('a lake round trips how it is reached', () => {
+  const input = {
+    name: 'Lake', slug: 'lake', kind: 'objectstore', uri: 's3://acme/events',
+    region: 'eu-central-1', storeEndpoint: 'http://minio.internal:9000',
+    credentials: '${secret:lake_creds}',
+  }
+  const back = readDataSource(dataSource(input))
+  expect(back.input).toMatchObject(input)
+  expect(back.drops).toEqual([])
+})
+
 test('a report lays its blocks out under one interactive output', () => {
   const yaml = report({
     name: 'Billing', slug: 'billing', dataset: 'invoices', folder: 'Finance',

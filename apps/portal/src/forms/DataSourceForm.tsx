@@ -68,6 +68,14 @@ export function DataSourceForm({ onDone, onCancel, initial }: Props) {
       // is how a query parameter goes missing.
       dsn: stored?.dsn ?? '',
       uri: stored?.uri ?? '', endpoint: '', authHeader: '',
+      // A store's own address, kept apart from the API shape's `endpoint`:
+      // that one is folded into `uri` on submit, and a MinIO address landing
+      // there would become the location of the lake.
+      storeEndpoint: stored?.storeEndpoint ?? '',
+      region: stored?.region ?? '',
+      // The reference, not the credential. Reloaded because the file holds
+      // ${secret:…} and blanking it on an edit would drop it.
+      credentials: stored?.credentials ?? '',
       filePath: stored?.filePath ?? '',
       name: stored?.name ?? '', slug: stored?.slug ?? '',
     },
@@ -76,6 +84,8 @@ export function DataSourceForm({ onDone, onCancel, initial }: Props) {
         name: value.name, slug: value.slug, kind: kind ?? 'postgres',
         host: value.host, port: value.port, database: value.database,
         user: value.user, uri: value.uri || value.endpoint, filePath: value.filePath,
+        region: value.region, storeEndpoint: value.storeEndpoint,
+        credentials: value.credentials,
         /*
            The connection string: edited, or kept.
 
@@ -284,16 +294,59 @@ export function DataSourceForm({ onDone, onCancel, initial }: Props) {
             )}
 
             {spec.shape === 'object' && (
-              <form.Field name="uri" validators={{ onBlur: ({ value }) => required('A location')(value) }}>
-                {(f) => (
-                  <Field label="Location" error={fieldError(f.state.meta)}
-                    help="A bucket and prefix. Files underneath are read as one table.">
-                    <TextInput value={f.state.value} onBlur={f.handleBlur}
-                      placeholder="s3://acme-lake/events/"
-                      onChange={(e) => f.handleChange(e.currentTarget.value)} />
-                  </Field>
-                )}
-              </form.Field>
+              <>
+                <form.Field name="uri" validators={{ onBlur: ({ value }) => required('A location')(value) }}>
+                  {(f) => (
+                    <Field label="Location" error={fieldError(f.state.meta)}
+                      help="A bucket and prefix. Files underneath are read as one table.">
+                      <TextInput value={f.state.value} onBlur={f.handleBlur}
+                        data-testid="source-uri"
+                        placeholder="s3://acme-lake/events/"
+                        onChange={(e) => f.handleChange(e.currentTarget.value)} />
+                    </Field>
+                  )}
+                </form.Field>
+                {/*
+                   A private bucket needs a key, and until there was anywhere to
+                   put one the only way to define a readable lake was to edit
+                   the YAML by hand — which is where somebody pastes the key
+                   itself rather than a reference to it.
+                */}
+                <form.Field name="credentials">
+                  {(f) => (
+                    <Field label="Credentials" required={false}
+                      help="A secret reference. The key lives in the secret, never in the definition — leave blank for a public bucket.">
+                      <TextInput value={f.state.value} onBlur={f.handleBlur}
+                        data-testid="source-credentials"
+                        placeholder="${secret:lake_creds}"
+                        onChange={(e) => f.handleChange(e.currentTarget.value)} />
+                    </Field>
+                  )}
+                </form.Field>
+                <form.Field name="region">
+                  {(f) => (
+                    <Field label="Region" required={false}
+                      help="For S3 and its compatibles. Azure resolves one from the account and takes none.">
+                      <TextInput value={f.state.value} onBlur={f.handleBlur}
+                        data-testid="source-region"
+                        placeholder="eu-central-1"
+                        onChange={(e) => f.handleChange(e.currentTarget.value)} />
+                    </Field>
+                  )}
+                </form.Field>
+                <form.Field name="storeEndpoint"
+                  validators={{ onBlur: ({ value }) => (value ? url(value) : undefined) }}>
+                  {(f) => (
+                    <Field label="Endpoint" required={false} error={fieldError(f.state.meta)}
+                      help="Only for a store that is not the cloud's own — MinIO, Ceph, an appliance. The scheme decides TLS.">
+                      <TextInput value={f.state.value} onBlur={f.handleBlur}
+                        data-testid="source-endpoint"
+                        placeholder="http://minio.internal:9000"
+                        onChange={(e) => f.handleChange(e.currentTarget.value)} />
+                    </Field>
+                  )}
+                </form.Field>
+              </>
             )}
 
             {spec.shape === 'api' && (
@@ -431,6 +484,7 @@ function pushdownTone(p: string): string {
 type Values = {
   host: string; database: string; user: string
   dsn: string; uri: string; endpoint: string; filePath: string
+  region: string; storeEndpoint: string; credentials: string
 }
 
 function connectionComplete(spec: { shape: string } | null, v: Values): boolean {

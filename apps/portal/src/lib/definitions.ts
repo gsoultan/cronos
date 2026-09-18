@@ -34,6 +34,18 @@ export interface SourceInput {
   database?: string
   user?: string
   uri?: string
+  /**
+   * How the object store is reached, for the sources that are not a database.
+   *
+   * `credentials` is a `${secret:name}` reference like every other credential
+   * in this format — the pairs behind it live in the secret, not in the file.
+   * Held here rather than in `dsn` because an object store is addressed rather
+   * than connected to, and packing four fields into one string would make them
+   * unreadable in the one place an operator looks.
+   */
+  region?: string
+  storeEndpoint?: string
+  credentials?: string
   filePath?: string
   /**
    * The connection string exactly as stored.
@@ -66,6 +78,12 @@ export function dataSource(input: SourceInput): string {
   if (driver === 'object-store') {
     spec.uri = input.uri || input.filePath
     spec.format = input.kind === 'excel' ? 'csv' : 'parquet'
+    // Only when set. An empty region is not the same as no region — one is a
+    // field the store will be asked to honour, and writing it out blank puts a
+    // key in the file that means nothing and reads as if it did.
+    if (input.region) spec.region = input.region
+    if (input.storeEndpoint) spec.endpoint = input.storeEndpoint
+    if (input.credentials) spec.credentials = input.credentials
   } else {
     spec.dsn = input.dsn || dsn(driver, input)
   }
@@ -446,6 +464,12 @@ export function readDataSource(text: string): Loaded<SourceInput> {
       slug: str(meta.name),
       kind: KINDS[driver] ?? driver,
       uri: spec.uri ? str(spec.uri) : undefined,
+      region: spec.region ? str(spec.region) : undefined,
+      storeEndpoint: spec.endpoint ? str(spec.endpoint) : undefined,
+      // Read back, unlike a password: what the file holds is the reference and
+      // not the credential, so showing it costs nothing and leaving it blank
+      // would drop it on the next save.
+      credentials: spec.credentials ? str(spec.credentials) : undefined,
       // Before the parsed parts, which never include a dsn and so cannot
       // overwrite it.
       dsn: connection || undefined,

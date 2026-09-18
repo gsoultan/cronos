@@ -78,7 +78,11 @@ export const SOURCE_KINDS: SourceSpec[] = [
     pushdownHint: 'Set a cost cap on this source: an auto-refreshing dashboard on a large table can be expensive.',
   },
   {
-    id: 'objectstore', label: 'Files on S3', hint: 'Parquet or CSV', icon: '🗄', shape: 'object',
+    // Not "Files on S3" any more. The driver reads Azure Blob, GCS and R2 as
+    // well, and a name that says only S3 sends somebody with an Azure lake
+    // looking for a kind that is not there.
+    id: 'objectstore', label: 'Files in a bucket', hint: 'S3, Azure, GCS or R2',
+    icon: '🗄', shape: 'object',
     connectHint: 'Every file under the prefix is read as one table. Parquet is much faster than CSV.',
     pushdown: 'partial',
     pushdownLabel: 'Some filters run at the source',
