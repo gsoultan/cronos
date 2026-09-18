@@ -35,7 +35,7 @@ import { useSidebar } from '../lib/useSidebar'
  */
 export function Shell() {
   const path = useRouterState({ select: (s) => s.location.pathname })
-  const { org, project, setContext, branding } = useWorkspace()
+  const { org, project, setContext, branding, enterable } = useWorkspace()
   const { collapsed, toggle } = useSidebar()
   const [drawer, setDrawer] = useState(false)
   const [theme, setTheme] = useState<'light' | 'dark'>('light')
@@ -193,7 +193,7 @@ export function Shell() {
                       md:sticky md:top-14 md:h-[calc(100vh-3.5rem)] md:gap-4 md:border-r
                       ${drawer ? 'max-md:translate-x-0' : 'max-md:invisible max-md:-translate-x-full'}
                       ${collapsed ? 'md:items-center' : ''}`}>
-          <WorkspaceSwitcher org={org} project={project} onChange={setContext}
+          <WorkspaceSwitcher org={org} project={project} onChange={setContext} enterable={enterable}
             collapsed={collapsed && !drawer} mark={branding.mark?.url} />
           <NavRail collapsed={collapsed && !drawer} />
         </aside>

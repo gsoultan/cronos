@@ -4,7 +4,8 @@ import {
 import {
   organizations, projects, type Organization, type Project, type ProjectRole,
 } from './workspace'
-import { connected, currentUser, SIGNED_IN } from './api'
+import { connected, currentUser, enterableProjects, enterProject, SIGNED_IN } from './api'
+import type { EnterableProject } from './api'
 
 /**
  * Per organisation, keyed by org id.
@@ -29,6 +30,10 @@ export interface Branding {
 interface Workspace {
   org: Organization
   project: Project
+  /** The projects this session may enter. Empty in sample mode, and on a
+      deployment whose build cannot answer — the switcher then shows what the
+      sample directory holds, which is what it always showed. */
+  enterable: EnterableProject[]
   setContext: (org: Organization, project: Project) => void
   branding: Branding
   setBranding: (orgId: string, next: Branding) => void
@@ -54,13 +59,17 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
    * plausible enough that a first run typing those exact names looked correct
    * by coincidence rather than by working.
    *
-   * cronos's identity model is one organisation and one project per account, so
-   * on a real server there is nothing to switch between and the pair is simply
-   * what the token says.
+   * The pair is what the token says. It used to be all there was to say —
+   * an account held one organisation and one project, so on a real server
+   * there was nothing to switch between. Memberships changed that: somebody
+   * can belong to several projects, and `enterable` is which ones. Switching
+   * asks the server for a new session rather than editing this state, because
+   * the role in the project being entered is the server's to decide.
    */
   const [org, setOrg] = useState<Organization>(() => fromSession()?.org ?? organizations[0]!)
   const [project, setProject] = useState<Project>(() => fromSession()?.project ?? projects[0]!)
   const [brandingByOrg, setBrandingByOrg] = useState<Record<string, Branding>>({})
+  const [enterable, setEnterable] = useState<EnterableProject[]>([])
 
   /* Re-read when a session begins. The provider mounts above the sign-in page,
      so at first render there is nobody signed in and the answer is the sample
@@ -77,17 +86,48 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     return () => globalThis.removeEventListener(SIGNED_IN, adopt)
   }, [])
 
+  /* What this session may enter, re-read whenever it changes. Failures are
+     swallowed to an empty list on purpose: a switcher that cannot list is a
+     switcher with one entry, which is what a deployment without the route has
+     anyway — and an error banner across the shell for it would be louder than
+     the feature. */
+  useEffect(() => {
+    let live = true
+    const load = () => {
+      if (!connected()) return setEnterable([])
+      enterableProjects().then((p) => { if (live) setEnterable(p) }).catch(() => {
+        if (live) setEnterable([])
+      })
+    }
+    load()
+    globalThis.addEventListener(SIGNED_IN, load)
+    return () => {
+      live = false
+      globalThis.removeEventListener(SIGNED_IN, load)
+    }
+  }, [])
+
   const value = useMemo<Workspace>(() => ({
     org,
     project,
+    enterable,
     setContext: (nextOrg, nextProject) => {
+      /* Connected, the server decides. It mints a session naming the project
+         and says what role it carries there, so setting this state directly
+         would show a role the token does not grant — the screen and the
+         requests would disagree, and the screen would be the wrong one. The
+         SIGNED_IN it fires brings the new pair back through adopt(). */
+      if (connected()) {
+        void enterProject(nextProject.slug).catch(() => {})
+        return
+      }
       setOrg(nextOrg)
       setProject(nextProject)
     },
     branding: brandingByOrg[org.id] ?? {},
     setBranding: (orgId, next) =>
       setBrandingByOrg((all) => ({ ...all, [orgId]: next })),
-  }), [org, project, brandingByOrg])
+  }), [org, project, enterable, brandingByOrg])
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }

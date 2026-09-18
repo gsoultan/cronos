@@ -234,6 +234,68 @@ function readToken(): string | undefined {
   }
 }
 
+/**
+ * Which projects this session may enter, and how it would get in.
+ *
+ * `via` is `membership` or `organization role`, and the difference is worth
+ * showing: a membership names a role and survives an org role being taken
+ * away. Empty where the deployment has no records store — the route is not
+ * mounted there, and a 404 means "no switching here" rather than an error.
+ */
+export async function enterableProjects(): Promise<EnterableProject[]> {
+  const cfg = apiConfig()
+  if (!cfg) return []
+  const res = await fetch(cfg.base + '/v1/auth/project', {
+    headers: { authorization: `Bearer ${cfg.token}` },
+  })
+  if (res.status === 404 || res.status === 405) return []
+  if (!res.ok) throw new ApiError(res.status, await serverMessage(res))
+  const body = (await res.json()) as { projects?: EnterableProject[] }
+  return body.projects ?? []
+}
+
+export interface EnterableProject {
+  project: string
+  role: string
+  via: string
+}
+
+/**
+ * Moves this session into another project.
+ *
+ * The server mints a new token rather than widening the one in hand, so the
+ * role arriving is the one that project grants — an editor in finance who is a
+ * viewer in ops becomes a viewer. This replaces the stored token with what
+ * came back; keeping the old one would leave a session that still names the
+ * project they just left.
+ */
+export async function enterProject(project: string): Promise<void> {
+  const cfg = apiConfig()
+  if (!cfg) throw new ApiError(0, 'This portal is not connected to a server.')
+
+  const res = await fetch(cfg.base + '/v1/auth/project', {
+    method: 'POST',
+    headers: { authorization: `Bearer ${cfg.token}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ project }),
+  })
+  if (!res.ok) throw new ApiError(res.status, await serverMessage(res))
+
+  const body = (await res.json()) as { token?: string; project?: string }
+  if (!body.token) throw new ApiError(0, 'The server did not hand back a session.')
+
+  globalThis.localStorage?.setItem('cronos.token', body.token)
+  /* The stored user names a project too, and it is what the shell reads back.
+     Left alone it would say the old one while the token says the new. */
+  const me = currentUser()
+  if (me && body.project) {
+    globalThis.localStorage?.setItem('cronos.user',
+      JSON.stringify({ ...me, project: body.project }))
+  }
+  // The same event a sign-in fires: the context re-reads and everything
+  // hanging off it refetches for the project now in the token.
+  globalThis.dispatchEvent(new Event(SIGNED_IN))
+}
+
 /** True when the portal is talking to a real cronos. */
 export function connected(): boolean {
   return apiConfig() !== null
