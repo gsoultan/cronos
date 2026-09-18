@@ -124,26 +124,43 @@ in the file:
 
 | Field | For |
 | :--- | :--- |
-| `key_id`, `secret` | Together, always. Either alone is refused. |
+| `key_id`, `secret` | S3, GCS and R2. Together, always — either alone is refused. |
 | `session_token` | Temporary credentials. |
 | `account_id` | Cloudflare R2, which addresses a bucket by account. |
+| `account_name`, `account_key` | Azure Blob. Together, and named as the Azure portal names them. |
+| `provider` | `chain`, where the credential comes from the environment rather than the file. |
 
 ```
 key_id=AKIAEXAMPLE;secret=wJalrXUtnFEMI/K7MDENG
+account_name=acmelake;account_key=0Vn2Iq…==
 ```
 
 Set `credentials: chain` instead to take them from the environment — an
 instance profile, a projected service-account token, a local AWS profile.
 Nothing is read from the definition then, which is the shape to prefer where
-the deployment already has an identity.
+the deployment already has an identity. Azure needs the account named even
+then, because a chain answers who the caller is and not which account they are
+reaching: `provider=chain;account_name=acmelake`.
+
+A credential from the wrong cloud is refused by name rather than passed
+through — `account_name` on an `s3://` bucket builds a statement with a
+parameter the store has never heard of, and the message for that is better
+written here than quoted from a database.
+
+**Azure Blob is `az://`, `azure://` or `abfss://`**, all three, because three
+tools emit three of them. Azure takes no `region` — the account resolves to
+one — and its `endpoint` goes inside the connection string cronos assembles
+rather than beside it, which is what makes an emulator or a private cloud
+reachable.
 
 Omit `credentials` entirely for a public bucket. A `region` on its own is fine
 and still creates the secret that carries it.
 
 Credentials are scoped to the `uri` they were given with, so two lakes with a
 key each authenticate as themselves rather than as whichever loaded last. They
-reach `s3://`, `gs://` and `r2://`; on any other scheme a credential is refused
-rather than ignored, because one that does nothing is one nobody rotates.
+reach `s3://`, `gs://`, `r2://` and Azure's three spellings; on any other
+scheme a credential is refused rather than ignored, because one that does
+nothing is one nobody rotates.
 
 **`endpoint` is for a store that is not the cloud's own** — MinIO, Ceph, an
 appliance on an internal address. Give it a scheme: it decides TLS, and a

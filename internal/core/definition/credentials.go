@@ -27,6 +27,16 @@ var credentialKeys = map[string]bool{
 	"session_token": true,
 	// Cloudflare R2 addresses a bucket by account rather than by region.
 	"account_id": true,
+	// Azure names the account and holds its key beside it. Not key_id and
+	// secret under other names: Azure's own tooling calls them this, and a
+	// definition that renames what the portal shows is one somebody has to
+	// translate at the moment they are least able to.
+	"account_name": true,
+	"account_key":  true,
+	// provider says where the credential comes from rather than what it is.
+	// `chain` on its own is the shorthand; this is the form that can carry
+	// what a chain still needs, which for Azure is the account name.
+	"provider": true,
 }
 
 /*
@@ -78,6 +88,17 @@ func ParseCredentials(s string) (map[string]string, error) {
 	// that cannot authenticate anything. Caught here rather than as a 403.
 	if (out["key_id"] == "") != (out["secret"] == "") {
 		return nil, fmt.Errorf("%w: credentials need key_id and secret together", ErrInvalid)
+	}
+	if (out["account_name"] == "") != (out["account_key"] == "") && out["provider"] == "" {
+		return nil, fmt.Errorf(
+			"%w: credentials need account_name and account_key together", ErrInvalid)
+	}
+	if p, ok := out["provider"]; ok && p != CredentialChain {
+		// One value, because it is the only one that means anything. A typo
+		// here would otherwise build a secret with a provider the store has
+		// never heard of and fail where nobody is looking.
+		return nil, fmt.Errorf("%w: credentials name provider %q, and the only one is %q",
+			ErrInvalid, p, CredentialChain)
 	}
 	return out, nil
 }
