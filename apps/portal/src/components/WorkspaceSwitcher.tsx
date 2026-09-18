@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { effectiveRole, organizations, projects } from '../lib/workspace'
 import type { Organization, Project } from '../lib/workspace'
+import type { EnterableProject } from '../lib/api'
 
 interface Props {
   org: Organization
@@ -10,6 +11,9 @@ interface Props {
   collapsed?: boolean
   /** The organisation's square mark, once one has been uploaded. */
   mark?: string
+  /** What the server says this session may enter. Empty falls back to the
+      sample directory. */
+  enterable?: EnterableProject[]
 }
 
 const ITEM = `grid w-full cursor-pointer grid-cols-[1fr_auto] items-center gap-x-2
@@ -30,7 +34,7 @@ const LABEL = 'mx-2 mt-1 mb-1 text-micro font-semibold tracking-[0.06em] text-in
  * there — the whole initial-route budget overage on its own.
  */
 export function WorkspaceSwitcher({
-  org, project, onChange, collapsed = false, mark,
+  org, project, onChange, collapsed = false, mark, enterable = [],
 }: Props) {
   const [open, setOpen] = useState(false)
   const root = useRef<HTMLDivElement>(null)
@@ -60,7 +64,20 @@ export function WorkspaceSwitcher({
      grant on is not shown greyed out — it is not shown, because listing it
      leaks that it exists and offers a click that can only fail. An org member
      with no project memberships correctly sees an empty list. */
-  const mine = projects.filter((p) => p.orgId === org.id && effectiveRole(org, p) !== null)
+  /* Connected, this is the server's answer and nothing else: it already
+     applied both rules — a membership, or an organization role over every
+     project — and a client-side filter beside it would be a second opinion
+     that can disagree. The sample directory is the fallback, which is what
+     this always showed. */
+  const mine: Project[] = enterable.length > 0
+    ? enterable.map((e) => ({
+      id: e.project, slug: e.project, name: e.project, orgId: org.id,
+      role: (e.role === 'admin' || e.role === 'editor' || e.role === 'viewer')
+        ? e.role
+        : null,
+      reportCount: 0,
+    }))
+    : projects.filter((p) => p.orgId === org.id && effectiveRole(org, p) !== null)
 
   function choose(nextOrg: Organization, nextProject: Project) {
     onChange(nextOrg, nextProject)
