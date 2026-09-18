@@ -88,7 +88,14 @@ func view(name string, src definition.DataSource) ([]statement, error) {
 
 	var out []statement
 	if scheme := remote(src.URI); scheme != "" {
-		out = append(out, statement{sql: "INSTALL httpfs; LOAD httpfs;"})
+		ext := "httpfs"
+		if stores[scheme] == "azure" {
+			// A different extension, not a different flag on the same one.
+			// httpfs speaks HTTP and the S3 API over it; Azure Blob is its own
+			// protocol and its own secret type.
+			ext = "azure"
+		}
+		out = append(out, statement{sql: fmt.Sprintf("INSTALL %s; LOAD %s;", ext, ext)})
 		cred, err := credential(name, scheme, src)
 		if err != nil {
 			return nil, err
@@ -137,6 +144,14 @@ var stores = map[string]string{
 	"gs":  "gcs",
 	"gcs": "gcs",
 	"r2":  "r2",
+	// Three spellings of Azure Blob, because three tools write three of them:
+	// az:// is what the CLI uses, azure:// what DuckDB's own documentation
+	// writes, and abfss:// what Hadoop and everything descended from it emits.
+	// Refusing two of the three is a definition rejected for using the wrong
+	// correct word.
+	"az":    "azure",
+	"azure": "azure",
+	"abfss": "azure",
 }
 
 /*
@@ -157,6 +172,9 @@ func credential(name, scheme string, src definition.DataSource) (*statement, err
 		}
 		return nil, nil
 	}
+	if typ == "azure" {
+		return azure(name, src)
+	}
 	if src.Credentials == "" {
 		if src.Region == "" && src.Endpoint == "" {
 			return nil, nil
@@ -170,18 +188,28 @@ func credential(name, scheme string, src definition.DataSource) (*statement, err
 			quote(scope(src.URI)))}, nil
 	}
 
-	if src.Credentials == definition.CredentialChain {
+	pairs, err := definition.ParseCredentials(chainPairs(src.Credentials))
+	if err != nil {
+		return nil, fmt.Errorf("duckdb: source %q: %w", src.Name, err)
+	}
+	// An Azure key on an S3 bucket is a definition somebody pasted from the
+	// wrong page. Named here, because passing it through builds a statement
+	// with a parameter the store has never heard of and fails with the
+	// database's words for a mistake this one can describe.
+	for _, k := range []string{"account_name", "account_key"} {
+		if pairs[k] != "" {
+			return nil, fmt.Errorf("duckdb: source %q is %s:// and its credentials hold %s, "+
+				"which is Azure's", src.Name, scheme, k)
+		}
+	}
+
+	if pairs["provider"] == definition.CredentialChain {
 		// No key in the definition at all: DuckDB asks the environment, which
 		// is how an instance with a role attached reads its own bucket.
 		return &statement{sql: fmt.Sprintf(
 			"CREATE OR REPLACE SECRET %s_store (TYPE %s, PROVIDER credential_chain%s%s, SCOPE %s);",
 			name, typ, region(src.Region), endpoint(src.Endpoint),
 			quote(scope(src.URI)))}, nil
-	}
-
-	pairs, err := definition.ParseCredentials(src.Credentials)
-	if err != nil {
-		return nil, fmt.Errorf("duckdb: source %q: %w", src.Name, err)
 	}
 
 	var b strings.Builder
@@ -232,6 +260,101 @@ func endpoint(e string) string {
 
 // scope is the prefix a secret applies to: the source's own bucket and path.
 func scope(uri string) string { return strings.TrimSuffix(uri, "/") + "/" }
+
+/*
+azure is the credential for Azure Blob, which is shaped unlike the others.
+
+DuckDB's azure secret takes a connection string or an account name, and refuses
+ACCOUNT_KEY as a parameter of its own — the key belongs inside the connection
+string. A connection string is also semicolons and equals signs, which are what
+this format separates fields with, so a definition holding one whole would be
+read as four broken fields.
+
+So the definition names the parts and this assembles them. `account_name` and
+`account_key` are what Azure's own portal calls them, which is the point: a
+definition should not rename what somebody is copying from.
+*/
+func azure(name string, src definition.DataSource) (*statement, error) {
+	if src.Region != "" {
+		// Azure has regions and its blob endpoints do not take one: the
+		// account name resolves to its region. Refused rather than dropped,
+		// because a region that does nothing reads as a region that works.
+		return nil, fmt.Errorf(
+			"duckdb: source %q is Azure, which takes an account rather than a region", src.Name)
+	}
+	if src.Credentials == "" {
+		if src.Endpoint == "" {
+			return nil, nil
+		}
+		return nil, fmt.Errorf(
+			"duckdb: source %q gives an endpoint and no credentials — an Azure endpoint "+
+				"is part of the account's connection string and cannot be set on its own",
+			src.Name)
+	}
+
+	pairs, err := definition.ParseCredentials(chainPairs(src.Credentials))
+	if err != nil {
+		return nil, fmt.Errorf("duckdb: source %q: %w", src.Name, err)
+	}
+	account := pairs["account_name"]
+	if account == "" {
+		return nil, fmt.Errorf(
+			"duckdb: source %q is Azure and its credentials name no account_name", src.Name)
+	}
+
+	if pairs["provider"] == definition.CredentialChain {
+		// The managed-identity path. The account name stays, because a chain
+		// answers "who are you" and not "which account".
+		return &statement{sql: fmt.Sprintf(
+			"CREATE OR REPLACE SECRET %s_store (TYPE azure, PROVIDER credential_chain, "+
+				"ACCOUNT_NAME %s, SCOPE %s);",
+			name, quote(account), quote(scope(src.URI)))}, nil
+	}
+
+	key := pairs["account_key"]
+	if key == "" {
+		return nil, fmt.Errorf(
+			"duckdb: source %q is Azure and its credentials name no account_key", src.Name)
+	}
+	return &statement{
+		sql: fmt.Sprintf(
+			"CREATE OR REPLACE SECRET %s_store (TYPE azure, CONNECTION_STRING %s, SCOPE %s);",
+			name, quote(connection(account, key, src.Endpoint)), quote(scope(src.URI))),
+		// The whole string, because the key is inside it and a driver that
+		// quotes the statement back quotes all of it.
+		holds: []string{connection(account, key, src.Endpoint), key},
+	}, nil
+}
+
+// connection assembles what Azure calls a connection string.
+//
+// With an endpoint for a local emulator or a private one, and with the public
+// suffix otherwise. The protocol comes from the endpoint's scheme for the same
+// reason it does for S3: plain text is something somebody asks for.
+func connection(account, key, ep string) string {
+	if ep == "" {
+		return "DefaultEndpointsProtocol=https;AccountName=" + account +
+			";AccountKey=" + key + ";EndpointSuffix=core.windows.net;"
+	}
+	proto := "https"
+	if strings.HasPrefix(ep, "http://") {
+		proto = "http"
+	}
+	return "DefaultEndpointsProtocol=" + proto + ";AccountName=" + account +
+		";AccountKey=" + key + ";BlobEndpoint=" + strings.TrimSuffix(ep, "/") + "/" + account + ";"
+}
+
+// chainPairs lets the bare `chain` shorthand through the pair parser.
+//
+// It shipped as a whole value rather than a field, and Azure needs a chain to
+// carry an account name beside it. Rewriting the shorthand here keeps one
+// grammar downstream and the shorthand working.
+func chainPairs(creds string) string {
+	if creds == definition.CredentialChain {
+		return "provider=" + definition.CredentialChain
+	}
+	return creds
+}
 
 func sorted(m map[string]string) []string {
 	out := make([]string, 0, len(m))

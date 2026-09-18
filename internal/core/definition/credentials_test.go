@@ -137,3 +137,65 @@ func TestValidateChecksTheEndpointScheme(t *testing.T) {
 		t.Errorf("an endpoint held in a secret could not be saved: %v", err)
 	}
 }
+
+// Azure names its parts as the Azure portal does, and needs both.
+func TestAzureCredentialPairs(t *testing.T) {
+	got, err := ParseCredentials("account_name=acme;account_key=0Vn2Iq==")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got["account_name"] != "acme" || got["account_key"] != "0Vn2Iq==" {
+		t.Fatalf("got %v", got)
+	}
+	for _, half := range []string{"account_name=acme", "account_key=0Vn2Iq=="} {
+		if _, err := ParseCredentials(half); err == nil {
+			t.Errorf("%q was accepted on its own", half)
+		}
+	}
+}
+
+/*
+TestAChainCanCarryWhatItStillNeeds covers the pair form of the shorthand.
+
+`chain` on its own says take the credential from the environment, which is
+enough for S3. Azure needs the account named as well — a chain answers who the
+caller is and not which account they are reaching — so the provider has to be
+expressible as a field beside other fields rather than only as the whole value.
+*/
+func TestAChainCanCarryWhatItStillNeeds(t *testing.T) {
+	got, err := ParseCredentials("provider=chain;account_name=acme")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got["provider"] != CredentialChain || got["account_name"] != "acme" {
+		t.Fatalf("got %v", got)
+	}
+	// An account name with a chain is not half a key pair.
+	if _, err := ParseCredentials("provider=chain;account_name=acme"); err != nil {
+		t.Errorf("a chain with an account was read as an unpaired credential: %v", err)
+	}
+}
+
+// One provider, because it is the only one that means anything. A typo would
+// otherwise build a secret naming a provider the store has never heard of.
+func TestAnUnknownProviderIsRefused(t *testing.T) {
+	_, err := ParseCredentials("provider=instance;account_name=acme")
+	if err == nil {
+		t.Fatal("accepted")
+	}
+	if !errors.Is(err, ErrInvalid) {
+		t.Errorf("got %v, want ErrInvalid", err)
+	}
+	if !strings.Contains(err.Error(), "instance") {
+		t.Errorf("the message does not name what was written: %v", err)
+	}
+}
+
+// A definition holding Azure's fields for an Azure lake is storable.
+func TestValidateAcceptsAnAzureLake(t *testing.T) {
+	d := lake("account_name=acme;account_key=0Vn2Iq==")
+	d.URI = "az://lake/events/"
+	if err := d.Validate(); err != nil {
+		t.Errorf("an Azure lake was refused: %v", err)
+	}
+}
