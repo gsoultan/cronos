@@ -443,6 +443,49 @@ CREATE TABLE IF NOT EXISTS cronos_org_roles (
   PRIMARY KEY (org, user_id)
 );`,
 	},
+	{
+		ID:   13,
+		Name: "project memberships",
+		/*
+		   Which projects a person belongs to, as opposed to the one they were
+		   created in.
+
+		   cronos_users holds an org, a project and a role, and its email is
+		   unique across the deployment — so somebody who works in two projects
+		   needs two accounts with two addresses, which is a workaround an
+		   administrator invents and then maintains. identity.User said as much
+		   and deferred it: "a person in several projects needs a picker and a
+		   membership table, and inventing half of that would be worse than not
+		   having it."
+
+		   This is the table. The row on cronos_users stays and keeps meaning
+		   what it meant — where the account was created, and where a session
+		   starts — because dropping a column that every sign-in reads is a
+		   migration that has to be right the first time, and this one does not
+		   have to be.
+
+		   Backfilled from those rows, so a deployment that upgrades has every
+		   account already a member of the project it was in. Without that the
+		   first sign-in after an upgrade offers nobody anywhere to go.
+
+		   The role is per membership. An editor in one project and a viewer in
+		   another is the ordinary case, and a single role on the account would
+		   make the wider of the two apply everywhere.
+		*/
+		SQL: `
+CREATE TABLE IF NOT EXISTS cronos_memberships (
+  user_id    TEXT NOT NULL,
+  org        TEXT NOT NULL,
+  project    TEXT NOT NULL,
+  -- admin, editor or viewer. Checked in Go, like the org roles above.
+  role       TEXT NOT NULL,
+  granted_at TEXT NOT NULL,
+  granted_by TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY (user_id, org, project)
+);
+INSERT INTO cronos_memberships (user_id, org, project, role, granted_at, granted_by)
+SELECT id, org, project, role, created_at, 'upgrade' FROM cronos_users;`,
+	},
 }
 
 // migrationTable records what has run. Created outside the ordered list,

@@ -73,6 +73,9 @@ type Deps struct {
 	// OrgProjects answers which projects an organization has, for an
 	// administrator entering one they are not a member of.
 	OrgProjects OrgProjects
+	// Memberships lets an administrator add an account that already exists to
+	// their project. Nil without a records store.
+	Memberships Memberships
 	// Policies is what a project requires of the people in it — today, whether
 	// everybody needs a second factor.
 	Policies Policies
@@ -333,7 +336,7 @@ func Routes(d Deps) http.Handler {
 	if d.Roster != nil {
 		invite := NewInvite(d.Invitations, d.Post, d.Portal, d.Log)
 
-		people := NewPeople(d.Roster, author, d.Log).Inviting(invite)
+		people := NewPeople(d.Roster, author, d.Log).Inviting(invite).Admitting(d.Memberships)
 		mux.Handle("/v1/people", people)
 		mux.Handle("/v1/people/{id}", people)
 		mux.Handle("/v1/people/invitations", people)
@@ -427,10 +430,14 @@ func Routes(d Deps) http.Handler {
 		   Entering another project in the same organization.
 
 		   Beside the session routes because that is what it does: it mints a
-		   new session naming a different project, having checked the one
-		   grant that allows it. Registered only where there is something to
-		   ask about the organization — a deployment that never grants an org
-		   role has no use for it and is better off answering 404.
+		   new session naming a different project, having checked a grant that
+		   allows it — a membership in that project, or an organization role
+		   over all of them.
+
+		   Registered wherever there is a records store to read those from. It
+		   used to be registered only where an org role might exist, on the
+		   reasoning that nothing else could use it; memberships are the
+		   something else, and every account has one.
 		*/
 		if d.OrgProjects != nil {
 			mux.Handle("/v1/auth/project",
