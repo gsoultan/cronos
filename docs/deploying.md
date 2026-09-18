@@ -1087,6 +1087,17 @@ definitions are being served, and the bad one can be deleted and republished
 through the API. `scripts/live-typo.sh` drives exactly that, including the
 repair.
 
+`cronos_federations_mounted` is the fourth number here and the only one that is
+not a failure. It counts the query engines held open over other people's
+databases — a deployment that joins a warehouse to a lake mounts one and keeps
+it, so zero is what a build that cannot federate reports rather than what a
+healthy one does.
+
+What matters is that it settles. Mounts are cached per set of sources, so a
+number that climbs means datasets are mounting per query instead of sharing a
+mount, and the first anybody hears of that otherwise is a connection limit
+reached on a database this deployment does not operate.
+
 ## Ending sessions
 
 A portal token is signed and stateless: nothing is written when one is minted,
