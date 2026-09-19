@@ -22,6 +22,15 @@ needs a deployment to act says so under **Upgrading**.
 
 ## Unreleased
 
+**A combo, a waterfall, an area and a gauge look like themselves on the
+canvas.** They were drawn with the nearest component that already existed, which
+was worse than drawing nothing rather than better: a waterfall came out as a
+plain bar chart, a combo as the same chart without its line, an area as a line
+with nothing under it, and a gauge as a stat tile adrift in a card three times
+its height. Each was a confident picture of a chart the report does not draw.
+They have their own shapes now, captioned as sketches, like every other type the
+canvas has no component for.
+
 **The builder canvas draws every block it offers.** The palette gained nine
 chart types and the canvas had a component for four of them; the rest hit
 `default: return null` and drew an empty cell where the author had just dropped

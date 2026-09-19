@@ -72,6 +72,32 @@ function shape(kind: TileKind) {
           rx="2" fill={step(i + 1)} />
       ))
 
+    case 'area':
+      return (
+        <>
+          {/* Filled, which is the whole difference from a line — drawn as one
+              it was a line chart with a different name on it. */}
+          <polygon points="8,56 30,38 52,44 74,22 96,30 112,18 112,64 8,64"
+            fill={s(1)} opacity="0.22" />
+          <polyline points="8,56 30,38 52,44 74,22 96,30 112,18"
+            fill="none" stroke={s(1)} strokeWidth="2" strokeLinejoin="round" />
+        </>
+      )
+
+    case 'combo':
+      return (
+        <>
+          {/* Bars *and* a line. Drawn with the bar component alone it was
+              indistinguishable from a bar chart, which is the one thing a
+              combo is not. */}
+          {([[10, 34], [32, 24], [54, 40], [76, 18], [98, 28]] as const).map(([x, h], i) => (
+            <rect key={i} x={x} y={64 - h} width="14" height={h} rx="1" fill={s(1)} />
+          ))}
+          <polyline points="17,26 39,34 61,16 83,30 105,12"
+            fill="none" stroke={s(2)} strokeWidth="2" strokeLinejoin="round" />
+        </>
+      )
+
     case 'waterfall':
       return [
         [8, 40, 22], [28, 26, 14], [48, 20, 6], [68, 26, 18], [88, 10, 44],
@@ -81,8 +107,8 @@ function shape(kind: TileKind) {
       ))
 
     case 'heatmap':
-      return Array.from({ length: 4 }, (_, r) =>
-        Array.from({ length: 6 }, (_, c) => (
+      return Array.from({ length: 4 }, (_row, r) =>
+        Array.from({ length: 6 }, (_col, c) => (
           <rect key={`${r}-${c}`} x={6 + c * 19} y={6 + r * 15} width="17" height="13" rx="1"
             fill={s(1)} opacity={0.15 + ((r * 6 + c) % 6) * 0.17} />
         )))
@@ -109,6 +135,10 @@ function shape(kind: TileKind) {
     case 'gauge':
       return (
         <>
+          {/* The figure belongs inside the dial. As a stat tile this was a
+              number adrift in a card three times its height. */}
+          <text x="60" y="47" textAnchor="middle" fontSize="15" fontWeight="650"
+            fill="var(--color-ink)">68%</text>
           <circle cx="60" cy="42" r="26" fill="none" stroke="var(--color-line)" strokeWidth="9"
             strokeLinecap="round" strokeDasharray={`${2 * Math.PI * 26 * (240 / 360)} 999`}
             transform="rotate(150 60 42)" />
