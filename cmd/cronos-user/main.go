@@ -49,12 +49,25 @@ func main() {
 		*/
 		platform = flag.Bool("platform", false,
 			"also make them a deployment administrator, or grant it to an existing account")
+
+		/*
+		   For provisioning, where the command runs on every start rather than
+		   once by hand: a container's start-up script, or the development
+		   script in this repository.
+
+		   Without it the second run is an error — "already has an account" —
+		   and a start-up script has to decide whether that error is the good
+		   kind. With it the answer is the deployment's: somebody is already in
+		   here, so there is nothing to do.
+		*/
+		ifEmpty = flag.Bool("if-empty", false,
+			"do nothing if the deployment already has an account")
 	)
 	flag.Parse()
 
 	if err := run(*driver, *dsn, identity.User{
 		Email: *email, Name: *name, Org: *org, Project: *project, Role: *role,
-	}, *platform); err != nil {
+	}, *platform, *ifEmpty); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
@@ -69,7 +82,7 @@ a deployment that has locked itself out — and the second must work without
 asking for a password the person may not know, because the account it is
 rescuing is somebody else's.
 */
-func run(driver, dsn string, u identity.User, platform bool) error {
+func run(driver, dsn string, u identity.User, platform, ifEmpty bool) error {
 	store, err := open(driver, dsn)
 	if err != nil {
 		return err
@@ -83,6 +96,20 @@ func run(driver, dsn string, u identity.User, platform bool) error {
 
 	if u.Email == "" {
 		return fmt.Errorf("-email is required")
+	}
+
+	// Asked of the store rather than of this account: the question -if-empty
+	// answers is whether anybody at all can sign in, which is the same question
+	// first-run setup asks before it offers a form.
+	if ifEmpty {
+		done, err := store.SetUp(ctx)
+		if err != nil {
+			return fmt.Errorf("reading whether this deployment has accounts: %w", err)
+		}
+		if done {
+			fmt.Println("this deployment already has an account — leaving it alone")
+			return nil
+		}
 	}
 
 	existing, err := store.ByEmail(ctx, u.Email)
@@ -103,11 +130,12 @@ func run(driver, dsn string, u identity.User, platform bool) error {
 		return nil
 	}
 
-	if err := create(ctx, store, u); err != nil {
+	id, err := create(ctx, store, u)
+	if err != nil {
 		return err
 	}
 	if platform {
-		if err := store.GrantPlatform(ctx, u.ID, "cronos-user"); err != nil {
+		if err := store.GrantPlatform(ctx, id, "cronos-user"); err != nil {
 			return err
 		}
 		fmt.Printf("and a deployment administrator\n")
@@ -115,23 +143,33 @@ func run(driver, dsn string, u identity.User, platform bool) error {
 	return nil
 }
 
-// create makes a new account, asking for a password at the terminal.
-func create(ctx context.Context, store *opened, u identity.User) error {
+/*
+create makes a new account, asking for a password at the terminal, and returns
+the ID it was given.
+
+Returned rather than left in the caller's copy of the user. The ID is minted
+here and `u` arrived by value, so `-email … -platform` on an account that did
+not exist yet granted the empty string: the account was created, the grant
+failed with "no such person", and the command exited 1 having done half the job
+it was asked for — on a fresh install, which is one of the two cases it exists
+for.
+*/
+func create(ctx context.Context, store *opened, u identity.User) (string, error) {
 	if u.Org == "" || u.Project == "" {
-		return fmt.Errorf("-org and -project are required: a user acts somewhere")
+		return "", fmt.Errorf("-org and -project are required: a user acts somewhere")
 	}
 
 	password, err := readPassword()
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	u.ID = identity.NewID()
 	if err := store.CreateUser(ctx, u, password); err != nil {
-		return err
+		return "", err
 	}
 	fmt.Printf("created %s as %s in %s/%s\n", u.Email, u.Role, u.Org, u.Project)
-	return nil
+	return u.ID, nil
 }
 
 // opened is the store and the handle to close.

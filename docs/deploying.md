@@ -1281,7 +1281,16 @@ It grants the permission to an account that already exists and asks for no
 password: the account being rescued is somebody else's, and a command that reset
 their password in order to grant a permission would lock its owner out to let
 them back in. On a new account, `-platform` alongside the usual flags creates
-and grants in one go. There is deliberately no `-revoke`: removing it is the
+and grants in one go — which is what it says here and, for a while, not what it
+did: the grant used an ID the creation had not handed back, so it failed with
+"no such person" after the account was already written, and the command exited 1
+having half done the job.
+
+`-if-empty` does nothing if the deployment already has an account. It is for a
+provisioning script that runs on every start rather than once by hand — a
+container's entrypoint, or `scripts/dev.sh` in this repository — where the
+second run should be a no-op instead of an error the script has to tell apart
+from a real one. There is deliberately no `-revoke`: removing it is the
 API's job, where the guard against taking the last one lives. Revoking anybody
 else ends their sessions in the same transaction, because the permission travels
 in the token and would otherwise outlive the revocation by up to eight hours.
@@ -1384,9 +1393,36 @@ and segfaults on an arm64 laptop under emulation — the same engine either way.
 ./scripts/dev.sh
 ```
 
-The API on 8080 and the portal on 5173, **connected**, with accounts in
-`.dev/cronos.db`. On a fresh clone the first thing the browser shows is the
-first-run setup; after that it is the sign-in page. Delete `.dev/` to start over.
+The API on 8080 and the portal on 5173, **connected**, over the demo
+definitions and the demo warehouse — and already set up. It seeds an
+administrator into `.dev/cronos.db` before the API opens its listener and prints
+what to sign in with:
+
+```
+│ cronos dev
+│   api    http://localhost:8080
+│   portal http://localhost:5173
+│   sign in  dev@cronos.local / cronos-dev-password
+│   reports  demo/definitions over demo/seed.sql, already published
+│   accounts in .dev/cronos.db — delete it to start over
+```
+
+So a fresh clone is two commands from a report with real numbers in it, and the
+credentials are the same on every machine, which means they can be written down
+here. `CRONOS_DEV_EMAIL` and `CRONOS_DEV_PASSWORD` change them. Delete `.dev/`
+to start over.
+
+The account is created by `cronos-user -if-empty -platform`, the same command an
+operator runs on a real install, against the same store the API is about to
+open. Nothing about the server is relaxed for development: the portal signs this
+account in through the ordinary password path, there is no development bypass to
+leave switched on by accident, and the only reason the password can be published
+is that it belongs to a gitignored SQLite file on one laptop.
+
+`-if-empty` is what makes it safe to run on every start: a store that already
+has accounts is somebody's work and is left alone. A store this script seeded
+before is its own, and it repairs it — an account somebody deleted comes back on
+the next start, with the password untouched.
 
 It did not used to connect. The script started both halves and never told the
 portal where the API was, so it ran on sample data beside a server nobody was
@@ -1399,6 +1435,16 @@ That is worth naming as the cause rather than a detail. It is how a two-factor
 wizard that accepted any six digits and a device list invented in the browser
 both survived: anybody running the development command saw the sample portal,
 where neither was ever shown.
+
+```bash
+./scripts/dev.sh --setup
+```
+
+The first-run setup instead, which is a real page with real consequences: the
+organisation it names is the one the deployment adopts. It used to be what every
+fresh clone got, and that was the wrong default — a form to fill in before the
+first report, different credentials on every machine, and nothing that could be
+documented. It is worth seeing deliberately, which is what this flag is for.
 
 ```bash
 ./scripts/dev.sh --samples
