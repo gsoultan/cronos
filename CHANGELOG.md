@@ -22,6 +22,27 @@ needs a deployment to act says so under **Upgrading**.
 
 ## Unreleased
 
+**The portal draws every chart type.** It drew one. `block.chart !== 'bar'` was
+the whole of it, and a line, a map, a funnel or a gauge came back as "line
+charts need a newer portal" — for a report the server had rendered perfectly,
+in a message that blamed the reader's portal for a gap between two parts of
+cronos. It was the third renderer of the same payload and the one nobody looked
+at.
+
+There are two browser renderers now rather than three implementations:
+`@cronos/charts` holds the drawing, and the embed and the portal both use it.
+It has no runtime dependencies, which is what lets an application deliberately
+outside the package workspace share it without coupling anything. One
+stylesheet too, scoped to `:host` for the shadow root and to `.cronos-chart` in
+a page, so a report cannot be drawn one way here and another in a customer's
+page.
+
+**Text blocks are drawn.** Neither browser renderer had a case for them, so a
+`kind: text` block — prose the author wrote by hand, which the format has
+carried since it had four block kinds — came back as "this block needs a newer
+viewer" in both. Fixing it in the shared renderer fixed it in both at once,
+which is the point of there being one.
+
 **An author chooses how each filter is operated.** `control:` on a filter picks
 the interface — `calendar`, `range`, `presets`, `dropdown`, `radio`,
 `checkboxes`, `search` or `slider` — and every renderer honours it. A status

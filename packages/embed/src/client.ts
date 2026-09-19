@@ -1,4 +1,4 @@
-import type { FilterValues, ReportPayload } from './types'
+import type { FilterValues, ReportPayload } from '@cronos/charts'
 
 /**
  * Fetches a report.

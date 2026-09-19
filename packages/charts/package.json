@@ -1,0 +1,20 @@
+{
+  "name": "@cronos/charts",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "//": "No runtime dependencies, and that is the point. The portal is deliberately outside this workspace because its toolchain has no reason to agree with the embed's — a package with nothing to hoist can be shared by both without coupling anything.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./charts.css": "./src/charts.css"
+  },
+  "scripts": {
+    "check": "tsc --noEmit && oxlint src"
+  },
+  "devDependencies": {
+    "oxlint": "^1.78.0",
+    "typescript": "~7.0.2"
+  }
+}
