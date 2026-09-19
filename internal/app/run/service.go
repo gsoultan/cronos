@@ -145,6 +145,7 @@ func filterViews(r definition.Report) []Filter {
 	for _, f := range r.Filters {
 		out = append(out, Filter{
 			Name: f.Name, Label: f.Label, Type: string(f.Type), Values: f.Values,
+			Control: string(f.Operated()),
 		})
 	}
 	return out

@@ -12,13 +12,17 @@ import type { ReportFilter } from '../lib/api'
  * would be a filter nobody set changing what they see.
  */
 
-const period: ReportFilter = { name: 'period', label: 'Period', type: 'date' }
-const region: ReportFilter = { name: 'region', label: 'Region', type: 'string' }
+/* `control` is resolved by the server, so these carry the default each type
+   gets rather than leaving it out — a payload without one is not a payload the
+   server sends. */
+const period: ReportFilter = { name: 'period', label: 'Period', type: 'date', control: 'range' }
+const region: ReportFilter = { name: 'region', label: 'Region', type: 'string', control: 'search' }
 const status: ReportFilter = {
   name: 'status', label: 'Status', type: 'enum', values: ['sent', 'overdue'],
+  control: 'dropdown',
 }
-const amount: ReportFilter = { name: 'amount', label: 'Amount', type: 'number' }
-const paid: ReportFilter = { name: 'paid', label: 'Paid', type: 'bool' }
+const amount: ReportFilter = { name: 'amount', label: 'Amount', type: 'number', control: 'range' }
+const paid: ReportFilter = { name: 'paid', label: 'Paid', type: 'bool', control: 'dropdown' }
 
 describe('an untouched control sends nothing', () => {
   test('no draft at all', () => {

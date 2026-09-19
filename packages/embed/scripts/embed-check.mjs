@@ -17,8 +17,8 @@ const HOSTILE = '<img src=x onerror="window.__pwned=1">Aurora'
 const payload = (filtered) => ({
   title: 'Monthly invoice statement',
   filters: [
-    { name: 'period', label: 'Period', type: 'date' },
-    { name: 'status', label: 'Status', type: 'enum', values: ['sent', 'overdue', 'paid'] },
+    { name: 'period', label: 'Period', type: 'date', control: 'range' },
+    { name: 'status', label: 'Status', type: 'enum', values: ['sent', 'overdue', 'paid'], control: 'dropdown' },
   ],
   blocks: [
     {

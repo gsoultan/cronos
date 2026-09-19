@@ -288,6 +288,10 @@ export interface FilterDef {
   type: string
   /** The permitted values. Enum only, and what the built-in control lists. */
   values?: string[]
+  /** Which interface to operate it through, already resolved by the server to
+   *  the type's default. Resolved there so this viewer and the portal cannot
+   *  disagree about what an author who chose nothing gets. */
+  control?: string
 }
 
 export interface ReportPayload {
