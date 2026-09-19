@@ -39,29 +39,22 @@ export function BlockPreview({ block, fields }: { block: Tile; fields: Field[] }
 
   switch (block.kind) {
     case 'stat':
-    case 'gauge':
       return (
         <StatTile label={field?.label ?? block.title}
           value={currency(Math.round(12_000 + jitter * 86_000))}
           delta={Math.round((jitter * 18 - 6) * 10) / 10} deltaPeriod="last month" />
       )
 
-    // A combo and a waterfall are columns against buckets, which is what this
-    // draws; the sample data cannot show the line or the running total, and
-    // saying so in the subtitle beats drawing a shape the report will not.
     case 'bar':
-    case 'combo':
-    case 'waterfall':
       return (
         <ColumnChart title={block.title}
-          subtitle={comboNote(block.kind) ?? (group ? `By ${group.label.toLowerCase()}` : undefined)}
+          subtitle={group ? `By ${group.label.toLowerCase()}` : undefined}
           data={series.map((s) => ({ label: s.month, Value: s.value }))}
           labelText={monthLabel}
           series={['Value']} />
       )
 
     case 'line':
-    case 'area':
       return (
         <LineChart title={block.title}
           subtitle={group ? `By ${group.label.toLowerCase()}` : undefined}
@@ -88,16 +81,16 @@ export function BlockPreview({ block, fields }: { block: Tile; fields: Field[] }
     default:
       /* Not `null`, which is what this was: every chart type the palette gained
          — pies, maps, funnels, treemaps — drew an empty cell on the canvas.
-         A sketch says which block it is and how much room it takes. */
+
+         A combo, a waterfall, an area and a gauge are here too, and they used
+         to be drawn with the nearest component that existed. That was worse
+         than an empty cell rather than better: a waterfall came out as a plain
+         bar chart, a combo as the same plain bar chart without its line, an
+         area as a line with nothing under it, and a gauge as a stat tile
+         adrift in a card three times its height. Each was a confident picture
+         of a chart the report does not draw. */
       return <BlockSketch kind={block.kind} title={block.title} />
   }
-}
-
-/** What the sample rows cannot show for the kinds drawn as columns. */
-function comboNote(kind: Tile['kind']): string | undefined {
-  if (kind === 'combo') return 'Bars and a line — sample shows the bars'
-  if (kind === 'waterfall') return 'Steps and a closing total'
-  return undefined
 }
 
 /** Stable per block id, so a preview does not reshuffle as you edit. */

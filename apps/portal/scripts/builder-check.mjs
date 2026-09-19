@@ -103,6 +103,28 @@ for (const label of ['Pie chart', 'Funnel', 'Map', 'Treemap', 'Heatmap', 'Gauge'
   await until(() => p.locator('[data-testid=layout-canvas] > div').count(), before)
 }
 
+/*
+ * The kinds that have no component of their own draw their own shape.
+ *
+ * These were drawn with the nearest component that existed, which was worse
+ * than an empty cell rather than better: a waterfall came out as a plain bar
+ * chart, a combo as the same chart without its line, an area as a line with
+ * nothing under it, and a gauge as a stat tile adrift in a card three times its
+ * height. Each was a confident picture of a chart the report does not draw.
+ */
+for (const label of ['Bars + line', 'Waterfall', 'Area chart', 'Gauge']) {
+  const before = await p.locator('[data-testid=layout-canvas] > div').count()
+  await p.click(`[data-testid=block-palette] button[aria-label="Add ${label}"]`)
+  await until(() => p.locator('[data-testid=layout-canvas] > div').count(), before + 1)
+
+  const cell = p.locator('[data-testid=layout-canvas] > div').nth(before)
+  const text = await cell.innerText()
+  ok(`${label} draws its own shape, not the nearest component's`,
+    text.includes('Sketch') && (await cell.locator('svg').count()) > 0)
+  await p.keyboard.press('Delete')
+  await until(() => p.locator('[data-testid=layout-canvas] > div').count(), before)
+}
+
 /* -- The report's filters -------------------------------------------------- */
 
 /*
