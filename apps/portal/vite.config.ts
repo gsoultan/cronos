@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
@@ -5,6 +6,16 @@ import { VitePWA } from 'vite-plugin-pwa'
 import { mantineBase } from './plugins/mantine-base.ts'
 
 export default defineConfig({
+  /* The chart renderers, from source.
+     
+     A path alias rather than a dependency, because this application is
+     deliberately outside the package workspace — its toolchain has no reason to
+     agree with the embed's. @cronos/charts has no runtime dependencies at all,
+     so there is nothing to hoist and nothing to disagree about: it is framework-
+     free DOM code that the embed and this both draw with. */
+  resolve: {
+    alias: { '@cronos/charts': fileURLToPath(new URL('../../packages/charts/src', import.meta.url)) },
+  },
   server: {
     watch: {
       /* `make ui` builds into dist/ while this server is running, and thirty

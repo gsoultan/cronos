@@ -11,8 +11,8 @@
  * are the theming API — set them on the element or anywhere above it. There is
  * no `theme` attribute with a list of our opinions.
  */
-export const css = `
-:host {
+const sheet = `
+$SCOPE$ {
   --cr-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --cr-ink: #14140f;
   --cr-ink-secondary: #52514e;
@@ -85,7 +85,7 @@ export const css = `
   line-height: 1.5;
   container-type: inline-size;
 }
-:host([hidden]) { display: none }
+$SCOPE$[hidden] { display: none }
 
 * { box-sizing: border-box }
 
@@ -97,6 +97,10 @@ export const css = `
 .wide { grid-column: 1 / -1 }
 
 .panel {
+  /* A container, so a chart inside it can ask how much room it has. The grid
+     gives a panel anywhere from a third of a phone to a third of a dashboard,
+     and the axis below is the part that cannot cope with both. */
+  container-type: inline-size;
   background: var(--cr-surface);
   border: 1px solid var(--cr-line);
   border-radius: var(--cr-radius);
@@ -142,6 +146,7 @@ tr:last-child td { border-bottom: 0 }
   color: var(--cr-ink-muted);
 }
 
+.prose { margin: 0; color: var(--cr-ink-secondary); max-width: 68ch }
 .msg { padding: 24px; text-align: center; color: var(--cr-ink-muted) }
 .msg.err { color: var(--cr-serious) }
 
@@ -248,6 +253,16 @@ tr:last-child td { border-bottom: 0 }
 .ys span { position: absolute; right: 0; transform: translateY(50%); white-space: nowrap }
 .xs { grid-area: xs; height: 14px }
 .xs span { position: absolute; transform: translateX(-50%); white-space: nowrap }
+/* Every other label, in a narrow panel.
+
+   The server thins ticks to about six, which is what a full-width card holds;
+   in a third-width one the same six run into each other and "May 2026 Jun 2026"
+   renders as "May 202Bun 202". Halving them is the only thing that helps that
+   a smaller font does not, and the axis is a scale rather than a list — the
+   gaps still read. */
+@container (max-width: 420px) {
+  .xs span:nth-child(even) { display: none }
+}
 
 /* Recessive: the grid is there to be measured against, not read. */
 .grid { stroke: var(--cr-line); stroke-width: 1; vector-effect: non-scaling-stroke }
@@ -422,7 +437,7 @@ tr:last-child td { border-bottom: 0 }
 .tree-label span { font-size: 10px; color: #fff; opacity: 0.85; text-shadow: 0 1px 2px rgb(0 0 0 / 0.45) }
 
 @media (prefers-color-scheme: dark) {
-  :host {
+  $SCOPE$ {
     --cr-ink: #f5f4f1;
     --cr-ink-secondary: #b9b6ae;
     --cr-ink-muted: #8c8981;
@@ -470,3 +485,16 @@ tr:last-child td { border-bottom: 0 }
   }
 }
 `
+
+/**
+ * The stylesheet, scoped to wherever it is being used.
+ *
+ * `:host` only exists inside a shadow root, and the portal draws these charts
+ * in an ordinary document. Substituting the selector keeps one stylesheet for
+ * both rather than a copy that drifts — and the custom properties come with it,
+ * so a host page themes the embed and the portal themes itself through exactly
+ * the same names.
+ */
+export function css(scope = ':host'): string {
+  return sheet.replaceAll('$SCOPE$', scope)
+}

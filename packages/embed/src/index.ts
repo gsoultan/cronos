@@ -4,7 +4,7 @@ export { CronosReport }
 export type {
   Block, ChartBlock, Coverage, Delta, FilterDef, FilterValues,
   ReportPayload, StatBlock, TableBlock,
-} from './types'
+} from '@cronos/charts'
 
 /*
  * Registering is the side effect of importing, which is what a host page

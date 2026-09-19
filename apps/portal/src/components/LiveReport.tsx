@@ -1,9 +1,10 @@
 import { StatTile } from './StatTile'
-import { ColumnChart } from './ColumnChart'
+import { ServerChart } from './ServerChart'
 import { DataTable } from './DataTable'
 import { Panel } from './Panel'
 import { EmptyState } from './EmptyState'
 import type { ReportBlock, ReportView } from '../lib/api'
+import type { Bar, TableBlock } from '@cronos/charts'
 import type { Field } from '../lib/types'
 
 /**
@@ -60,25 +61,18 @@ function Block({ block, view, applied }: {
   applied: string[]
 }) {
   if (block.kind === 'chart') {
-    if (block.chart !== 'bar' || !block.series?.length) {
-      // A chart type this build does not draw is a normal condition once the
-      // server ships one first. Saying so beats an empty panel.
-      return (
-        <Panel title={block.title}>
-          <p className="p-6 text-center text-small text-ink-muted">
-            {block.series?.length ? `${block.chart} charts need a newer portal` : 'No data'}
-          </p>
-        </Panel>
-      )
-    }
+    /*
+     * Drawn by @cronos/charts — the same renderers the embed uses.
+     *
+     * This was `block.chart !== 'bar'`, and everything else came back as
+     * "line charts need a newer portal" for a report the server had rendered
+     * perfectly. There were three renderers of this payload and the quiet one
+     * drew one chart type out of fourteen; the message even blamed the portal
+     * for it, which was at least honest.
+     */
     return (
       <div>
-        <ColumnChart
-          title={block.title}
-          data={bands(block.series)}
-          series={['value']}
-          format={(n) => formatted(block, n)}
-        />
+        <ServerChart block={block} />
         <Unaffected block={block} view={view} applied={applied} />
       </div>
     )
@@ -123,7 +117,7 @@ function Block({ block, view, applied }: {
  * 2001. JavaScript parses "c-1" as a date rather than refusing it, so there was
  * no error anywhere — just three customers wearing three months.
  */
-export function bands(series: NonNullable<ReportBlock['series']>): { label: string; value: number }[] {
+export function bands(series: Bar[]): { label: string; value: number }[] {
   return series.map((s) => ({ label: s.label, value: s.value }))
 }
 
@@ -163,7 +157,7 @@ function Unaffected({ block, view, applied }: {
  * the server's column list becomes the field list directly. Alignment comes
  * over the wire because only the dataset knows which columns are measures.
  */
-function fieldsOf(block: ReportBlock): Field[] {
+function fieldsOf(block: TableBlock): Field[] {
   return (block.columns ?? []).map((c, i) => ({
     name: `c${i}`,
     label: c.label,
@@ -177,7 +171,7 @@ function fieldsOf(block: ReportBlock): Field[] {
 }
 
 /** Rows arrive as arrays; the table wants objects keyed to the fields. */
-function rowObjects(block: ReportBlock): Record<string, string>[] {
+function rowObjects(block: TableBlock): Record<string, string>[] {
   return (block.rows ?? []).map((row) => {
     const out: Record<string, string> = {}
     row.forEach((cell, i) => {
@@ -187,13 +181,4 @@ function rowObjects(block: ReportBlock): Record<string, string>[] {
   })
 }
 
-/**
- * The chart's own formatted label for a value, falling back to the number.
- *
- * The axis and the tooltip should say what the engine said. Reformatting here
- * would mean a bar labelled one way and the table below it another.
- */
-function formatted(block: ReportBlock, n: number): string {
-  const match = block.series?.find((s) => s.value === n)
-  return match?.formatted ?? n.toLocaleString('en')
-}
+

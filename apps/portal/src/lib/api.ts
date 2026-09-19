@@ -1,3 +1,4 @@
+import type { Block } from '@cronos/charts'
 /**
  * The cronos API, as the portal sees it.
  *
@@ -509,17 +510,16 @@ export interface ReportFilter {
   control: string
 }
 
-export interface ReportBlock {
-  kind: 'stat' | 'chart' | 'table' | 'text'
-  title: string
-  value?: string
-  chart?: string
-  series?: { label: string; value: number; formatted: string }[]
-  columns?: { label: string; align?: 'left' | 'right' }[]
-  rows?: string[][]
-  total?: number
-  coverage?: { applied?: string[]; ignored?: string[] }
-}
+/**
+ * One block of a rendered report.
+ *
+ * The charts package's own type, not a copy. This was a third declaration of
+ * the same wire shape — after the embed's and the server's — and it had never
+ * heard of groups, points, maps, tracks, stages, steps, cells, rects or
+ * gauges. That is why this application could not draw them: the payload
+ * arrived complete and the type said there was nothing there.
+ */
+export type ReportBlock = Block
 
 export interface RunFilters {
   [name: string]: { op: string; values: unknown[] }

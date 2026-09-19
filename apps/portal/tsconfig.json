@@ -1,7 +1,12 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["ES2023", "DOM", "DOM.Iterable", "WebWorker"],
+    "lib": [
+      "ES2023",
+      "DOM",
+      "DOM.Iterable",
+      "WebWorker"
+    ],
     "module": "ESNext",
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
@@ -15,9 +20,21 @@
     "isolatedModules": true,
     "skipLibCheck": true,
     "noEmit": true,
-    // Vite's native config loader requires extensions on config imports.
     "allowImportingTsExtensions": true,
-    "types": ["vite/client", "node", "bun"]
+    "types": [
+      "vite/client",
+      "node",
+      "bun"
+    ],
+    "paths": {
+      "@cronos/charts": [
+        "../../packages/charts/src/index.ts"
+      ]
+    }
   },
-  "include": ["src", "vite.config.ts", "plugins"]
+  "include": [
+    "src",
+    "vite.config.ts",
+    "plugins"
+  ]
 }

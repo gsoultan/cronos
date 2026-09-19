@@ -1,6 +1,7 @@
 # cronos — see AGENTS.md for the rules these targets enforce.
 
 PORTAL := apps/portal
+CHARTS := packages/charts
 EMBED  := packages/embed
 REACT  := packages/react
 # Whichever is installed. All three build this Dockerfile: Apple's `container`
@@ -50,6 +51,7 @@ check: ## Everything CI runs — build, vet, test, boundary, typecheck, lint, bu
 	@command -v goreleaser >/dev/null && goreleaser check || \
 		echo "  goreleaser not installed — skipping the release config check"
 	cd $(PORTAL) && bun run check
+	cd $(CHARTS) && bun run check
 	cd $(EMBED) && bun run check
 	cd $(REACT) && bun run check
 
