@@ -14,8 +14,11 @@ make setup          # verify the toolchain, install dependencies
 make dev            # the API and the portal together
 ```
 
-The demo serves `demo/definitions` over `demo/seed.sql`, so there is real data
-behind the first report you open.
+There is nothing to set up. `make dev` seeds an administrator into a gitignored
+SQLite file and prints it — `dev@cronos.local` / `cronos-dev-password` — so the
+portal on http://localhost:5173 opens on the sign-in page rather than a form,
+and the demo serves `demo/definitions` over `demo/seed.sql`, so there is real
+data behind the first report you open.
 
 ```bash
 export CRONOS_SIGNING_KEY="development-key-at-least-32-bytes-long"

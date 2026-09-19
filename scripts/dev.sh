@@ -1,14 +1,23 @@
 #!/usr/bin/env bash
 #
-# Runs cronos for local development: the Go API and the portal dev server side
-# by side, with prefixed output and one Ctrl-C that stops both.
+#> Runs cronos for local development: the Go API and the portal dev server side
+#> by side, with prefixed output and one Ctrl-C that stops both. There is
+#> nothing to set up — it seeds an administrator and the demo reports, and
+#> prints what to sign in with.
+#>
+#>   scripts/dev.sh              both, connected, already set up
+#>   scripts/dev.sh --web        portal only
+#>   scripts/dev.sh --api        API only
+#>   scripts/dev.sh --setup      both, and set the deployment up by hand
+#>   scripts/dev.sh --samples    portal on sample data, talking to nothing
+#>
+#>   sign in  dev@cronos.local / cronos-dev-password
+#>
+#> Ports come from CRONOS_API_PORT / CRONOS_WEB_PORT, the account from
+#> CRONOS_DEV_EMAIL / CRONOS_DEV_PASSWORD. Delete .dev/ to start over.
 #
-#   scripts/dev.sh              both, connected
-#   scripts/dev.sh --web        portal only
-#   scripts/dev.sh --api        API only
-#   scripts/dev.sh --samples    portal on sample data, talking to nothing
-#
-# Ports come from CRONOS_API_PORT / CRONOS_WEB_PORT.
+# The usage above is marked rather than addressed by line number: --help used to
+# print lines 2 to 10, so adding one to it silently truncated the last.
 #
 # Connected is the default, and it did not used to be. This script started both
 # halves and never told the portal where the API was, so it ran on sample data
@@ -33,17 +42,27 @@ WEB_PORT="${CRONOS_WEB_PORT:-5173}"
 RUN_API=1
 RUN_WEB=1
 CONNECTED=1
+SEED=1
 case "${1:-}" in
 	--web|--web-only) RUN_API=0 ;;
 	--api|--api-only) RUN_WEB=0 ;;
+	# The first-run wizard, on purpose. It is a real page with real consequences
+	# — the organisation it names is the one the deployment adopts — and the only
+	# way to see it is a deployment that has not been set up. Kept for that, and
+	# not the default: nobody should have to fill in a form to open a report.
+	--setup|--first-run) SEED=0 ;;
 	# Sample data, which is what the browser suites exercise and what makes the
 	# interface workable before a server exists. Worth keeping and worth not
 	# being the default.
 	--samples|--sample) CONNECTED=0 ;;
 	'') ;;
-	-h|--help) sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+	-h|--help) sed -n 's/^#> \{0,1\}//p' "$0"; exit 0 ;;
 	*) echo "unknown option: $1 (try --help)" >&2; exit 2 ;;
 esac
+
+# Nothing to seed without a server of our own to seed it into.
+[ "$RUN_API" = 0 ] && SEED=0
+[ "$CONNECTED" = 0 ] && SEED=0
 
 if [ -t 1 ]; then
 	C_API=$'\033[38;5;33m'; C_WEB=$'\033[38;5;36m'
@@ -121,22 +140,87 @@ start() {
 #
 # Without one the store is file-backed: definitions work, and there is nobody to
 # be — no sign-in, no setup, no people, no second factor. SQLite in a gitignored
-# directory, so a fresh clone gets a fresh deployment and the first thing the
-# browser shows is /setup.
+# directory, so a fresh clone gets a fresh deployment.
 DEV_DIR="$ROOT/.dev"
 mkdir -p "$DEV_DIR"
+
+# One answer for both halves of this script: the seeder below and the API it is
+# seeding for have to be looking at the same database, and two places reading
+# CRONOS_STORE_DSN with two defaults is how they would stop.
+STORE_DRIVER="${CRONOS_STORE_DRIVER:-sqlite}"
+STORE_DSN="${CRONOS_STORE_DSN:-file:$DEV_DIR/cronos.db}"
+
+DEV_EMAIL="${CRONOS_DEV_EMAIL:-dev@cronos.local}"
+DEV_PASSWORD="${CRONOS_DEV_PASSWORD:-cronos-dev-password}"
+# What says this deployment is ours to seed, written once we have.
+OURS="$DEV_DIR/dev-account"
+
+# Not a store somebody else is keeping their work in. A developer who points
+# CRONOS_STORE_DSN at their own database has their own accounts in it, and this
+# script is not the thing that should be writing to it.
+if [ "$SEED" = 1 ] && { [ -n "${CRONOS_STORE_DSN:-}" ] || [ "$STORE_DRIVER" != sqlite ]; }; then
+	SEED=0
+fi
+
+# The same command an operator runs on a real install, against the store the API
+# is about to open, before it opens it. Nothing here relaxes the server: the
+# portal signs this account in through the ordinary password path, and the only
+# reason the password can be written down is that it is a SQLite file in a
+# gitignored directory on one laptop.
+seed_account() {
+	local out guard=-if-empty
+	# Ours to repair if we seeded this store before — the grant is idempotent
+	# and the password is left alone, so a deployment somebody half broke comes
+	# back on the next start. Otherwise -if-empty: a store that already has
+	# accounts is somebody's work, including the one --setup produced, and
+	# cronosd adopts the organisation that store names. A second administrator
+	# in default/default would sign in to a project with no definitions in it,
+	# which looks exactly like a broken deployment.
+	[ -f "$OURS" ] && guard=''
+	out="$(printf '%s\n' "$DEV_PASSWORD" | (cd "$ROOT" && go run ./cmd/cronos-user \
+		${guard} \
+		-email "$DEV_EMAIL" -name "${CRONOS_DEV_NAME:-Dev}" \
+		-org "${CRONOS_ORG:-default}" -project "${CRONOS_PROJECT:-default}" \
+		-role admin -platform \
+		-driver "$STORE_DRIVER" -dsn "$STORE_DSN") 2>&1)" || {
+		printf '%s\n' "$out" >&2
+		fail "could not prepare $DEV_EMAIL — \`scripts/dev.sh --setup\` sets the deployment up in the browser instead"
+	}
+	case "$out" in
+		# It reported what it did, and the banner is about to tell somebody how
+		# to sign in. Either this is the account it just made, or this store has
+		# accounts of its own and the banner must not claim otherwise.
+		*created*) printf '%s\n' "$DEV_EMAIL" > "$OURS" ;;
+		*) [ -f "$OURS" ] || SEED=0 ;;
+	esac
+}
+
+if [ "$SEED" = 1 ]; then
+	note "preparing ${DEV_EMAIL}…"
+	seed_account
+fi
 
 printf '\n'
 note "cronos dev"
 [ "$RUN_API" = 1 ] && note "  api    http://localhost:$API_PORT"
 [ "$RUN_WEB" = 1 ] && note "  portal http://localhost:$WEB_PORT"
-if [ "$CONNECTED" = 1 ] && [ "$RUN_WEB" = 1 ]; then
-	if [ ! -f "$DEV_DIR/cronos.db" ]; then
+# Every line here is a claim about what is running, so each one is guarded by
+# what actually decided it. "sample data — no server, no sign-in" used to print
+# for --api and --web too, where all three words were wrong.
+if [ "$CONNECTED" = 0 ]; then
+	note "  sample data — no server, no sign-in"
+elif [ "$RUN_API" = 0 ]; then
+	note "  the API is yours to run — this portal talks to http://localhost:$API_PORT"
+else
+	if [ "$SEED" = 1 ]; then
+		note "  sign in  $DEV_EMAIL / $DEV_PASSWORD"
+		note "  reports  demo/definitions over demo/seed.sql, already published"
+	elif [ -f "$OURS" ] || [ -n "${CRONOS_STORE_DSN:-}" ]; then
+		note "  sign in with the account this deployment already has"
+	else
 		note "  first run — the portal will ask you to set the deployment up"
 	fi
 	note "  accounts in .dev/cronos.db — delete it to start over"
-else
-	note "  sample data — no server, no sign-in"
 fi
 printf '\n'
 
@@ -148,21 +232,30 @@ if [ "$RUN_API" = 1 ]; then
 	CRONOS_DEFINITIONS="${CRONOS_DEFINITIONS:-demo/definitions}" \
 	CRONOS_SEED="${CRONOS_SEED:-demo/seed.sql}" \
 	CRONOS_ORIGINS="${CRONOS_ORIGINS:-http://localhost:$WEB_PORT}" \
-	CRONOS_STORE_DRIVER="${CRONOS_STORE_DRIVER:-sqlite}" \
-	CRONOS_STORE_DSN="${CRONOS_STORE_DSN:-file:$DEV_DIR/cronos.db}" \
+	CRONOS_STORE_DRIVER="$STORE_DRIVER" \
+	CRONOS_STORE_DSN="$STORE_DSN" \
 		start api "$C_API" "$ROOT" go run ./cmd/cronosd
 fi
 if [ "$RUN_WEB" = 1 ]; then
-	# The binary directly, not `bun run vite` — the wrapper survives long enough
-	# to print an exit-code complaint every time you Ctrl-C.
+	# Handed to bun, not run on its own, and not `bun run vite` — that wrapper
+	# survives long enough to print an exit-code complaint every time you Ctrl-C.
+	#
+	# node_modules/.bin/vite is a symlink to a file whose shebang is
+	# `#!/usr/bin/env node`, so executing it needs node on PATH. Preflight has
+	# only ever asked for go and bun, and on a machine with bun but no node this
+	# script printed its banner, the ports, where the accounts live — and then
+	# `env: node: No such file or directory` and a dead portal. Every line above
+	# was a promise the next line broke. Passing the file to bun runs it under
+	# bun's runtime and ignores the shebang, so the two things this script checks
+	# for are the two things it needs.
 	# The one line that was missing. CRONOS_ORIGINS below has always allowed the
 	# portal to call the API; nothing ever told the portal to.
 	if [ "$CONNECTED" = 1 ]; then
 		VITE_CRONOS_API="http://localhost:$API_PORT" \
-			start web "$C_WEB" "$PORTAL" "$PORTAL/node_modules/.bin/vite" \
+			start web "$C_WEB" "$PORTAL" bun "$PORTAL/node_modules/.bin/vite" \
 			--port "$WEB_PORT" --strictPort
 	else
-		start web "$C_WEB" "$PORTAL" "$PORTAL/node_modules/.bin/vite" \
+		start web "$C_WEB" "$PORTAL" bun "$PORTAL/node_modules/.bin/vite" \
 			--port "$WEB_PORT" --strictPort
 	fi
 fi

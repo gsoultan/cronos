@@ -145,6 +145,7 @@ finding explaining that cronos had no pie. It has one.
 never imported, so "Required" and "Accepts several" rendered as unstyled
 browser checkboxes beside a Mantine label. (`Switch` has the same gap and still
 does; it is used on the schedule, fields and people forms.)
+
 **Object stores and cross-database joins actually run now.** A dataset with
 `driver: object-store`, or with more than one source, resolved to "rebuild with
 `-tags duckdb`" — in every build, *including* one made with that tag. The
@@ -204,6 +205,33 @@ lake was reading nothing and being told nothing.
 people's databases. The only gauge here not meant to be zero: what matters is
 that it settles rather than climbs, because mounts are cached per set of
 sources and a rising number means datasets are mounting per query. See
+[docs/deploying.md](docs/deploying.md).
+
+**`cronos-user -platform` finishes what it starts on a new account.** Creating
+the first administrator of a fresh install in one command — `-email … -platform`,
+the way `docs/deploying.md` documents it — created the account and then failed to
+grant the permission: the grant was handed an ID the creation had not passed
+back, so it answered "no such person" and the command exited 1. What was left
+behind was an account that could sign in and administer its project but not the
+deployment, reported as a failure, so the obvious next move was to run it again
+and be told the account already existed.
+
+Nothing to do if you worked around it — the account is real, and re-running
+`cronos-user -email … -platform` grants the permission to it now. Granting to an
+account that already existed was never affected, which is the path a locked-out
+deployment takes.
+
+**New: `cronos-user -if-empty` does nothing if the deployment already has an
+account.** For provisioning that runs on every start rather than once by hand: a
+container entrypoint, or the development script in this repository. Without it
+the second run is an error a start-up script has to tell apart from a real one.
+
+**Publishing a definition with new fields mid-rollout takes old instances
+down.** Not new behaviour and not a change — a build refuses a definition naming
+a field it does not know, which is the strictness that catches a typo in a
+report. It had simply never been written down that the same rule applies across
+a rollout, where a document written for the new version is one the old one will
+not open on restart. Roll out first, publish second; see "A rolling deploy" in
 [docs/deploying.md](docs/deploying.md).
 
 ### Upgrading
