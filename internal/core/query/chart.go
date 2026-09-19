@@ -213,9 +213,10 @@ func (b Builder) wrap(sel []string, inner string, blk definition.Block,
 	if len(group) > 0 {
 		by = "\nGROUP BY " + strings.Join(group, ", ")
 	}
-	return fmt.Sprintf("SELECT %s\nFROM (\n%s\n) AS %s%s%s%s\nLIMIT %d",
-		strings.Join(sel, ", "), inner, blockAlias, where(blk.Filter),
-		by, order.sql, ChartLimit), nil
+	top, tail := b.dialect.Limit(ChartLimit)
+	return fmt.Sprintf("SELECT %s%s\nFROM (\n%s\n) AS %s%s%s%s%s",
+		top, strings.Join(sel, ", "), inner, blockAlias, where(blk.Filter),
+		by, order.sql, tail), nil
 }
 
 // orderedBy is an ORDER BY clause or the reason there is not one, so the

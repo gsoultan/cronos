@@ -82,8 +82,13 @@ func (b Builder) tableSQL(ds definition.Dataset, blk definition.Block, inner str
 	// The limit is a literal, not an argument. It is an integer from a
 	// definition rather than a caller, and several databases will not plan a
 	// parameterised LIMIT as well as a constant one.
-	return fmt.Sprintf("SELECT %s\nFROM (\n%s\n) AS %s%s%s\nLIMIT %d",
-		strings.Join(cols, ", "), inner, blockAlias, where(blk.Filter), order, blk.Rows()), nil
+	//
+	// Asked of the dialect rather than written here: LIMIT is a trailing
+	// clause in three of the four and does not exist in the fourth, where this
+	// produced "Incorrect syntax near 'LIMIT'" against a real SQL Server.
+	top, tail := b.dialect.Limit(blk.Rows())
+	return fmt.Sprintf("SELECT %s%s\nFROM (\n%s\n) AS %s%s%s%s",
+		top, strings.Join(cols, ", "), inner, blockAlias, where(blk.Filter), order, tail), nil
 }
 
 func orderBy(ds definition.Dataset, keys []definition.SortKey) (string, error) {

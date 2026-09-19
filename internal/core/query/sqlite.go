@@ -27,3 +27,8 @@ func (SQLite) Bucket(grain, expr string) (string, error) {
 	}
 	return fmt.Sprintf("strftime('%s', %s)", f, expr), nil
 }
+
+// Limit is a trailing clause here.
+func (SQLite) Limit(n int) (string, string) {
+	return "", fmt.Sprintf("\nLIMIT %d", n)
+}

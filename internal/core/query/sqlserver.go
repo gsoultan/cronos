@@ -54,3 +54,12 @@ var sqlServerUnits = map[string]string{
 	"quarter": "quarter",
 	"year":    "year",
 }
+
+// Limit is a prefix here, and TOP rather than OFFSET/FETCH.
+//
+// OFFSET/FETCH is the documented pagination form but requires an ORDER BY, and
+// the statements this caps do not all have one — a gauge folds the whole set to
+// a single row and orders nothing. TOP has no such requirement.
+func (SQLServer) Limit(n int) (string, string) {
+	return fmt.Sprintf("TOP (%d) ", n), ""
+}
