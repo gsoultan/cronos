@@ -22,6 +22,21 @@ needs a deployment to act says so under **Upgrading**.
 
 ## Unreleased
 
+**An author chooses how each filter is operated.** `control:` on a filter picks
+the interface — `calendar`, `range`, `presets`, `dropdown`, `radio`,
+`checkboxes`, `search` or `slider` — and every renderer honours it. A status
+with four values and a status with forty want different controls, and only the
+person who knows the data knows which. A control that cannot operate its type is
+refused when the report is stored, so a calendar on an enum is an error where it
+was written rather than a guess in three renderers. Omitting it takes the type's
+default, which the server resolves once so the portal and the embed cannot
+disagree.
+
+**The portal's date filter is a calendar.** It was a raw browser `dd-mm-yyyy`
+box — the one element on the page wearing the operating system's opinion rather
+than this one's. `@mantine/dates` had been a declared dependency that nothing
+imported for as long as it had been declared.
+
 **A combo, a waterfall, an area and a gauge look like themselves on the
 canvas.** They were drawn with the nearest component that already existed, which
 was worse than drawing nothing rather than better: a waterfall came out as a

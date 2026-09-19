@@ -15,14 +15,26 @@ spec:
     - name: period
       label: Period
       type: date
+      control: range
       bind:
         invoices: issued_at
     - name: status
       label: Status
       type: enum
+      # Four values is a shorter list than the control that would hide them.
+      control: checkboxes
       values: [sent, overdue, paid]
       bind:
         invoices: status
+    - name: since
+      label: Issued since
+      type: date
+      # Relative, because "last 30 days" is what somebody means — a calendar
+      # makes them work out today's date and count backwards.
+      control: presets
+      bind:
+        invoices: issued_at
+
     - name: region
       label: Region
       type: string

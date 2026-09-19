@@ -31,3 +31,15 @@
    "Required" and "Accepts several". This import was missing, so both of those
    rendered as an unstyled browser checkbox with a Mantine label beside it. */
 @import '@mantine/core/styles/Checkbox.layer.css';
+
+/* A report's filter bar: the controls an author can choose between. Chip is
+   the presets and the checkbox list, Radio the one-of list. */
+@import '@mantine/core/styles/Chip.layer.css';
+@import '@mantine/core/styles/Radio.layer.css';
+
+/* The calendar. @mantine/dates was a declared dependency that nothing
+   imported, so a date filter was a raw browser control sitting in a Mantine
+   form — the one element on the page wearing the operating system's opinion
+   instead of this one's. Deferred like the rest: no first screen has a
+   calendar on it. */
+@import '@mantine/dates/styles.layer.css';

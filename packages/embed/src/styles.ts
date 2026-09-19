@@ -174,6 +174,21 @@ tr:last-child td { border-bottom: 0 }
 }
 .filter { display: grid; gap: 3px; font-size: 11px; color: var(--cr-ink-muted) }
 .filter .pair { display: flex; align-items: center; gap: 4px }
+/* A row of toggles. With four values the list is shorter than a control that
+   would hide them, and this is one tab stop per option either way. */
+.chips { display: flex; flex-wrap: wrap; gap: 4px }
+.chip {
+  font: inherit;
+  font-size: 12px;
+  color: var(--cr-ink-secondary);
+  background: var(--cr-surface);
+  border: 1px solid var(--cr-line);
+  border-radius: 999px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+.chip.on { background: var(--cr-accent); border-color: var(--cr-accent); color: #fff }
+.chip:focus-visible { outline: 2px solid var(--cr-accent); outline-offset: 1px }
 .filter .pair i { font-style: normal; color: var(--cr-ink-muted) }
 /* Inherit, not a font stack: the host's theme reaches in through custom
    properties, and a control that ignored it would be the one element on the

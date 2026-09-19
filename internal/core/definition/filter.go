@@ -20,7 +20,13 @@ type Filter struct {
 	Bind map[string]string `json:"bind" yaml:"bind"`
 	// Values enumerates the permitted values. Enum only.
 	Values []string `json:"values,omitempty" yaml:"values,omitempty"`
+	// Control is the interface this filter is operated through. Empty takes
+	// the default for its type — see ControlFor.
+	Control Control `json:"control,omitempty" yaml:"control,omitempty"`
 }
+
+// Operated is the control to render this filter with.
+func (f Filter) Operated() Control { return ControlFor(f.Type, f.Control) }
 
 // Binds returns the field this filter narrows in the named dataset, and
 // whether it reaches that dataset at all.
@@ -52,6 +58,9 @@ func (f Filter) Validate() error {
 		// A filter bound to nothing is a control that does nothing, shown to
 		// someone who will reasonably expect it to work.
 		return fmt.Errorf("%w: filter %q binds to no dataset", ErrInvalid, f.Name)
+	}
+	if err := validateControl(f.Name, f.Type, f.Control); err != nil {
+		return err
 	}
 	return f.validateBindings()
 }

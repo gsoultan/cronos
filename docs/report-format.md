@@ -332,6 +332,24 @@ spec:
       bind: {invoices: status}
 ```
 
+`control:` picks the interface each filter is operated through. A status with
+four values and a status with forty want different ones, and only the author
+knows which:
+
+| type | controls | default |
+| :--- | :--- | :--- |
+| `date` | `range`, `calendar`, `presets` | `range` |
+| `number` | `range`, `slider`, `search` | `range` |
+| `enum` | `dropdown`, `radio`, `checkboxes` | `dropdown` |
+| `bool` | `dropdown`, `radio` | `dropdown` |
+| `string` | `search` | `search` |
+
+A control that cannot operate its type is refused when the report is stored — a
+calendar on an enum is nonsense, and a renderer handed one would have to choose
+between drawing something wrong and ignoring what the author asked for. The
+default is resolved on the server, so the portal and the embed draw the same
+filter rather than each applying a default of its own.
+
 A dataset with no entry in `bind` is **unaffected**, which is a legitimate
 outcome rather than a mistake — a Period filter has nothing to say to a dataset
 of current stock levels — and every block reports it, so it is stated rather

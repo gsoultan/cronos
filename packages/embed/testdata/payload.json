@@ -8,12 +8,14 @@
       "values": [
         "Aurora",
         "Baltic"
-      ]
+      ],
+      "control": "dropdown"
     },
     {
       "name": "parcels_over",
       "label": "Parcels over",
-      "type": "number"
+      "type": "number",
+      "control": "range"
     }
   ],
   "blocks": [

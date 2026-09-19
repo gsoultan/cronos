@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Button, Select, TextInput } from '@mantine/core'
+import { Button, Chip, NumberInput, Radio, Select, TextInput } from '@mantine/core'
+import { DatePickerInput } from '@mantine/dates'
 import type { ReportFilter, RunFilters } from '../lib/api'
 
 /**
@@ -67,40 +68,7 @@ export function ReportFilters({ filters, value, onApply }: {
               <span className="mb-1 block text-caption font-medium text-ink-secondary">
                 {f.label || f.name}
               </span>
-              {f.type === 'date' ? (
-                /* Two ends, side by side. A single date control for something
-                   called "Period" makes somebody guess whether it means from,
-                   to, or on. */
-                <div className="flex items-center gap-2">
-                  <TextInput type="date" size="xs" aria-label={`${f.label} from`}
-                    data-testid={`filter-${f.name}-from`}
-                    value={draft[f.name]?.[0] ?? ''}
-                    onChange={(e) => set(f.name, 0, e.currentTarget.value)} />
-                  <span className="text-caption text-ink-muted">to</span>
-                  <TextInput type="date" size="xs" aria-label={`${f.label} to`}
-                    data-testid={`filter-${f.name}-to`}
-                    value={draft[f.name]?.[1] ?? ''}
-                    onChange={(e) => set(f.name, 1, e.currentTarget.value)} />
-                </div>
-              ) : f.type === 'enum' && f.values?.length ? (
-                <Select size="xs" clearable data={f.values} w={180}
-                  data-testid={`filter-${f.name}`}
-                  placeholder="Any"
-                  value={draft[f.name]?.[0] || null}
-                  onChange={(v) => set(f.name, 0, v ?? '')} />
-              ) : f.type === 'bool' ? (
-                <Select size="xs" clearable w={140} data={['true', 'false']}
-                  data-testid={`filter-${f.name}`} placeholder="Any"
-                  value={draft[f.name]?.[0] || null}
-                  onChange={(v) => set(f.name, 0, v ?? '')} />
-              ) : (
-                <TextInput size="xs" w={180}
-                  type={f.type === 'number' ? 'number' : 'text'}
-                  data-testid={`filter-${f.name}`}
-                  placeholder={f.type === 'number' ? 'Any' : 'Contains…'}
-                  value={draft[f.name]?.[0] ?? ''}
-                  onChange={(e) => set(f.name, 0, e.currentTarget.value)} />
-              )}
+              <FilterControl f={f} draft={draft} set={set} />
             </label>
           </div>
         ))}
@@ -176,3 +144,126 @@ export function toFilters(filters: ReportFilter[], draft: Record<string, string[
   }
   return out
 }
+
+/**
+ * The control the author asked for.
+ *
+ * `control` arrives already resolved — the server applies the type's default —
+ * so this never guesses. That is the point of it travelling on the wire: a
+ * default applied here and again in the embed is two defaults, and the same
+ * report would look different in the two places.
+ */
+function FilterControl({ f, draft, set }: {
+  f: ReportFilter
+  draft: Record<string, string[]>
+  set: (name: string, at: number, v: string) => void
+}) {
+  const at = (i: number) => draft[f.name]?.[i] ?? ''
+  const label = f.label || f.name
+
+  switch (f.control) {
+    case 'calendar':
+      return (
+        <DatePickerInput size="xs" w={180} clearable valueFormat="DD MMM YYYY"
+          placeholder="Any date" aria-label={label}
+          data-testid={`filter-${f.name}`}
+          value={at(0) || null}
+          onChange={(v) => set(f.name, 0, v ?? '')} />
+      )
+
+    case 'presets':
+      /* Relative periods, which is what somebody means by "last 30 days" — a
+         calendar makes them work out today's date and count backwards. */
+      return (
+        <Chip.Group multiple={false} value={at(0)}
+          onChange={(v: string | null) => set(f.name, 0, String(v ?? ''))}>
+          <div className="flex flex-wrap gap-1.5" data-testid={`filter-${f.name}`}>
+            {PRESETS.map((p) => (
+              <Chip key={p.value} size="xs" value={p.value}>{p.label}</Chip>
+            ))}
+          </div>
+        </Chip.Group>
+      )
+
+    case 'range':
+      /* Two ends. Either alone narrows — from with no to is "since", and the
+         server compiles it as one. */
+      return f.type === 'number' ? (
+        <div className="flex items-center gap-2">
+          <NumberInput size="xs" w={110} placeholder="From" aria-label={`${label} from`}
+            data-testid={`filter-${f.name}-from`}
+            value={at(0)} onChange={(v) => set(f.name, 0, String(v ?? ''))} />
+          <span className="text-caption text-ink-muted">to</span>
+          <NumberInput size="xs" w={110} placeholder="To" aria-label={`${label} to`}
+            data-testid={`filter-${f.name}-to`}
+            value={at(1)} onChange={(v) => set(f.name, 1, String(v ?? ''))} />
+        </div>
+      ) : (
+        <DatePickerInput type="range" size="xs" w={230} clearable
+          valueFormat="DD MMM YYYY" placeholder="Any period" aria-label={label}
+          data-testid={`filter-${f.name}`}
+          value={[at(0) || null, at(1) || null]}
+          onChange={([from, to]) => { set(f.name, 0, from ?? ''); set(f.name, 1, to ?? '') }} />
+      )
+
+    case 'radio':
+      return (
+        <Radio.Group value={at(0)} onChange={(v) => set(f.name, 0, v)}
+          aria-label={label}>
+          <div className="flex flex-wrap gap-3" data-testid={`filter-${f.name}`}>
+            {(f.values ?? ['true', 'false']).map((v) => (
+              <Radio key={v} size="xs" value={v} label={v} />
+            ))}
+          </div>
+        </Radio.Group>
+      )
+
+    case 'checkboxes':
+      /* Several at once, which a dropdown can do and does not show: with four
+         statuses the list is shorter than the control that hides it. */
+      return (
+        <Chip.Group multiple value={draft[f.name] ?? []}
+          onChange={(v: string[]) => v.forEach((x, i) => set(f.name, i, x))}>
+          <div className="flex flex-wrap gap-1.5" data-testid={`filter-${f.name}`}>
+            {(f.values ?? []).map((v) => (
+              <Chip key={v} size="xs" value={v}>{v}</Chip>
+            ))}
+          </div>
+        </Chip.Group>
+      )
+
+    case 'slider':
+      return (
+        <NumberInput size="xs" w={180} placeholder="Any" aria-label={label}
+          data-testid={`filter-${f.name}`}
+          value={at(0)} onChange={(v) => set(f.name, 0, String(v ?? ''))} />
+      )
+
+    case 'dropdown':
+      return (
+        <Select size="xs" clearable w={180} placeholder="Any" aria-label={label}
+          data-testid={`filter-${f.name}`}
+          data={f.values?.length ? f.values : ['true', 'false']}
+          value={at(0) || null}
+          onChange={(v) => set(f.name, 0, v ?? '')} />
+      )
+
+    default:
+      /* search, and anything a newer server sends that this build has not
+         learned: a text box narrows by containing, which is the least wrong
+         thing to do with a filter whose control is unknown. */
+      return (
+        <TextInput size="xs" w={180} placeholder="Contains…" aria-label={label}
+          data-testid={`filter-${f.name}`}
+          value={at(0)} onChange={(e) => set(f.name, 0, e.currentTarget.value)} />
+      )
+  }
+}
+
+/** The relative periods a presets control offers. */
+const PRESETS = [
+  { value: '7d', label: 'Last 7 days' },
+  { value: '30d', label: 'Last 30 days' },
+  { value: '90d', label: 'Last 90 days' },
+  { value: 'mtd', label: 'Month to date' },
+]

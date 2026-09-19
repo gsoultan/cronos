@@ -41,19 +41,90 @@ export function filterBar(
 type Value = FilterValues[string] | undefined
 type Emit = (v: Value) => void
 
+/**
+ * The control the author asked for.
+ *
+ * Switched on `control`, not on `type`. The server resolves the default, so an
+ * author who named none still arrives here with one — and the portal, which
+ * reads the same field, draws the same filter. Guessing from the type in two
+ * places is two guesses.
+ */
 function control(def: FilterDef, value: Value, emit: Emit): HTMLElement {
-  switch (def.type) {
-    case 'enum':
-      return choice(def, value, emit)
-    case 'bool':
-      return truth(value, emit)
-    case 'date':
-      return range(def, value, emit, 'date')
-    case 'number':
-      return range(def, value, emit, 'number')
+  switch (def.control ?? fallback(def.type)) {
+    case 'dropdown':
+      return def.values?.length ? choice(def, value, emit) : truth(value, emit)
+    case 'radio':
+      return chips(def.values ?? ['true', 'false'], value, emit, false)
+    case 'checkboxes':
+      return chips(def.values ?? [], value, emit, true)
+    case 'presets':
+      return chips(PRESETS, value, emit, false)
+    case 'calendar':
+      return one(def, value, emit)
+    case 'range':
+      return range(def, value, emit, def.type === 'number' ? 'number' : 'date')
+    case 'slider':
+      return one(def, value, emit, 'number')
     default:
       return text(def, value, emit)
   }
+}
+
+/** What a payload from a server too old to send a control gets. */
+function fallback(type: string): string {
+  if (type === 'enum' || type === 'bool') return 'dropdown'
+  if (type === 'date' || type === 'number') return 'range'
+  return 'search'
+}
+
+/** The relative periods a presets control offers. */
+const PRESETS = ['7d', '30d', '90d', 'mtd']
+const PRESET_LABELS: Record<string, string> = {
+  '7d': 'Last 7 days', '30d': 'Last 30 days', '90d': 'Last 90 days', mtd: 'Month to date',
+}
+
+/**
+ * A row of toggles, one or several choosable.
+ *
+ * Buttons rather than checkboxes and radios: with four values the list is
+ * shorter than the control that would hide it, and a row of toggles is one
+ * tab stop per option either way.
+ */
+function chips(values: string[], value: Value, emit: Emit, many: boolean): HTMLElement {
+  const on = (value?.values ?? []).map(String)
+  const row = el('span', { class: 'chips', role: many ? 'group' : 'radiogroup' })
+
+  for (const v of values) {
+    const picked = on.includes(v)
+    const chip = el('button', {
+      type: 'button',
+      class: picked ? 'chip on' : 'chip',
+      'aria-pressed': String(picked),
+    }, PRESET_LABELS[v] ?? v)
+
+    chip.addEventListener('click', () => {
+      const next = many
+        ? (picked ? on.filter((x) => x !== v) : [...on, v])
+        : (picked ? [] : [v])
+      emit(next.length ? { op: 'in', values: next } : undefined)
+    })
+    row.append(chip)
+  }
+  return row
+}
+
+/** One value, for the controls that take exactly one. */
+function one(def: FilterDef, value: Value, emit: Emit, kind = 'date'): HTMLElement {
+  const node = el('input', {
+    type: kind,
+    value: String(value?.values?.[0] ?? ''),
+    'aria-label': def.label || def.name,
+  })
+  node.addEventListener('change', () => {
+    const v = kind === 'number' ? Number(node.value) : node.value
+    emit(node.value ? { op: 'eq', values: [v] } : undefined)
+  })
+  return node
 }
 
 /** An enum sends `in`, so widening it to a multi-select later is not a wire

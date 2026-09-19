@@ -503,6 +503,10 @@ export interface ReportFilter {
   label: string
   type: string
   values?: string[]
+  /** Which interface to operate it through, already resolved by the server to
+   *  the type's default where the author named none — so the portal and the
+   *  embed cannot disagree about what an author who chose nothing gets. */
+  control: string
 }
 
 export interface ReportBlock {
