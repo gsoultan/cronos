@@ -60,7 +60,45 @@ export type FilterNode = Condition | Group
 
 /* -- Reports ------------------------------------------------------------- */
 
-export type TileKind = 'stat' | 'bar' | 'line' | 'table'
+/**
+ * What the palette calls a block.
+ *
+ * Not the same list as the report format's block kinds, and deliberately so:
+ * the format splits a chart into `kind: chart` plus a chart type, because a
+ * renderer that learns a new block kind learns a new concept and one that
+ * learns a new chart type learns a case. A palette is a list of things to drop
+ * on a canvas, which is a different question — definitions.ts translates.
+ */
+export type TileKind =
+  | 'stat' | 'table'
+  | 'bar' | 'line' | 'area' | 'pie' | 'donut'
+  | 'scatter' | 'bubble' | 'map'
+  | 'combo' | 'funnel' | 'waterfall' | 'heatmap' | 'gauge' | 'treemap'
+
+/** The tiles that bucket a dimension and fold a measure. */
+export const CATEGORICAL: TileKind[] = [
+  'bar', 'line', 'area', 'pie', 'donut', 'waterfall', 'heatmap', 'treemap',
+]
+
+/** The tiles that read a list of measures rather than one. */
+export const METERED: TileKind[] = ['combo', 'funnel']
+
+/** The tiles that need a second dimension to place a value. */
+export const GRIDDED: TileKind[] = ['heatmap']
+
+/** The tiles that fold the whole set to one number. */
+export const FOLDED: TileKind[] = ['gauge']
+
+/** The tiles that read two measures against each other. */
+export const PLOTS: TileKind[] = ['scatter', 'bubble']
+
+/** The tiles that can draw more than one series at once. */
+export const MULTI_SERIES: TileKind[] = [
+  'bar', 'line', 'area', 'scatter', 'bubble', 'heatmap', 'treemap',
+]
+
+/** The tiles a series dimension stacks on rather than drawing beside. */
+export const STACKABLE: TileKind[] = ['bar', 'area']
 
 export interface Tile {
   id: string
@@ -78,6 +116,20 @@ export interface Tile {
   groupBy?: string
   series?: string
   aggregate?: 'sum' | 'count' | 'avg' | 'min' | 'max'
+  /** Draws a multi-series bar or area as one stack per bucket. */
+  stacked?: boolean
+  /** The horizontal measure of a scatter or bubble, whose x is a number
+   *  rather than a bucket. */
+  xField?: string
+  /** The measure a bubble's radius reads. */
+  sizeField?: string
+  /** The geography a map block reads. Undefined on every other kind. */
+  map?: TileMap
+  /** Several measures, for the kinds that read a list — a combo's bars and
+   *  lines, or a funnel whose stages are separate columns. */
+  metrics?: TileMetric[]
+  /** What a gauge reads its value against. */
+  target?: TileTarget
   columns?: string[]
   /**
    * Narrows this block alone — "of which, overdue".
@@ -91,6 +143,61 @@ export interface Tile {
   filter?: string
   /** A table's ordering, in the order the keys are applied. */
   sort?: { field: string; dir?: 'asc' | 'desc' }[]
+}
+
+/**
+ * One control on a report's filter bar.
+ *
+ * `bind` is a field per dataset, and explicit, because a report's blocks may
+ * read different datasets — guessing is how a filter silently applies to half
+ * a screen. A dataset with no entry is unaffected, which is a legitimate
+ * outcome the viewer shows on the block rather than letting it be discovered.
+ */
+export interface ReportFilter {
+  name: string
+  label?: string
+  /** string, number, bool, date or enum. */
+  type: string
+  /** The permitted values. Enum only. */
+  values?: string[]
+  bind: Record<string, string>
+}
+
+/** One measure of a tile that draws several, and how it is drawn. */
+export interface TileMetric {
+  field: string
+  aggregate?: 'sum' | 'count' | 'avg' | 'min' | 'max'
+  label?: string
+  /** bar or line, on a combo. */
+  draw?: 'bar' | 'line'
+  /** Set to read against its own scale. Per measure and never a default: two
+   *  scales on one plot is the most-flagged mistake in charting, so it is
+   *  reachable and never accidental. */
+  secondary?: boolean
+}
+
+/** What a gauge measures against: a column, or a number. */
+export interface TileTarget {
+  field?: string
+  aggregate?: 'sum' | 'count' | 'avg' | 'min' | 'max'
+  value?: number
+  label?: string
+}
+
+/** The geography a map tile reads. */
+export interface TileMap {
+  /** Drawn bottom to top. Empty lets the server infer one from the fields. */
+  layers?: string[]
+  /** The field carrying GeoJSON, for a polygon layer. */
+  geometry?: string
+  lat?: string
+  lon?: string
+  toLat?: string
+  toLon?: string
+  /** An XYZ tile template. Empty draws no basemap, which is the default: a
+   *  basemap is a request from the reader's browser to a third party. */
+  basemap?: string
+  attribution?: string
 }
 
 /**

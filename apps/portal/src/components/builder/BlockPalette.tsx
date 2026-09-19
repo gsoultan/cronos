@@ -4,6 +4,18 @@ export const PALETTE: { kind: TileKind; label: string; hint: string; icon: strin
   { kind: 'stat', label: 'Number', hint: 'One headline figure', icon: '#' },
   { kind: 'bar', label: 'Bar chart', hint: 'Compare categories', icon: '▮' },
   { kind: 'line', label: 'Line chart', hint: 'Change over time', icon: '⟋' },
+  { kind: 'area', label: 'Area chart', hint: 'A total, over time', icon: '◺' },
+  { kind: 'pie', label: 'Pie chart', hint: 'Parts of a whole', icon: '◕' },
+  { kind: 'donut', label: 'Donut chart', hint: 'Parts of a whole', icon: '◎' },
+  { kind: 'scatter', label: 'Scatter', hint: 'One measure against another', icon: '∷' },
+  { kind: 'bubble', label: 'Bubble', hint: 'Three measures at once', icon: '◍' },
+  { kind: 'map', label: 'Map', hint: 'Regions, points and flows', icon: '◈' },
+  { kind: 'combo', label: 'Bars + line', hint: 'Two measures together', icon: '⊞' },
+  { kind: 'funnel', label: 'Funnel', hint: 'Where people drop out', icon: '⧩' },
+  { kind: 'waterfall', label: 'Waterfall', hint: 'What moved a total', icon: '⊪' },
+  { kind: 'heatmap', label: 'Heatmap', hint: 'Two dimensions at once', icon: '▦' },
+  { kind: 'gauge', label: 'Gauge', hint: 'Against a target', icon: '◔' },
+  { kind: 'treemap', label: 'Treemap', hint: 'Parts within parts', icon: '▧' },
   { kind: 'table', label: 'Table', hint: 'Every row', icon: '▤' },
 ]
 

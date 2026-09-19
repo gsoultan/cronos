@@ -2,11 +2,22 @@ import { Client } from './client'
 import { css } from './styles'
 import { el, fill } from './dom'
 import { unaffectedNote } from './coverage'
+import { filterBar } from './filters'
 import { statBlock } from './blocks/stat'
 import { barBlock } from './blocks/bar'
+import { lineBlock } from './blocks/line'
+import { pieBlock } from './blocks/pie'
+import { scatterBlock } from './blocks/scatter'
+import { mapBlock } from './blocks/map'
+import { comboBlock } from './blocks/combo'
+import { funnelBlock } from './blocks/funnel'
+import { waterfallBlock } from './blocks/waterfall'
+import { heatmapBlock } from './blocks/heatmap'
+import { gaugeBlock } from './blocks/gauge'
+import { treemapBlock } from './blocks/treemap'
 import { tableBlock } from './blocks/table'
 import { unsupported } from './blocks/unsupported'
-import type { Block, FilterDef, FilterValues, ReportPayload } from './types'
+import type { Block, ChartBlock, FilterDef, FilterValues, ReportPayload } from './types'
 
 /*
  * Nothing here runs at import time.
@@ -42,9 +53,10 @@ function styles(): CSSStyleSheet {
  * same style isolation with none of that.
  */
 export class CronosReport extends Base {
-  static observedAttributes = ['endpoint', 'token', 'report']
+  static observedAttributes = ['endpoint', 'token', 'report', 'controls']
 
   #root = this.attachShadow({ mode: 'open' })
+  #bar = el('div', { class: 'bar' })
   #body = el('div', { class: 'grid', part: 'grid' })
   #filters: FilterValues = {}
   #filterKey = '{}'
@@ -54,7 +66,7 @@ export class CronosReport extends Base {
 
   connectedCallback() {
     this.#root.adoptedStyleSheets = [styles()]
-    fill(this.#root, this.#body)
+    fill(this.#root, this.#bar, this.#body)
     this.#live = true
     void this.load()
   }
@@ -125,6 +137,14 @@ export class CronosReport extends Base {
 
   #render(payload: ReportPayload) {
     const filters = payload.filters ?? []
+    /* The report format has always described these as controls on a filter
+       bar; nothing drew one, so every host page built its own. It is drawn
+       here now, and `controls="none"` is how a host that already has its own
+       keeps driving `.filters` without getting a second set. */
+    const bar = this.getAttribute('controls') === 'none'
+      ? null
+      : filterBar(filters, this.#filters, (next) => { this.filters = next })
+    fill(this.#bar, ...(bar ? [bar] : []))
     fill(this.#body, ...payload.blocks.map((b) => this.#block(b, filters)))
   }
 
@@ -145,9 +165,7 @@ export class CronosReport extends Base {
       case 'stat':
         return statBlock(b)
       case 'chart':
-        return b.chart === 'bar'
-          ? barBlock(b)
-          : unsupported(`${b.chart} charts need a newer viewer`)
+        return this.#chart(b)
       case 'table':
         return tableBlock(b)
       default:
@@ -155,6 +173,50 @@ export class CronosReport extends Base {
     }
   }
 
+  /* A second explicit switch, for the same reason as the first. The chart type
+     is an open set the server grows — a type this build has never heard of is
+     a normal condition, not a bug, and saying so beats an empty panel. */
+  #chart(b: ChartBlock): HTMLElement {
+    switch (b.chart) {
+      case 'bar':
+        return barBlock(b)
+      case 'line':
+        return lineBlock(b, false)
+      case 'area':
+        return lineBlock(b, true)
+      case 'pie':
+        return pieBlock(b, false)
+      case 'donut':
+        return pieBlock(b, true)
+      case 'scatter':
+      case 'bubble':
+        return scatterBlock(b)
+      case 'map':
+        return mapBlock(b)
+      case 'combo':
+        return comboBlock(b)
+      case 'funnel':
+        return funnelBlock(b)
+      case 'waterfall':
+        return waterfallBlock(b)
+      case 'heatmap':
+        return heatmapBlock(b)
+      case 'gauge':
+        return gaugeBlock(b)
+      case 'treemap':
+        return treemapBlock(b)
+      default:
+        return unsupported(`${b.chart} charts need a newer viewer`)
+    }
+  }
+
+  /**
+   * A message in place of the blocks — never in place of the bar.
+   *
+   * Clearing the controls when a request fails is how a filter that matched
+   * nothing becomes unrecoverable: the reader is left with an error and no
+   * way to undo what caused it.
+   */
   #say(text: string, isError: boolean) {
     fill(this.#body, el('p', { class: isError ? 'msg err' : 'msg', part: 'message' }, text))
   }

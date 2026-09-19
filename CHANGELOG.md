@@ -22,6 +22,129 @@ needs a deployment to act says so under **Upgrading**.
 
 ## Unreleased
 
+**The builder canvas draws every block it offers.** The palette gained nine
+chart types and the canvas had a component for four of them; the rest hit
+`default: return null` and drew an empty cell where the author had just dropped
+a block. Each now has a sketch — the chart type's own shape, captioned so it is
+not mistaken for a preview of the data.
+
+**Three charts were laid out wrong at full width.** A line chart's tick labels
+were clipped to their last characters, so "60,000" rendered as "000" — not a
+smaller label but a different number. A heatmap's cells were square, which in a
+full-width panel made a four-by-three grid taller than a screen; a treemap's box
+was uncapped for the same reason. Found by rendering the demo report full-page
+and looking at it, which no assertion in either suite was in a position to do.
+
+**`scripts/live-*.sh` run under bun.** Five of them executed `node` directly, so
+`make ui` and every live check failed on a machine with bun and no node — which
+is the documented toolchain. `scripts/dev.sh` had already been fixed for exactly
+this and carries a comment about it; the others had not.
+
+**A demo report that shows the charts.** `billing-shapes` draws the same
+invoices as a gauge, a line, a combo, a donut, a funnel, a waterfall, a heatmap,
+a treemap and a stacked bar, with a filter bar over them and a paginated output
+of the same layout. The demo previously used `chart: bar` twice and nothing else.
+
+**Charts are printed.** A paginated output dropped them: a report with charts
+produced a PDF that simply did not have them, and this file's own description of
+the format said they came out as static images. They are typeset as vector marks
+now — the same palette, the same tick labels and the same numbers as the browser,
+because the arrangement is worked out once on the server and both renderers place
+what they are given. A layout of charts and no table is a valid paginated output.
+`map` is the exception and prints a line saying to open the report in a browser:
+its geometry travels as SVG paths and a typesetter wants vertices.
+
+**The report draws its own filter bar.** `spec.filters` has always been
+described as "one control on a report's filter bar" — the coverage notes on
+every block, the `filters` property and the definition all assumed one existed.
+Nothing drew it, so every host page built its own and reimplemented which
+operator a date range sends. A date now renders a from/to pair and sends
+`between`, `gte` or `lte` depending on which ends were filled; an enum renders
+its values and sends `in`; free text sends `contains`. A host with its own
+controls sets `controls="none"` and keeps driving the property.
+
+**Filters can be authored in the builder.** They were stored and carried, but
+neither written nor read by the report form — so a report could be given filters
+in YAML and then never changed from the builder, and the form could not create
+one at all. There is an editor for them, with a field picker per dataset the
+report reads.
+
+**Upgrading.** An embedded report with filters now shows a bar it did not
+before. Set `controls="none"` on `<cronos-report>` to keep the previous
+behaviour.
+
+**Six more chart types: combo, funnel, waterfall, heatmap, gauge and treemap.**
+`metrics:` is the mechanism under two of them — a list of measures replacing
+`y`, so a combo draws bars and a line against shared buckets, and a funnel can
+take its stages as separate columns, which is how most warehouses model one. A
+funnel over rows of a stage dimension works too and comes back largest-first.
+See "Several measures at once" in [docs/report-format.md](docs/report-format.md).
+
+**A second axis is opt-in, per measure, and never a default.** Two scales on one
+plot is the most-flagged mistake in charting: where the axes line up is a choice
+nobody made, so the chart shows a correlation that is not in the data. Sharing
+one scale is what a combo does unless a measure carries `axis: secondary`, and
+the viewer marks that track "(right)" in the legend — otherwise a reader has no
+way to know the line is not comparable to the bars beside it.
+
+Waterfalls accumulate their running total on the server and append a closing
+bar, so the last bar lands where the arithmetic says rather than where two
+languages' float addition disagreed. Heatmaps come back dense, with a pair no
+row matched marked `empty` rather than dropped — "no rows" and "rows totalling
+nearly nothing" are different answers. A gauge's arc is capped at its target and
+beating it is said in words, because an arc drawn to 180% wraps past its own
+start and reads as 80%. Treemaps are squarified on the server and nest when
+`series` is set.
+
+Funnel stages and flat treemap rectangles take a new **ordinal** ramp — one hue,
+stepped — rather than categorical hues, because swapping two of them changes
+what the chart says. Waterfall rises and falls take a diverging pair, blue and
+red rather than green and red: that is the one pair a colourblind reader cannot
+separate, on the one chart whose whole point is which side of nothing a bar is
+on. Both ramps were validated against this viewer's own light and dark surfaces.
+
+The embed bundle is 12.5 KB gzipped against its 40 KB budget, still with no
+charting library.
+
+**Seven more chart types, and maps.** A report drew bars and nothing else. It
+now draws `line`, `area`, `pie`, `donut`, `scatter`, `bubble` and `map`, and any
+of the categorical ones can split by a second dimension with `series:` —
+stacking with `stacked: true` on `bar` and `area`. A map takes a list of layers
+rather than a type per combination: `polygon` shades regions from a GeoJSON
+field, `heat` spreads point values into a density field, `bubble` and `scatter`
+place them, and `flow` draws an arc from each origin to its destination. See
+"Charts" and "Maps" in [docs/report-format.md](docs/report-format.md).
+
+Geometry is a column of GeoJSON — what `ST_AsGeoJSON` returns in PostGIS or
+DuckDB spatial — so there is no bundled atlas to keep current and no list of
+countries cronos knows about. The server projects to Web Mercator, simplifies,
+and sends SVG paths, which is why the viewer needs no map library: the whole
+embed bundle is 9.5 KB gzipped against a 40 KB budget, and Leaflet alone is 40.
+
+A basemap is opt-in and empty by default, because it is a request from the
+reader's browser to a third party we would otherwise have chosen for them. Set
+`map.basemap.url` to any XYZ template and `map.basemap.attribution` to the
+credit line that source requires; https is enforced, since a browser blocks
+mixed-content tiles on an embedded report silently.
+
+**Upgrading.** `chart:` was an unchecked string and is now a closed set, so a
+report with a typo — or with a chart type that was never drawn — is refused
+when it is stored rather than rendering "…charts need a newer viewer" months
+later in somebody's browser. `bar`, `line` and `area` are unchanged. Anything
+else in an existing definition was already not being drawn.
+
+**The builder stops offering charts the viewer cannot draw.** It listed line
+charts, wrote `chart: line`, and the viewer answered "line charts need a newer
+viewer" — blaming the reader's browser for a gap between two parts of cronos.
+Both ends now know the same list.
+
+**A Jasper pie imports as a pie.** It used to arrive as a bar chart, with a
+finding explaining that cronos had no pie. It has one.
+
+**The parameter editor's checkboxes are styled.** `Checkbox.layer.css` was
+never imported, so "Required" and "Accepts several" rendered as unstyled
+browser checkboxes beside a Mantine label. (`Switch` has the same gap and still
+does; it is used on the schedule, fields and people forms.)
 **Object stores and cross-database joins actually run now.** A dataset with
 `driver: object-store`, or with more than one source, resolved to "rebuild with
 `-tags duckdb`" — in every build, *including* one made with that tag. The

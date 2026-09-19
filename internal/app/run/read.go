@@ -19,8 +19,8 @@ func read(blk definition.Block, ds definition.Dataset, rows Rows, cov *Coverage)
 	case definition.StatBlock:
 		out.Value, err = readStat(rows)
 	case definition.ChartBlock:
-		out.Chart = blk.Chart
-		out.Series, err = readSeries(rows, blk.X.Grain)
+		out.Chart = string(blk.Chart)
+		err = readChart(&out, blk, ds, rows)
 	case definition.TableBlock:
 		out.Columns, out.Rows, err = readTable(blk, ds, rows)
 		out.Total = len(out.Rows)
@@ -31,6 +31,95 @@ func read(blk definition.Block, ds definition.Dataset, rows Rows, cov *Coverage)
 		return Block{}, err
 	}
 	return out, rows.Err()
+}
+
+// readChart reads whichever shape the chart's type asked the compiler for.
+//
+// Series stays an empty slice on the types that do not use it, rather than
+// nil: it is the chart kind's collection, and a viewer reading `series.map`
+// should not have to know which types filled it in.
+func readChart(out *Block, blk definition.Block, ds definition.Dataset, rows Rows) error {
+	out.Series = []Bar{}
+	var err error
+	switch {
+	case blk.Chart.Geographic():
+		out.Map, err = readMap(blk, ds, rows)
+	case blk.Chart.Plots():
+		var x, y Axis
+		out.Points, x, y, err = readPoints(rows, blk.Series.Field != "", blk.Size.Field != "")
+		out.XAxis, out.YAxis = &x, &y
+	case blk.Chart.Folded():
+		out.Gauge, err = readGauge(blk, rows)
+	case blk.Chart.Mixes():
+		var y Axis
+		out.Tracks, y, out.Axis2, err = readCombo(blk, rows)
+		out.YAxis = &y
+	case blk.Chart == definition.FunnelChart:
+		out.Stages, err = readFunnel(blk, rows)
+	case blk.Chart == definition.WaterfallChart:
+		var y Axis
+		out.Steps, y, err = readWaterfall(blk, rows)
+		out.YAxis = &y
+	case blk.Chart.Gridded():
+		var g grid
+		if g, err = readHeatmap(blk, rows); err == nil {
+			out.Cells, out.HeatRows, out.HeatColumns = g.cells, g.rows, g.columns
+			// Total is the grid the data asked for, which may exceed the one
+			// drawn — the same promise a table's Total makes about its page.
+			if g.full > len(g.cells) {
+				out.Total = g.full
+			}
+		}
+	case blk.Chart == definition.TreemapChart:
+		out.Rects, err = readTreemap(blk, rows)
+	case blk.Series.Field != "":
+		out.Stacked = blk.Stacked
+		out.Groups, err = readGroups(rows, blk.X.Grain)
+		if blk.Stacked {
+			out.Totals = totals(out.Groups)
+		}
+	default:
+		out.Series, err = readSeries(rows, blk.X.Grain)
+	}
+	if err == nil {
+		out.scaleFor(blk.Chart)
+	}
+	return err
+}
+
+// scaleFor gives the chart types that draw against a measured axis one, with
+// its ticks already formatted.
+//
+// A bar needs none: the number sits beside each bar, and a bar drawn against
+// the largest value ranks while its label states. A line has no room for a
+// label per point, so the axis is the only thing carrying the magnitude — and
+// a viewer choosing its own ticks would be the one part of the report this
+// engine did not format.
+func (b *Block) scaleFor(chart definition.ChartType) {
+	if chart != definition.LineChart && chart != definition.AreaChart {
+		return
+	}
+	var values []float64
+	switch {
+	case b.Totals != nil:
+		// A stacked area is read at its top edge, so the scale has to reach
+		// the stack's height rather than its tallest single series.
+		for _, t := range b.Totals {
+			values = append(values, t.Value)
+		}
+	case b.Groups != nil:
+		for _, g := range b.Groups {
+			for _, bar := range g.Bars {
+				values = append(values, bar.Value)
+			}
+		}
+	default:
+		for _, bar := range b.Series {
+			values = append(values, bar.Value)
+		}
+	}
+	y := axis(values)
+	b.YAxis = &y
 }
 
 // readStat takes the single cell the aggregate produced.

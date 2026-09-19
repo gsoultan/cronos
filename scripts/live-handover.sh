@@ -110,4 +110,4 @@ curl -sf "$PORTAL/" >/dev/null || { tail -20 "$work/portal.log"; die "the portal
 printf '  on %s\n' "$PORTAL"
 
 say "Handing the browser over"
-(cd apps/portal && PORTAL="$PORTAL" node e2e/handover.mjs) || die "the browser check"
+(cd apps/portal && PORTAL="$PORTAL" bun e2e/handover.mjs) || die "the browser check"

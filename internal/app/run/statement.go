@@ -68,26 +68,39 @@ func (s *Statements) Statement(ctx context.Context, r definition.Report, output 
 
 // toDocument maps a rendered view onto the paginated model.
 func toDocument(r definition.Report, out definition.Output, view View) (document.Document, int, error) {
+	charts := Printable(view)
 	table, ok := firstTable(view)
-	if !ok {
-		// A paginated output with no table is a page of headings. Refusing
+	if !ok && len(charts) == 0 {
+		// A paginated output with neither is a page of headings. Refusing
 		// beats delivering an empty PDF that looks like a customer who was
 		// billed nothing.
-		return document.Document{}, 0, fmt.Errorf("%w: output %q has no table to print",
+		//
+		// A layout of charts alone is a different thing — a dashboard on paper
+		// — and it used to be refused here too, because charts were dropped
+		// before this line could see them.
+		return document.Document{}, 0, fmt.Errorf("%w: output %q has nothing to print",
 			ErrNotRenderable, out.Name)
 	}
 
 	doc := document.Document{
-		Title:   r.Heading(),
-		Period:  view.Description,
-		Org:     document.Org{Name: r.Folder},
-		Page:    page(out.Page),
-		Columns: printedColumns(table),
-		Groups: []document.Group{{
+		Title:  r.Heading(),
+		Period: view.Description,
+		Org:    document.Org{Name: r.Folder},
+		Page:   page(out.Page),
+		Charts: charts,
+		// Empty rather than nil, for the reason every other list on the wire
+		// is: a nil marshals as null, and the template reading it gets `none`
+		// where it expected a list.
+		Columns: []document.Column{},
+		Groups:  []document.Group{},
+	}
+	if ok {
+		doc.Columns = printedColumns(table)
+		doc.Groups = []document.Group{{
 			Label:    view.Title,
 			Rows:     table.Rows,
 			Subtotal: subtotals(view, table),
-		}},
+		}}
 	}
 	return doc, len(table.Rows), doc.Validate()
 }

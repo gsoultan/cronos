@@ -189,12 +189,40 @@ function field(f: Field): Yaml {
   }
 }
 
+/**
+ * One control on a report's filter bar.
+ *
+ * `bind` is a field per dataset, and it is explicit because a report's blocks
+ * may read different datasets and guessing is how a filter silently applies to
+ * half a screen. A dataset with no entry is unaffected, which is a legitimate
+ * outcome the viewer is required to show on the block.
+ */
+export interface ReportFilterInput {
+  name: string
+  label?: string
+  /** string, number, bool, date or enum. */
+  type: string
+  /** The permitted values. Enum only, and required there. */
+  values?: string[]
+  /** Dataset name to the field this filter narrows in it. */
+  bind: Record<string, string>
+}
+
 export interface ReportInput {
   name: string
   slug: string
   description?: string
   folder?: string
   dataset: string
+  /**
+   * The report's shared filters.
+   *
+   * These were neither written nor read for as long as the builder existed,
+   * and `drops` did not cover them either — so opening a report that had
+   * filters and saving it deleted every one of them with nothing on screen
+   * saying so. They are the report's entire interactive surface.
+   */
+  filters?: ReportFilterInput[]
   blocks: ReportBlockInput[]
   /**
    * The output profile the blocks belong to.
@@ -225,6 +253,30 @@ export interface ReportBlockInput {
   groupBy?: string
   grain?: string
   chart?: string
+  metrics?: {
+    field: string
+    aggregate?: string
+    label?: string
+    draw?: string
+    secondary?: boolean
+  }[]
+  target?: { field?: string; aggregate?: string; value?: number; label?: string }
+  series?: string
+  stacked?: boolean
+  /** A plot's horizontal measure. */
+  xField?: string
+  /** A bubble's radius measure. */
+  sizeField?: string
+  map?: {
+    layers?: string[]
+    geometry?: string
+    lat?: string
+    lon?: string
+    toLat?: string
+    toLon?: string
+    basemap?: string
+    attribution?: string
+  }
   columns?: string[]
   pageSize?: number
   /** Narrows this block alone, as SQL the server compiles. */
@@ -242,6 +294,7 @@ export interface ReportBlockInput {
 export function report(input: ReportInput): string {
   const spec: Record<string, Yaml> = {
     dataset: input.dataset,
+    filters: reportFilters(input.filters),
     outputs: [{
       name: input.output?.name ?? 'interactive',
       renderer: input.output?.renderer ?? 'interactive',
@@ -257,7 +310,51 @@ export function report(input: ReportInput): string {
 }
 
 /** The palette entries that are charts, and which chart each one is. */
-const CHARTS: Record<string, string> = { bar: 'bar', line: 'line', area: 'area' }
+/**
+ * The palette entries that are charts, and which chart each one is.
+ *
+ * Identity today, and kept as a map rather than collapsed to a Set because the
+ * two lists are allowed to diverge: a palette entry is a thing to drop on a
+ * canvas and a chart type is a thing a renderer draws, and the moment one
+ * gains an entry the other should not, this is where that lives.
+ */
+const CHARTS: Record<string, string> = {
+  bar: 'bar', line: 'line', area: 'area', pie: 'pie', donut: 'donut',
+  scatter: 'scatter', bubble: 'bubble', map: 'map',
+  combo: 'combo', funnel: 'funnel', waterfall: 'waterfall',
+  heatmap: 'heatmap', gauge: 'gauge', treemap: 'treemap',
+}
+
+/** The chart types whose horizontal axis is a measure rather than a bucket. */
+const PLOTTED = new Set(['scatter', 'bubble'])
+
+/** The chart types that read a list of measures rather than one. */
+const METERED = new Set(['combo', 'funnel'])
+
+/**
+ * The filter bar, or nothing when the report has none.
+ *
+ * A half-finished filter — named but not yet bound to a field — is written out
+ * rather than quietly dropped. The server refuses it with a sentence naming
+ * what is missing, which the author can act on; deleting their work on save
+ * and saying nothing is the alternative, and it is worse.
+ */
+function reportFilters(filters: ReportInput['filters']): Yaml {
+  if (!filters || filters.length === 0) return undefined
+  return filters
+    .filter((f) => f.name)
+    .map((f) => ({
+      name: f.name,
+      label: f.label || undefined,
+      type: f.type,
+      // Enum only. Writing them on a date filter would store a list the
+      // server refuses, which is a save that fails for a reason the form did
+      // not show.
+      values: f.type === 'enum' && f.values?.length ? f.values : undefined,
+      bind: Object.fromEntries(
+        Object.entries(f.bind ?? {}).filter(([reads, narrows]) => reads && narrows)),
+    }))
+}
 
 function block(b: ReportBlockInput): Yaml {
   const reads = b.dataset || undefined
@@ -284,14 +381,87 @@ function block(b: ReportBlockInput): Yaml {
     })
   }
   if (CHARTS[b.kind] || b.kind === 'chart') {
+    const chart = CHARTS[b.kind] ?? b.chart ?? 'bar'
     return narrowed({
-      kind: 'chart', dataset: reads, title: b.title,
-      chart: CHARTS[b.kind] ?? b.chart ?? 'bar',
-      x: { field: b.groupBy, grain: b.grain || undefined },
-      y: { field: b.field, aggregate: b.aggregate ?? 'sum' },
+      kind: 'chart', dataset: reads, title: b.title, chart,
+      // A plot's x names what each dot *is* and its xValue is where the dot
+      // sits. One field cannot be both a dimension and a measure, and letting
+      // it try is how a date grain ends up on a number.
+      x: chart === 'funnel' && (b.metrics?.length ?? 0) > 0
+        ? undefined
+        : { field: b.groupBy, grain: PLOTTED.has(chart) ? undefined : b.grain || undefined },
+      xValue: PLOTTED.has(chart) && b.xField
+        ? { field: b.xField, aggregate: b.aggregate ?? 'sum' }
+        : undefined,
+      // A metered chart's measures replace y rather than joining it — both
+      // would be two answers to what the chart measures.
+      y: METERED.has(chart) ? undefined : { field: b.field, aggregate: b.aggregate ?? 'sum' },
+      metrics: METERED.has(chart) ? metrics(b.metrics) : undefined,
+      target: chart === 'gauge' ? targetOf(b.target) : undefined,
+      series: b.series ? { field: b.series } : undefined,
+      stacked: b.stacked || undefined,
+      size: chart === 'bubble' && b.sizeField
+        ? { field: b.sizeField, aggregate: b.aggregate ?? 'sum' }
+        : undefined,
+      map: chart === 'map' ? mapSpec(b.map) : undefined,
     })
   }
   return narrowed({ kind: b.kind, dataset: reads, title: b.title, text: b.title })
+}
+
+/**
+ * A map's geography.
+ *
+ * Nested under `map:` in the format rather than flattened into the block like
+ * every other kind, because a map adds nine fields and the flat union is what
+ * keeps the other four readable.
+ */
+function metrics(list: ReportBlockInput['metrics']): Yaml {
+  if (!list || list.length === 0) return undefined
+  return list
+    .filter((m) => m.field)
+    .map((m) => ({
+      field: m.field,
+      aggregate: m.aggregate ?? 'sum',
+      label: m.label || undefined,
+      draw: m.draw || undefined,
+      axis: m.secondary ? 'secondary' : undefined,
+    }))
+}
+
+/**
+ * A gauge's target: a column or a number, never both.
+ *
+ * The server refuses both, because honouring one silently makes the other look
+ * honoured — so the builder writes whichever the author chose rather than
+ * whatever is left in the form from the other.
+ */
+function targetOf(t: ReportBlockInput['target']): Yaml {
+  if (!t) return undefined
+  if (t.value !== undefined) {
+    return { value: t.value, label: t.label || undefined }
+  }
+  if (!t.field) return undefined
+  return { field: t.field, aggregate: t.aggregate ?? 'sum', label: t.label || undefined }
+}
+
+function mapSpec(m: ReportBlockInput['map']): Yaml {
+  if (!m) return undefined
+  return {
+    layers: m.layers && m.layers.length > 0 ? m.layers : undefined,
+    geometry: m.geometry || undefined,
+    lat: m.lat || undefined,
+    lon: m.lon || undefined,
+    toLat: m.toLat || undefined,
+    toLon: m.toLon || undefined,
+    // Written only as a pair. A tile template with no credit line is a report
+    // that puts our customer in breach of the tile source's terms, so the
+    // server refuses one — and emitting half of it here would turn that into
+    // a save that fails with nothing on screen having asked for it.
+    basemap: m.basemap
+      ? { url: m.basemap, attribution: m.attribution || undefined }
+      : undefined,
+  }
 }
 
 export interface ScheduleInput {
@@ -549,10 +719,23 @@ export function readReport(text: string): Loaded<ReportInput> {
       description: str(meta.description) || undefined,
       folder: str(meta.folder) || undefined,
       dataset: str(spec.dataset),
+      filters: asList(spec.filters).map(readFilter),
       blocks: asList(shown.layout).map(readBlock),
       output: { name: str(shown.name), renderer: str(shown.renderer), page: shown.page },
     }
   }, report)
+}
+
+function readFilter(v: Yaml): ReportFilterInput {
+  const f = asMap(v)
+  return {
+    name: str(f.name),
+    label: str(f.label) || undefined,
+    type: str(f.type) || 'string',
+    values: asList(f.values).map(str),
+    bind: Object.fromEntries(
+      Object.entries(asMap(f.bind)).map(([reads, narrows]) => [reads, str(narrows)])),
+  }
 }
 
 function readBlock(v: Yaml): ReportBlockInput {
@@ -583,17 +766,61 @@ function readBlock(v: Yaml): ReportBlockInput {
   if (kind === 'chart') {
     const x = asMap(b.x)
     const y = asMap(b.y)
+    const chart = str(b.chart) || 'bar'
+    const m = asMap(b.map)
+    const basemap = asMap(m.basemap)
     // The builder's palette has one entry per chart type, so a chart comes
     // back as the entry that would have drawn it rather than as `chart`.
     return {
       ...narrowing,
-      kind: str(b.chart) || 'bar', chart: str(b.chart) || 'bar',
+      kind: chart, chart,
       title: str(b.title), dataset: str(b.dataset) || undefined,
       groupBy: str(x.field), grain: str(x.grain) || undefined,
       field: str(y.field), aggregate: str(y.aggregate) || undefined,
+      series: str(asMap(b.series).field) || undefined,
+      stacked: b.stacked === true || undefined,
+      xField: str(asMap(b.xValue).field) || undefined,
+      sizeField: str(asMap(b.size).field) || undefined,
+      metrics: asList(b.metrics).map((raw) => {
+        const metric = asMap(raw)
+        return {
+          field: str(metric.field),
+          aggregate: str(metric.aggregate) || undefined,
+          label: str(metric.label) || undefined,
+          draw: str(metric.draw) || undefined,
+          secondary: str(metric.axis) === 'secondary' || undefined,
+        }
+      }),
+      target: chart === 'gauge' ? readTarget(asMap(b.target)) : undefined,
+      map: chart === 'map'
+        ? {
+            layers: asList(m.layers).map(str),
+            geometry: str(m.geometry) || undefined,
+            lat: str(m.lat) || undefined,
+            lon: str(m.lon) || undefined,
+            toLat: str(m.toLat) || undefined,
+            toLon: str(m.toLon) || undefined,
+            basemap: str(basemap.url) || undefined,
+            attribution: str(basemap.attribution) || undefined,
+          }
+        : undefined,
     }
   }
   return { ...narrowing, kind, title: str(b.title) || str(b.text), dataset: str(b.dataset) || undefined }
+}
+
+/** A gauge's target, back from the file. */
+function readTarget(t: Record<string, Yaml>): ReportBlockInput['target'] {
+  const value = num(t.value)
+  if (value !== undefined) {
+    return { value, label: str(t.label) || undefined }
+  }
+  if (!str(t.field)) return undefined
+  return {
+    field: str(t.field),
+    aggregate: str(t.aggregate) || undefined,
+    label: str(t.label) || undefined,
+  }
 }
 
 /** A schedule. */

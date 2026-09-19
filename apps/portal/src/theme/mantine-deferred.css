@@ -27,3 +27,7 @@
 @import '@mantine/core/styles/Tooltip.layer.css';
 @import '@mantine/core/styles/SegmentedControl.layer.css';
 @import '@mantine/core/styles/NumberInput.layer.css';
+/* The builder's "stack the series" toggle, and the parameter editor's
+   "Required" and "Accepts several". This import was missing, so both of those
+   rendered as an unstyled browser checkbox with a Mantine label beside it. */
+@import '@mantine/core/styles/Checkbox.layer.css';

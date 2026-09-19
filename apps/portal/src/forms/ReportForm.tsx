@@ -8,11 +8,13 @@ import { Button, Select, Textarea, TextInput } from '@mantine/core'
 import { Field, fieldError } from '../components/form/Field'
 import { IdentifierField } from '../components/form/IdentifierField'
 import { BlockPalette, PALETTE } from '../components/builder/BlockPalette'
+import { FiltersEditor } from '../components/builder/FiltersEditor'
 import { LayoutCanvas } from '../components/builder/LayoutCanvas'
 import { BlockInspector } from '../components/builder/BlockInspector'
 import { OutputPicker } from './OutputPicker'
 import { useDatasets } from '../lib/useDatasets'
-import type { Dataset, Tile, TileKind } from '../lib/types'
+import { GRIDDED, METERED, PLOTS } from '../lib/types'
+import type { Dataset, ReportFilter, Tile, TileKind } from '../lib/types'
 import type { Template } from '../lib/templates'
 import { required, slug, toSlug } from '../lib/validators'
 import { useFocusMode } from '../lib/useSidebar'
@@ -27,7 +29,35 @@ interface Props {
 let seq = 0
 const nextId = () => `b${++seq}`
 
-const KINDS = new Set<string>(['stat', 'bar', 'line', 'table'])
+/* Taken from the palette rather than written out again: the palette is the
+   list of things a canvas can hold, and a second copy of it is a copy that
+   goes stale the first time somebody adds an entry to only one. */
+const KINDS = new Set<string>(PALETTE.map((p) => p.kind))
+
+/**
+ * How wide a block opens.
+ *
+ * A number, a pie and a donut are read as one figure and tile at a quarter; a
+ * table wants the full row; everything that has an axis needs width for it.
+ */
+/** The measures a metered kind opens with. */
+function seed(kind: TileKind, visible: Dataset['fields']): Tile['metrics'] {
+  const measures = visible.filter((f) => f.role === 'measure')
+  const first = measures[0]?.name
+  if (!first) return []
+  if (kind !== 'combo') return [{ field: first, aggregate: 'sum' }]
+  return [
+    { field: first, aggregate: 'sum', draw: 'bar' },
+    { field: measures[1]?.name ?? first, aggregate: 'sum', draw: 'line' },
+  ]
+}
+
+function spanFor(kind: TileKind): number {
+  if (kind === 'stat' || kind === 'gauge') return 3
+  if (kind === 'pie' || kind === 'donut') return 4
+  if (kind === 'table' || kind === 'map' || kind === 'treemap' || kind === 'heatmap') return 12
+  return 6
+}
 
 /**
  * A loaded report's blocks, as tiles the canvas can draw.
@@ -44,11 +74,18 @@ function tiles(blocks: ReportInput['blocks']): Tile[] {
       id: nextId(),
       kind,
       title: b.title ?? '',
-      span: kind === 'stat' ? 3 : kind === 'table' ? 12 : 6,
+      span: spanFor(kind),
       dataset: b.dataset,
       field: b.field,
       groupBy: b.groupBy,
       aggregate: b.aggregate as Tile['aggregate'],
+      series: b.series,
+      stacked: b.stacked,
+      xField: b.xField,
+      sizeField: b.sizeField,
+      map: b.map,
+      metrics: b.metrics as Tile['metrics'],
+      target: b.target as Tile['target'],
       columns: b.columns,
       filter: b.filter,
       sort: b.sort?.map((k) => ({ field: k.field, dir: k.dir as 'asc' | 'desc' | undefined })),
@@ -81,6 +118,11 @@ export function ReportForm({ onDone, onCancel, initial }: Props) {
   const { datasets } = useDatasets()
 
   const [blocks, setBlocks] = useState<Tile[]>(() => tiles(stored?.blocks ?? []))
+  /* Seeded from the stored report. These were neither written nor read before,
+     so a reopened report showed none of its own filters — and a save relied on
+     the carry-over to keep them, which meant they could be read but never
+     changed. */
+  const [filters, setFilters] = useState<ReportFilter[]>(() => stored?.filters ?? [])
   const [outputs, setOutputs] = useState<string[]>(['interactive'])
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
@@ -98,9 +140,13 @@ export function ReportForm({ onDone, onCancel, initial }: Props) {
         folder: value.folder, dataset: value.dataset, output: stored?.output,
         // The builder's own vocabulary, translated in one place — see
         // definitions.ts. A block that is a "bar" here is a chart there.
+        filters,
         blocks: blocks.map((b) => ({
           kind: b.kind, title: b.title, dataset: b.dataset,
           field: b.field, groupBy: b.groupBy, aggregate: b.aggregate,
+          series: b.series, stacked: b.stacked,
+          xField: b.xField, sizeField: b.sizeField, map: b.map,
+          metrics: b.metrics, target: b.target,
           columns: b.columns, filter: b.filter, sort: b.sort,
         })),
       }), initial), initial?.version)
@@ -128,14 +174,51 @@ export function ReportForm({ onDone, onCancel, initial }: Props) {
       id: nextId(),
       kind,
       title: preset.label,
-      span: kind === 'stat' ? 3 : kind === 'table' ? 12 : 6,
+      span: spanFor(kind),
       field: visible.find((f) => f.role === 'measure')?.name,
       groupBy: kind === 'stat' ? undefined : visible.find((f) => f.role === 'dimension')?.name,
       aggregate: 'sum',
+      // A plot needs two measures before it draws anything, so the second one
+      // is seeded too — with the same field when the dataset has only one,
+      // which is a chart the author can see and fix rather than a blank panel.
+      xField: PLOTS.includes(kind) ? visible.find((f) => f.role === 'measure')?.name : undefined,
+      sizeField: kind === 'bubble' ? visible.find((f) => f.role === 'measure')?.name : undefined,
+      // A map with no layers draws nothing and says so; seeding dots gets the
+      // author to something on screen, which is where the rest is obvious.
+      map: kind === 'map' ? { layers: ['scatter'] } : undefined,
+      // A combo needs two measures before it is a combo at all, and a funnel
+      // needs at least one stage — seeded so the canvas shows something the
+      // author can correct rather than an empty panel they have to guess at.
+      metrics: METERED.includes(kind) ? seed(kind, visible) : undefined,
+      target: kind === 'gauge'
+        ? { field: visible.find((f) => f.role === 'measure')?.name }
+        : undefined,
+      // A heatmap's second dimension is the other axis of the grid, not an
+      // optional split, so it is seeded rather than left for the inspector.
+      series: GRIDDED.includes(kind)
+        ? visible.filter((f) => f.role === 'dimension')[1]?.name
+          ?? visible.find((f) => f.role === 'dimension')?.name
+        : undefined,
       columns: kind === 'table' ? visible.slice(0, 5).map((f) => f.name) : undefined,
     }
     setBlocks((bs) => [...bs, block])
     setSelectedId(block.id)   // new blocks open their settings, so nothing is a mystery
+  }
+
+  /* Every dataset the report actually reads, default first. A filter binds a
+     field per dataset, so the editor needs the set rather than just the one
+     the toolbar names. */
+  const reads = (): Dataset[] => {
+    const names = [values.dataset, ...blocks.map((b) => b.dataset ?? '')]
+    const seen = new Set<string>()
+    const out: Dataset[] = []
+    for (const name of names) {
+      if (!name || seen.has(name)) continue
+      seen.add(name)
+      const d = datasets.find((x) => x.name === name)
+      if (d) out.push(d)
+    }
+    return out
   }
 
   const patch = (p: Partial<Tile>) =>
@@ -267,6 +350,16 @@ export function ReportForm({ onDone, onCancel, initial }: Props) {
                 <Field label="Outputs"
                   help="One layout, several outputs. Add more later without rebuilding.">
                   <OutputPicker value={outputs} onChange={setOutputs} compact />
+                </Field>
+
+                {/* The report's shared filters, which every block reads unless
+                    it is bound to a dataset they do not narrow. Editable here
+                    for the first time: they were stored and carried but never
+                    shown, so a report could be given filters in YAML and then
+                    never changed from the builder. */}
+                <Field label="Filters" required={false}
+                  help="One bar above the report. Each says what it narrows in every dataset.">
+                  <FiltersEditor filters={filters} datasets={reads()} onChange={setFilters} />
                 </Field>
 
                 {blocks.length > 0 && (

@@ -78,6 +78,55 @@ ok('Delete removes the selected block',
 ok('deselecting returns the inspector to report settings',
   await p.locator('[data-testid=inspector] h2:has-text("Report")').isVisible())
 
+/* -- Every chart the palette offers ---------------------------------------- */
+
+/*
+ * The canvas draws blocks with the components that will render them, and the
+ * ones it has no component for used to draw `null` — an empty cell where the
+ * author had just dropped a block. Every palette entry has to put something on
+ * the canvas, or the palette is offering blocks that vanish.
+ */
+const kinds = await p.locator('[data-testid=block-palette] button').evaluateAll(
+  (bs) => bs.map((b) => b.getAttribute('aria-label')?.replace(/^Add /, '')))
+ok(`the palette offers every chart (${kinds.length})`, kinds.length >= 16)
+
+for (const label of ['Pie chart', 'Funnel', 'Map', 'Treemap', 'Heatmap', 'Gauge', 'Bubble']) {
+  const before = await p.locator('[data-testid=layout-canvas] > div').count()
+  await p.click(`[data-testid=block-palette] button[aria-label="Add ${label}"]`)
+  await until(() => p.locator('[data-testid=layout-canvas] > div').count(), before + 1)
+
+  const cell = p.locator('[data-testid=layout-canvas] > div').nth(before)
+  const box = await cell.boundingBox()
+  ok(`${label} draws something on the canvas`,
+    box !== null && box.height > 40 && (await cell.innerText()).trim().length > 0)
+  await p.keyboard.press('Delete')
+  await until(() => p.locator('[data-testid=layout-canvas] > div').count(), before)
+}
+
+/* -- The report's filters -------------------------------------------------- */
+
+/*
+ * These were stored and carried but never editable: a report could be given
+ * filters in YAML and then never changed from the builder, and the form could
+ * not create one at all.
+ */
+await p.click('[data-testid=layout-canvas]', { position: { x: 5, y: 5 } })
+ok('the inspector offers the report filters',
+  await p.locator('[data-testid=report-filters]').isVisible())
+
+await p.click('[data-testid=add-filter]')
+await until(() => p.locator('[aria-label="Filter 1 label"]').count(), 1)
+await p.fill('[aria-label="Filter 1 label"]', 'Period')
+ok('the name follows the label until somebody types one',
+  (await p.inputValue('[aria-label="Filter 1 name"]')) === 'period')
+
+// A filter says what it narrows per dataset, because a report's blocks may
+// read different ones.
+const binds = await p.locator('[data-testid=report-filters] [aria-label^="Filter 1 in"]').count()
+ok(`a field picker per dataset the report reads (${binds})`, binds >= 1)
+
+await p.screenshot({ path: `${process.env.SHOT_DIR ?? 'shots'}/19-report-filters.png` })
+
 await p.screenshot({ path: `${process.env.SHOT_DIR ?? 'shots'}/18-report-editor.png` })
 console.log(errs.length ? '\nERRORS:\n' + errs.join('\n') : '\nno console errors')
 console.log(fails ? `${fails} failed` : 'all passed')

@@ -339,3 +339,275 @@ test('a dataset with no parameters says nothing about them', () => {
   })
   expect(emitted).not.toContain('params')
 })
+
+/*
+ * The chart types past bar and line.
+ *
+ * The round trip is the part that breaks silently: a block written correctly
+ * and read back as something else looks like the author changed it, and the
+ * builder is where they will next hit save.
+ */
+test('a stacked chart carries its series and its stacking', () => {
+  const yaml = report({
+    name: 'R', slug: 'r', dataset: 'invoices',
+    blocks: [{
+      kind: 'bar', title: 'By month', field: 'total', aggregate: 'sum',
+      groupBy: 'issued_at', grain: 'month', series: 'status', stacked: true,
+    }],
+  })
+  expect(yaml).toContain('series:\n            field: status')
+  expect(yaml).toContain('stacked: true')
+
+  const loaded = readReport(yaml)
+  // Nothing written was left unread: a drop here is a field the builder would
+  // silently delete the next time somebody saved.
+  expect(loaded.drops).toEqual([])
+  const back = loaded.input.blocks[0]
+  expect(back?.kind).toBe('bar')
+  expect(back?.series).toBe('status')
+  expect(back?.stacked).toBe(true)
+})
+
+test('a plot writes its horizontal measure as xValue, not as x', () => {
+  // x is a dimension everywhere else in the format — what each dot *is*. One
+  // field cannot be both that and a number, and letting it try is how a date
+  // grain ends up on a measure.
+  const yaml = report({
+    name: 'R', slug: 'r', dataset: 'invoices',
+    blocks: [{
+      kind: 'bubble', title: 'Paid against billed', groupBy: 'customer_name',
+      xField: 'paid', field: 'total', sizeField: 'count', aggregate: 'sum',
+      // A grain the builder left behind from another kind must not survive.
+      grain: 'month',
+    }],
+  })
+  expect(yaml).toContain('chart: bubble')
+  expect(yaml).toContain('xValue:\n            field: paid')
+  expect(yaml).not.toContain('grain: month')
+
+  const loaded = readReport(yaml)
+  expect(loaded.drops).toEqual([])
+  const back = loaded.input.blocks[0]
+  expect(back?.kind).toBe('bubble')
+  expect(back?.xField).toBe('paid')
+  expect(back?.sizeField).toBe('count')
+})
+
+test('a map carries its layers and geography', () => {
+  const yaml = report({
+    name: 'R', slug: 'r', dataset: 'depots',
+    blocks: [{
+      kind: 'map', title: 'Depots', groupBy: 'region', field: 'parcels', aggregate: 'sum',
+      map: { layers: ['polygon', 'scatter'], geometry: 'shape', lat: 'lat', lon: 'lon' },
+    }],
+  })
+  expect(yaml).toContain('chart: map')
+  expect(yaml).toContain('geometry: shape')
+
+  const loaded = readReport(yaml)
+  expect(loaded.drops).toEqual([])
+  const back = loaded.input.blocks[0]
+  expect(back?.kind).toBe('map')
+  expect(back?.map?.layers).toEqual(['polygon', 'scatter'])
+  expect(back?.map?.lat).toBe('lat')
+})
+
+test('a basemap is written only with the credit line that has to go with it', () => {
+  // The server refuses a tile template with no attribution, because every tile
+  // source requires one be displayed. Emitting half of it here would turn that
+  // into a save that fails with nothing on screen having asked for it.
+  const withCredit = report({
+    name: 'R', slug: 'r', dataset: 'depots',
+    blocks: [{
+      kind: 'map', title: 'Depots', groupBy: 'region', field: 'parcels',
+      map: {
+        layers: ['scatter'], lat: 'lat', lon: 'lon',
+        basemap: 'https://tile.example.org/{z}/{x}/{y}.png',
+        attribution: '© OpenStreetMap contributors',
+      },
+    }],
+  })
+  expect(withCredit).toContain('url: https://tile.example.org/{z}/{x}/{y}.png')
+  expect(withCredit).toContain('attribution: © OpenStreetMap contributors')
+
+  const none = report({
+    name: 'R', slug: 'r', dataset: 'depots',
+    blocks: [{
+      kind: 'map', title: 'Depots', groupBy: 'region', field: 'parcels',
+      map: { layers: ['scatter'], lat: 'lat', lon: 'lon' },
+    }],
+  })
+  expect(none).not.toContain('basemap')
+})
+
+test('a map block is the only kind that writes a map', () => {
+  const yaml = report({
+    name: 'R', slug: 'r', dataset: 'invoices',
+    blocks: [{
+      kind: 'bar', title: 'Billed', field: 'total', groupBy: 'status',
+      // Left over from a block that was a map a moment ago. The union is flat,
+      // so only the kind decides which fields are written.
+      map: { layers: ['scatter'], lat: 'lat', lon: 'lon' },
+    }],
+  })
+  expect(yaml).not.toContain('lat')
+})
+
+test('a combo writes its measures and how each is drawn', () => {
+  const yaml = report({
+    name: 'R', slug: 'r', dataset: 'invoices',
+    blocks: [{
+      kind: 'combo', title: 'Billed and margin', groupBy: 'issued_at', grain: 'month',
+      metrics: [
+        { field: 'total', aggregate: 'sum', label: 'Billed', draw: 'bar' },
+        { field: 'margin', aggregate: 'avg', label: 'Margin', draw: 'line', secondary: true },
+      ],
+    }],
+  })
+  expect(yaml).toContain('chart: combo')
+  expect(yaml).toContain('draw: line')
+  // Per measure and never a flag on the chart — two scales on one plot is the
+  // most-flagged mistake in charting, so it is reachable and never accidental.
+  expect(yaml).toContain('axis: secondary')
+  // Metrics replace y rather than joining it.
+  expect(yaml).not.toContain('\n          y:')
+
+  const loaded = readReport(yaml)
+  expect(loaded.drops).toEqual([])
+  const back = loaded.input.blocks[0]
+  expect(back?.kind).toBe('combo')
+  expect(back?.metrics?.[1]?.secondary).toBe(true)
+  expect(back?.metrics?.[1]?.draw).toBe('line')
+})
+
+test('a funnel of columns has no x to bucket by', () => {
+  // Its stages are the measures, in the order they are listed. The server
+  // refuses an x here, so writing one would be a save that fails.
+  const yaml = report({
+    name: 'R', slug: 'r', dataset: 'invoices',
+    blocks: [{
+      kind: 'funnel', title: 'Conversion',
+      // Left over from another kind the block used to be.
+      groupBy: 'status',
+      metrics: [
+        { field: 'quoted', label: 'Quoted' },
+        { field: 'total', label: 'Paid' },
+      ],
+    }],
+  })
+  expect(yaml).toContain('chart: funnel')
+  expect(yaml).not.toContain('x:')
+
+  const back = readReport(yaml).input.blocks[0]
+  expect(back?.metrics?.map((m) => m.label)).toEqual(['Quoted', 'Paid'])
+})
+
+test('a gauge writes one kind of target, never both', () => {
+  const fixed = report({
+    name: 'R', slug: 'r', dataset: 'invoices',
+    blocks: [{
+      kind: 'gauge', title: 'Against plan', field: 'total', aggregate: 'sum',
+      target: { value: 100000, label: 'Plan' },
+    }],
+  })
+  expect(fixed).toContain('value: 100000')
+  expect(fixed).not.toContain('target:\n            field')
+
+  const measured = report({
+    name: 'R', slug: 'r', dataset: 'invoices',
+    blocks: [{
+      kind: 'gauge', title: 'Against quota', field: 'total',
+      target: { field: 'quota', aggregate: 'sum' },
+    }],
+  })
+  expect(measured).toContain('field: quota')
+
+  const back = readReport(fixed).input.blocks[0]
+  expect(back?.target?.value).toBe(100000)
+  expect(back?.target?.field).toBeUndefined()
+})
+
+test('metrics are written only by the kinds that read them', () => {
+  const yaml = report({
+    name: 'R', slug: 'r', dataset: 'invoices',
+    blocks: [{
+      kind: 'bar', title: 'Billed', field: 'total', groupBy: 'status',
+      // Left behind by a block that was a combo a moment ago. The union is
+      // flat, so only the kind decides what is written.
+      metrics: [{ field: 'margin', draw: 'line' }],
+      target: { value: 10 },
+    }],
+  })
+  expect(yaml).not.toContain('metrics')
+  expect(yaml).not.toContain('target')
+})
+
+/*
+ * Report filters.
+ *
+ * These were neither written nor read for as long as the builder existed, and
+ * `drops` did not cover them — so opening a report that had filters and saving
+ * it deleted every one of them, silently, and they are the whole interactive
+ * surface of the report.
+ */
+test('a report keeps its filters when it is opened and saved again', () => {
+  const stored = `apiVersion: cronos.dev/v1
+kind: Report
+metadata: {name: r, title: R}
+spec:
+  dataset: invoices
+  filters:
+    - name: period
+      label: Period
+      type: date
+      bind: {invoices: issued_at, shipments: dispatched_at}
+    - name: status
+      label: Status
+      type: enum
+      values: [sent, overdue, paid]
+      bind: {invoices: status}
+  outputs:
+    - name: interactive
+      renderer: interactive
+      layout:
+        - kind: stat
+          label: Billed
+          value: {field: total, aggregate: sum}
+`
+  const back = readReport(stored)
+  expect(back.drops).toEqual([])
+  expect(back.input.filters?.map((f) => f.name)).toEqual(['period', 'status'])
+
+  const resaved = report(back.input)
+  expect(resaved).toContain('name: period')
+  // The bind map is a field per dataset, because a report's blocks may read
+  // different ones and guessing is how a filter applies to half a screen.
+  expect(resaved).toContain('invoices: issued_at')
+  expect(resaved).toContain('shipments: dispatched_at')
+  expect(resaved).toContain('values:')
+})
+
+test('values are written only on the type that takes them', () => {
+  // The server refuses a non-enum filter that lists values, so writing them
+  // would be a save that fails for a reason the form never showed.
+  const yaml = report({
+    name: 'R', slug: 'r', dataset: 'invoices',
+    filters: [{ name: 'period', type: 'date', values: ['left', 'over'], bind: { invoices: 'issued_at' } }],
+    blocks: [{ kind: 'stat', title: 'Billed', field: 'total' }],
+  })
+  expect(yaml).toContain('name: period')
+  expect(yaml).not.toContain('left')
+})
+
+test('a half-finished filter is written out, not quietly dropped', () => {
+  // The server refuses a filter bound to nothing — it is a control that does
+  // nothing, shown to somebody who will reasonably expect it to work — and it
+  // says so in a sentence naming what is missing. Deleting the author's
+  // half-finished filter on save and saying nothing is the alternative.
+  const yaml = report({
+    name: 'R', slug: 'r', dataset: 'invoices',
+    filters: [{ name: 'half', type: 'string', bind: {} }],
+    blocks: [{ kind: 'stat', title: 'Billed', field: 'total' }],
+  })
+  expect(yaml).toContain('name: half')
+})

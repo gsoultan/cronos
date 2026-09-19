@@ -71,7 +71,7 @@ done
 # check that only ever holds the permitted one proves half of it.
 VIEWER="$(./bin/cronos-token -audience portal -role viewer -org acme -project finance -subject sam)"
 BASE="http://localhost:${WEB_PORT}" API="http://localhost:${PORT}" TOKEN="$TOKEN" VIEWER="$VIEWER" DELIVERIES="$CRONOS_DELIVERIES" \
-  node apps/portal/scripts/live-portal-check.mjs
+  bun apps/portal/scripts/live-portal-check.mjs
 
 # And again with no token baked in, so the portal has to sign somebody in.
 #
@@ -86,4 +86,4 @@ for _ in $(seq 1 60); do
   curl -sf -o /dev/null "http://localhost:${WEB_PORT}/" && break
   sleep 0.5
 done
-BASE="http://localhost:${WEB_PORT}" node apps/portal/scripts/live-signin-check.mjs
+BASE="http://localhost:${WEB_PORT}" bun apps/portal/scripts/live-signin-check.mjs

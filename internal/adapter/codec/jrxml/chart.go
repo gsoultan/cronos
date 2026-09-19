@@ -35,18 +35,20 @@ func (t *translation) chart(c placedChart) (definition.Block, bool) {
 		return definition.Block{}, false
 	}
 	if c.from == "pieChart" || c.from == "pie3DChart" {
-		// Converted rather than dropped. The binding is the valuable part and it
-		// is identical; the shape is a choice the author can remake in the
-		// builder, and a missing chart is harder to notice than a changed one.
-		t.found.addf(Review, c.from,
-			"cronos has no pie chart, so %q was imported as a bar chart of the same values",
-			t.chartTitle(c))
+		// A pie keys rather than categorises, so there is no date to bucket.
+		// This used to also report the chart as changed, because cronos drew
+		// every chart as a bar and a pie arrived as one; it draws pies now, so
+		// the shape survives the import and there is nothing to warn about.
 		x.Grain = ""
 	}
 
 	blk := definition.Block{
 		Kind: definition.ChartBlock, Chart: c.kind,
 		Title: t.chartTitle(c), X: x, Y: y, Series: series,
+		// Only where the type can carry it. Jasper has a stacked line chart;
+		// cronos refuses one, because a stacked line is a shape whose top edge
+		// reads as a total nobody measured.
+		Stacked: c.stacked && c.kind.Stacks() && series.Field != "",
 	}
 	return blk, true
 }
