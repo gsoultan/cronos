@@ -1,6 +1,9 @@
-import { MultiSelect, Select, TextInput } from '@mantine/core'
+import { Checkbox, MultiSelect, NumberInput, Select, TextInput } from '@mantine/core'
 import { Field } from '../form/Field'
-import type { Dataset, Field as FieldDef, Tile } from '../../lib/types'
+import { CATEGORICAL, FOLDED, GRIDDED, METERED, MULTI_SERIES, PLOTS, STACKABLE } from '../../lib/types'
+import type {
+  Dataset, Field as FieldDef, Tile, TileMap, TileMetric, TileTarget,
+} from '../../lib/types'
 
 interface Props {
   block: Tile
@@ -22,6 +25,19 @@ const AGGREGATES = [
 ]
 
 const opts = (fs: FieldDef[]) => fs.map((f) => ({ value: f.name, label: f.label }))
+
+/* Layers rather than a map type per combination. "Shade the regions and put a
+   dot on each depot" is the question authors actually ask, and a type per
+   combination is a list nobody can hold. */
+const LAYERS = [
+  { value: 'polygon', label: 'Shaded regions' },
+  { value: 'heat', label: 'Density' },
+  { value: 'bubble', label: 'Bubbles' },
+  { value: 'scatter', label: 'Dots' },
+  { value: 'flow', label: 'Flows' },
+]
+
+const is = (kinds: Tile['kind'][], kind: Tile['kind']) => kinds.includes(kind)
 
 /** Twelve columns, expressed as the four splits anyone actually wants. */
 const WIDTHS = [
@@ -100,7 +116,7 @@ export function BlockInspector({
         </div>
       </Field>
 
-      {block.kind !== 'table' && (
+      {block.kind !== 'table' && !is(METERED, block.kind) && (
         <>
           <Field label="Measure" help="The number this block is about.">
             <Select data={opts(measures)} value={block.field ?? null} allowDeselect={false}
@@ -115,12 +131,71 @@ export function BlockInspector({
         </>
       )}
 
-      {(block.kind === 'bar' || block.kind === 'line') && (
-        <Field label="Grouped by" help="One bar or point per value of this field.">
+      {is(METERED, block.kind) && (
+        <Metrics kind={block.kind} metrics={block.metrics ?? []} measures={measures}
+          onChange={(metrics) => onChange({ metrics })} />
+      )}
+
+      {is(FOLDED, block.kind) && (
+        <TargetField target={block.target ?? {}} measures={measures}
+          onChange={(patch) => onChange({ target: { ...block.target, ...patch } })} />
+      )}
+
+      {(is(CATEGORICAL, block.kind) || is(PLOTS, block.kind) || block.kind === 'map'
+        || block.kind === 'combo') && (
+        <Field label={block.kind === 'map' ? 'Labelled by' : 'Grouped by'}
+          help={groupHelp(block.kind)}>
           <Select data={opts(dimensions)} value={block.groupBy ?? null} allowDeselect={false}
             placeholder="Choose a field"
             onChange={(v) => onChange({ groupBy: v ?? undefined })} />
         </Field>
+      )}
+
+      {/* A scatter's horizontal axis is a number, not a bucket — which is the
+          one place the shared "Grouped by" above means something different:
+          there it names what each dot *is*, and this names where it sits. */}
+      {is(PLOTS, block.kind) && (
+        <Field label="Horizontal measure" help="The number on the bottom axis.">
+          <Select data={opts(measures)} value={block.xField ?? null} allowDeselect={false}
+            placeholder={measures.length ? 'Choose a measure' : 'This dataset has no measures'}
+            disabled={measures.length === 0}
+            onChange={(v) => onChange({ xField: v ?? undefined })} />
+        </Field>
+      )}
+
+      {block.kind === 'bubble' && (
+        <Field label="Sized by" help="Each bubble's area. Use a scatter if every dot is alike.">
+          <Select data={opts(measures)} value={block.sizeField ?? null} allowDeselect={false}
+            placeholder="Choose a measure"
+            onChange={(v) => onChange({ sizeField: v ?? undefined })} />
+        </Field>
+      )}
+
+      {is(MULTI_SERIES, block.kind) && (
+        <Field label={is(GRIDDED, block.kind) ? 'Down the side' : 'Split by'}
+          required={is(GRIDDED, block.kind)}
+          help={seriesHelp(block.kind)}>
+          <Select data={opts(dimensions)} value={block.series ?? null}
+            clearable={!is(GRIDDED, block.kind)}
+            placeholder={is(GRIDDED, block.kind) ? 'Choose a field' : 'One series'}
+            onChange={(v) => onChange({
+              series: v ?? undefined,
+              // A stack of one series is the same drawing, so dropping the
+              // split drops the stacking with it rather than leaving a
+              // setting that quietly does nothing.
+              stacked: v ? block.stacked : undefined,
+            })} />
+        </Field>
+      )}
+
+      {is(STACKABLE, block.kind) && block.series && (
+        <Checkbox label="Stack the series" checked={block.stacked ?? false}
+          onChange={(e) => onChange({ stacked: e.currentTarget.checked || undefined })} />
+      )}
+
+      {block.kind === 'map' && (
+        <MapFields map={block.map ?? {}} dimensions={dimensions}
+          onChange={(patch) => onChange({ map: { ...block.map, ...patch } })} />
       )}
 
       {block.kind === 'table' && (
@@ -180,6 +255,217 @@ export function BlockInspector({
         this block.
       </p>
     </div>
+  )
+}
+
+function seriesHelp(kind: Tile['kind']): string {
+  if (is(GRIDDED, kind)) return 'The other axis of the grid. A heatmap needs both.'
+  if (kind === 'treemap') return 'Groups the rectangles, drawing one box per value.'
+  return 'Draws one series per value of this field.'
+}
+
+/**
+ * The measures a combo or a funnel reads.
+ *
+ * A list rather than one field, because that is what these charts are: a combo
+ * is bars and a line against the same buckets, and a funnel's stages are very
+ * often separate columns rather than rows of a stage dimension.
+ */
+function Metrics({ kind, metrics, measures, onChange }: {
+  kind: Tile['kind']
+  metrics: TileMetric[]
+  measures: FieldDef[]
+  onChange: (metrics: TileMetric[]) => void
+}) {
+  const combo = kind === 'combo'
+  const at = (i: number, patch: Partial<TileMetric>) =>
+    onChange(metrics.map((m, j) => (j === i ? { ...m, ...patch } : m)))
+
+  return (
+    <Field label={combo ? 'Measures' : 'Stages'} data-testid="metrics"
+      help={combo
+        ? 'Drawn together against the same buckets.'
+        : 'One stage per measure, in this order.'}>
+      <div className="grid gap-2">
+        {metrics.map((m, i) => (
+          <div key={`${m.field}-${i}`} className="grid gap-1.5 rounded-md border border-line p-2">
+            <div className="flex items-center gap-2">
+              <Select data={opts(measures)} value={m.field || null} allowDeselect={false}
+                className="min-w-0 flex-1" aria-label={`Measure ${i + 1}`}
+                placeholder="Choose a measure"
+                onChange={(v) => at(i, { field: v ?? '' })} />
+              <Select data={AGGREGATES} value={m.aggregate ?? 'sum'} allowDeselect={false} w={120}
+                aria-label={`Measure ${i + 1} summarised as`}
+                onChange={(v) => at(i, { aggregate: (v ?? 'sum') as TileMetric['aggregate'] })} />
+              <button type="button" aria-label={`Remove measure ${i + 1}`}
+                onClick={() => onChange(metrics.filter((_, j) => j !== i))}
+                className="shrink-0 cursor-pointer text-small text-ink-muted underline">Remove</button>
+            </div>
+            <TextInput size="xs" value={m.label ?? ''} placeholder="Label (optional)"
+              aria-label={`Measure ${i + 1} label`}
+              onChange={(e) => at(i, { label: e.currentTarget.value || undefined })} />
+            {combo && (
+              <div className="flex items-center gap-3">
+                <Select data={DRAWS} value={m.draw ?? 'bar'} allowDeselect={false} w={110}
+                  aria-label={`Measure ${i + 1} drawn as`}
+                  onChange={(v) => at(i, { draw: (v ?? 'bar') as TileMetric['draw'] })} />
+                {/* Reachable, and never a default. Two scales on one plot is
+                    the most-flagged mistake in charting: where they line up is
+                    a choice nobody made, so the chart shows a correlation that
+                    is not in the data. */}
+                <Checkbox size="xs" label="Own scale" checked={m.secondary ?? false}
+                  onChange={(e) => at(i, { secondary: e.currentTarget.checked || undefined })} />
+              </div>
+            )}
+          </div>
+        ))}
+        <button type="button" data-testid="add-metric"
+          disabled={measures.length === 0}
+          onClick={() => onChange([...metrics, {
+            field: measures[0]?.name ?? '', aggregate: 'sum',
+            draw: combo ? (metrics.length === 0 ? 'bar' : 'line') : undefined,
+          }])}
+          className="cursor-pointer justify-self-start text-small text-ink-muted underline
+                     hover:text-ink disabled:cursor-default disabled:opacity-50">
+          Add a measure
+        </button>
+      </div>
+    </Field>
+  )
+}
+
+/** What a gauge reads its value against: a column, or a fixed number. */
+function TargetField({ target, measures, onChange }: {
+  target: TileTarget
+  measures: FieldDef[]
+  onChange: (patch: Partial<TileTarget>) => void
+}) {
+  const fixed = target.value !== undefined
+  return (
+    <>
+      <Field label="Compared against">
+        {/* Both are ordinary: "this month's quota" is a column, and "95%" is a
+            number somebody agreed once and does not want a table for. */}
+        <Select data={TARGETS} value={fixed ? 'value' : 'field'} allowDeselect={false}
+          onChange={(v) => onChange(v === 'value'
+            ? { value: 0, field: undefined }
+            : { value: undefined, field: measures[0]?.name })} />
+      </Field>
+      {fixed ? (
+        <Field label="Target">
+          <NumberInput value={target.value ?? 0} data-testid="target-value"
+            onChange={(v) => onChange({ value: typeof v === 'number' ? v : Number(v) || 0 })} />
+        </Field>
+      ) : (
+        <Field label="Target measure">
+          <Select data={opts(measures)} value={target.field ?? null} allowDeselect={false}
+            placeholder="Choose a measure"
+            onChange={(v) => onChange({ field: v ?? undefined })} />
+        </Field>
+      )}
+      <Field label="Target label" required={false}>
+        <TextInput value={target.label ?? ''} placeholder="Target"
+          onChange={(e) => onChange({ label: e.currentTarget.value || undefined })} />
+      </Field>
+    </>
+  )
+}
+
+const DRAWS = [
+  { value: 'bar', label: 'Bars' },
+  { value: 'line', label: 'Line' },
+]
+
+const TARGETS = [
+  { value: 'field', label: 'A measure' },
+  { value: 'value', label: 'A fixed number' },
+]
+
+function groupHelp(kind: Tile['kind']): string {
+  if (kind === 'map') return 'Names each region or point, in its tooltip and its legend.'
+  if (is(PLOTS, kind)) return 'One dot per value of this field.'
+  if (is(GRIDDED, kind)) return 'Along the top of the grid.'
+  if (kind === 'waterfall') return 'One step per value, in this order.'
+  return 'One bar, point or slice per value of this field.'
+}
+
+/**
+ * The geography a map reads.
+ *
+ * Its own component because it is six controls that only one kind shows, and
+ * inlining them put the inspector's single `return` past the point anybody
+ * could see which branch they were in.
+ */
+function MapFields({ map, dimensions, onChange }: {
+  map: TileMap
+  dimensions: FieldDef[]
+  onChange: (patch: Partial<TileMap>) => void
+}) {
+  const layers = map.layers ?? []
+  const needsPoints = layers.some((l) => l !== 'polygon')
+
+  return (
+    <>
+      <Field label="Layers" help="Drawn bottom to top, in the order you pick them.">
+        <MultiSelect data={LAYERS} value={layers} clearable
+          placeholder="Choose what to draw"
+          onChange={(v) => onChange({ layers: v })} />
+      </Field>
+
+      {layers.includes('polygon') && (
+        <Field label="Region shapes"
+          help="A field holding GeoJSON — ST_AsGeoJSON in PostGIS or DuckDB spatial.">
+          <Select data={opts(dimensions)} value={map.geometry ?? null} allowDeselect={false}
+            placeholder="Choose a field"
+            onChange={(v) => onChange({ geometry: v ?? undefined })} />
+        </Field>
+      )}
+
+      {needsPoints && (
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Latitude">
+            <Select data={opts(dimensions)} value={map.lat ?? null} allowDeselect={false}
+              placeholder="Choose a field" onChange={(v) => onChange({ lat: v ?? undefined })} />
+          </Field>
+          <Field label="Longitude">
+            <Select data={opts(dimensions)} value={map.lon ?? null} allowDeselect={false}
+              placeholder="Choose a field" onChange={(v) => onChange({ lon: v ?? undefined })} />
+          </Field>
+        </div>
+      )}
+
+      {layers.includes('flow') && (
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Ends at latitude">
+            <Select data={opts(dimensions)} value={map.toLat ?? null} allowDeselect={false}
+              placeholder="Choose a field" onChange={(v) => onChange({ toLat: v ?? undefined })} />
+          </Field>
+          <Field label="Ends at longitude">
+            <Select data={opts(dimensions)} value={map.toLon ?? null} allowDeselect={false}
+              placeholder="Choose a field" onChange={(v) => onChange({ toLon: v ?? undefined })} />
+          </Field>
+        </div>
+      )}
+
+      {/* Empty by default, and it stays that way unless somebody types a URL.
+          A basemap is a request from the reader's browser to a third party we
+          would have chosen for them, and on OpenStreetMap's own servers it is
+          against the tile usage policy at any volume. */}
+      <Field label="Basemap tiles" required={false}
+        help="An XYZ template. Leave empty to draw the data on its own.">
+        <TextInput value={map.basemap ?? ''} data-testid="basemap-url"
+          placeholder="https://tile.example.org/{z}/{x}/{y}.png"
+          classNames={{ input: 'font-mono text-caption' }}
+          onChange={(e) => onChange({ basemap: e.currentTarget.value || undefined })} />
+      </Field>
+
+      {map.basemap && (
+        <Field label="Attribution" help="Every tile source requires its credit line be shown.">
+          <TextInput value={map.attribution ?? ''} placeholder="© OpenStreetMap contributors"
+            onChange={(e) => onChange({ attribution: e.currentTarget.value || undefined })} />
+        </Field>
+      )}
+    </>
   )
 }
 

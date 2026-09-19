@@ -16,6 +16,12 @@ type Document struct {
 	Page    Page     `json:"page"`
 	Columns []Column `json:"columns"`
 	Groups  []Group  `json:"groups"`
+	// Charts are drawn above the table, in the order the layout listed them.
+	//
+	// Charts used to be dropped from a paginated output entirely: a report
+	// that had them rendered a PDF that simply did not, with nothing saying
+	// so, and the format documentation claimed they came out as images.
+	Charts []Chart `json:"charts,omitempty"`
 }
 
 // Validate reports what would otherwise become a wrong document rather than a
@@ -26,14 +32,25 @@ type Document struct {
 // left, so an amount lands under "Status" and the statement is confidently
 // wrong. Nothing downstream can detect that; it has to be caught here.
 func (d Document) Validate() error {
-	if len(d.Columns) == 0 {
-		return fmt.Errorf("%w: no columns", ErrInvalid)
-	}
-	if len(d.Groups) == 0 {
-		return fmt.Errorf("%w: no groups", ErrInvalid)
+	// A document of charts and no table is a legitimate paginated report — a
+	// dashboard on paper. Columns and groups are required only when there is
+	// nothing else on the page, because a document with neither is one that
+	// renders blank.
+	if len(d.Charts) == 0 {
+		if len(d.Columns) == 0 {
+			return fmt.Errorf("%w: no columns", ErrInvalid)
+		}
+		if len(d.Groups) == 0 {
+			return fmt.Errorf("%w: no groups", ErrInvalid)
+		}
 	}
 	if err := d.Page.validate(); err != nil {
 		return err
+	}
+	for _, c := range d.Charts {
+		if err := c.validate(); err != nil {
+			return err
+		}
 	}
 	return d.validateRows()
 }

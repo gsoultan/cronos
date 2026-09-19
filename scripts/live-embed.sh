@@ -48,4 +48,4 @@ done
 CRONOS_BASE="http://localhost:${PORT}" \
 CRONOS_TOKEN="$(./bin/cronos-token -scope customer_id=c-1 -report billing-summary)" \
 CRONOS_TOKEN_C2="$(./bin/cronos-token -scope customer_id=c-2 -report billing-summary)" \
-  node packages/embed/scripts/live-check.mjs
+  bun packages/embed/scripts/live-check.mjs

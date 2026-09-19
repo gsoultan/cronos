@@ -65,44 +65,6 @@ func (b Builder) statSQL(ds definition.Dataset, blk definition.Block, inner stri
 		fn, field, inner, blockAlias, where(blk.Filter)), nil
 }
 
-// chartSQL buckets and folds.
-func (b Builder) chartSQL(ds definition.Dataset, blk definition.Block, inner string) (string, error) {
-	fn, err := aggregateOf(ds, blk.Y)
-	if err != nil {
-		return "", err
-	}
-	y, err := column(ds, blk.Y.Field)
-	if err != nil {
-		return "", err
-	}
-	x, err := column(ds, blk.X.Field)
-	if err != nil {
-		return "", err
-	}
-	if blk.X.Grain != "" {
-		if x, err = b.dialect.Bucket(blk.X.Grain, x); err != nil {
-			return "", err
-		}
-	}
-	/*
-	   The expression again in GROUP BY, not an ordinal.
-
-	   This was `GROUP BY 1` and the comment beside it said every dialect here
-	   accepts the ordinal, which was true of the three that existed. SQL Server
-	   does not: it reads the 1 as a constant and answers "each GROUP BY
-	   expression must contain at least one column that is not an outer
-	   reference", which is a sentence nobody would connect to this line.
-
-	   The worry the ordinal avoided was having the bucket written in two places
-	   that could drift apart. That does not apply when both are the same `x`:
-	   there is one expression, interpolated twice. `ORDER BY 1` stays, because
-	   an ordinal in ORDER BY is accepted everywhere including here.
-	*/
-	return fmt.Sprintf(
-		"SELECT %s AS bucket, %s(%s) AS value\nFROM (\n%s\n) AS %s%s\nGROUP BY %s\nORDER BY 1",
-		x, fn, y, inner, blockAlias, where(blk.Filter), x), nil
-}
-
 // tableSQL selects the named columns, ordered and capped.
 func (b Builder) tableSQL(ds definition.Dataset, blk definition.Block, inner string) (string, error) {
 	cols := make([]string, 0, len(blk.Columns))
@@ -120,8 +82,13 @@ func (b Builder) tableSQL(ds definition.Dataset, blk definition.Block, inner str
 	// The limit is a literal, not an argument. It is an integer from a
 	// definition rather than a caller, and several databases will not plan a
 	// parameterised LIMIT as well as a constant one.
-	return fmt.Sprintf("SELECT %s\nFROM (\n%s\n) AS %s%s%s\nLIMIT %d",
-		strings.Join(cols, ", "), inner, blockAlias, where(blk.Filter), order, blk.Rows()), nil
+	//
+	// Asked of the dialect rather than written here: LIMIT is a trailing
+	// clause in three of the four and does not exist in the fourth, where this
+	// produced "Incorrect syntax near 'LIMIT'" against a real SQL Server.
+	top, tail := b.dialect.Limit(blk.Rows())
+	return fmt.Sprintf("SELECT %s%s\nFROM (\n%s\n) AS %s%s%s%s",
+		top, strings.Join(cols, ", "), inner, blockAlias, where(blk.Filter), order, tail), nil
 }
 
 func orderBy(ds definition.Dataset, keys []definition.SortKey) (string, error) {

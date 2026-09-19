@@ -166,10 +166,10 @@ func TestDashboardCharts(t *testing.T) {
 	var charts []string
 	for _, b := range out.Layout {
 		if b.Kind == "chart" {
-			charts = append(charts, b.Chart+":"+b.X.Field+"/"+b.Y.Field+"/"+b.Series.Field)
+			charts = append(charts, string(b.Chart)+":"+b.X.Field+"/"+b.Y.Field+"/"+b.Series.Field)
 		}
 	}
-	want := []string{"bar:region/revenue/", "line:month/orders/region", "bar:region/revenue/"}
+	want := []string{"bar:region/revenue/", "line:month/orders/region", "pie:region/revenue/"}
 	if strings.Join(charts, " ") != strings.Join(want, " ") {
 		t.Errorf("charts = %v\nwant %v", charts, want)
 	}
@@ -184,9 +184,14 @@ func TestDashboardCharts(t *testing.T) {
 		}
 	})
 
-	t.Run("the pie is reported as changed", func(t *testing.T) {
-		if !hasFindingText(res, "pie chart") {
-			t.Errorf("a pie imported as a bar without saying so:\n%s", render(res))
+	t.Run("the pie imports as a pie", func(t *testing.T) {
+		// It used to import as a bar and report itself as changed, because a
+		// bar was the only chart the viewer could draw. Now that a pie is a
+		// chart type, the shape the author chose survives the import.
+		for _, b := range out.Layout {
+			if b.Kind == "chart" && b.Chart == "pie" && b.X.Grain != "" {
+				t.Errorf("a pie kept a date grain it has no axis for: %q", b.X.Grain)
+			}
 		}
 	})
 

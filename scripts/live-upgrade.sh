@@ -105,7 +105,20 @@ podman exec "$PG" pg_isready -h 127.0.0.1 -U cronos >/dev/null 2>&1 || die "the 
 
 DSN="postgres://cronos:cronos@localhost:$PGPORT/cronos?sslmode=disable"
 mkdir -p "$work/defs"
-cp demo/definitions/*.yaml "$work/defs/"
+# The *old* checkout's definitions, not this one's.
+#
+# Both versions read one definition store, which is what a rolling deploy is —
+# and in one, the definitions in place when the new binary arrives are the ones
+# the old binary was already serving. Feeding both this commit's definitions
+# tested the opposite: whether last release can read a document written for the
+# next one, which it cannot and is not expected to. A definition using a field
+# a build does not know is refused by it, so publishing one while old instances
+# are still live takes them down — that is a property of the upgrade order,
+# not of this check.
+#
+# It broke here the first time a demo report used a new field, and it broke at
+# startup, before this check could reach the migration it exists to test.
+cp "$tree"/demo/definitions/*.yaml "$work/defs/"
 
 # The demo warehouse is an in-memory SQLite, which is per process: the two
 # builds would each hold their own copy and disagree about every figure for a

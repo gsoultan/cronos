@@ -3,6 +3,7 @@ import { StatTile } from '../StatTile'
 import { ColumnChart } from '../ColumnChart'
 import { LineChart } from '../LineChart'
 import { DataTable } from '../DataTable'
+import { BlockSketch } from './BlockSketch'
 import { sampleRows } from '../../lib/sampleRows'
 import { currency, monthLabel } from '../../lib/format'
 import type { Field, Tile } from '../../lib/types'
@@ -38,22 +39,29 @@ export function BlockPreview({ block, fields }: { block: Tile; fields: Field[] }
 
   switch (block.kind) {
     case 'stat':
+    case 'gauge':
       return (
         <StatTile label={field?.label ?? block.title}
           value={currency(Math.round(12_000 + jitter * 86_000))}
           delta={Math.round((jitter * 18 - 6) * 10) / 10} deltaPeriod="last month" />
       )
 
+    // A combo and a waterfall are columns against buckets, which is what this
+    // draws; the sample data cannot show the line or the running total, and
+    // saying so in the subtitle beats drawing a shape the report will not.
     case 'bar':
+    case 'combo':
+    case 'waterfall':
       return (
         <ColumnChart title={block.title}
-          subtitle={group ? `By ${group.label.toLowerCase()}` : undefined}
+          subtitle={comboNote(block.kind) ?? (group ? `By ${group.label.toLowerCase()}` : undefined)}
           data={series.map((s) => ({ label: s.month, Value: s.value }))}
           labelText={monthLabel}
           series={['Value']} />
       )
 
     case 'line':
+    case 'area':
       return (
         <LineChart title={block.title}
           subtitle={group ? `By ${group.label.toLowerCase()}` : undefined}
@@ -78,8 +86,18 @@ export function BlockPreview({ block, fields }: { block: Tile; fields: Field[] }
       )
 
     default:
-      return null
+      /* Not `null`, which is what this was: every chart type the palette gained
+         — pies, maps, funnels, treemaps — drew an empty cell on the canvas.
+         A sketch says which block it is and how much room it takes. */
+      return <BlockSketch kind={block.kind} title={block.title} />
   }
+}
+
+/** What the sample rows cannot show for the kinds drawn as columns. */
+function comboNote(kind: Tile['kind']): string | undefined {
+  if (kind === 'combo') return 'Bars and a line — sample shows the bars'
+  if (kind === 'waterfall') return 'Steps and a closing total'
+  return undefined
 }
 
 /** Stable per block id, so a preview does not reshuffle as you edit. */

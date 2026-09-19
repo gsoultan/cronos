@@ -312,6 +312,39 @@ to SQL structure.
 
 ### Row-level security is unconditional
 
+### The filter bar
+
+`spec.filters` declares the controls above a report. Each says what it narrows
+in every dataset the report reads, because a report's blocks may read different
+ones and guessing is how a filter silently applies to half a screen:
+
+```yaml
+spec:
+  filters:
+    - name: period
+      label: Period
+      type: date
+      bind: {invoices: issued_at, shipments: dispatched_at}
+    - name: status
+      label: Status
+      type: enum
+      values: [sent, overdue, paid]
+      bind: {invoices: status}
+```
+
+A dataset with no entry in `bind` is **unaffected**, which is a legitimate
+outcome rather than a mistake — a Period filter has nothing to say to a dataset
+of current stock levels — and every block reports it, so it is stated rather
+than discovered.
+
+The embed viewer draws the bar itself: a date filter renders a from/to pair and
+sends `between`, `gte` or `lte` depending on which ends were filled, an enum
+renders a list and sends `in`, and free text sends `contains`. A host page that
+already has its own controls sets `controls="none"` on the element and keeps
+driving the `filters` property. The bar used to be described here and drawn
+nowhere, so every host built one and reimplemented which operator a date range
+sends.
+
 `rowLevelSecurity` predicates are appended to every read of the dataset — the
 builder preview, an embedded chart, a CSV export, a scheduled burst. There is no
 flag to skip them and no "run as owner" mode. A report that needs to see every
@@ -369,8 +402,204 @@ SDK, `paginated` compiles to PDF via Typst, `spreadsheet` produces XLSX. Header
 and footer templates for `paginated` are Typst files (`.typ`), which is why page
 breaks, grouping and subtotals are semantics the renderer honours rather than CSS
 hints it approximates. Layout blocks are
-shared vocabulary; a renderer ignores properties it cannot honour (a bar chart
-in a PDF renders as a static image, `pageBreak` means nothing interactively).
+shared vocabulary; a renderer ignores properties it cannot honour (`pageBreak`
+means nothing interactively).
+
+Charts are drawn by both. The paginated renderer typesets them as vector marks,
+so a PDF carries the same chart the browser does — the same palette, the same
+tick labels, and the same numbers, because the arrangement is worked out once on
+the server and both renderers place what they are given. A layout of charts and
+no table is a legitimate paginated output. The one exception is `map`, which
+prints a line saying to open the report in a browser: the geometry reaches the
+viewer as SVG paths, and a typesetter wants vertices.
+
+This paragraph used to say a bar chart in a PDF rendered as a static image, which
+no code ever did — charts were dropped from a paginated output entirely, with
+nothing saying so.
+
+### Charts
+
+`kind: chart` with a `chart:` type, rather than a block kind per visualisation —
+so adding a chart type costs every renderer one case rather than a new concept.
+The type is a closed set, checked when the report is stored:
+
+| `chart` | Reads | Draws |
+| :--- | :--- | :--- |
+| `bar` | `x` dimension, `y` measure | Horizontal bars |
+| `line` | `x` dimension, `y` measure | A line through every bucket |
+| `area` | `x` dimension, `y` measure | A filled line |
+| `pie` · `donut` | `x` dimension, `y` measure | Parts of a whole |
+| `scatter` | `x` dimension, `xValue` + `y` measures | One dot per category |
+| `bubble` | as scatter, plus `size` | Dots sized by a third measure |
+| `map` | `y` measure, plus `map:` | Regions, points, density and flows |
+| `combo` | `x` dimension, `metrics` | Bars and lines together |
+| `funnel` | `metrics`, or `x` + `y` | Stages and the fall between them |
+| `waterfall` | `x` dimension, `y` measure | Floating bars and a closing total |
+| `heatmap` | `x` + `series` dimensions, `y` | Two dimensions against a measure |
+| `gauge` | `y` measure, plus `target:` | One number against something |
+| `treemap` | `x` dimension, `y` measure | Area within area |
+
+`series:` names a second dimension to split by, and `stacked: true` stacks the
+result — on `bar` and `area` only, because a stacked line has a top edge that
+reads as a total nobody measured. Splitting a `pie` is refused for the same
+class of reason: it is already part-to-whole.
+
+A scatter's horizontal axis is a measure, so it is `xValue` and not `x`. `x`
+stays the dimension that says what each dot *is* — which is also what bounds
+the chart, since one dot per row is one dot per however many rows the dataset
+has.
+
+```yaml
+- kind: chart
+  chart: bar
+  title: Billed by month and carrier
+  x: {field: issued_at, grain: month}
+  series: {field: carrier}
+  stacked: true
+  y: {field: total, aggregate: sum}
+```
+
+### Several measures at once
+
+`metrics:` replaces `y` on the types that read a list. A combo draws each
+measure its own way against shared buckets; a funnel's metrics *are* its stages,
+in the order they are listed, so it has no `x` at all.
+
+```yaml
+- kind: chart
+  chart: combo
+  title: Billed and margin
+  x: {field: issued_at, grain: month}
+  metrics:
+    - {field: total,  aggregate: sum, label: Billed, draw: bar}
+    - {field: margin, aggregate: avg, label: Margin, draw: line, axis: secondary}
+```
+
+**`axis: secondary` is opt-in, per measure, and never a default.** Two scales on
+one plot is the most-flagged mistake in charting: where the two axes line up is
+a choice nobody made on purpose, so the chart shows a correlation that is not in
+the data. Sharing one scale is the default, and a measure that genuinely needs
+its own has to say so — which is the difference between a considered decision
+and an accident. The viewer marks such a track "(right)" in the legend, because
+a reader otherwise has no way to know that line is not comparable to the bars
+beside it.
+
+A funnel comes in two shapes, because data does. Stages as **columns** is how
+most warehouses model one:
+
+```yaml
+- kind: chart
+  chart: funnel
+  title: Conversion
+  metrics:
+    - {field: quoted,  aggregate: count, label: Quoted}
+    - {field: ordered, aggregate: count, label: Ordered}
+    - {field: paid,    aggregate: count, label: Paid}
+```
+
+Stages as **rows** of a dimension works too — `x` and `y`, ordered largest first,
+because a funnel that is not descending is a bar chart. Either way the server
+computes each stage's share of the first and the fall from the one above it, so
+every renderer shows the same percentages.
+
+### Waterfalls, heatmaps, gauges and treemaps
+
+A **waterfall** is `x` and `y` like a bar chart; the difference is drawn, not
+queried. The server accumulates the running total and sends where each bar
+floats, so the last bar lands where the arithmetic says rather than where a
+chain of float additions done twice in two languages happens to put it. A
+closing total is appended automatically. Rises and falls take a diverging pair —
+blue and red, deliberately not green and red, which is the one pair a colourblind
+reader cannot separate on the one chart whose whole point is which side of
+nothing a bar is on.
+
+A **heatmap** needs both dimensions: `x` along the top and `series` down the
+side. The grid comes back dense, and a pair no row matched is marked `empty`
+rather than dropped — "no rows" and "rows totalling nearly nothing" are
+different answers, and the ramp's lightest step cannot say both.
+
+A **gauge** folds the whole set to one number and reads it against a `target:`,
+which is either a measure or a fixed value:
+
+```yaml
+- kind: chart
+  chart: gauge
+  title: Billed against plan
+  y: {field: total, aggregate: sum}
+  target: {value: 100000, label: Plan}    # or {field: quota, aggregate: sum}
+```
+
+The arc is capped at the target and beating it is said in words beside the
+figure, because an arc drawn to 180% wraps past its own start and reads as 80%.
+
+A **treemap** nests when `series` is set: the groups become outer rectangles and
+each is laid out again inside its own box. The squarified layout runs on the
+server for the same reason the map's projection does — it is an algorithm with a
+right answer, and running it in every viewer means three attempts at it. Negative
+values are dropped: a treemap encodes quantity as area, and an area cannot be
+negative.
+
+Funnel stages and a flat treemap's rectangles take an **ordinal** ramp — one hue,
+stepped — rather than eight categorical hues, because swapping two of them
+changes what the chart says. A reader should see the order in the colour instead
+of discovering there was one by reading the labels.
+
+### Maps
+
+A map is a chart type, and its layers are a list rather than a type per
+combination — "shade the regions and put a dot on each depot" is the question
+authors ask, and a type per combination is a list nobody can hold.
+
+```yaml
+- kind: chart
+  chart: map
+  title: Parcels by region
+  x: {field: region}
+  y: {field: parcels, aggregate: sum}
+  map:
+    layers: [polygon, heat, bubble, flow]
+    geometry: region_shape      # a field holding GeoJSON
+    lat: depot_lat
+    lon: depot_lon
+    toLat: destination_lat      # flow layers only
+    toLon: destination_lon
+    basemap:
+      url: https://tile.openstreetmap.org/{z}/{x}/{y}.png
+      attribution: © OpenStreetMap contributors
+```
+
+| Layer | Needs | Draws |
+| :--- | :--- | :--- |
+| `polygon` | `geometry` | Regions shaded by `y` — a choropleth |
+| `heat` | `lat`, `lon` | Point values spread into a density field |
+| `bubble` | `lat`, `lon` | A circle per point, sized by `y` |
+| `scatter` | `lat`, `lon` | A dot per point |
+| `flow` | `lat`, `lon`, `toLat`, `toLon` | An arc from each origin to its destination |
+
+Geometry is a **field**, not a bundled atlas: a column of GeoJSON, which is what
+`ST_AsGeoJSON` returns in PostGIS and in DuckDB's spatial extension. There is no
+world map to keep up to date and no list of the countries cronos knows about.
+
+The server projects every geometry to **Web Mercator**, simplifies it, and sends
+SVG paths — the same argument that keeps currency formatting on the server.
+Shipping rings and a projection to every one of an ISV's end users would cost
+more than the whole embed bundle's budget. Web Mercator specifically, because it
+is the projection every XYZ tile server already publishes in, so a basemap lines
+up with the data for free.
+
+`basemap` is **empty by default and opt-in**. A basemap is a request from the
+reader's browser to a third party that cronos would have chosen for them; it
+discloses roughly where the data is, and on OpenStreetMap's own servers it is
+against the tile usage policy at any volume. The URL must be `https` — an
+embedded report is served over https and a browser blocks mixed-content tiles
+silently — and `attribution` is required, because every tile source worth using
+requires its credit line be displayed.
+
+One block compiles to one query, so a map's layers share a grain. Asking for
+polygons *and* points runs at the point grain and adds each region up from the
+points under it. That is exact for `sum`, `count`, `min` and `max`, and it is
+refused for `avg`: an average of averages is a number nobody measured that looks
+entirely plausible. Split the layers across two blocks if you need one.
 
 ## Schedule
 

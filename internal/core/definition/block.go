@@ -26,11 +26,30 @@ type Block struct {
 	Filter string `json:"filter,omitempty" yaml:"filter,omitempty"`
 
 	// Chart.
-	Title  string       `json:"title,omitempty" yaml:"title,omitempty"`
-	Chart  string       `json:"chart,omitempty" yaml:"chart,omitempty"`
+	Title string    `json:"title,omitempty" yaml:"title,omitempty"`
+	Chart ChartType `json:"chart,omitempty" yaml:"chart,omitempty"`
+	// X is a dimension to bucket by for a categorical chart, and a measure to
+	// read per row for a scatter — see ChartType.Plots. XValue carries the
+	// second reading, because one field cannot be both a DimensionRef and a
+	// MeasureRef and pretending otherwise is how a grain ends up on a number.
 	X      DimensionRef `json:"x,omitzero" yaml:"x,omitempty"`
+	XValue MeasureRef   `json:"xValue,omitzero" yaml:"xValue,omitempty"`
 	Y      MeasureRef   `json:"y,omitzero" yaml:"y,omitempty"`
 	Series DimensionRef `json:"series,omitzero" yaml:"series,omitempty"`
+	// Stacked draws a multi-series bar or area as one stack per bucket rather
+	// than side by side. Ignored by the types ChartType.Stacks rejects.
+	Stacked bool `json:"stacked,omitempty" yaml:"stacked,omitempty"`
+	// Size is the measure a bubble's radius reads. A bubble without one is a
+	// scatter, and says so rather than drawing every dot the same size.
+	Size MeasureRef `json:"size,omitzero" yaml:"size,omitempty"`
+	// Metrics is several measures against the same buckets — a combo chart's
+	// bars and lines, or a funnel whose stages are separate columns. It
+	// replaces `y` on the types that read it rather than joining it.
+	Metrics []Metric `json:"metrics,omitempty" yaml:"metrics,omitempty"`
+	// Target is what a gauge measures its value against.
+	Target Target `json:"target,omitzero" yaml:"target,omitempty"`
+	// Map is the geography a map block reads.
+	Map *MapSpec `json:"map,omitempty" yaml:"map,omitempty"`
 
 	// Table.
 	Columns   []string  `json:"columns,omitempty" yaml:"columns,omitempty"`

@@ -1,5 +1,11 @@
 package jrxml
 
+import (
+	"strings"
+
+	"github.com/gsoultan/cronos/internal/core/definition"
+)
+
 // band is one horizontal strip of a Jasper report.
 //
 // The unit of a band-based layout: it is drawn once per whatever owns it — once
@@ -171,19 +177,27 @@ func (c contents) staticTextsAt(dx, dy int) []placedText {
 // maps to and the Jasper element it came from.
 func (c contents) charts() []placedChart {
 	var out []placedChart
-	add := func(kind, from string, found []chartElement) {
+	add := func(kind definition.ChartType, from string, found []chartElement) {
 		for _, ch := range found {
-			out = append(out, placedChart{chart: ch, kind: kind, from: from})
+			out = append(out, placedChart{
+				chart: ch, kind: kind, from: from,
+				// Jasper says stacked in the element name; cronos says it in a
+				// property beside the type, because a stack is how a chart is
+				// drawn and not a different chart.
+				stacked: strings.HasPrefix(from, "stacked"),
+			})
 		}
 	}
-	add("bar", "barChart", c.BarCharts)
-	add("bar", "bar3DChart", c.Bar3DCharts)
-	add("bar", "stackedBarChart", c.StackedBarCharts)
-	add("line", "lineChart", c.LineCharts)
-	add("area", "areaChart", c.AreaCharts)
-	add("area", "stackedAreaChart", c.StackedAreaChart)
-	add("bar", "pieChart", c.PieCharts)
-	add("bar", "pie3DChart", c.Pie3DCharts)
+	add(definition.BarChart, "barChart", c.BarCharts)
+	add(definition.BarChart, "bar3DChart", c.Bar3DCharts)
+	add(definition.BarChart, "stackedBarChart", c.StackedBarCharts)
+	add(definition.LineChart, "lineChart", c.LineCharts)
+	add(definition.AreaChart, "areaChart", c.AreaCharts)
+	add(definition.AreaChart, "stackedAreaChart", c.StackedAreaChart)
+	// Pie and pie3D used to arrive as bars, because a bar was the only chart
+	// the viewer drew. They are pies again.
+	add(definition.PieChart, "pieChart", c.PieCharts)
+	add(definition.PieChart, "pie3DChart", c.Pie3DCharts)
 	for _, f := range c.Frames {
 		out = append(out, f.charts()...)
 	}
@@ -214,9 +228,10 @@ type placedText struct {
 // placedChart is a chart with the cronos kind it becomes and the element name it
 // came from, which the finding needs in order to say what it changed.
 type placedChart struct {
-	chart chartElement
-	kind  string
-	from  string
+	chart   chartElement
+	kind    definition.ChartType
+	from    string
+	stacked bool
 }
 
 // fields flattens every text field across a section's bands.

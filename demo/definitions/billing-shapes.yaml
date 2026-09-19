@@ -1,0 +1,142 @@
+apiVersion: cronos.dev/v1
+kind: Report
+metadata:
+  name: billing-shapes
+  title: How billing is going
+  folder: Finance
+  description: The same invoices, read every way cronos can draw them.
+spec:
+  dataset: invoices
+
+  # Every block reads these. `region` binds to a dataset this report does not
+  # read, so each block reports itself unaffected — the behaviour the viewer is
+  # required to announce rather than let somebody discover.
+  filters:
+    - name: period
+      label: Period
+      type: date
+      bind:
+        invoices: issued_at
+    - name: status
+      label: Status
+      type: enum
+      values: [sent, overdue, paid]
+      bind:
+        invoices: status
+    - name: region
+      label: Region
+      type: string
+      bind:
+        shipments: region
+
+  outputs:
+    - name: interactive
+      renderer: interactive
+      layout:
+        - kind: stat
+          label: Total billed
+          value: {field: total, aggregate: sum}
+
+        # One number against something, which is the question a stat tile
+        # cannot answer.
+        - kind: chart
+          chart: gauge
+          title: Against plan
+          y: {field: total, aggregate: sum}
+          target: {value: 80000, label: Plan}
+
+        - kind: chart
+          chart: line
+          title: Billed over time
+          x: {field: issued_at, grain: month}
+          y: {field: total, aggregate: sum}
+
+        # Bars for the amount, a line for the count — on its own scale, which
+        # is opt-in per measure because two scales on one plot is the most
+        # misread thing in charting.
+        - kind: chart
+          chart: combo
+          title: Amount and invoice count
+          x: {field: issued_at, grain: month}
+          metrics:
+            - {field: total, aggregate: sum,   label: Billed, draw: bar}
+            - {field: total, aggregate: count, label: Invoices, draw: line, axis: secondary}
+
+        - kind: chart
+          chart: donut
+          title: Share by status
+          x: {field: status}
+          y: {field: total, aggregate: sum}
+
+        # Stages as rows of a dimension, ordered largest first — the other
+        # honest shape a funnel comes in.
+        - kind: chart
+          chart: funnel
+          title: Invoices by status
+          x: {field: status}
+          y: {field: total, aggregate: sum}
+
+        - kind: chart
+          chart: waterfall
+          title: What moved the total
+          x: {field: issued_at, grain: month}
+          y: {field: total, aggregate: sum}
+
+        - kind: chart
+          chart: heatmap
+          title: Status by month
+          x: {field: issued_at, grain: month}
+          series: {field: status}
+          y: {field: total, aggregate: sum}
+
+        - kind: chart
+          chart: treemap
+          title: Customers within status
+          x: {field: customer_name}
+          series: {field: status}
+          y: {field: total, aggregate: sum}
+
+        - kind: chart
+          chart: bar
+          title: Billed by month and status
+          stacked: true
+          x: {field: issued_at, grain: month}
+          series: {field: status}
+          y: {field: total, aggregate: sum}
+
+        - kind: table
+          title: Invoices
+          columns: [issued_at, customer_name, status, total]
+          sort:
+            - {field: issued_at, dir: desc}
+          pageSize: 50
+
+    # The same layout on paper. Charts are typeset as vector marks, so the PDF
+    # carries the same chart the browser does.
+    - name: pdf
+      renderer: paginated
+      page: {size: a4, orientation: landscape, margins: 16mm}
+      layout:
+        - kind: chart
+          chart: line
+          title: Billed over time
+          x: {field: issued_at, grain: month}
+          y: {field: total, aggregate: sum}
+
+        - kind: chart
+          chart: donut
+          title: Share by status
+          x: {field: status}
+          y: {field: total, aggregate: sum}
+
+        - kind: chart
+          chart: waterfall
+          title: What moved the total
+          x: {field: issued_at, grain: month}
+          y: {field: total, aggregate: sum}
+
+        - kind: table
+          title: Invoices
+          columns: [issued_at, customer_name, status, total]
+          sort:
+            - {field: issued_at, dir: desc}

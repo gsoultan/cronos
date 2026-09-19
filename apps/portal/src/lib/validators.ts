@@ -82,3 +82,17 @@ export function toSlug(s: string): string {
     .replace(/^-+|-+$/g, '')
     .slice(0, 60)
 }
+
+/**
+ * A filter or parameter name.
+ *
+ * Underscores rather than the hyphens toSlug produces: these reach SQL as
+ * identifiers and as keys a host page writes in JavaScript, and neither of
+ * those takes a hyphen.
+ */
+export function toIdentifier(s: string): string {
+  return s.toLowerCase().trim()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 60)
+}

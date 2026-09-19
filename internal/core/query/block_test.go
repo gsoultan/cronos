@@ -216,3 +216,67 @@ func TestBlocksAreRefused(t *testing.T) {
 		})
 	}
 }
+
+func TestRowsAreCappedInEachDialectsOwnWords(t *testing.T) {
+	// LIMIT is a trailing clause in three of these and does not exist in the
+	// fourth. Writing it unconditionally compiled and passed every test here,
+	// and answered "Incorrect syntax near 'LIMIT'" against a real SQL Server —
+	// found by the live database checks, which is three minutes of CI later
+	// than this.
+	blk := definition.Block{
+		Kind: definition.ChartBlock, Chart: "bar", Title: "Billed by month",
+		X: definition.DimensionRef{Field: "issued_at", Grain: "month"},
+		Y: definition.MeasureRef{Field: "total", Aggregate: "sum"},
+	}
+	table := definition.Block{
+		Kind: definition.TableBlock, Title: "Invoices",
+		Columns: []string{"issued_at", "total"}, PageSize: 25,
+	}
+
+	for _, c := range []struct {
+		name    string
+		dialect Dialect
+		// want is the text the cap takes in this dialect; unwanted is the
+		// spelling that is not in it.
+		want, unwanted string
+	}{
+		{"postgres", Postgres{}, "LIMIT 5000", "TOP"},
+		{"sqlite", SQLite{}, "LIMIT 5000", "TOP"},
+		{"mysql", MySQL{}, "LIMIT 5000", "TOP"},
+		{"sqlserver", SQLServer{}, "TOP (5000)", "LIMIT"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			sql := block(t, dated(), blk, c.dialect)
+			if !strings.Contains(sql, c.want) {
+				t.Errorf("chart is not capped with %q:\n%s", c.want, sql)
+			}
+			if strings.Contains(sql, c.unwanted) {
+				t.Errorf("chart uses %q, which is not in this dialect:\n%s", c.unwanted, sql)
+			}
+
+			// A table is capped by the same route, and had the same bug.
+			rows := block(t, dated(), table, c.dialect)
+			if strings.Contains(rows, c.unwanted) {
+				t.Errorf("table uses %q, which is not in this dialect:\n%s", c.unwanted, rows)
+			}
+		})
+	}
+}
+
+// A gauge folds the whole set and orders nothing, which is why SQL Server takes
+// TOP here rather than the OFFSET/FETCH form — that one requires an ORDER BY.
+func TestACappedStatementWithNoOrderingStillCompiles(t *testing.T) {
+	target := 100.0
+	blk := definition.Block{
+		Kind: definition.ChartBlock, Chart: "gauge", Title: "Against plan",
+		Y:      definition.MeasureRef{Field: "total", Aggregate: "sum"},
+		Target: definition.Target{Value: &target},
+	}
+	sql := block(t, dated(), blk, SQLServer{})
+	if !strings.Contains(sql, "TOP (5000)") {
+		t.Errorf("a gauge is not capped:\n%s", sql)
+	}
+	if strings.Contains(sql, "ORDER BY") || strings.Contains(sql, "OFFSET") {
+		t.Errorf("a gauge grew an ordering it does not need:\n%s", sql)
+	}
+}

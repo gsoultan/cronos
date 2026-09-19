@@ -14,3 +14,8 @@ func (MySQL) Bucket(grain, expr string) (string, error) {
 	}
 	return fmt.Sprintf("DATE_FORMAT(%s, '%s')", expr, f), nil
 }
+
+// Limit is a trailing clause here.
+func (MySQL) Limit(n int) (string, string) {
+	return "", fmt.Sprintf("\nLIMIT %d", n)
+}

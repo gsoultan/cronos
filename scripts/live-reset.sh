@@ -149,5 +149,5 @@ ok "on $PORTAL_PORT"
 # -- 3, 4, 5. Through a browser ------------------------------------------------
 
 say "Getting back in, in a browser"
-(cd apps/portal && PORTAL="$PORTAL" API="$API" LINK="$link" node e2e/reset.mjs) ||
+(cd apps/portal && PORTAL="$PORTAL" API="$API" LINK="$link" bun e2e/reset.mjs) ||
 	die "the browser check"

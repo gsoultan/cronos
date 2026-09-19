@@ -20,3 +20,8 @@ func (Postgres) Bucket(grain, expr string) (string, error) {
 	// and it can only be one of five words.
 	return fmt.Sprintf("date_trunc('%s', %s)", grain, expr), nil
 }
+
+// Limit is a trailing clause here.
+func (Postgres) Limit(n int) (string, string) {
+	return "", fmt.Sprintf("\nLIMIT %d", n)
+}

@@ -1,0 +1,897 @@
+{
+  "title": "Every chart",
+  "filters": [
+    {
+      "name": "carrier",
+      "label": "Carrier",
+      "type": "enum",
+      "values": [
+        "Aurora",
+        "Baltic"
+      ]
+    },
+    {
+      "name": "parcels_over",
+      "label": "Parcels over",
+      "type": "number"
+    }
+  ],
+  "blocks": [
+    {
+      "coverage": {
+        "applied": [
+          "carrier",
+          "parcels_over"
+        ]
+      },
+      "kind": "stat",
+      "title": "Parcels",
+      "value": "2,200"
+    },
+    {
+      "chart": "bar",
+      "coverage": {
+        "applied": [
+          "carrier",
+          "parcels_over"
+        ]
+      },
+      "kind": "chart",
+      "series": [
+        {
+          "label": "England",
+          "value": 1500,
+          "formatted": "1,500"
+        },
+        {
+          "label": "Scotland",
+          "value": 700,
+          "formatted": "700"
+        }
+      ],
+      "title": "Parcels by region"
+    },
+    {
+      "chart": "bar",
+      "coverage": {
+        "applied": [
+          "carrier",
+          "parcels_over"
+        ]
+      },
+      "groups": [
+        {
+          "label": "Aurora",
+          "slot": 0,
+          "bars": [
+            {
+              "label": "England",
+              "value": 1200,
+              "formatted": "1,200"
+            },
+            {
+              "label": "Scotland",
+              "value": 700,
+              "formatted": "700"
+            }
+          ]
+        },
+        {
+          "label": "Baltic",
+          "slot": 1,
+          "bars": [
+            {
+              "label": "England",
+              "value": 300,
+              "formatted": "300"
+            },
+            {
+              "label": "Scotland",
+              "value": 0,
+              "formatted": "0"
+            }
+          ]
+        }
+      ],
+      "kind": "chart",
+      "series": [],
+      "stacked": true,
+      "title": "Stacked by carrier",
+      "totals": [
+        {
+          "label": "England",
+          "value": 1500,
+          "formatted": "1,500"
+        },
+        {
+          "label": "Scotland",
+          "value": 700,
+          "formatted": "700"
+        }
+      ]
+    },
+    {
+      "chart": "line",
+      "coverage": {
+        "applied": [
+          "carrier",
+          "parcels_over"
+        ]
+      },
+      "kind": "chart",
+      "series": [
+        {
+          "label": "England",
+          "value": 1500,
+          "formatted": "1,500"
+        },
+        {
+          "label": "Scotland",
+          "value": 700,
+          "formatted": "700"
+        }
+      ],
+      "title": "Line",
+      "yAxis": {
+        "min": 0,
+        "max": 1500,
+        "ticks": [
+          {
+            "at": 0,
+            "label": "0"
+          },
+          {
+            "at": 0.3333333333333333,
+            "label": "500"
+          },
+          {
+            "at": 0.6666666666666666,
+            "label": "1,000"
+          },
+          {
+            "at": 1,
+            "label": "1,500"
+          }
+        ]
+      }
+    },
+    {
+      "chart": "area",
+      "coverage": {
+        "applied": [
+          "carrier",
+          "parcels_over"
+        ]
+      },
+      "kind": "chart",
+      "series": [
+        {
+          "label": "England",
+          "value": 1500,
+          "formatted": "1,500"
+        },
+        {
+          "label": "Scotland",
+          "value": 700,
+          "formatted": "700"
+        }
+      ],
+      "title": "Area",
+      "yAxis": {
+        "min": 0,
+        "max": 1500,
+        "ticks": [
+          {
+            "at": 0,
+            "label": "0"
+          },
+          {
+            "at": 0.3333333333333333,
+            "label": "500"
+          },
+          {
+            "at": 0.6666666666666666,
+            "label": "1,000"
+          },
+          {
+            "at": 1,
+            "label": "1,500"
+          }
+        ]
+      }
+    },
+    {
+      "chart": "pie",
+      "coverage": {
+        "applied": [
+          "carrier",
+          "parcels_over"
+        ]
+      },
+      "kind": "chart",
+      "series": [
+        {
+          "label": "England",
+          "value": 1500,
+          "formatted": "1,500"
+        },
+        {
+          "label": "Scotland",
+          "value": 700,
+          "formatted": "700"
+        }
+      ],
+      "title": "Pie"
+    },
+    {
+      "chart": "donut",
+      "coverage": {
+        "applied": [
+          "carrier",
+          "parcels_over"
+        ]
+      },
+      "kind": "chart",
+      "series": [
+        {
+          "label": "England",
+          "value": 1500,
+          "formatted": "1,500"
+        },
+        {
+          "label": "Scotland",
+          "value": 700,
+          "formatted": "700"
+        }
+      ],
+      "title": "Donut"
+    },
+    {
+      "chart": "scatter",
+      "coverage": {
+        "applied": [
+          "carrier",
+          "parcels_over"
+        ]
+      },
+      "kind": "chart",
+      "points": [
+        {
+          "label": "England",
+          "x": 52,
+          "y": 1500,
+          "fx": "52",
+          "fy": "1,500"
+        },
+        {
+          "label": "Scotland",
+          "x": 25,
+          "y": 700,
+          "fx": "25",
+          "fy": "700",
+          "slot": 1
+        }
+      ],
+      "series": [],
+      "title": "Scatter",
+      "xAxis": {
+        "min": 0,
+        "max": 60,
+        "ticks": [
+          {
+            "at": 0,
+            "label": "0"
+          },
+          {
+            "at": 0.3333333333333333,
+            "label": "20"
+          },
+          {
+            "at": 0.6666666666666666,
+            "label": "40"
+          },
+          {
+            "at": 1,
+            "label": "60"
+          }
+        ]
+      },
+      "yAxis": {
+        "min": 0,
+        "max": 1500,
+        "ticks": [
+          {
+            "at": 0,
+            "label": "0"
+          },
+          {
+            "at": 0.3333333333333333,
+            "label": "500"
+          },
+          {
+            "at": 0.6666666666666666,
+            "label": "1,000"
+          },
+          {
+            "at": 1,
+            "label": "1,500"
+          }
+        ]
+      }
+    },
+    {
+      "chart": "bubble",
+      "coverage": {
+        "applied": [
+          "carrier",
+          "parcels_over"
+        ]
+      },
+      "kind": "chart",
+      "points": [
+        {
+          "label": "England",
+          "x": 52,
+          "y": 1500,
+          "fx": "52",
+          "fy": "1,500",
+          "weight": 1,
+          "size": "52"
+        },
+        {
+          "label": "Scotland",
+          "x": 25,
+          "y": 700,
+          "fx": "25",
+          "fy": "700",
+          "weight": 0.4807692307692308,
+          "size": "25",
+          "slot": 1
+        }
+      ],
+      "series": [],
+      "title": "Bubble",
+      "xAxis": {
+        "min": 0,
+        "max": 60,
+        "ticks": [
+          {
+            "at": 0,
+            "label": "0"
+          },
+          {
+            "at": 0.3333333333333333,
+            "label": "20"
+          },
+          {
+            "at": 0.6666666666666666,
+            "label": "40"
+          },
+          {
+            "at": 1,
+            "label": "60"
+          }
+        ]
+      },
+      "yAxis": {
+        "min": 0,
+        "max": 1500,
+        "ticks": [
+          {
+            "at": 0,
+            "label": "0"
+          },
+          {
+            "at": 0.3333333333333333,
+            "label": "500"
+          },
+          {
+            "at": 0.6666666666666666,
+            "label": "1,000"
+          },
+          {
+            "at": 1,
+            "label": "1,500"
+          }
+        ]
+      }
+    },
+    {
+      "chart": "map",
+      "coverage": {
+        "applied": [
+          "carrier",
+          "parcels_over"
+        ]
+      },
+      "kind": "chart",
+      "map": {
+        "bounds": {
+          "minX": 0.48656017704950083,
+          "minY": 0.3094574248172918,
+          "maxX": 0.5017731562838326,
+          "maxY": 0.33483264448076977
+        },
+        "layers": [
+          "polygon",
+          "heat",
+          "bubble",
+          "flow"
+        ],
+        "shapes": [
+          {
+            "label": "England",
+            "path": "M0.498611 0.333893L0.500833 0.333893L0.500833 0.331664L0.498611 0.331664L0.498611 0.333893Z",
+            "value": 1500,
+            "formatted": "1,500",
+            "step": 5
+          },
+          {
+            "label": "Scotland",
+            "path": "M0.4875 0.312878L0.491667 0.312878L0.491667 0.310397L0.4875 0.310397L0.4875 0.312878Z",
+            "value": 700,
+            "formatted": "700",
+            "step": 0
+          }
+        ],
+        "markers": [
+          {
+            "label": "England",
+            "x": 0.4928113888888889,
+            "y": 0.33276147382026194,
+            "value": 300,
+            "formatted": "300",
+            "weight": 0.25
+          },
+          {
+            "label": "England",
+            "x": 0.499645,
+            "y": 0.3325255226156183,
+            "value": 1200,
+            "formatted": "1,200",
+            "weight": 1
+          },
+          {
+            "label": "Scotland",
+            "x": 0.4911436111111111,
+            "y": 0.311625165932776,
+            "value": 700,
+            "formatted": "700",
+            "weight": 0.5833333333333334
+          }
+        ],
+        "arcs": [
+          {
+            "label": "England",
+            "x1": 0.4928113888888889,
+            "y1": 0.33276147382026194,
+            "x2": 0.49377055555555555,
+            "y2": 0.32352015180863913,
+            "value": 300,
+            "formatted": "300",
+            "weight": 0.25
+          },
+          {
+            "label": "England",
+            "x1": 0.499645,
+            "y1": 0.3325255226156183,
+            "x2": 0.49377055555555555,
+            "y2": 0.32352015180863913,
+            "value": 1200,
+            "formatted": "1,200",
+            "weight": 1
+          },
+          {
+            "label": "Scotland",
+            "x1": 0.4911436111111111,
+            "y1": 0.311625165932776,
+            "x2": 0.499645,
+            "y2": 0.3325255226156183,
+            "value": 700,
+            "formatted": "700",
+            "weight": 0.5833333333333334
+          }
+        ],
+        "legend": [
+          {
+            "step": 0,
+            "from": "700",
+            "to": "833.33"
+          },
+          {
+            "step": 1,
+            "from": "833.33",
+            "to": "966.67"
+          },
+          {
+            "step": 2,
+            "from": "966.67",
+            "to": "1,100"
+          },
+          {
+            "step": 3,
+            "from": "1,100",
+            "to": "1,233.33"
+          },
+          {
+            "step": 4,
+            "from": "1,233.33",
+            "to": "1,366.67"
+          },
+          {
+            "step": 5,
+            "from": "1,366.67",
+            "to": "1,500"
+          }
+        ]
+      },
+      "series": [],
+      "title": "Map"
+    },
+    {
+      "axis2": {
+        "min": 0,
+        "max": 60,
+        "ticks": [
+          {
+            "at": 0,
+            "label": "0"
+          },
+          {
+            "at": 0.3333333333333333,
+            "label": "20"
+          },
+          {
+            "at": 0.6666666666666666,
+            "label": "40"
+          },
+          {
+            "at": 1,
+            "label": "60"
+          }
+        ]
+      },
+      "chart": "combo",
+      "coverage": {
+        "applied": [
+          "carrier",
+          "parcels_over"
+        ]
+      },
+      "kind": "chart",
+      "series": [],
+      "title": "Combo",
+      "tracks": [
+        {
+          "label": "Parcels",
+          "slot": 0,
+          "draw": "bar",
+          "bars": [
+            {
+              "label": "England",
+              "value": 1500,
+              "formatted": "1,500"
+            },
+            {
+              "label": "Scotland",
+              "value": 700,
+              "formatted": "700"
+            }
+          ]
+        },
+        {
+          "label": "Staff",
+          "slot": 1,
+          "draw": "line",
+          "secondary": true,
+          "bars": [
+            {
+              "label": "England",
+              "value": 52,
+              "formatted": "52"
+            },
+            {
+              "label": "Scotland",
+              "value": 25,
+              "formatted": "25"
+            }
+          ]
+        }
+      ],
+      "yAxis": {
+        "min": 0,
+        "max": 1500,
+        "ticks": [
+          {
+            "at": 0,
+            "label": "0"
+          },
+          {
+            "at": 0.3333333333333333,
+            "label": "500"
+          },
+          {
+            "at": 0.6666666666666666,
+            "label": "1,000"
+          },
+          {
+            "at": 1,
+            "label": "1,500"
+          }
+        ]
+      }
+    },
+    {
+      "chart": "funnel",
+      "coverage": {
+        "applied": [
+          "carrier",
+          "parcels_over"
+        ]
+      },
+      "kind": "chart",
+      "series": [],
+      "stages": [
+        {
+          "label": "Handled",
+          "value": 2200,
+          "formatted": "2,200",
+          "share": 1
+        },
+        {
+          "label": "Delivered",
+          "value": 77,
+          "formatted": "77",
+          "share": 0.035,
+          "drop": "-96.5%"
+        }
+      ],
+      "title": "Funnel"
+    },
+    {
+      "chart": "waterfall",
+      "coverage": {
+        "applied": [
+          "carrier",
+          "parcels_over"
+        ]
+      },
+      "kind": "chart",
+      "series": [],
+      "steps": [
+        {
+          "label": "England",
+          "value": 1500,
+          "formatted": "1,500",
+          "start": 0,
+          "end": 1500,
+          "sign": 1
+        },
+        {
+          "label": "Scotland",
+          "value": 700,
+          "formatted": "700",
+          "start": 1500,
+          "end": 2200,
+          "sign": 1
+        },
+        {
+          "label": "Total",
+          "value": 2200,
+          "formatted": "2,200",
+          "start": 0,
+          "end": 2200,
+          "sign": 0,
+          "total": true
+        }
+      ],
+      "title": "Waterfall",
+      "yAxis": {
+        "min": 0,
+        "max": 3000,
+        "ticks": [
+          {
+            "at": 0,
+            "label": "0"
+          },
+          {
+            "at": 0.3333333333333333,
+            "label": "1,000"
+          },
+          {
+            "at": 0.6666666666666666,
+            "label": "2,000"
+          },
+          {
+            "at": 1,
+            "label": "3,000"
+          }
+        ]
+      }
+    },
+    {
+      "cells": [
+        {
+          "row": "Aurora",
+          "column": "England",
+          "value": 1200,
+          "formatted": "1,200",
+          "step": 5
+        },
+        {
+          "row": "Aurora",
+          "column": "Scotland",
+          "value": 700,
+          "formatted": "700",
+          "step": 2
+        },
+        {
+          "row": "Baltic",
+          "column": "England",
+          "value": 300,
+          "formatted": "300",
+          "step": 0
+        },
+        {
+          "row": "Baltic",
+          "column": "Scotland",
+          "value": 0,
+          "formatted": "0",
+          "step": 0,
+          "empty": true
+        }
+      ],
+      "chart": "heatmap",
+      "coverage": {
+        "applied": [
+          "carrier",
+          "parcels_over"
+        ]
+      },
+      "heatColumns": [
+        "England",
+        "Scotland"
+      ],
+      "heatRows": [
+        "Aurora",
+        "Baltic"
+      ],
+      "kind": "chart",
+      "series": [],
+      "title": "Heatmap"
+    },
+    {
+      "chart": "gauge",
+      "coverage": {
+        "applied": [
+          "carrier",
+          "parcels_over"
+        ]
+      },
+      "gauge": {
+        "value": 2200,
+        "formatted": "2,200",
+        "target": 1500,
+        "targetFormatted": "1,500",
+        "targetLabel": "Plan",
+        "share": 1,
+        "over": "47% over"
+      },
+      "kind": "chart",
+      "series": [],
+      "title": "Gauge"
+    },
+    {
+      "chart": "treemap",
+      "coverage": {
+        "applied": [
+          "carrier",
+          "parcels_over"
+        ]
+      },
+      "kind": "chart",
+      "rects": [
+        {
+          "label": "England",
+          "value": 1500,
+          "formatted": "1,500",
+          "x": 0,
+          "y": 0,
+          "w": 0.6818181818181818,
+          "h": 1,
+          "slot": 0,
+          "depth": 0
+        },
+        {
+          "label": "Aurora",
+          "value": 1200,
+          "formatted": "1,200",
+          "x": 0,
+          "y": 0,
+          "w": 0.6818181818181818,
+          "h": 0.8,
+          "group": "England",
+          "slot": 0,
+          "depth": 1
+        },
+        {
+          "label": "Baltic",
+          "value": 300,
+          "formatted": "300",
+          "x": 0,
+          "y": 0.8,
+          "w": 0.6818181818181819,
+          "h": 0.19999999999999996,
+          "group": "England",
+          "slot": 0,
+          "depth": 1
+        },
+        {
+          "label": "Scotland",
+          "value": 700,
+          "formatted": "700",
+          "x": 0.6818181818181818,
+          "y": 0,
+          "w": 0.31818181818181823,
+          "h": 0.9999999999999998,
+          "slot": 1,
+          "depth": 0
+        },
+        {
+          "label": "Aurora",
+          "value": 700,
+          "formatted": "700",
+          "x": 0.6818181818181818,
+          "y": 0,
+          "w": 0.31818181818181823,
+          "h": 0.9999999999999998,
+          "group": "Scotland",
+          "slot": 1,
+          "depth": 1
+        }
+      ],
+      "series": [],
+      "title": "Treemap"
+    },
+    {
+      "columns": [
+        {
+          "label": "Region"
+        },
+        {
+          "label": "Carrier"
+        },
+        {
+          "label": "Parcels",
+          "align": "right"
+        }
+      ],
+      "coverage": {
+        "applied": [
+          "carrier",
+          "parcels_over"
+        ]
+      },
+      "kind": "table",
+      "rows": [
+        [
+          "England",
+          "Aurora",
+          "1,200"
+        ],
+        [
+          "England",
+          "Baltic",
+          "300"
+        ],
+        [
+          "Scotland",
+          "Aurora",
+          "700"
+        ]
+      ],
+      "title": "Depots",
+      "total": 3
+    }
+  ]
+}
