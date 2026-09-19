@@ -226,6 +226,14 @@ account.** For provisioning that runs on every start rather than once by hand: a
 container entrypoint, or the development script in this repository. Without it
 the second run is an error a start-up script has to tell apart from a real one.
 
+**Publishing a definition with new fields mid-rollout takes old instances
+down.** Not new behaviour and not a change — a build refuses a definition naming
+a field it does not know, which is the strictness that catches a typo in a
+report. It had simply never been written down that the same rule applies across
+a rollout, where a document written for the new version is one the old one will
+not open on restart. Roll out first, publish second; see "A rolling deploy" in
+[docs/deploying.md](docs/deploying.md).
+
 ### Upgrading
 
 `uri:` on an object store is a prefix and has always been read as one — it is

@@ -852,6 +852,20 @@ and says which version it found. So an old instance that restarts mid-rollout
 does not come back: a node eviction, an OOM, or a rollback. Take the backup
 immediately before the deploy, not the night before; a rollback is a restore.
 
+**Publish definitions that use new fields after the rollout, not during it.**
+A definition naming a field a build does not know is refused by that build, at
+startup, naming the field — the same strictness that catches a typo in a report
+nobody would otherwise notice. It is the right behaviour for a document somebody
+wrote by hand, and it means a document written for the new version is one the old
+one will not open.
+
+That does not disturb the instances already running: they read the definitions
+at startup and keep serving what they have. It is the *restart* that does not
+come back, which is the hazard above wearing different clothes — a node
+eviction or an OOM during the window, and the instance refuses on a definition
+instead of on a schema. So: roll out first, publish second. The order is the
+whole of the mitigation, and there is nothing to undo if it is followed.
+
 **Upgrading from a version before this one has a capacity cliff.** Builds up to
 and including the one that added the tenancy table report readiness `503` when a
 newer cronos has migrated. Readiness is what keeps an instance in the load
