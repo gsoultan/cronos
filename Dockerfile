@@ -15,6 +15,12 @@ COPY apps/portal/package.json apps/portal/bun.lock* ./apps/portal/
 RUN cd apps/portal && bun install --frozen-lockfile
 
 COPY apps/portal ./apps/portal
+# The chart renderers, which the portal draws reports with and reaches by path
+# alias rather than by dependency — see its vite config for why. An alias to
+# source needs the source here too: without it this stage fails at typecheck
+# with "cannot find module @cronos/charts", which is what it did.
+COPY packages/charts ./packages/charts
+
 # Baked in at build time, which is what Vite does with these: an image is per
 # deployment, and a deployment knows its own API. The token is deliberately
 # not among them — a token in an image is a credential in a registry.

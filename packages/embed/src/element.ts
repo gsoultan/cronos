@@ -1,23 +1,6 @@
 import { Client } from './client'
-import { css } from './styles'
-import { el, fill } from './dom'
-import { unaffectedNote } from './coverage'
-import { filterBar } from './filters'
-import { statBlock } from './blocks/stat'
-import { barBlock } from './blocks/bar'
-import { lineBlock } from './blocks/line'
-import { pieBlock } from './blocks/pie'
-import { scatterBlock } from './blocks/scatter'
-import { mapBlock } from './blocks/map'
-import { comboBlock } from './blocks/combo'
-import { funnelBlock } from './blocks/funnel'
-import { waterfallBlock } from './blocks/waterfall'
-import { heatmapBlock } from './blocks/heatmap'
-import { gaugeBlock } from './blocks/gauge'
-import { treemapBlock } from './blocks/treemap'
-import { tableBlock } from './blocks/table'
-import { unsupported } from './blocks/unsupported'
-import type { Block, ChartBlock, FilterDef, FilterValues, ReportPayload } from './types'
+import { css, drawBlock, el, fill, filterBar, unaffectedNote } from '@cronos/charts'
+import type { Block, FilterDef, FilterValues, ReportPayload } from '@cronos/charts'
 
 /*
  * Nothing here runs at import time.
@@ -39,7 +22,7 @@ let sheet: CSSStyleSheet | undefined
 function styles(): CSSStyleSheet {
   if (!sheet) {
     sheet = new CSSStyleSheet()
-    sheet.replaceSync(css)
+    sheet.replaceSync(css())
   }
   return sheet
 }
@@ -148,75 +131,16 @@ export class CronosReport extends Base {
     fill(this.#body, ...payload.blocks.map((b) => this.#block(b, filters)))
   }
 
-  /* An explicit switch with a default, not a chain of ternaries. The previous
-     version fell through to the table renderer for anything it did not
-     recognise, which meant a block kind it had never heard of crashed on
-     `columns.map` — a server that grows a feature must not take a host page
-     down with it. */
+  /* Drawn by @cronos/charts, which the portal draws with too. There were
+     three renderers of this payload and the portal's drew one chart type out
+     of fourteen; two implementations of the same switch is how that happens. */
   #block(b: Block, filters: FilterDef[]): HTMLElement {
-    const node = this.#draw(b)
+    const node = drawBlock(b)
     const note = unaffectedNote(b.coverage, filters)
     if (note) node.append(note)
     return node
   }
 
-  #draw(b: Block): HTMLElement {
-    switch (b.kind) {
-      case 'stat':
-        return statBlock(b)
-      case 'chart':
-        return this.#chart(b)
-      case 'table':
-        return tableBlock(b)
-      default:
-        return unsupported('This block needs a newer viewer')
-    }
-  }
-
-  /* A second explicit switch, for the same reason as the first. The chart type
-     is an open set the server grows — a type this build has never heard of is
-     a normal condition, not a bug, and saying so beats an empty panel. */
-  #chart(b: ChartBlock): HTMLElement {
-    switch (b.chart) {
-      case 'bar':
-        return barBlock(b)
-      case 'line':
-        return lineBlock(b, false)
-      case 'area':
-        return lineBlock(b, true)
-      case 'pie':
-        return pieBlock(b, false)
-      case 'donut':
-        return pieBlock(b, true)
-      case 'scatter':
-      case 'bubble':
-        return scatterBlock(b)
-      case 'map':
-        return mapBlock(b)
-      case 'combo':
-        return comboBlock(b)
-      case 'funnel':
-        return funnelBlock(b)
-      case 'waterfall':
-        return waterfallBlock(b)
-      case 'heatmap':
-        return heatmapBlock(b)
-      case 'gauge':
-        return gaugeBlock(b)
-      case 'treemap':
-        return treemapBlock(b)
-      default:
-        return unsupported(`${b.chart} charts need a newer viewer`)
-    }
-  }
-
-  /**
-   * A message in place of the blocks — never in place of the bar.
-   *
-   * Clearing the controls when a request fails is how a filter that matched
-   * nothing becomes unrecoverable: the reader is left with an error and no
-   * way to undo what caused it.
-   */
   #say(text: string, isError: boolean) {
     fill(this.#body, el('p', { class: isError ? 'msg err' : 'msg', part: 'message' }, text))
   }

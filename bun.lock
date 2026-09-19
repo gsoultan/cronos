@@ -5,9 +5,20 @@
     "": {
       "name": "cronos",
     },
+    "packages/charts": {
+      "name": "@cronos/charts",
+      "version": "0.1.0",
+      "devDependencies": {
+        "oxlint": "^1.78.0",
+        "typescript": "~7.0.2",
+      },
+    },
     "packages/embed": {
       "name": "@cronos/embed",
       "version": "0.1.0",
+      "dependencies": {
+        "@cronos/charts": "workspace:*",
+      },
       "devDependencies": {
         "oxlint": "^1.78.0",
         "playwright": "^1.56.0",
@@ -47,6 +58,8 @@
     "@babel/parser": ["@babel/parser@7.29.8", "", { "dependencies": { "@babel/types": "^7.29.8" }, "bin": "./bin/babel-parser.js" }, "sha512-E8lTAYNB1KW+FH+VGJuZM1ioAx2E6oVlvQFRrf5P8ZZmsiJXYAD9vTFV7yyEURNzgh1dFqMZuO6tUwcARbqFCA=="],
 
     "@babel/types": ["@babel/types@7.29.8", "", { "dependencies": { "@babel/helper-string-parser": "^7.29.7", "@babel/helper-validator-identifier": "^7.29.7" } }, "sha512-Vj1jF3cPfxg7OAfoI7QnVKLoILlm2JF9pnVHrX8qx7AHMiYWT+NDAA7jChlNgRS4WTLc/fD1lXLmPixluj+3Gg=="],
+
+    "@cronos/charts": ["@cronos/charts@workspace:packages/charts"],
 
     "@cronos/embed": ["@cronos/embed@workspace:packages/embed"],
 

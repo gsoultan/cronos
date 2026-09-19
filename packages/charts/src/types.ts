@@ -279,7 +279,15 @@ export interface TableBlock {
   coverage?: Coverage
 }
 
-export type Block = StatBlock | ChartBlock | TableBlock
+/** Prose on a report: a heading, a note, a caveat beside a number. */
+export interface TextBlock {
+  kind: 'text'
+  title: string
+  value: string
+  coverage?: Coverage
+}
+
+export type Block = StatBlock | ChartBlock | TableBlock | TextBlock
 
 export interface FilterDef {
   name: string

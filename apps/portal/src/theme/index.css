@@ -101,3 +101,37 @@
 
   --ease-out-quick: cubic-bezier(0.2, 0, 0.2, 1);
 }
+
+/*
+ * The chart palette, mapped onto this application's own theme.
+ *
+ * @cronos/charts reads `--cr-*` custom properties — that is its theming API,
+ * because custom properties are the one thing that crosses a shadow boundary
+ * and the embed lives inside one. Here there is no boundary, so they are set
+ * from the Tailwind theme variables instead and the charts wear this
+ * application's colours rather than the embed's defaults.
+ *
+ * Dark mode needs no second block: these point at variables that redefine
+ * themselves under [data-theme='dark'], which is the whole reason the theme
+ * has no `dark:` variants.
+ */
+.cronos-chart {
+  --cr-font: inherit;
+  --cr-ink: var(--color-ink);
+  --cr-ink-secondary: var(--color-ink-secondary);
+  --cr-ink-muted: var(--color-ink-muted);
+  --cr-surface: var(--color-surface);
+  --cr-line: var(--color-line);
+  --cr-accent: var(--color-series-1);
+  --cr-good: var(--color-good, #0ca30c);
+  --cr-serious: var(--color-serious, #d03b3b);
+
+  --cr-series-1: var(--color-series-1);
+  --cr-series-2: var(--color-series-2);
+  --cr-series-3: var(--color-series-3);
+  --cr-series-4: var(--color-series-4);
+  --cr-series-5: var(--color-series-5);
+  --cr-series-6: var(--color-series-6);
+  --cr-series-7: var(--color-series-7);
+  --cr-series-8: var(--color-series-8);
+}
