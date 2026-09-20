@@ -753,6 +753,59 @@ export interface Invitation {
   expires: string
 }
 
+/* -- Which project this session is in ------------------------------------- */
+
+export interface EnterableProject {
+  project: string
+  /** Empty when they reach it through an organisation role rather than a
+      membership — the server says which in `via`. */
+  role: string
+  via: 'membership' | 'organization role'
+}
+
+/**
+ * Where this session may go, and where it is.
+ *
+ * Their memberships, plus every project in the organisation when they
+ * administer it — the same two ways in that entering admits, answered before
+ * somebody picks rather than after. A switcher that offers what the endpoint
+ * then refuses is worse than no switcher.
+ */
+export function enterableProjects() {
+  return call<{ projects: EnterableProject[]; current: string }>('/v1/auth/project')
+}
+
+/**
+ * Moves this session into another project in the same organisation.
+ *
+ * A new token, because the project is in the token and every request is
+ * decided by it — not a header the browser sets, which would be a client
+ * asking to be trusted about which tenant it is in.
+ *
+ * The cached user is rewritten from the answer rather than patched from what
+ * was clicked: the role in the new project is the server's to state, and it is
+ * routinely different from the one in the last project. And the sign-in event
+ * is announced, which is what empties the query cache — every key in it
+ * belongs to the project being left, and `['catalog']` is the key for
+ * everybody. Serving one project's catalogue under another's name is the leak
+ * this whole path has to avoid.
+ */
+export async function enterProject(project: string): Promise<void> {
+  const answer = await call<{ token: string; project: string; role?: string }>(
+    '/v1/auth/project',
+    { method: 'POST', body: JSON.stringify({ project }) },
+  )
+  globalThis.localStorage?.setItem('cronos.token', answer.token)
+
+  const me = currentUser()
+  if (me) {
+    globalThis.localStorage?.setItem('cronos.user', JSON.stringify({
+      ...me, project: answer.project, role: answer.role ?? '',
+    }))
+  }
+  announceSignIn()
+}
+
 /** Who has been invited and has not yet accepted. */
 export function invitations() {
   return call<Invitation[]>('/v1/people/invitations')
@@ -1299,7 +1352,16 @@ export interface Group {
   members: number
 }
 
-export type GrantKind = 'user' | 'group'
+/**
+ * What a grant names.
+ *
+ * `invited` is somebody who has been sent an invitation and has not accepted:
+ * there is no account to name yet, and a report is restricted by its first
+ * grant, so "invite them and give them the summary" otherwise had to be done
+ * in that order and then remembered. The server rewrites it to a `user` grant
+ * naming the new account the moment the invitation is accepted.
+ */
+export type GrantKind = 'user' | 'group' | 'invited'
 
 export interface Grant {
   report: string
