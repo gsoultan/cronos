@@ -64,6 +64,16 @@ to no one, with a grant in the list and a padlock on the page to say it had
 worked. Revoking is deliberately not checked the same way — a grant naming
 somebody who has since left has to remain removable.
 
+**An organisation's administrators get the interface their role gives them.**
+An owner or an admin of the organisation holds project administrator in every
+project in it, with no membership in any of them — the server has always
+decided that way, and the session has always carried `orgRole`. The portal read
+the project role alone and copied it upwards, so somebody who administers the
+whole organisation was shown, and limited to, a viewer's interface: no way to
+connect a datasource, no way to say who may open a report, while every endpoint
+behind those controls would have answered yes. One rule decides it now, the one
+`lib/workspace.ts` already had.
+
 **Two live checks, for two properties a unit test kept being green about.**
 `scripts/live-access.sh` assigns a person and a group to a report and proves
 every other way in refuses everybody else: running it, reading its definition,

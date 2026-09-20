@@ -11,7 +11,10 @@ import { FilterPanel } from '../components/FilterPanel'
 import { EmptyState } from '../components/EmptyState'
 import { SharePanel } from '../components/share/SharePanel'
 import { AccessPanel } from '../components/share/AccessPanel'
-import { currentUser } from '../lib/api'
+import { useWorkspace } from '../lib/WorkspaceContext'
+import {
+  effectiveRole, type Organization, type Project,
+} from '../lib/workspace'
 import type { Group } from '../lib/types'
 import {
   billedByMonth, collectionsTrend, datasets, invoiceRows, outstandingTrend,
@@ -166,6 +169,7 @@ function ServerReport({ name, filters, onFilter, query }: {
   onFilter: (next: RunFilters) => void
   query: ReturnType<typeof useReport>
 }) {
+  const { org, project } = useWorkspace()
   const [sharing, setSharing] = useState(false)
   /* Its own control, not a section of the share panel.
 
@@ -216,7 +220,7 @@ function ServerReport({ name, filters, onFilter, query }: {
             {/* Only for somebody who can change it. The endpoints behind it
                 refuse everybody else on their own, so this is about not
                 offering a control that can only say no. */}
-            {administers() && (
+            {administers(org, project) && (
               <Button variant="default" onClick={() => setAccess((v) => !v)}
                 data-testid="access-button">Access</Button>
             )}
@@ -239,7 +243,7 @@ function ServerReport({ name, filters, onFilter, query }: {
 
       {access && (
         <div className="mb-6">
-          <AccessPanel report={name} canAdmin={administers()} />
+          <AccessPanel report={name} canAdmin={administers(org, project)} />
         </div>
       )}
       {/* The filters the report declares. Present here for the first time:
@@ -255,13 +259,19 @@ function ServerReport({ name, filters, onFilter, query }: {
 /**
  * Whether the signed-in person may change who sees a report.
  *
+ * The workspace's own rule rather than a second reading of the session, and
+ * that is the fix as much as the control is: this compared the project role
+ * to 'admin' or 'owner' — two spellings, one of which is an organisation role
+ * that never appears in that field — so an owner of the organisation, who
+ * holds project administrator in every project in it, was shown nothing.
+ * effectiveRole is where that rule lives and is what the server's
+ * principal.effective() does.
+ *
  * Read from the session rather than asked of the server, because the panel it
  * gates is a convenience: the endpoints behind it refuse a non-administrator
  * on their own, so the worst a stale role here can do is show somebody a
- * control that then says no. The reverse — hiding it from an administrator —
- * costs a reload.
+ * control that then says no.
  */
-function administers(): boolean {
-  const role = currentUser()?.role
-  return role === 'admin' || role === 'owner'
+function administers(org: Organization, project: Project): boolean {
+  return effectiveRole(org, project) === 'admin'
 }

@@ -228,6 +228,24 @@ say "Repairing it, through the API"
 	die "the corrected definition cannot be published"
 ok "the bad one is deleted and a corrected one published — no database prompt"
 
+# And the delete took effect now, not at the next restart.
+#
+# It used to reach the store and stop there: the definition was gone from the
+# database, gone from the boot after next, and still being served by the
+# process somebody had just deleted it from. A report is the clearest case —
+# it renders for anybody who asks — so this deletes one and asks.
+[ "$(code -X POST -H "Authorization: Bearer $ADMIN" -H 'content-type: application/json' \
+	-d '{}' "$API/v1/reports/billing-summary")" = 200 ] ||
+	die "the fixture is wrong: billing-summary does not render"
+[ "$(code -X DELETE -H "Authorization: Bearer $ADMIN" \
+	"$API/v1/definitions/Report/billing-summary")" = 204 ] ||
+	die "a report nothing points at cannot be deleted"
+gone=$(code -X POST -H "Authorization: Bearer $ADMIN" -H 'content-type: application/json' \
+	-d '{}' "$API/v1/reports/billing-summary")
+[ "$gone" = 404 ] ||
+	die "a deleted report still rendered ($gone) — the delete needs a restart to take effect"
+ok "a deleted report stops rendering on the next request, not the next restart"
+
 stop
 start || die "it does not come back after the repair"
 [ "$(curl -s "$API/v1/metrics" | awk '/^cronos_definitions_refused /{print $2}')" = 0 ] ||
