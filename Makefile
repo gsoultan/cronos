@@ -99,6 +99,7 @@ live: ## Drive the embed component and the portal against a real cronosd
 	@# one the process can actually read through.
 	@./scripts/live-access.sh
 	@./scripts/live-datasources.sh
+	@./scripts/live-projects.sh
 	@./scripts/live-embed.sh
 	@./scripts/live-portal.sh
 
