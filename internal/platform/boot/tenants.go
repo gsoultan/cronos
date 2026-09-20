@@ -567,6 +567,18 @@ func reachable(ctx context.Context, probes *registry.Registry) error {
 			down = append(down, fmt.Sprintf("%s: %v", name, err))
 		}
 	}
+	/*
+	   And the ones with no connection to probe at all.
+
+	   Names lists what opened, so a source this build cannot open is not in
+	   it — which made readiness answer healthy for a project holding a
+	   definition every report reading it fails on. It is degraded rather than
+	   down for the same reason a warehouse being off is: the reports that do
+	   not read it still work.
+	*/
+	for _, why := range probes.Unavailable() {
+		down = append(down, why.Error())
+	}
 	if len(down) == 0 {
 		return nil
 	}

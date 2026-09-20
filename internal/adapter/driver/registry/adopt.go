@@ -50,6 +50,20 @@ func (r *Registry) Adopt(def definition.DataSource) error {
 	// can parse a DSN, and neither should queue every query in the process.
 	s, err := r.prepare(def)
 	if err != nil {
+		/*
+		   Recorded before it is returned, so the deployment can be asked
+		   about it afterwards.
+
+		   A source that will not open is still a source this project has
+		   defined, and the report reading it fails. Without this the only
+		   trace was the line the caller logged at the moment it happened:
+		   /v1/ready answered healthy, the test endpoint said "no such
+		   datasource" — which is not what is wrong — and the definition sat
+		   in the catalogue looking like every other one.
+		*/
+		r.mu.Lock()
+		r.unopened[def.Name] = err
+		r.mu.Unlock()
 		return err
 	}
 
@@ -71,6 +85,8 @@ func (r *Registry) Adopt(def definition.DataSource) error {
 	}
 	old := r.sources[def.Name]
 	r.sources[def.Name] = s
+	// Whatever it failed with last time is no longer true.
+	delete(r.unopened, def.Name)
 	r.mu.Unlock()
 
 	// Both after the swap, so the window where this source is unanswerable is
@@ -102,7 +118,17 @@ func (r *Registry) Drop(name string) {
 	r.mu.Lock()
 	old := r.sources[name]
 	delete(r.sources, name)
+	// Including one that never opened: the definition is going either way,
+	// and a reason to be unready about a source nobody has any more is a
+	// deployment that cannot be made ready again.
+	unopened := r.unopened[name]
+	delete(r.unopened, name)
 	r.mu.Unlock()
+
+	if old == nil && unopened != nil {
+		r.log.Info("datasource dropped", "name", name, "was", "never opened")
+		return
+	}
 
 	if old == nil {
 		return

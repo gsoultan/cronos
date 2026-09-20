@@ -215,7 +215,45 @@ grep -q "a-password-in-the-clear" "$work/log" &&
 	die "the startup log contains the datasource password"
 ok "and the reason names the source and the driver, without the DSN"
 
+# And readiness says so, which is the part that was missing.
+#
+# A source this build cannot open is not in the registry, so nothing probed it
+# and /v1/ready answered healthy for a project holding a definition that fails
+# every report reading it. Degraded rather than down, because the reports that
+# do not read it still work — the same answer a warehouse being off gets.
+#
+# Retried, because the readiness answer is cached for a few seconds and this
+# publish may have landed inside one somebody already asked for.
+for _ in $(seq 1 12); do
+	ready=$(curl -s "$API/v1/ready")
+	case "$ready" in *lake*) break ;; esac
+	sleep 1
+done
+case "$ready" in
+*'"status":"degraded"'*) ;;
+*) die "readiness is not degraded with a source that cannot be opened: $ready" ;;
+esac
+case "$ready" in
+*lake*) ok "and /v1/ready is degraded, naming the source" ;;
+*) die "readiness does not name the source that failed: $ready" ;;
+esac
+# Ready, not down: a deployment is still worth sending traffic to.
+[ "$(code "$API/v1/ready")" = 200 ] ||
+	die "one unopenable source took the instance out of the load balancer"
+ok "and still answers 200, so it stays in rotation"
+
 curl -s -o /dev/null -X DELETE -H "Authorization: Bearer $ADMIN" "$API/v1/definitions/DataSource/lake"
+
+# Deleting it makes the deployment ready again, rather than leaving a reason
+# nobody can clear without a restart.
+for _ in $(seq 1 12); do
+	ready=$(curl -s "$API/v1/ready")
+	case "$ready" in *lake*) sleep 1 ;; *) break ;; esac
+done
+case "$ready" in
+*lake*) die "a deleted source still holds readiness degraded: $ready" ;;
+*) ok "and deleting it clears that, with no restart" ;;
+esac
 
 # -- 3. And it can be repaired -------------------------------------------------
 
