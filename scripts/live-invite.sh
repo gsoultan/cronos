@@ -59,9 +59,14 @@ ok "listening on $MAIL_SMTP"
 say "cronos"
 go build -o bin/cronosd ./cmd/cronosd || die "build"
 mkdir -p "$work/defs"
+# A report to assign them, which is the other half of inviting somebody: they
+# are invited *to* something, and until now they could only be granted it once
+# they had arrived.
+cp demo/definitions/*.yaml "$work/defs/"
 
 CRONOS_ADDR=":$PORT" \
 	CRONOS_DEFINITIONS="$work/defs" \
+	CRONOS_SEED=demo/seed.sql CRONOS_SEED_SOURCE=warehouse \
 	CRONOS_STORE_DRIVER=sqlite \
 	CRONOS_STORE_DSN="file:$work/cronos.db" \
 	CRONOS_SIGNING_KEY=0123456789abcdef0123456789abcdef \
@@ -111,6 +116,30 @@ code=$(curl -s -o /dev/null -w '%{http_code}' "$API/v1/auth/login" \
 	-d '{"email":"dewi@acme.example","password":"anything-at-all"}')
 [ "$code" != 200 ] || die "an invitation created a working account"
 ok "no account exists yet"
+
+# --- assigning them a report before they arrive -------------------------------
+
+# A report is restricted by its first grant, so "invite them and give them the
+# summary" had to be done in that order and then remembered — and nobody goes
+# back. There is no account to name yet, so the grant names the address.
+code=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+	-H "Authorization: Bearer $session" -H 'content-type: application/json' \
+	-d '{"kind":"invited","subject":"dewi@acme.example"}' \
+	"$API/v1/reports/customer-overview/grants")
+[ "$code" = 200 ] || die "a report could not be assigned to somebody invited: $code"
+ok "and they can be assigned a report before they have an account"
+
+curl -s -H "Authorization: Bearer $session" "$API/v1/reports/customer-overview/grants" |
+	grep -q '"kind":"invited"' || die "the grant was not recorded as an invitation"
+
+# An address nobody invited is refused, so this is not a way around the check
+# that a grant names somebody who is actually here.
+code=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+	-H "Authorization: Bearer $session" -H 'content-type: application/json' \
+	-d '{"kind":"invited","subject":"stranger@example.com"}' \
+	"$API/v1/reports/customer-overview/grants")
+[ "$code" = 400 ] || die "a report was assigned to an address nobody invited: $code"
+ok "and an address nobody invited is refused"
 
 # --- the email ----------------------------------------------------------------
 
@@ -182,6 +211,17 @@ theirs=$(printf '%s' "$accepted" | sed 's/.*"token":"//; s/".*//')
 code=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $theirs" "$API/v1/catalog")
 [ "$code" = 200 ] || die "the session they were handed does not work: $code"
 ok "the session works"
+
+# The promise becomes a permission. Accepting rewrote the grant to name the
+# account that now exists — without that the report they were invited to read
+# would refuse them, and nothing anywhere would say why.
+curl -s -H "Authorization: Bearer $session" "$API/v1/reports/customer-overview/grants" |
+	grep -q '"kind":"user"' ||
+	die "the invited grant was not rewritten to name their account"
+code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $theirs" \
+	-H 'content-type: application/json' -d '{}' "$API/v1/reports/customer-overview")
+[ "$code" = 200 ] || die "they cannot open the report they were invited to read: $code"
+ok "and the report they were assigned opens for them"
 
 # The password they chose is the one that signs them in.
 code=$(curl -s -o /dev/null -w '%{http_code}' "$API/v1/auth/login" \

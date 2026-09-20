@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/gsoultan/cronos/internal/core/access"
 	"github.com/gsoultan/cronos/internal/core/identity"
 	"github.com/gsoultan/cronos/internal/core/principal"
 )
@@ -163,6 +164,29 @@ func (s *Store) Accept(ctx context.Context, secret, password string) (identity.U
 			// invitation unspent, which is right: nothing happened.
 			return identity.User{}, fmt.Errorf("%w: %s", identity.ErrExists, user.Email)
 		}
+		return identity.User{}, err
+	}
+
+	/*
+	   The reports they were assigned before they had an account.
+
+	   An invited grant names the address; a person is named by their account
+	   id, and that id exists as of four lines ago. Rewriting it here rather
+	   than resolving addresses at read time keeps one spelling of "who" in
+	   the grants table, and keeps the read path — which runs on every
+	   catalogue and every report — free of a join that would only ever match
+	   during the minutes around somebody's first sign-in.
+
+	   In the same transaction as the account, because the two are one fact.
+	   A commit that created the account and lost the grants would leave
+	   somebody signed in and unable to open the report they were invited to
+	   read, with nothing anywhere saying why.
+	*/
+	if _, err := tx.ExecContext(ctx, s.sql(`
+		UPDATE cronos_report_grants SET kind = ?, subject = ?
+		WHERE org = ? AND project = ? AND kind = ? AND subject = ?`),
+		string(access.KindUser), user.ID,
+		user.Org, user.Project, string(access.KindInvited), user.Email); err != nil {
 		return identity.User{}, err
 	}
 
