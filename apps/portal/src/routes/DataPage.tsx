@@ -57,28 +57,11 @@ export function DataPage() {
     setDatasetPage(0)
   }
 
-  if (catalog.live && panel === 'none') {
-    if (catalog.isPending) {
-      return <p className="p-8 text-center text-ink-muted">Loading…</p>
-    }
-    if (catalog.error) {
-      return (
-        <EmptyState title="Could not read this project"
-          description={catalog.error instanceof Error ? catalog.error.message : 'Unknown error.'} />
-      )
-    }
-    return (
-      <>
-        <PageHeader title="Data"
-          description="Sources are connections. Datasets are governed queries against them — reports bind to datasets, never to a source directly." />
-        <LiveSources sources={catalog.data?.sources ?? []} page={livePage.sources}
-          size={PAGE_SIZE} onPage={(n) => setLivePage((p) => ({ ...p, sources: n }))} />
-        <LiveDatasets datasets={catalog.data?.datasets ?? []} page={livePage.datasets}
-          size={PAGE_SIZE} onPage={(n) => setLivePage((p) => ({ ...p, datasets: n }))} />
-      </>
-    )
-  }
-
+  /* Above every early return, and that is not a style preference: the live
+     branch below used to return before these ran, so opening a panel while
+     connected would have rendered more hooks than the previous render and
+     thrown. It never did, because the connected page had no button to open one
+     — which is the bug this ordering exists to make impossible to reintroduce. */
   const term = query.trim().toLowerCase()
   const matches = (...fields: string[]) =>
     !term || fields.some((f) => f.toLowerCase().includes(term))
@@ -96,6 +79,8 @@ export function DataPage() {
   const datasetView = paginate(datasets, datasetPage, PAGE_SIZE)
   const nothingMatched = term && sources.length === 0 && datasets.length === 0
 
+  /* The wizards, before the dispatch on live: they publish through the API and
+     read nothing from the sample data, so they are the same screen either way. */
   if (panel === 'source') {
     return (
       <>
@@ -112,6 +97,42 @@ export function DataPage() {
         <PageHeader title="New dataset"
           description="A query against one source, plus the fields and rules every report using it inherits." />
         <DatasetForm onDone={close} onCancel={close} />
+      </>
+    )
+  }
+
+  if (catalog.live) {
+    if (catalog.isPending) {
+      return <p className="p-8 text-center text-ink-muted">Loading…</p>
+    }
+    if (catalog.error) {
+      return (
+        <EmptyState title="Could not read this project"
+          description={catalog.error instanceof Error ? catalog.error.message : 'Unknown error.'} />
+      )
+    }
+    return (
+      <>
+        <PageHeader title="Data"
+          description="Sources are connections. Datasets are governed queries against them — reports bind to datasets, never to a source directly."
+          /* The same two actions the sample page has always had. Their absence
+             here meant a real deployment could edit and delete the sources it
+             booted with and never add one: the wizard existed, published
+             correctly, and nothing linked to it. A project's second warehouse
+             was a YAML file and a deploy. */
+          actions={editable ? (
+            <>
+              <Button variant="default" onClick={() => setPanel('source')}
+                data-testid="connect-source">Connect a source</Button>
+              <Button onClick={() => setPanel('dataset')}
+                data-testid="new-dataset">New dataset</Button>
+            </>
+          ) : undefined}
+        />
+        <LiveSources sources={catalog.data?.sources ?? []} page={livePage.sources}
+          size={PAGE_SIZE} onPage={(n) => setLivePage((p) => ({ ...p, sources: n }))} />
+        <LiveDatasets datasets={catalog.data?.datasets ?? []} page={livePage.datasets}
+          size={PAGE_SIZE} onPage={(n) => setLivePage((p) => ({ ...p, datasets: n }))} />
       </>
     )
   }

@@ -29,6 +29,11 @@ type Registry struct {
 	mu      sync.RWMutex
 	sources map[string]*source
 	log     *slog.Logger
+	// secrets is kept because a source can arrive after New. A ${secret:…}
+	// reference is resolved when the connection is opened, and one adopted at
+	// four in the afternoon has to be resolved against the same backend the
+	// ones opened at boot were.
+	secrets secret.Resolver
 	// unavailable is why each source that would not open did not. Written once
 	// during New and read after, so it needs no lock — and kept rather than
 	// logged here, because whether this is fatal is the caller's decision and
@@ -82,48 +87,60 @@ func New(defs []definition.DataSource, secrets secret.Resolver, log *slog.Logger
 		sources:     map[string]*source{},
 		federations: map[string]*federation{},
 		log:         log,
+		secrets:     secrets,
 	}
 
 	for _, def := range defs {
-		if def.Federated() {
-			// An object store is not connected to; it is read through an
-			// engine that can address files. It is registered so a dataset can
-			// name it, and resolving one is what needs federation.
-			//
-			// Its URI is resolved all the same: a bucket URL can carry a
-			// reference, and one left as literal ${secret:…} text becomes a
-			// path the reader looks for and does not find.
-			uri, err := secret.Resolve(def.URI, secrets)
-			if err != nil {
-				r.unavailable = append(r.unavailable,
-					fmt.Errorf("datasource %q: %w", def.Name, err))
-				continue
-			}
-			def.URI = uri
-			// And its credentials, for the same reason and with more at stake:
-			// a key left as literal ${secret:…} text is sent to the object
-			// store as the key, which is a 403 that reads like a rotated
-			// credential rather than an unset one.
-			creds, err := secret.Resolve(def.Credentials, secrets)
-			if err != nil {
-				r.unavailable = append(r.unavailable,
-					fmt.Errorf("datasource %q: %w", def.Name, err))
-				continue
-			}
-			def.Credentials = creds
-			r.sources[def.Name] = &source{def: def}
-			continue
-		}
-		s, err := open(def, secrets)
+		s, err := r.prepare(def)
 		if err != nil {
 			r.unavailable = append(r.unavailable, err)
 			continue
 		}
 		r.sources[def.Name] = s
-		log.Info("datasource", "name", def.Name, "driver", def.Driver,
-			"timeout", def.Limits.Timeout(), "maxRows", def.Limits.Rows())
+		if s.db != nil {
+			log.Info("datasource", "name", def.Name, "driver", def.Driver,
+				"timeout", def.Limits.Timeout(), "maxRows", def.Limits.Rows())
+		}
 	}
 	return r, nil
+}
+
+/*
+prepare resolves a definition into something answerable, without touching the
+registry.
+
+Shared by New and Adopt so a source that arrives through the API is opened
+exactly as one read at startup. Two copies of this is how a deployment ends up
+with a secret resolved on one path and left as literal ${secret:…} text on the
+other — the drift this package has already been bitten by twice, in a driver
+check and in a timezone.
+*/
+func (r *Registry) prepare(def definition.DataSource) (*source, error) {
+	if def.Federated() {
+		// An object store is not connected to; it is read through an engine
+		// that can address files. It is registered so a dataset can name it,
+		// and resolving one is what needs federation.
+		//
+		// Its URI is resolved all the same: a bucket URL can carry a
+		// reference, and one left as literal ${secret:…} text becomes a path
+		// the reader looks for and does not find.
+		uri, err := secret.Resolve(def.URI, r.secrets)
+		if err != nil {
+			return nil, fmt.Errorf("datasource %q: %w", def.Name, err)
+		}
+		def.URI = uri
+		// And its credentials, for the same reason and with more at stake: a
+		// key left as literal ${secret:…} text is sent to the object store as
+		// the key, which is a 403 that reads like a rotated credential rather
+		// than an unset one.
+		creds, err := secret.Resolve(def.Credentials, r.secrets)
+		if err != nil {
+			return nil, fmt.Errorf("datasource %q: %w", def.Name, err)
+		}
+		def.Credentials = creds
+		return &source{def: def}, nil
+	}
+	return open(def, r.secrets)
 }
 
 func open(def definition.DataSource, secrets secret.Resolver) (*source, error) {

@@ -90,6 +90,25 @@ ok('a row-scoped dataset says so', data.includes('row scoped'))
 /* And the sample fixture is nowhere near it. */
 ok('the sample sources are gone', !data.includes('Northwind'))
 
+/* -- Connecting a second source ------------------------------------------
+   A connected deployment had no way to add one. The wizard existed, published
+   correctly and was reachable only from the sample page, so a project could
+   edit and delete the sources it booted with and never gain another: the
+   second warehouse was a YAML file and a deploy.
+
+   Opening it is half the assertion. The hooks below the live branch's early
+   return meant that clicking this would have thrown "rendered more hooks than
+   during the previous render" — a crash that could not happen while nothing
+   linked to the panel. */
+ok('a connected editor can connect a source',
+  await page.locator('[data-testid=connect-source]').count() === 1)
+await page.click('[data-testid=connect-source]')
+await page.locator('text=What are you connecting?').waitFor({ timeout: 15000 })
+ok('and the wizard opens on the connected page',
+  (await page.locator('body').innerText()).includes('Choose a source'))
+ok('without throwing', errors.length === 0)
+if (errors.length) console.log(errors.slice(0, 3).map((e) => `       ${e}`).join('\n'))
+
 await page.goto(`${B}/schedules`, { waitUntil: 'domcontentloaded' })
 await page.locator('[data-testid=schedules-card]').waitFor({ timeout: 15000 })
 const schedules = await page.locator('body').innerText()

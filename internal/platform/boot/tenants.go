@@ -2,6 +2,7 @@ package boot
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"path/filepath"
@@ -146,9 +147,9 @@ func finish(ctx context.Context, cfg config.Server, rt *runtime,
 		Reports:     rt.repo,
 		Runner:      run.New(rt.repo, engines),
 		Definitions: rt.repo,
-		Probes:      probing(engines),
+		Probes:      engines.probes(),
 	}
-	rt.publish = publishing(defs, rt.repo, records, engines, channelNames(cfg, log))
+	rt.publish = publishing(defs, rt.repo, records, engines, channelNames(cfg, log), log)
 	rt.close = closeEngines
 	return nil
 }
@@ -518,10 +519,20 @@ func (s sendPerProject) Send(ctx context.Context, req send.Request,
 	return svc.Send(ctx, req, pr)
 }
 
-// readinessFor asks the store once and every project's datasources by name.
-//
-// Named by project, because "a datasource is unreachable" is not an answer
-// somebody can act on when a process serves three of them and two are fine.
+/*
+readinessFor asks the store once and every project's datasources by project.
+
+Named by project, because "a datasource is unreachable" is not an answer
+somebody can act on when a process serves three of them and two are fine.
+
+One check per project rather than one per source, and that is the part worth
+explaining: the checks are built here, at startup, and a source can be
+connected at four in the afternoon. A list of probes fixed at boot would answer
+for the two warehouses this process started with and say nothing at all about
+the third — readiness would look healthy while a report failed. So the check
+holds the registry and asks it which sources exist each time, and names in its
+error the ones that did not answer.
+*/
 func readinessFor(records *sqlstore.Store, runtimes map[tenant]*runtime) []api.Check {
 	var checks []api.Check
 	if records != nil {
@@ -532,17 +543,34 @@ func readinessFor(records *sqlstore.Store, runtimes map[tenant]*runtime) []api.C
 		if !ok {
 			continue
 		}
-		for _, name := range probes.Names() {
-			checks = append(checks, api.Check{
-				Name: "datasource:" + t.String() + ":" + name,
-				Probe: func(ctx context.Context) error {
-					_, err := probes.Probe(ctx, name)
-					return err
-				},
-			})
-		}
+		checks = append(checks, api.Check{
+			Name:  "datasources:" + t.String(),
+			Probe: func(ctx context.Context) error { return reachable(ctx, probes) },
+		})
 	}
 	return checks
+}
+
+/*
+reachable probes every datasource a project holds right now.
+
+Every one of them, rather than stopping at the first failure: an operator
+reading a degraded readiness answer is deciding what to go and look at, and
+"the lake is down" when the warehouse is down too sends them to one of two
+problems. A project with no sources has nothing to be unready about and says
+so by returning nil.
+*/
+func reachable(ctx context.Context, probes *registry.Registry) error {
+	var down []string
+	for _, name := range probes.Names() {
+		if _, err := probes.Probe(ctx, name); err != nil {
+			down = append(down, fmt.Sprintf("%s: %v", name, err))
+		}
+	}
+	if len(down) == 0 {
+		return nil
+	}
+	return errors.New(strings.Join(down, "; "))
 }
 
 // publishing builds the resolver, once the projects are known.

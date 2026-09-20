@@ -14,23 +14,30 @@ import (
 	"github.com/gsoultan/cronos/internal/platform/config"
 )
 
-// datasources decides where a dataset's rows come from.
-//
-// The registry when the repository defines datasources, which is the real
-// deployment: a dataset naming a warehouse reaches that warehouse, with that
-// warehouse's own timeout and row cap.
-//
-// The configured CRONOS_DSN when it does not. That is the development path —
-// one seeded database, every dataset reading it — and it stays because a demo
-// that needs four YAML files before it shows a number is a demo nobody runs.
-func datasources(cfg config.Server, repo *file.Repository,
-	log *slog.Logger) (run.Engines, func() error, error) {
+/*
+datasources decides where a dataset's rows come from.
 
-	if defs := repo.DataSources(); len(defs) > 0 {
-		reg, err := registry.New(defs, secrets(cfg), log)
-		if err != nil {
-			return nil, nil, err
-		}
+The registry, always — a project holds however many sources it has been given,
+and it is the same object whether they were read from a directory at startup or
+published through the API this afternoon. A dataset naming a warehouse reaches
+that warehouse, with that warehouse's own timeout and row cap.
+
+The configured CRONOS_DSN answers while the registry is empty. That is the
+development path — one seeded database, every dataset reading it — and it stays
+because a demo that needs four YAML files before it shows a number is a demo
+nobody runs. It stops the moment a source is defined, which is the rule that
+keeps it from being a trap: a deployment with three warehouses must not answer a
+dataset naming a fourth by quietly reading the development database instead.
+*/
+func datasources(cfg config.Server, repo *file.Repository,
+	log *slog.Logger) (*sources, func() error, error) {
+
+	reg, err := registry.New(repo.DataSources(), secrets(cfg), log)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if !reg.Empty() {
 		if err := seedRegistry(cfg, reg, log); err != nil {
 			reg.Close()
 			return nil, nil, err
@@ -49,7 +56,7 @@ func datasources(cfg config.Server, repo *file.Repository,
 			unopenable.Add(1)
 		}
 		log.Info("datasources", "kind", "defined", "names", reg.Names())
-		return reg, reg.Close, nil
+		return &sources{registry: reg}, reg.Close, nil
 	}
 
 	db, err := sql.Open(cfg.Driver, cfg.DSN)
@@ -69,11 +76,17 @@ func datasources(cfg config.Server, repo *file.Repository,
 
 	// One engine for everything, said out loud rather than assumed: this is a
 	// deployment that reads a single database, and a dataset naming a source
-	// it has never heard of still resolves here.
-	return run.One{Only: run.Engine{
+	// it has never heard of still resolves here — until the day somebody
+	// connects one, after which the registry above answers and this pool is
+	// only held open so that shutting down closes it.
+	configured := run.One{Only: run.Engine{
 		Executor: sqldriver.NewExecutor(db).WithLimits(definition.Limits{}),
 		Builder:  query.NewBuilder(dialect),
-	}}, db.Close, nil
+	}}
+	return &sources{registry: reg, configured: configured}, func() error {
+		reg.Close()
+		return db.Close()
+	}, nil
 }
 
 // dialectFor maps the configured driver to the SQL it speaks.

@@ -140,7 +140,13 @@ func (c catalog) Datasets() []definition.Dataset   { return c.datasets }
 func (c catalog) Reports() []definition.Report     { return c.reports }
 func (c catalog) Schedules() []definition.Schedule { return c.schedules }
 
-type recorder struct{ deleted string }
+type recorder struct {
+	deleted string
+	// deleteErr is what the store says when it will not delete — a definition
+	// that is not there, or a database that is not answering. The live view
+	// must not act on either.
+	deleteErr error
+}
 
 func (r *recorder) Put(context.Context, principal.Principal, string, string, []byte) (string, error) {
 	return "", nil
@@ -152,6 +158,9 @@ func (r *recorder) List(context.Context, principal.Principal) ([]publish.Entry, 
 	return nil, nil
 }
 func (r *recorder) Delete(_ context.Context, _ principal.Principal, kind, name string) error {
+	if r.deleteErr != nil {
+		return r.deleteErr
+	}
 	r.deleted = kind + "/" + name
 	return nil
 }
