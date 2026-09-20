@@ -2,7 +2,8 @@ import {
   createContext, useContext, useEffect, useMemo, useState, type ReactNode,
 } from 'react'
 import {
-  organizations, projects, type Organization, type Project, type ProjectRole,
+  organizations, projects,
+  type Organization, type OrgRole, type Project, type ProjectRole,
 } from './workspace'
 import { connected, currentUser, SIGNED_IN } from './api'
 
@@ -105,26 +106,42 @@ export function useWorkspace(): Workspace {
  * the fields it cannot answer are left at their least misleading values rather
  * than invented. A report count of zero beside a project that has reports is a
  * number nobody reads; a fabricated one is a number somebody believes.
+ *
+ * Exported for its tests and for nothing else: what it turns a session into
+ * decides which controls a person is offered, and reading that through a React
+ * provider to assert it would be testing the provider.
  */
-function fromSession(): { org: Organization; project: Project } | null {
+export function fromSession(): { org: Organization; project: Project } | null {
   if (!connected()) return null
 
   const me = currentUser()
   if (!me) return null
 
   /*
-   * A project role, and no organisation role at all.
+   * Both roles, because the server has both and they do not agree.
    *
-   * The server's model has both and an account carries one of them: what a
-   * token says is a project role. Claiming "member" at the organisation level
-   * would be inventing the half it does not know, so the org shows the same
-   * role the project does — which is the one that decides anything.
+   * This used to read the project role alone and copy it upwards, on the
+   * stated reasoning that a token carries one role and claiming an
+   * organisation role would be inventing the half it does not know. The
+   * session has carried `orgRole` the whole time. Inventing it was the old
+   * behaviour: an owner or an admin of the organisation holds project
+   * administrator in every project in it with no membership in any of them —
+   * principal's `effective()` is explicit — so somebody who administers the
+   * whole organisation was shown, and limited to, the interface of a viewer,
+   * while every endpoint behind it would have said yes.
+   *
+   * The project role stays null rather than defaulting to viewer when the
+   * account has none: null is what effectiveRole() reads to mean "no
+   * membership here", and a made-up viewer role would hide the org role
+   * behind it.
    */
+  const orgRole: OrgRole =
+    me.orgRole === 'owner' || me.orgRole === 'admin' ? me.orgRole : 'member'
   const role: ProjectRole =
-    me.role === 'admin' || me.role === 'editor' || me.role === 'viewer' ? me.role : 'viewer'
+    me.role === 'admin' || me.role === 'editor' || me.role === 'viewer' ? me.role : null
 
   return {
-    org: { id: me.org, slug: me.org, name: me.org, role: role === 'admin' ? 'admin' : 'member' },
+    org: { id: me.org, slug: me.org, name: me.org, role: orgRole },
     project: {
       id: me.project, slug: me.project, name: me.project,
       orgId: me.org, role, reportCount: 0,

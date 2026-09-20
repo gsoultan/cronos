@@ -38,6 +38,14 @@ type Reports interface {
 // the catalogue while every run kept using what the process read at startup.
 type Live interface {
 	Apply(raw []byte) error
+	/*
+	   Forget is the same question for a delete, and it is not symmetrical
+	   with Apply in one way worth stating: a datasource is a connection as
+	   well as a definition, so forgetting one closes a pool. That is why this
+	   is a port rather than a call on the repository — the running view is
+	   more than the documents.
+	*/
+	Forget(kind, name string) error
 }
 
 /*

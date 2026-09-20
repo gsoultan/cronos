@@ -50,7 +50,21 @@ func (s *Service) Delete(ctx context.Context, pr principal.Principal, kind, name
 		return fmt.Errorf("%w: %s %q is still read by %s",
 			ErrInUse, strings.ToLower(kind), name, english(used))
 	}
-	return s.store.Delete(ctx, pr, kind, name)
+	if err := s.store.Delete(ctx, pr, kind, name); err != nil {
+		return err
+	}
+
+	// After the store, the same order a publish uses: a delete that failed to
+	// store must not be one the running process has already acted on. The
+	// error is reported rather than swallowed — a definition that is gone from
+	// the store and still being served is exactly the disagreement this call
+	// exists to prevent.
+	if s.live != nil {
+		if err := s.live.Forget(kind, name); err != nil {
+			return fmt.Errorf("delete: removed, but still live: %w", err)
+		}
+	}
+	return nil
 }
 
 // dependants lists what would break, by name and kind.

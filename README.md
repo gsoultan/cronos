@@ -177,12 +177,19 @@ spec:
     - ref: warehouse
 ```
 
-Each datasource is opened once at startup with its own pool bound, its own
-statement timeout and its own row cap — somebody else operates that database
-and decided what a reasonable answer from it looks like. A source that will not
-open stops the server rather than being skipped: three of four warehouses
-reachable means three-quarters of the reports work and the rest fail at six in
-the morning.
+Each datasource is opened once, with its own pool bound, its own statement
+timeout and its own row cap — somebody else operates that database and decided
+what a reasonable answer from it looks like. Once at startup for the sources a
+deployment boots with, and once on publication for a source connected through
+the portal afterwards: a project's second warehouse is a form, not a deploy.
+
+A source this build cannot open — a driver it has no import for, a
+`${secret:…}` nobody set — is named in the log and counted for
+`cronos_datasources_unavailable` rather than stopping the server. The reports
+that do not read it keep working, and the one that does fails with a message
+naming the source. Refusing to start would mean one publishable definition
+could take a deployment down at its next restart, with the API down and the
+only way to remove it a prompt on the database.
 
 The pool defaults to sixteen connections, kept idle rather than churned, and
 retired after thirty minutes. All four are overridable per source, and all four
@@ -216,7 +223,9 @@ driver.
 
 With no datasources defined, every dataset reads `CRONOS_DSN`. That is the
 development path, and it stays because a demo needing four YAML files before it
-shows a number is a demo nobody runs.
+shows a number is a demo nobody runs. It ends at the first source a project
+connects: from then on a dataset naming a source that is not there is an error,
+rather than a quiet read of the development database.
 
 ## The portal, on real data
 

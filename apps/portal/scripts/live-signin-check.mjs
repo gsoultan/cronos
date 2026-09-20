@@ -22,6 +22,72 @@ ok('a configured portal with no session shows sign-in',
   await page.locator('[data-testid=sign-in]').isVisible())
 ok('and nothing else', await page.locator('[data-testid=sidebar]').count() === 0)
 
+/* Two columns where there is room for two. The panel is decoration and the
+   form is the page, so the one thing worth holding is that the decoration
+   never becomes the thing you have to scroll past to reach the fields. */
+await page.setViewportSize({ width: 1440, height: 900 })
+const panel = page.locator('main > aside')
+const card = page.locator('[data-testid=sign-in]')
+ok('a wide window puts the panel beside the form, not above it',
+  await panel.isVisible()
+  && (await card.boundingBox()).x >= (await panel.boundingBox()).width)
+
+await page.setViewportSize({ width: 430, height: 900 })
+ok('a phone gets the form and nothing else', !(await panel.isVisible()))
+await page.setViewportSize({ width: 1280, height: 800 })
+
+/* The password control is a wrapper with the real <input> inside it, and the
+   stylesheet that makes that inner input fill the wrapper was not imported by
+   either theme/mantine file. It rendered at the width a browser gives a bare
+   text field — 146px inside a 380px control — so the field looked about half
+   filled, and the right-hand two thirds of it took clicks and focused nothing.
+   Nothing looked unstyled, because the wrapper is what you see. */
+const passwordField = page.locator('input[type=password]')
+const size = await passwordField.evaluate((el) => ({
+  inner: el.getBoundingClientRect().width,
+  control: el.parentElement.getBoundingClientRect().width,
+}))
+ok('the password field fills its control, rather than a third of it',
+  size.control - size.inner <= 2,
+  `${Math.round(size.inner)} of ${Math.round(size.control)}`)
+
+const controlBox = await passwordField.evaluate((el) => {
+  const b = el.parentElement.getBoundingClientRect()
+  return { x: b.x, y: b.y, w: b.width, h: b.height }
+})
+await page.mouse.click(controlBox.x + controlBox.w - 60, controlBox.y + controlBox.h / 2)
+ok('and a click on its right-hand side lands in it',
+  await page.evaluate(() => document.activeElement?.getAttribute('type')) === 'password')
+
+/* An empty field says which one it is.
+   Both fields have always carried `required`, so the browser refused the
+   submit with a bubble of its own: one field at a time, gone on the next
+   click, absent from the page and therefore from every screen reader. On the
+   password field that meant somebody who had typed an address and nothing
+   else pressed the button and watched it do nothing. The form now answers in
+   the page, and answers about both fields at once. */
+await page.click('[data-testid=submit]')
+await page.waitForTimeout(250)
+ok('an empty form names the email field',
+  await page.getByText('Enter your email address.').isVisible())
+ok('and the password field, in the same breath',
+  await page.getByText('Enter your password.').isVisible())
+ok('and nothing was sent to the server to be refused',
+  await page.locator('[data-testid=sign-in-error]').count() === 0)
+
+/* Cleared by the keystroke that fixes it, or it is nagging rather than help. */
+await page.fill('input[type=password]', 'x')
+await page.waitForTimeout(150)
+ok('the message goes when the field is filled',
+  !(await page.getByText('Enter your password.').isVisible()))
+
+/* A half-typed address is a different complaint from a missing one. */
+await page.fill('input[type=email]', 'dewi')
+await page.locator('input[type=email]').blur()
+await page.waitForTimeout(150)
+ok('a half-typed address is told apart from a missing one',
+  await page.getByText('That does not look like an email address.').isVisible())
+
 /* One message for every failure. Telling "no such account" apart from "wrong
    password" is how somebody learns which addresses are registered. */
 await page.fill('[data-testid=email] input, input[type=email]', 'dewi@acme.example')

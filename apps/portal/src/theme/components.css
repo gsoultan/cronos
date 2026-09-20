@@ -27,6 +27,43 @@
     border-color: var(--color-delta-bad);
   }
 
+  /*
+   * The mark drawing its own arc, on the sign-in panel and nowhere else.
+   *
+   * SVG internals, which is the sanctioned reason to be in this file: the
+   * stroke lives on the <path> inside Mark and there is no utility that
+   * selects it. Scoped behind an opt-in class so it cannot reach the sidebar,
+   * the favicon or the printed header, where a mark that animates every time
+   * it renders would be a tic rather than a flourish.
+   *
+   * 48 is a shade over the arc's own length (2π·10.5 × 256/360 ≈ 46.9 user
+   * units, and they are user units, so it holds at 22px and at 512px). Over
+   * rather than under: a dash that stops a hair short leaves a visible nick in
+   * the stroke, and the arc is the letterform.
+   */
+  .brand-draw path {
+    stroke-dasharray: 48;
+    animation: draw-arc 900ms var(--ease-out-quick) both;
+  }
+
+  /* The centre pin only fades: a translate here would be 12 *user units* on a
+     32-unit viewBox, which throws it most of the way out of the aperture. */
+  .brand-draw circle {
+    animation: appear 400ms var(--ease-out-quick) 650ms both;
+  }
+
+  @keyframes draw-arc {
+    from {
+      stroke-dashoffset: 48;
+    }
+  }
+
+  @keyframes appear {
+    from {
+      opacity: 0;
+    }
+  }
+
   /* Skip link: off-screen until focused. */
   .skip-link {
     position: absolute;

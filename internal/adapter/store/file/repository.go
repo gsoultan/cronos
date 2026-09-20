@@ -209,6 +209,41 @@ func (r *Repository) Apply(raw []byte) error {
 	return r.insert(raw, "")
 }
 
+/*
+Forget drops a definition from the running view.
+
+The other half of Apply, and it was missing. A database-backed deployment
+deleted a definition from the store and kept serving it: the report somebody had
+just removed still rendered, still appeared in the catalogue, and came back from
+the dead at the next restart only in the sense that it had never gone away. A
+delete that needs a restart to take effect is a delete nobody can trust.
+
+Silent about a name it does not hold. A file-backed store reloads its directory
+on delete and has already forgotten it, and deleting something twice is not a
+failure worth a second error path.
+*/
+func (r *Repository) Forget(kind, name string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	switch kind {
+	case codec.KindDataset:
+		delete(r.datasets, name)
+	case codec.KindReport:
+		delete(r.reports, name)
+	case codec.KindSchedule:
+		delete(r.schedules, name)
+	case codec.KindDataSource:
+		delete(r.sources, name)
+	default:
+		// A kind this build does not know is one it never loaded, so there is
+		// nothing to remove and nothing to say.
+		return
+	}
+	delete(r.raws, kind+"/"+name)
+	delete(r.paths, kind+"/"+name)
+}
+
 // Raw returns the document a definition was decoded from.
 //
 // What lets the management API answer for a definition the running server is

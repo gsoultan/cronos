@@ -398,7 +398,11 @@ configuration-managed host should keep doing.
   database.
 - `/v1/ready` — readiness, which asks. 503 when the store is unreachable or at
   a schema this build does not know; 200 and `degraded` when a datasource is
-  down, because the reports that do not read it still work.
+  down, because the reports that do not read it still work. The datasource
+  check is one per project — `datasources:acme/finance` — and it asks the
+  project which sources it holds each time rather than the list it started
+  with, so one connected this afternoon is probed like the rest. Its message
+  names each source that did not answer.
 What survives an outage of cronos's own database is worth knowing before one
 happens: **reports keep rendering.** Definitions are held in memory and the
 warehouse is a different database entirely, so a store outage takes out sign-in,
@@ -1367,6 +1371,8 @@ out of a browser cache that nothing ever emptied.
 | `live-resume.sh` | resuming a partly delivered burst, without sending anybody two | go, typst, Postgres |
 | `live-restore.sh` | the restore drill below, end to end | go, Postgres, pg_dump |
 | `live-boundaries.sh` | row scope, audiences, tenancy, forged tokens, share links | go |
+| `live-access.sh` | assigning people and groups to a report, on every path that opens one | go |
+| `live-datasources.sh` | connecting a second and third datasource while the server runs | go |
 | `live-failover.sh` | the definition store going away and coming back | go, podman |
 | `live-sso.sh` | a whole OIDC sign-in and single log-out | Keycloak |
 | `live-sqlserver.sh` | a report against SQL Server | Azure SQL Edge |

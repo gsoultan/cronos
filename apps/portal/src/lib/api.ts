@@ -188,6 +188,17 @@ export interface SignedInUser {
   org: string
   project: string
   role: string
+  /**
+   * The organisation role, which outranks the project one.
+   *
+   * An owner or an admin of the organisation holds project administrator in
+   * every project in it, with no membership in any of them — principal's
+   * `effective()` says so and every endpoint is decided by it. The server has
+   * always sent this; the portal read `role` alone, so an org administrator
+   * with no project role of their own was shown the interface of somebody who
+   * can change nothing, while every endpoint behind it would have said yes.
+   */
+  orgRole?: string
 }
 
 /** Who is signed in, as far as the browser knows. */

@@ -23,6 +23,12 @@
   --mantine-color-default-color: var(--color-ink);
   --mantine-color-default-border: var(--color-line);
   --mantine-color-anchor: var(--color-accent);
+  /* Mantine renders its own message under an input given `error`, and
+     without this it renders it in Mantine's red rather than ours. The
+     sign-in form is the one that asks for it; Field elsewhere already
+     draws its own in --color-delta-bad, and two reds for one meaning is
+     how a palette stops being one. */
+  --mantine-color-error: var(--color-delta-bad);
 }
 
 @media (prefers-color-scheme: dark) {

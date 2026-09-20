@@ -22,6 +22,65 @@ needs a deployment to act says so under **Upgrading**.
 
 ## Unreleased
 
+**A project can connect more than one datasource, without a restart.** It
+could hold several — the registry has routed a dataset to the warehouse it
+names since it existed — but only ones the process booted with. A source
+published through the API was stored, listed in the catalogue, and had no
+connection behind it: the Test button answered "no such datasource" and every
+report reading it answered 500 until somebody restarted the server. So the
+ordinary way to give a project its second warehouse was a YAML file and a
+deploy, on a deployment whose portal has a four-step wizard for exactly that.
+The registry adopts a published source now, replaces the connection when an
+edited one is re-published, and closes it when the definition is deleted.
+
+**The portal offers to connect one.** "Connect a source" and "New dataset"
+existed only on the sample-data page. A connected deployment could edit and
+delete the sources it started with and add nothing — the wizard was written,
+published correctly, and nothing linked to it. Clicking it would also have
+crashed the page: the live branch returned before two hooks that the panel
+needed, so opening one rendered more hooks than the render before it.
+
+**A deleted definition stops being served.** Deleting went to the store and
+stopped there, so on a database-backed deployment the report somebody had just
+removed kept rendering — until a restart, at which point it vanished for a
+reason nobody was still near. A datasource kept its connection pool open too.
+
+**The datasource readiness check is per project and asks each time.**
+`/v1/ready` lists one `datasources:<org>/<project>` check rather than one per
+source, because the per-source list was fixed at startup and could not mention
+a source connected afterwards — readiness would read healthy while a report
+failed. The message names each source that did not answer.
+
+**Who may open a report has its own control.** It was a section of the share
+panel, so the answer to "who can read this" was behind a button about links.
+Report pages now offer **Access** to an administrator, next to Share.
+
+**A grant to a name nobody holds is refused.** `Grant` checked that a subject
+was non-empty and not that it was anybody — unlike adding somebody to a group,
+which has always checked. That mattered more than it sounds: the *first* grant
+on a report is what makes it restricted, so a mistyped account id did not grant
+nothing, it took the report away from everybody who could read it and gave it
+to no one, with a grant in the list and a padlock on the page to say it had
+worked. Revoking is deliberately not checked the same way — a grant naming
+somebody who has since left has to remain removable.
+
+**An organisation's administrators get the interface their role gives them.**
+An owner or an admin of the organisation holds project administrator in every
+project in it, with no membership in any of them — the server has always
+decided that way, and the session has always carried `orgRole`. The portal read
+the project role alone and copied it upwards, so somebody who administers the
+whole organisation was shown, and limited to, a viewer's interface: no way to
+connect a datasource, no way to say who may open a report, while every endpoint
+behind those controls would have answered yes. One rule decides it now, the one
+`lib/workspace.ts` already had.
+
+**Two live checks, for two properties a unit test kept being green about.**
+`scripts/live-access.sh` assigns a person and a group to a report and proves
+every other way in refuses everybody else: running it, reading its definition,
+mailing it, minting a public link, and running its schedule by hand.
+`scripts/live-datasources.sh` connects three datasources to a running server
+and proves each dataset reaches its own database. Both are in `make live`.
+
 **The portal draws every chart type.** It drew one. `block.chart !== 'bar'` was
 the whole of it, and a line, a map, a funnel or a gauge came back as "line
 charts need a newer portal" — for a report the server had rendered perfectly,

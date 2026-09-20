@@ -39,6 +39,13 @@ interface BrandProps {
   /** Mark plus wordmark, or the mark alone. */
   wordmark?: boolean
   className?: string
+  /**
+   * Draw the lockup in the inherited colour rather than its own accent and
+   * ink. For a surface the theme's ink does not read against — the sign-in
+   * panel is one. This is constraint 3 being used rather than worked around:
+   * the mark is already currentColor, so the wordmark simply stops insisting.
+   */
+  inherit?: boolean
 }
 
 /**
@@ -50,13 +57,15 @@ interface BrandProps {
  * type. Capitalising the interface while the terminal says otherwise splits the
  * brand for no gain, and the primary buyer meets the name in a shell first.
  */
-export function Brand({ wordmark = true, className = '' }: BrandProps) {
+export function Brand({ wordmark = true, className = '', inherit = false }: BrandProps) {
   return (
     <span className={`flex items-center gap-2 ${className}`}>
-      <Mark className="size-[22px] shrink-0 text-accent"
+      <Mark className={`size-[22px] shrink-0 ${inherit ? '' : 'text-accent'}`}
         title={wordmark ? undefined : 'cronos'} />
       {wordmark && (
-        <span className="text-lead font-semibold tracking-[-0.02em] text-ink">cronos</span>
+        <span className={`text-lead font-semibold tracking-[-0.02em] ${inherit ? '' : 'text-ink'}`}>
+          cronos
+        </span>
       )}
     </span>
   )

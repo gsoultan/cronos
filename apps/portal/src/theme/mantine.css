@@ -34,6 +34,19 @@
 
 /* Components the first screen renders: TextInput, PasswordInput, Button. */
 @import '@mantine/core/styles/Button.layer.css';
+/*
+ * PasswordInput's own file, and it is not optional decoration: the control is
+ * a wrapper with the real <input> inside it, and this is what gives that inner
+ * input `position: absolute; inset: 0`. Without it the input keeps the size a
+ * browser gives a bare text field — 146px inside a 380px control — so the
+ * field looked about half filled and the right-hand two thirds of it swallowed
+ * clicks without focusing anything.
+ *
+ * It was missing while the comment above already named PasswordInput, which is
+ * how it survived: nothing renders unstyled enough to notice, because the
+ * wrapper is styled by Input.layer.css and the wrapper is what you see.
+ */
+@import '@mantine/core/styles/PasswordInput.layer.css';
 /* PasswordInput's reveal control is an ActionIcon, and CloseButton is what
    clearable inputs render — both appear on the sign-in form. */
 @import '@mantine/core/styles/ActionIcon.layer.css';

@@ -11,7 +11,10 @@ import { FilterPanel } from '../components/FilterPanel'
 import { EmptyState } from '../components/EmptyState'
 import { SharePanel } from '../components/share/SharePanel'
 import { AccessPanel } from '../components/share/AccessPanel'
-import { currentUser } from '../lib/api'
+import { useWorkspace } from '../lib/WorkspaceContext'
+import {
+  effectiveRole, type Organization, type Project,
+} from '../lib/workspace'
 import type { Group } from '../lib/types'
 import {
   billedByMonth, collectionsTrend, datasets, invoiceRows, outstandingTrend,
@@ -166,7 +169,16 @@ function ServerReport({ name, filters, onFilter, query }: {
   onFilter: (next: RunFilters) => void
   query: ReturnType<typeof useReport>
 }) {
+  const { org, project } = useWorkspace()
   const [sharing, setSharing] = useState(false)
+  /* Its own control, not a section of the share panel.
+
+     The two questions are related — who outside this project gets a copy, and
+     who inside it may open the original — but only one of them is called
+     "share". An administrator looking for who may read a report has no reason
+     to open a panel about links, so the answer was findable only by somebody
+     who already knew where it was. */
+  const [access, setAccess] = useState(false)
 
   /* The report's own outputs, not the three the format supports. Offering PDF
      for a report that has only an interactive profile produces a refusal from
@@ -205,6 +217,13 @@ function ServerReport({ name, filters, onFilter, query }: {
           <>
             <Button variant="default" onClick={() => setSharing((v) => !v)}
               data-testid="share-button">Share</Button>
+            {/* Only for somebody who can change it. The endpoints behind it
+                refuse everybody else on their own, so this is about not
+                offering a control that can only say no. */}
+            {administers(org, project) && (
+              <Button variant="default" onClick={() => setAccess((v) => !v)}
+                data-testid="access-button">Access</Button>
+            )}
             <Button variant="default" renderRoot={(props) => (
               <Link to="/reports/$name/edit" params={{ name }} {...props} />
             )}>Edit</Button>
@@ -219,12 +238,12 @@ function ServerReport({ name, filters, onFilter, query }: {
           <SharePanel reportName={name} reportLabel={query.data.title}
             projectName={name} outputs={outputs}
             onClose={() => setSharing(false)} />
-          {/* Beside sharing, because they are the same question asked outward
-              and inward: who outside this project gets a copy, and who inside
-              it may open the original. */}
-          <div className="mt-4">
-            <AccessPanel report={name} canAdmin={administers()} />
-          </div>
+        </div>
+      )}
+
+      {access && (
+        <div className="mb-6">
+          <AccessPanel report={name} canAdmin={administers(org, project)} />
         </div>
       )}
       {/* The filters the report declares. Present here for the first time:
@@ -240,13 +259,19 @@ function ServerReport({ name, filters, onFilter, query }: {
 /**
  * Whether the signed-in person may change who sees a report.
  *
+ * The workspace's own rule rather than a second reading of the session, and
+ * that is the fix as much as the control is: this compared the project role
+ * to 'admin' or 'owner' — two spellings, one of which is an organisation role
+ * that never appears in that field — so an owner of the organisation, who
+ * holds project administrator in every project in it, was shown nothing.
+ * effectiveRole is where that rule lives and is what the server's
+ * principal.effective() does.
+ *
  * Read from the session rather than asked of the server, because the panel it
  * gates is a convenience: the endpoints behind it refuse a non-administrator
  * on their own, so the worst a stale role here can do is show somebody a
- * control that then says no. The reverse — hiding it from an administrator —
- * costs a reload.
+ * control that then says no.
  */
-function administers(): boolean {
-  const role = currentUser()?.role
-  return role === 'admin' || role === 'owner'
+function administers(org: Organization, project: Project): boolean {
+  return effectiveRole(org, project) === 'admin'
 }
