@@ -28,7 +28,26 @@ take, which is the same cost every allow-list has.
 */
 package access
 
-import "github.com/gsoultan/cronos/internal/core/principal"
+import (
+	"errors"
+
+	"github.com/gsoultan/cronos/internal/core/principal"
+)
+
+/*
+ErrNoSuchSubject means a grant named somebody or something that is not here.
+
+Worth a sentinel rather than a generic refusal, because of which way this fails.
+A grant to an account id that does not exist matches nobody — and the first
+grant on a report is what makes it restricted, so a mistyped id does not grant
+nothing, it takes the report away from everybody who could read it before and
+gives it to no one. The report goes quiet and the list of grants looks right.
+
+Named here because it is the domain's rule and two packages need the word: the
+store detects it, and the API turns it into a sentence saying so rather than
+"that is not a grant".
+*/
+var ErrNoSuchSubject = errors.New("access: no such subject in this project")
 
 // Kind is what a grant names.
 type Kind string

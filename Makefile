@@ -93,6 +93,12 @@ boundary: ## Verify no BSL artifact depends on ee/, and that every channel ships
 		echo "  goreleaser not installed — skipping the release config check"
 
 live: ## Drive the embed component and the portal against a real cronosd
+	@# These two need nothing but go and curl, and they are the two properties
+	@# a unit test has most often been green about while the wiring was absent:
+	@# who may open a report, and whether a datasource a project connected is
+	@# one the process can actually read through.
+	@./scripts/live-access.sh
+	@./scripts/live-datasources.sh
 	@./scripts/live-embed.sh
 	@./scripts/live-portal.sh
 

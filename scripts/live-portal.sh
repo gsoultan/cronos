@@ -86,4 +86,9 @@ for _ in $(seq 1 60); do
   curl -sf -o /dev/null "http://localhost:${WEB_PORT}/" && break
   sleep 0.5
 done
+# Who may open a report. Before the suite below, which ends by disabling an
+# account: a disabled person is not offered as somebody to assign, so the two
+# have to run in this order.
+BASE="http://localhost:${WEB_PORT}" bun apps/portal/scripts/live-access-check.mjs
+
 BASE="http://localhost:${WEB_PORT}" bun apps/portal/scripts/live-signin-check.mjs

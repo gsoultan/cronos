@@ -167,6 +167,14 @@ function ServerReport({ name, filters, onFilter, query }: {
   query: ReturnType<typeof useReport>
 }) {
   const [sharing, setSharing] = useState(false)
+  /* Its own control, not a section of the share panel.
+
+     The two questions are related — who outside this project gets a copy, and
+     who inside it may open the original — but only one of them is called
+     "share". An administrator looking for who may read a report has no reason
+     to open a panel about links, so the answer was findable only by somebody
+     who already knew where it was. */
+  const [access, setAccess] = useState(false)
 
   /* The report's own outputs, not the three the format supports. Offering PDF
      for a report that has only an interactive profile produces a refusal from
@@ -205,6 +213,13 @@ function ServerReport({ name, filters, onFilter, query }: {
           <>
             <Button variant="default" onClick={() => setSharing((v) => !v)}
               data-testid="share-button">Share</Button>
+            {/* Only for somebody who can change it. The endpoints behind it
+                refuse everybody else on their own, so this is about not
+                offering a control that can only say no. */}
+            {administers() && (
+              <Button variant="default" onClick={() => setAccess((v) => !v)}
+                data-testid="access-button">Access</Button>
+            )}
             <Button variant="default" renderRoot={(props) => (
               <Link to="/reports/$name/edit" params={{ name }} {...props} />
             )}>Edit</Button>
@@ -219,12 +234,12 @@ function ServerReport({ name, filters, onFilter, query }: {
           <SharePanel reportName={name} reportLabel={query.data.title}
             projectName={name} outputs={outputs}
             onClose={() => setSharing(false)} />
-          {/* Beside sharing, because they are the same question asked outward
-              and inward: who outside this project gets a copy, and who inside
-              it may open the original. */}
-          <div className="mt-4">
-            <AccessPanel report={name} canAdmin={administers()} />
-          </div>
+        </div>
+      )}
+
+      {access && (
+        <div className="mb-6">
+          <AccessPanel report={name} canAdmin={administers()} />
         </div>
       )}
       {/* The filters the report declares. Present here for the first time:

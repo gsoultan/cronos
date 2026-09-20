@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -294,6 +295,20 @@ func (h *ReportGrants) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		if err := change(r.Context(), pr, g); err != nil {
 			h.log.Warn("could not change a grant", "err", err, "report", report)
+			if errors.Is(err, access.ErrNoSuchSubject) {
+				/*
+				   Its own sentence, because this refusal is the one an
+				   administrator will hit and the generic message would send
+				   them looking at the wrong thing. It is also the refusal
+				   that matters most: a grant to a name nobody holds would
+				   restrict the report — the first grant is what does that —
+				   and open it to nobody, silently.
+				*/
+				fail(w, http.StatusBadRequest, "There is nobody in this project by that name. "+
+					"Add the person, or create the group, before granting — a grant to a name "+
+					"that does not exist would hide the report from everybody.")
+				return
+			}
 			fail(w, http.StatusBadRequest,
 				"A grant names a report and either a user or a group.")
 			return

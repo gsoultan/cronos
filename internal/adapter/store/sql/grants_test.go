@@ -182,6 +182,9 @@ func TestAGrantIsRecordedAndReadBack(t *testing.T) {
 	s := open(t)
 	ctx := context.Background()
 
+	// The group exists first, because a grant to one that does not is refused
+	// — see TestAGrantToSomebodyWhoIsNotHereIsRefused for why that matters.
+	group(t, s, acme, "finance", nil)
 	want := access.Grant{Report: "payroll", Kind: access.KindGroup, Subject: "finance"}
 	if err := s.Grant(ctx, acme, want); err != nil {
 		t.Fatal(err)
@@ -205,6 +208,102 @@ func TestAGrantIsRecordedAndReadBack(t *testing.T) {
 	}
 	if got, _ = s.Grants(ctx, "acme", "finance"); len(got) != 0 {
 		t.Fatalf("after revoking, grants are %v", got)
+	}
+}
+
+/*
+A grant to somebody who is not here is refused, and that is not pedantry.
+
+The first grant on a report is what makes it restricted. So a mistyped account
+id does not grant nothing — it takes the report away from everybody who could
+read it a moment ago and gives it to nobody, with a grant in the list and a
+padlock on the page to say it worked. Nothing in the interface can tell that
+state from a deliberate one.
+*/
+func TestAGrantToSomebodyWhoIsNotHereIsRefused(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+
+	for _, c := range []struct {
+		what string
+		g    access.Grant
+	}{
+		{"an account id nobody holds",
+			access.Grant{Report: "payroll", Kind: access.KindUser, Subject: "usr_typo"}},
+		{"a group name nobody created",
+			access.Grant{Report: "payroll", Kind: access.KindGroup, Subject: "finanace"}},
+	} {
+		err := s.Grant(ctx, acme, c.g)
+		if !errors.Is(err, access.ErrNoSuchSubject) {
+			t.Errorf("%s: got %v, want ErrNoSuchSubject", c.what, err)
+		}
+	}
+
+	// And nothing was written, so the report is still open to the project.
+	if got, _ := s.Grants(ctx, "acme", "finance"); len(got) != 0 {
+		t.Fatalf("a refused grant left %v behind — the report is now restricted to nobody", got)
+	}
+}
+
+/*
+Somebody in another tenant is not here either.
+
+An account id is not guessable, but it is copyable: two administrators in one
+deployment share a Slack channel. The row would be inert — access.Allowed asks
+for membership first — and it would still restrict the report.
+*/
+func TestAGrantToAnAccountInAnotherProjectIsRefused(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+
+	if err := s.CreateUser(ctx, identity.User{
+		ID: "usr_elsewhere", Email: "sam@rival.example",
+		Org: "rival", Project: "ops", Role: "admin",
+	}, "n0t-a-real-password"); err != nil {
+		t.Fatal(err)
+	}
+
+	err := s.Grant(ctx, acme, access.Grant{
+		Report: "payroll", Kind: access.KindUser, Subject: "usr_elsewhere",
+	})
+	if !errors.Is(err, access.ErrNoSuchSubject) {
+		t.Fatalf("got %v, want ErrNoSuchSubject", err)
+	}
+}
+
+/*
+Revoking is not checked the same way, on purpose.
+
+A person removed from the project leaves their grants behind. If revoking
+needed them to still be here, those rows could only be removed with a database
+prompt — and every one of them keeps a report restricted.
+*/
+func TestAGrantCanBeRevokedAfterThePersonIsGone(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+
+	g := access.Grant{Report: "payroll", Kind: access.KindUser, Subject: joins(t, s, "u-1")}
+	if err := s.Grant(ctx, acme, g); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RevokeGrant(ctx, acme, g); err != nil {
+		t.Fatalf("a grant could not be revoked: %v", err)
+	}
+	if got, _ := s.Grants(ctx, "acme", "finance"); len(got) != 0 {
+		t.Fatalf("after revoking, grants are %v", got)
+	}
+
+	// The proof that revoking asks nothing about the subject: a name this
+	// project has never held is accepted and removes nothing. However somebody
+	// left — an account deleted, a person moved to another project, a group
+	// dropped — the row they are named in has to be removable.
+	for _, gone := range []access.Grant{
+		{Report: "payroll", Kind: access.KindUser, Subject: "usr_long_gone"},
+		{Report: "payroll", Kind: access.KindGroup, Subject: "a-group-that-was"},
+	} {
+		if err := s.RevokeGrant(ctx, acme, gone); err != nil {
+			t.Errorf("revoking a grant naming %q: %v", gone.Subject, err)
+		}
 	}
 }
 
