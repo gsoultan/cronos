@@ -156,8 +156,19 @@ func (h *EnterProject) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		"project", pr.OrgID+"/"+in.Project, "via", how, "role", granted)
 	audit(r.Context(), h.log, pr, ActionEnterProject, in.Project, Allowed,
 		map[string]any{"role": granted, "via": how})
+	/*
+	   The role as well as the token, because they are not the same question
+	   and the caller cannot answer the second one.
+
+	   A person is an editor in one project and a viewer in the next; the
+	   token carries whichever this is, and a browser that guessed from the
+	   entry somebody clicked would be reading a list it fetched some minutes
+	   ago. Empty where they arrive on an organisation role and hold no
+	   membership — which is not "no access", it is the state the org role is
+	   read alongside.
+	*/
 	send(w, http.StatusOK, map[string]string{
-		"token": issued, "project": in.Project,
+		"token": issued, "project": in.Project, "role": role,
 	})
 }
 

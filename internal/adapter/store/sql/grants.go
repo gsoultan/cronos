@@ -209,6 +209,14 @@ func (s *Store) Grant(ctx context.Context, pr principal.Principal, g access.Gran
 			return fmt.Errorf("%w: no group named %q in %s/%s",
 				access.ErrNoSuchSubject, g.Subject, pr.OrgID, pr.ProjectID)
 		}
+	case access.KindInvited:
+		// An invitation that is still outstanding. An accepted one is an
+		// account and should be granted as one; an expired one is a promise
+		// to somebody who can no longer arrive.
+		if !s.invited(ctx, pr, g.Subject) {
+			return fmt.Errorf("%w: nobody is invited at %q in %s/%s",
+				access.ErrNoSuchSubject, g.Subject, pr.OrgID, pr.ProjectID)
+		}
 	default:
 		return fmt.Errorf("a grant is to a %q or a %q, not %q", access.KindUser, access.KindGroup, g.Kind)
 	}
@@ -467,6 +475,25 @@ func (s *Store) inProject(ctx context.Context, pr principal.Principal, userID st
 	err := s.db.QueryRowContext(ctx, s.sql(`
 		SELECT 1 FROM cronos_users WHERE id = ? AND org = ? AND project = ?`),
 		userID, pr.OrgID, pr.ProjectID).Scan(&one)
+	return err == nil
+}
+
+/*
+invited reports whether an invitation to that address is still outstanding
+here.
+
+Outstanding, not merely present: an accepted invitation is an account, and
+granting to the address rather than the account would write a row that never
+becomes anything — the rewrite happens on acceptance and that has already
+happened. An expired one is somebody who cannot arrive.
+*/
+func (s *Store) invited(ctx context.Context, pr principal.Principal, email string) bool {
+	var one int
+	err := s.db.QueryRowContext(ctx, s.sql(`
+		SELECT 1 FROM cronos_invitations
+		WHERE email = ? AND org = ? AND project = ?
+		  AND accepted_at IS NULL AND expires_at > ?`),
+		email, pr.OrgID, pr.ProjectID, stamp(s.now())).Scan(&one)
 	return err == nil
 }
 

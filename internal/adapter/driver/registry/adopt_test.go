@@ -222,3 +222,87 @@ func TestAdoptingAfterCloseIsRefused(t *testing.T) {
 		t.Fatalf("got %v, want ErrClosed", err)
 	}
 }
+
+/*
+A source that will not open is still a source this project has defined.
+
+The registry used to forget it beyond a line in the startup log: it was not in
+Names, so nothing could probe it, and readiness answered healthy for a project
+holding a definition that fails every report reading it. The test endpoint said
+"no such datasource", which is the answer for a name nobody defined and sends
+somebody to look at the wrong thing.
+*/
+func TestASourceThatWouldNotOpenIsReportedByName(t *testing.T) {
+	reg, err := registry.New([]definition.DataSource{
+		source("warehouse", seed(t, "warehouse", "from-warehouse", 1)),
+		{Name: "lake", Driver: "no-such-driver", DSN: "x"},
+	}, nil, quiet())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reg.Close()
+
+	unavailable := reg.Unavailable()
+	if len(unavailable) != 1 || !strings.Contains(unavailable[0].Error(), "lake") {
+		t.Fatalf("Unavailable is %v, want one reason naming lake", unavailable)
+	}
+
+	// And asking it directly says why, rather than that it does not exist.
+	_, err = reg.Probe(context.Background(), "lake")
+	if err == nil {
+		t.Fatal("probing a source that never opened answered ok")
+	}
+	if errors.Is(err, registry.ErrUnknownSource) {
+		t.Errorf("a defined source reads as unknown: %v", err)
+	}
+	if !strings.Contains(err.Error(), "no-such-driver") {
+		t.Errorf("the reason does not name the driver: %v", err)
+	}
+
+	// A name nobody defined is still the other answer.
+	if _, err := reg.Probe(context.Background(), "nowhere"); !errors.Is(err, registry.ErrUnknownSource) {
+		t.Errorf("an undefined source: got %v, want ErrUnknownSource", err)
+	}
+}
+
+// Repairing the definition clears it, or a deployment stays degraded over a
+// source it has since fixed.
+func TestAdoptingAWorkingReplacementClearsTheReason(t *testing.T) {
+	reg, err := registry.New([]definition.DataSource{
+		{Name: "lake", Driver: "no-such-driver", DSN: "x"},
+	}, nil, quiet())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reg.Close()
+
+	if len(reg.Unavailable()) != 1 {
+		t.Fatalf("Unavailable is %v", reg.Unavailable())
+	}
+	if err := reg.Adopt(source("lake", seed(t, "lake", "from-lake", 1))); err != nil {
+		t.Fatal(err)
+	}
+	if got := reg.Unavailable(); len(got) != 0 {
+		t.Fatalf("after repairing it, Unavailable is %v", got)
+	}
+	if got := readID(t, reg, dataset("events", "lake")); got != "from-lake" {
+		t.Errorf("read %q from the repaired source", got)
+	}
+}
+
+// And deleting it clears it too: a reason to be unready about a source nobody
+// has any more is a deployment that cannot be made ready again.
+func TestDroppingASourceThatNeverOpenedClearsTheReason(t *testing.T) {
+	reg, err := registry.New([]definition.DataSource{
+		{Name: "lake", Driver: "no-such-driver", DSN: "x"},
+	}, nil, quiet())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reg.Close()
+
+	reg.Drop("lake")
+	if got := reg.Unavailable(); len(got) != 0 {
+		t.Fatalf("after dropping it, Unavailable is %v", got)
+	}
+}

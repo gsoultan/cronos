@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Button, Select } from '@mantine/core'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  changeGrant, connected, listGroups, listPeople, reportGrants,
+  changeGrant, connected, invitations, listGroups, listPeople, reportGrants,
   type GrantKind, type Person,
 } from '../../lib/api'
 import { Tag } from '../StatusPill'
@@ -45,6 +45,20 @@ export function AccessPanel({ report, canAdmin }: { report: string; canAdmin: bo
     queryFn: listPeople,
     enabled: connected() && canAdmin,
   })
+  /*
+     And whoever has been invited and has not arrived.
+
+     Without them, assigning a report to a new colleague meant inviting them,
+     waiting, noticing they had accepted, and coming back — and a report is
+     restricted by its first grant, so the order mattered and nobody
+     remembers. The server holds the promise and turns it into a real grant
+     when they accept.
+  */
+  const invited = useQuery({
+    queryKey: ['invitations'],
+    queryFn: invitations,
+    enabled: connected() && canAdmin,
+  })
 
   const change = useMutation({
     mutationFn: ({ k, s, give }: { k: GrantKind; s: string; give: boolean }) =>
@@ -65,6 +79,8 @@ export function AccessPanel({ report, canAdmin }: { report: string; canAdmin: bo
 
   const people = roster.data?.people ?? []
   const named = (g: { kind: GrantKind; subject: string }) => {
+    // An invited grant already names an address, which is the only name
+    // anybody has for somebody who has not arrived.
     if (g.kind !== 'user') return g.subject
     const p = people.find((x) => x.id === g.subject)
     return p ? personLabel(p) : g.subject
@@ -74,6 +90,16 @@ export function AccessPanel({ report, canAdmin }: { report: string; canAdmin: bo
   // a button that did not work.
   const already = new Set(grants.filter((g) => g.kind === 'user').map((g) => g.subject))
   const ungranted = people.filter((p) => !already.has(p.id) && !p.disabled)
+
+  /* Offered in the same list, because "who can open this" is one question and
+     whether somebody has finished signing up is not the asker's concern. The
+     kind travels with the choice rather than being a second control. */
+  const pending = new Set(grants.filter((g) => g.kind === 'invited').map((g) => g.subject))
+  const waiting = (invited.data ?? []).filter((i) => !pending.has(i.email))
+  const choices = [
+    ...ungranted.map((p) => ({ value: `user:${p.id}`, label: personLabel(p) })),
+    ...waiting.map((i) => ({ value: `invited:${i.email}`, label: `${i.email} (invited)` })),
+  ]
 
   return (
     <section className="rounded-lg border border-line bg-surface p-4" data-testid="access-panel">
@@ -123,15 +149,23 @@ export function AccessPanel({ report, canAdmin }: { report: string; canAdmin: bo
             value={subject || null} onChange={(v) => setSubject(v ?? '')} />
         ) : (
           <Select size="xs" label="Person" w={260} searchable
-            placeholder={ungranted.length ? 'Choose somebody' : 'Everybody is already named'}
-            disabled={!ungranted.length}
+            placeholder={choices.length ? 'Choose somebody' : 'Everybody is already named'}
+            disabled={!choices.length}
             nothingFoundMessage="Nobody by that name"
-            data={ungranted.map((p) => ({ value: p.id, label: personLabel(p) }))}
+            data={choices}
             value={subject || null} onChange={(v) => setSubject(v ?? '')} />
         )}
 
         <Button size="xs" disabled={!subject} loading={change.isPending}
-          onClick={() => change.mutate({ k: kind, s: subject, give: true })}>
+          onClick={() => {
+            // A person is chosen as `kind:subject`, because the same list
+            // holds accounts and invitations and they are granted
+            // differently. A group is only ever a group.
+            const [k, s] = kind === 'group'
+              ? ['group', subject]
+              : [subject.slice(0, subject.indexOf(':')), subject.slice(subject.indexOf(':') + 1)]
+            change.mutate({ k: k as GrantKind, s, give: true })
+          }}>
           Grant
         </Button>
       </div>

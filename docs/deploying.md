@@ -1373,6 +1373,7 @@ out of a browser cache that nothing ever emptied.
 | `live-boundaries.sh` | row scope, audiences, tenancy, forged tokens, share links | go |
 | `live-access.sh` | assigning people and groups to a report, on every path that opens one | go |
 | `live-datasources.sh` | connecting a second and third datasource while the server runs | go |
+| `live-projects.sh` | one process serving two projects, and a session moving between them | go |
 | `live-failover.sh` | the definition store going away and coming back | go, podman |
 | `live-sso.sh` | a whole OIDC sign-in and single log-out | Keycloak |
 | `live-sqlserver.sh` | a report against SQL Server | Azure SQL Edge |

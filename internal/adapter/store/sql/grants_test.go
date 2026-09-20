@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	store "github.com/gsoultan/cronos/internal/adapter/store/sql"
 	"github.com/gsoultan/cronos/internal/core/access"
@@ -51,6 +52,15 @@ func joins(t *testing.T, s *store.Store, id string) string {
 		t.Fatalf("creating %s: %v", id, err)
 	}
 	return id
+}
+
+// reader is somebody in acme/finance with the least role there is, so what
+// opens a report for them is a grant and nothing else.
+func reader(id string) principal.Principal {
+	return principal.Principal{
+		Subject: id, OrgID: "acme", ProjectID: "finance",
+		ProjectRole: principal.ProjectViewer, Member: true,
+	}
 }
 
 /* -- confinement ----------------------------------------------------------- */
@@ -587,5 +597,104 @@ func TestOnlyThePersonsOwnProjectMaySetTheirScope(t *testing.T) {
 	}
 	if scope["region"] != "west" {
 		t.Errorf("confinement is %v, want the west it was set to", scope)
+	}
+}
+
+/*
+Assigning a report to somebody who has been invited and has not arrived.
+
+A report is restricted by its first grant, so "invite Sam and give them the
+receivables summary" had to be done in that order and then remembered — and
+the way it was remembered was somebody coming back days later, if at all.
+Granting up front was refused, because there is no account to name yet.
+
+The promise has to become a permission on its own. Nobody goes back.
+*/
+func TestAnInvitedPersonCanBeAssignedBeforeTheyArrive(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+
+	secret := invite(t, s, "sam@acme.example", time.Hour)
+	g := access.Grant{Report: "payroll", Kind: access.KindInvited, Subject: "sam@acme.example"}
+	if err := s.Grant(ctx, acme, g); err != nil {
+		t.Fatalf("granting to an invited address: %v", err)
+	}
+
+	// It restricts the report now, which is what was asked for.
+	got, err := s.Grants(ctx, "acme", "finance")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0] != g {
+		t.Fatalf("grants are %v, want the invited one", got)
+	}
+	// And opens nothing, because there is nobody holding it.
+	if access.Allowed(reader("sam@acme.example"), got, nil) {
+		t.Error("an invited grant opened a report for a session carrying that address")
+	}
+
+	// Accepting is where the promise becomes a permission.
+	user, err := s.Accept(ctx, secret, "a-password-they-chose")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err = s.Grants(ctx, "acme", "finance")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := access.Grant{Report: "payroll", Kind: access.KindUser, Subject: user.ID}
+	if len(got) != 1 || got[0] != want {
+		t.Fatalf("after accepting, grants are %v, want %v", got, want)
+	}
+	if !access.Allowed(reader(user.ID), got, nil) {
+		t.Error("the person who accepted cannot open the report they were invited to read")
+	}
+}
+
+// An address nobody invited is refused like any other subject that is not
+// here — otherwise this kind would be the hole the other two just closed.
+func TestAnAddressNobodyInvitedIsRefused(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+
+	err := s.Grant(ctx, acme, access.Grant{
+		Report: "payroll", Kind: access.KindInvited, Subject: "stranger@example.com",
+	})
+	if !errors.Is(err, access.ErrNoSuchSubject) {
+		t.Fatalf("got %v, want ErrNoSuchSubject", err)
+	}
+}
+
+/*
+An invitation that has expired is somebody who cannot arrive.
+
+Accepting is what rewrites the grant, and an expired invitation can never be
+accepted — so the row would sit there restricting the report for a person who
+will never hold it.
+*/
+func TestAnExpiredInvitationCannotBeAssigned(t *testing.T) {
+	s := open(t)
+
+	invite(t, s, "late@acme.example", -time.Hour)
+
+	err := s.Grant(context.Background(), acme, access.Grant{
+		Report: "payroll", Kind: access.KindInvited, Subject: "late@acme.example",
+	})
+	if !errors.Is(err, access.ErrNoSuchSubject) {
+		t.Fatalf("got %v, want ErrNoSuchSubject", err)
+	}
+}
+
+// Another tenant's invitation is not one here, however well-known the address.
+func TestAnInvitationInAnotherProjectIsRefused(t *testing.T) {
+	s := open(t)
+
+	invite(t, s, "sam@acme.example", time.Hour)
+
+	err := s.Grant(context.Background(), who("rival", "ops"), access.Grant{
+		Report: "payroll", Kind: access.KindInvited, Subject: "sam@acme.example",
+	})
+	if !errors.Is(err, access.ErrNoSuchSubject) {
+		t.Fatalf("got %v, want ErrNoSuchSubject", err)
 	}
 }
