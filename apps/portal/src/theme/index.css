@@ -100,6 +100,24 @@
   --shadow-pop: 0 4px 16px rgba(11, 11, 11, 0.1);
 
   --ease-out-quick: cubic-bezier(0.2, 0, 0.2, 1);
+
+  /*
+   * Motion. One entrance, and it is finite on purpose.
+   *
+   * The reduced-motion rule in tokens.css collapses every duration to 0.01ms,
+   * which ends a finite animation instantly — the right answer — but would
+   * turn an infinite one into a flicker running as fast as the browser will
+   * loop it. So nothing here repeats, and anything ambient would need its own
+   * iteration-count guard before it could be added.
+   */
+  --animate-rise: rise 600ms var(--ease-out-quick) both;
+
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+  }
 }
 
 /*
