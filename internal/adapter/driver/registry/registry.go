@@ -29,11 +29,23 @@ type Registry struct {
 	mu      sync.RWMutex
 	sources map[string]*source
 	log     *slog.Logger
-	// unavailable is why each source that would not open did not. Written once
-	// during New and read after, so it needs no lock — and kept rather than
-	// logged here, because whether this is fatal is the caller's decision and
-	// a library that exits is a library nobody can embed.
-	unavailable []error
+	// secrets is kept because a source can arrive after New. A ${secret:…}
+	// reference is resolved when the connection is opened, and one adopted at
+	// four in the afternoon has to be resolved against the same backend the
+	// ones opened at boot were.
+	secrets secret.Resolver
+	/*
+	   unopened is why each defined source has no connection, by name.
+
+	   Kept rather than logged, because whether that is fatal is the caller's
+	   decision and a library that exits is a library nobody can embed. Keyed
+	   by name rather than a list, and guarded, because a source can now fail
+	   to open long after startup — an edited definition with a driver this
+	   build has no import for replaces nothing and lands here — and because
+	   the two questions asked of it are per source: is this one open, and
+	   which ones are not.
+	*/
+	unopened map[string]error
 
 	// federations are the mounted connections, keyed by the set of sources
 	// they hold. Their own lock, because opening one reaches other people's
@@ -43,12 +55,37 @@ type Registry struct {
 	closed      bool
 }
 
-// Unavailable is every source this build could not open, and why.
-//
-// Empty on a healthy deployment. Each one is a report that will fail with a
-// message naming it, and a number worth alerting on — see
-// cronos_datasources_unavailable.
-func (r *Registry) Unavailable() []error { return r.unavailable }
+/*
+Unavailable is every defined source this build could not open, and why.
+
+Empty on a healthy deployment. Each one is a report that will fail with a
+message naming it, and a number worth alerting on — see
+cronos_datasources_unavailable.
+
+Asked rather than remembered from startup. A source that would not open used
+to be a snapshot taken during New, which was true while sources only ever
+arrived from a directory; one published in the afternoon would not have been
+in it, so nothing after boot could tell a deployment that a source it holds
+has no connection behind it.
+*/
+func (r *Registry) Unavailable() []error {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	names := make([]string, 0, len(r.unopened))
+	for name := range r.unopened {
+		names = append(names, name)
+	}
+	// Sorted, so a readiness answer and a startup log do not reorder
+	// themselves between two reads of the same state.
+	sort.Strings(names)
+
+	out := make([]error, 0, len(names))
+	for _, name := range names {
+		out = append(out, r.unopened[name])
+	}
+	return out
+}
 
 // New opens every datasource.
 //
@@ -82,48 +119,61 @@ func New(defs []definition.DataSource, secrets secret.Resolver, log *slog.Logger
 		sources:     map[string]*source{},
 		federations: map[string]*federation{},
 		log:         log,
+		secrets:     secrets,
+		unopened:    map[string]error{},
 	}
 
 	for _, def := range defs {
-		if def.Federated() {
-			// An object store is not connected to; it is read through an
-			// engine that can address files. It is registered so a dataset can
-			// name it, and resolving one is what needs federation.
-			//
-			// Its URI is resolved all the same: a bucket URL can carry a
-			// reference, and one left as literal ${secret:…} text becomes a
-			// path the reader looks for and does not find.
-			uri, err := secret.Resolve(def.URI, secrets)
-			if err != nil {
-				r.unavailable = append(r.unavailable,
-					fmt.Errorf("datasource %q: %w", def.Name, err))
-				continue
-			}
-			def.URI = uri
-			// And its credentials, for the same reason and with more at stake:
-			// a key left as literal ${secret:…} text is sent to the object
-			// store as the key, which is a 403 that reads like a rotated
-			// credential rather than an unset one.
-			creds, err := secret.Resolve(def.Credentials, secrets)
-			if err != nil {
-				r.unavailable = append(r.unavailable,
-					fmt.Errorf("datasource %q: %w", def.Name, err))
-				continue
-			}
-			def.Credentials = creds
-			r.sources[def.Name] = &source{def: def}
-			continue
-		}
-		s, err := open(def, secrets)
+		s, err := r.prepare(def)
 		if err != nil {
-			r.unavailable = append(r.unavailable, err)
+			r.unopened[def.Name] = err
 			continue
 		}
 		r.sources[def.Name] = s
-		log.Info("datasource", "name", def.Name, "driver", def.Driver,
-			"timeout", def.Limits.Timeout(), "maxRows", def.Limits.Rows())
+		if s.db != nil {
+			log.Info("datasource", "name", def.Name, "driver", def.Driver,
+				"timeout", def.Limits.Timeout(), "maxRows", def.Limits.Rows())
+		}
 	}
 	return r, nil
+}
+
+/*
+prepare resolves a definition into something answerable, without touching the
+registry.
+
+Shared by New and Adopt so a source that arrives through the API is opened
+exactly as one read at startup. Two copies of this is how a deployment ends up
+with a secret resolved on one path and left as literal ${secret:…} text on the
+other — the drift this package has already been bitten by twice, in a driver
+check and in a timezone.
+*/
+func (r *Registry) prepare(def definition.DataSource) (*source, error) {
+	if def.Federated() {
+		// An object store is not connected to; it is read through an engine
+		// that can address files. It is registered so a dataset can name it,
+		// and resolving one is what needs federation.
+		//
+		// Its URI is resolved all the same: a bucket URL can carry a
+		// reference, and one left as literal ${secret:…} text becomes a path
+		// the reader looks for and does not find.
+		uri, err := secret.Resolve(def.URI, r.secrets)
+		if err != nil {
+			return nil, fmt.Errorf("datasource %q: %w", def.Name, err)
+		}
+		def.URI = uri
+		// And its credentials, for the same reason and with more at stake: a
+		// key left as literal ${secret:…} text is sent to the object store as
+		// the key, which is a 403 that reads like a rotated credential rather
+		// than an unset one.
+		creds, err := secret.Resolve(def.Credentials, r.secrets)
+		if err != nil {
+			return nil, fmt.Errorf("datasource %q: %w", def.Name, err)
+		}
+		def.Credentials = creds
+		return &source{def: def}, nil
+	}
+	return open(def, r.secrets)
 }
 
 func open(def definition.DataSource, secrets secret.Resolver) (*source, error) {
@@ -358,6 +408,22 @@ func (r *Registry) Close() error {
 func (r *Registry) Probe(ctx context.Context, name string) (time.Duration, error) {
 	db, ok := r.DB(name)
 	if !ok {
+		/*
+		   A source that is defined and would not open answers with the
+		   reason, not with "no such datasource".
+
+		   The two are opposite problems and the Test button showed the same
+		   sentence for both: one means a name nobody has defined — a typo in
+		   a dataset — and the other means the definition is right here and
+		   this build cannot open it, which is a driver or a secret and is
+		   acted on somewhere else entirely.
+		*/
+		r.mu.RLock()
+		why := r.unopened[name]
+		r.mu.RUnlock()
+		if why != nil {
+			return 0, why
+		}
 		return 0, fmt.Errorf("%w: %q", ErrUnknownSource, name)
 	}
 

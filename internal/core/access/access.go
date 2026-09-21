@@ -28,7 +28,26 @@ take, which is the same cost every allow-list has.
 */
 package access
 
-import "github.com/gsoultan/cronos/internal/core/principal"
+import (
+	"errors"
+
+	"github.com/gsoultan/cronos/internal/core/principal"
+)
+
+/*
+ErrNoSuchSubject means a grant named somebody or something that is not here.
+
+Worth a sentinel rather than a generic refusal, because of which way this fails.
+A grant to an account id that does not exist matches nobody — and the first
+grant on a report is what makes it restricted, so a mistyped id does not grant
+nothing, it takes the report away from everybody who could read it before and
+gives it to no one. The report goes quiet and the list of grants looks right.
+
+Named here because it is the domain's rule and two packages need the word: the
+store detects it, and the API turns it into a sentence saying so rather than
+"that is not a grant".
+*/
+var ErrNoSuchSubject = errors.New("access: no such subject in this project")
 
 // Kind is what a grant names.
 type Kind string
@@ -38,6 +57,24 @@ const (
 	KindUser Kind = "user"
 	// KindGroup grants everybody in a named group.
 	KindGroup Kind = "group"
+	/*
+	   KindInvited grants somebody who has been invited and has not accepted,
+	   by the address they were invited at.
+
+	   It exists because the alternative is worse than a missing feature. A
+	   report is restricted by its first grant, so "invite Sam and give them
+	   the receivables summary" had to be done in that order and then
+	   remembered — and the way it was remembered was an administrator coming
+	   back days later, if at all. Granting it up front was refused, because
+	   there is no account to name yet.
+
+	   It matches nobody. There is no session to match: the row is rewritten
+	   to a KindUser grant naming the new account the moment the invitation is
+	   accepted, which is where it starts opening anything. Until then it is a
+	   promise, and it does restrict the report — which is what the
+	   administrator asked for.
+	*/
+	KindInvited Kind = "invited"
 )
 
 /*
@@ -100,6 +137,17 @@ func Allowed(pr principal.Principal, grants []Grant, groups []string) bool {
 			if g.Subject != "" && g.Subject == pr.Subject {
 				return true
 			}
+		case KindInvited:
+			/*
+			   Never. Said out loud rather than left to the default, because
+			   the subject here is an email address and the one mistake this
+			   case exists to prevent is somebody matching it against one.
+
+			   An invitation is not an account. It becomes a KindUser grant
+			   when it is accepted; before that there is nobody holding it,
+			   and a session that happened to carry a matching address would
+			   be an account that was never created by this invitation.
+			*/
 		case KindGroup:
 			for _, in := range groups {
 				if g.Subject != "" && g.Subject == in {

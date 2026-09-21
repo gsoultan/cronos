@@ -22,6 +22,103 @@ needs a deployment to act says so under **Upgrading**.
 
 ## Unreleased
 
+**A project can connect more than one datasource, without a restart.** It
+could hold several — the registry has routed a dataset to the warehouse it
+names since it existed — but only ones the process booted with. A source
+published through the API was stored, listed in the catalogue, and had no
+connection behind it: the Test button answered "no such datasource" and every
+report reading it answered 500 until somebody restarted the server. So the
+ordinary way to give a project its second warehouse was a YAML file and a
+deploy, on a deployment whose portal has a four-step wizard for exactly that.
+The registry adopts a published source now, replaces the connection when an
+edited one is re-published, and closes it when the definition is deleted.
+
+**The portal offers to connect one.** "Connect a source" and "New dataset"
+existed only on the sample-data page. A connected deployment could edit and
+delete the sources it started with and add nothing — the wizard was written,
+published correctly, and nothing linked to it. Clicking it would also have
+crashed the page: the live branch returned before two hooks that the panel
+needed, so opening one rendered more hooks than the render before it.
+
+**A deleted definition stops being served.** Deleting went to the store and
+stopped there, so on a database-backed deployment the report somebody had just
+removed kept rendering — until a restart, at which point it vanished for a
+reason nobody was still near. A datasource kept its connection pool open too.
+
+**The datasource readiness check is per project and asks each time.**
+`/v1/ready` lists one `datasources:<org>/<project>` check rather than one per
+source, because the per-source list was fixed at startup and could not mention
+a source connected afterwards — readiness would read healthy while a report
+failed. The message names each source that did not answer.
+
+**Who may open a report has its own control.** It was a section of the share
+panel, so the answer to "who can read this" was behind a button about links.
+Report pages now offer **Access** to an administrator, next to Share.
+
+**A grant to a name nobody holds is refused.** `Grant` checked that a subject
+was non-empty and not that it was anybody — unlike adding somebody to a group,
+which has always checked. That mattered more than it sounds: the *first* grant
+on a report is what makes it restricted, so a mistyped account id did not grant
+nothing, it took the report away from everybody who could read it and gave it
+to no one, with a grant in the list and a padlock on the page to say it had
+worked. Revoking is deliberately not checked the same way — a grant naming
+somebody who has since left has to remain removable.
+
+**An organisation's administrators get the interface their role gives them.**
+An owner or an admin of the organisation holds project administrator in every
+project in it, with no membership in any of them — the server has always
+decided that way, and the session has always carried `orgRole`. The portal read
+the project role alone and copied it upwards, so somebody who administers the
+whole organisation was shown, and limited to, a viewer's interface: no way to
+connect a datasource, no way to say who may open a report, while every endpoint
+behind those controls would have answered yes. One rule decides it now, the one
+`lib/workspace.ts` already had.
+
+**A report can be assigned to somebody who has been invited.** A report is
+restricted by its first grant, so "invite Sam and give them the receivables
+summary" had to be done in that order and then remembered — and the way it was
+remembered was somebody coming back days later, if at all. Granting up front
+was refused, because there is no account to name yet. A grant may now name the
+address an invitation was sent to; it matches nobody, because there is nobody
+to match, and it is rewritten to name the account the moment the invitation is
+accepted. An address nobody invited, an invitation that has expired, and one
+in another project are all refused.
+
+**The project switcher works on a connected deployment.** It drew the sample
+directory: two organisations nobody belongs to, and clicking a project in them
+changed nothing, because the project is inside the token and only the server
+can mint one. `/v1/auth/project` has answered both halves the whole time —
+where this session may go, and moving it there — and nothing called it.
+Switching mints a new token, takes the role the new project gives (routinely
+not the one just held), and empties the query cache on the way, because every
+key in it belongs to the project being left. The list is asked for only while
+the menu is open, and the project the session is in is always among them —
+the account that set the deployment up has an organisation role and no
+membership row, so the server answers with an empty list and a `current`.
+
+**Entering a project says what role it gave you.** `POST /v1/auth/project`
+answered with a token and a project name. A caller could not tell an editor
+from a viewer without decoding the token or guessing from a list it fetched
+minutes ago.
+
+**A datasource that cannot be opened is visible to readiness.** It is not
+registered, so nothing probed it and `/v1/ready` answered healthy for a project
+holding a definition that fails every report reading it. It is degraded now,
+naming the source, and 200 — the reports that do not read it still work.
+Asking the test endpoint about one answers with the reason rather than "no such
+datasource", which is the answer for a name nobody defined and sends somebody
+to look at the wrong thing. Deleting it, or publishing one that opens, clears
+it without a restart.
+
+**Two live checks, for two properties a unit test kept being green about.**
+`scripts/live-access.sh` assigns a person and a group to a report and proves
+every other way in refuses everybody else: running it, reading its definition,
+mailing it, minting a public link, and running its schedule by hand.
+`scripts/live-datasources.sh` connects three datasources to a running server
+and proves each dataset reaches its own database. `scripts/live-projects.sh`
+serves two projects from one process and moves a session between them. All
+three are in `make live`.
+
 **The portal draws every chart type.** It drew one. `block.chart !== 'bar'` was
 the whole of it, and a line, a map, a funnel or a gauge came back as "line
 charts need a newer portal" — for a report the server had rendered perfectly,

@@ -12,7 +12,6 @@ import (
 	emailchannel "github.com/gsoultan/cronos/internal/adapter/deliver/email"
 	filechannel "github.com/gsoultan/cronos/internal/adapter/deliver/file"
 	s3channel "github.com/gsoultan/cronos/internal/adapter/deliver/s3"
-	"github.com/gsoultan/cronos/internal/adapter/driver/registry"
 	"github.com/gsoultan/cronos/internal/adapter/render/paginated"
 	"github.com/gsoultan/cronos/internal/adapter/render/spreadsheet"
 	"github.com/gsoultan/cronos/internal/adapter/store/file"
@@ -237,17 +236,26 @@ func users(records *sqlstore.Store) api.Users {
 	return records
 }
 
-// publishing wires the publish service to the running repository when storing
-// alone would not change what runs.
-//
-// A file-backed store rewrites the file and reloads the directory it was read
-// from, so it already has this property. A database-backed one has no file to
-// rewrite: without the live view, a definition published through the API would
-// sit in the store and in the catalogue while every render kept using what the
-// process read at startup — until somebody restarted it.
+/*
+publishing wires the publish service to the running process, so that storing a
+definition changes what the next request does.
+
+Two parts, and they are conditional on different things. The repository is the
+running view of the documents: a file-backed store rewrites the file and
+reloads the directory it was read from, so it already has this property, while
+a database-backed one has no file to rewrite and needs telling. The registry is
+the running set of connections, and neither store opens one — which is why the
+live view is now always wired, where it used to be wired only alongside a
+records store. Without it, connecting a datasource through the portal stored a
+definition the process had no connection to.
+*/
 func publishing(store publish.Store, repo *file.Repository, records *sqlstore.Store,
-	engines run.Engines, channels []string) *publish.Service {
-	svc := publish.New(store, repo).WithReports(repo).
+	engines *sources, channels []string, log *slog.Logger) *publish.Service {
+	view := live{sources: engines, log: log}
+	if records != nil {
+		view.repo = repo
+	}
+	return publish.New(store, repo).WithReports(repo).
 		// So a delete can say what would break rather than breaking it.
 		WithCatalog(repo).
 		// And so a publish is proved against the database it will read, not
@@ -256,11 +264,8 @@ func publishing(store publish.Store, repo *file.Repository, records *sqlstore.St
 		// And so a schedule naming a channel this deployment has not got is
 		// refused by the person who typed it, rather than by the burst at the
 		// hour it fires.
-		WithChannels(channels)
-	if records != nil {
-		svc = svc.WithLive(repo)
-	}
-	return svc
+		WithChannels(channels).
+		WithLive(view)
 }
 
 // reconcile settles which of the definitions directory and the store is the
@@ -377,17 +382,6 @@ func sharing(records *sqlstore.Store, signer *token.Signer, repo *file.Repositor
 		return nil
 	}
 	return share.New(records, signer, repo)
-}
-
-// probing exposes the connection test, where there are named sources to test.
-//
-// A deployment reading one configured database has nothing to name, so the
-// endpoint is not mounted rather than mounted and answering "which one?".
-func probing(engines run.Engines) api.Probes {
-	if reg, ok := engines.(*registry.Registry); ok {
-		return reg
-	}
-	return nil
 }
 
 // secrets is where ${secret:name} is looked up.

@@ -175,15 +175,49 @@ func (s *Store) Grants(ctx context.Context, org, project string) ([]access.Grant
 	return out, rows.Err()
 }
 
-// Grant records that somebody may open a report. Idempotent: granting twice is
-// what a second administrator does, and it is not an error.
+/*
+Grant records that somebody may open a report. Idempotent: granting twice is
+what a second administrator does, and it is not an error.
+
+The subject has to exist here, which is the same check AddToGroup makes and for
+a sharper reason. A grant to an id nobody holds matches nobody, and the first
+grant on a report is what makes it restricted — so one mistyped account id does
+not grant nothing, it closes the report to everybody who could read it a moment
+ago and opens it to no one. Nothing in the answer says so: the grant is listed,
+the padlock appears, and the report is simply gone from everybody's catalogue.
+
+Revoking is deliberately not checked the same way. An account removed from the
+project leaves its grants behind, and a grant nobody can revoke because its
+subject no longer exists is a row only a database prompt can remove.
+*/
 func (s *Store) Grant(ctx context.Context, pr principal.Principal, g access.Grant) error {
 	if g.Report == "" || g.Subject == "" {
 		// A blank subject matches nobody in access.Allowed, so a row holding
 		// one is a permission that looks granted and is not.
 		return fmt.Errorf("a grant names a report and a subject")
 	}
-	if g.Kind != access.KindUser && g.Kind != access.KindGroup {
+	switch g.Kind {
+	case access.KindUser:
+		if !s.inProject(ctx, pr, g.Subject) {
+			return fmt.Errorf("%w: no account %q in %s/%s",
+				access.ErrNoSuchSubject, g.Subject, pr.OrgID, pr.ProjectID)
+		}
+	case access.KindGroup:
+		// By name, because that is what a grant stores and what GroupsOf
+		// returns. An id would be a third spelling of the same thing.
+		if !s.groupNamed(ctx, pr, g.Subject) {
+			return fmt.Errorf("%w: no group named %q in %s/%s",
+				access.ErrNoSuchSubject, g.Subject, pr.OrgID, pr.ProjectID)
+		}
+	case access.KindInvited:
+		// An invitation that is still outstanding. An accepted one is an
+		// account and should be granted as one; an expired one is a promise
+		// to somebody who can no longer arrive.
+		if !s.invited(ctx, pr, g.Subject) {
+			return fmt.Errorf("%w: nobody is invited at %q in %s/%s",
+				access.ErrNoSuchSubject, g.Subject, pr.OrgID, pr.ProjectID)
+		}
+	default:
 		return fmt.Errorf("a grant is to a %q or a %q, not %q", access.KindUser, access.KindGroup, g.Kind)
 	}
 
@@ -441,6 +475,38 @@ func (s *Store) inProject(ctx context.Context, pr principal.Principal, userID st
 	err := s.db.QueryRowContext(ctx, s.sql(`
 		SELECT 1 FROM cronos_users WHERE id = ? AND org = ? AND project = ?`),
 		userID, pr.OrgID, pr.ProjectID).Scan(&one)
+	return err == nil
+}
+
+/*
+invited reports whether an invitation to that address is still outstanding
+here.
+
+Outstanding, not merely present: an accepted invitation is an account, and
+granting to the address rather than the account would write a row that never
+becomes anything — the rewrite happens on acceptance and that has already
+happened. An expired one is somebody who cannot arrive.
+*/
+func (s *Store) invited(ctx context.Context, pr principal.Principal, email string) bool {
+	var one int
+	err := s.db.QueryRowContext(ctx, s.sql(`
+		SELECT 1 FROM cronos_invitations
+		WHERE email = ? AND org = ? AND project = ?
+		  AND accepted_at IS NULL AND expires_at > ?`),
+		email, pr.OrgID, pr.ProjectID, stamp(s.now())).Scan(&one)
+	return err == nil
+}
+
+// groupNamed reports whether the caller's project has a group of that name.
+//
+// By name rather than by id because a grant names a group the way a person
+// reads it, and names are unique per project — which is also why the tenancy
+// is in the statement: "finance" exists in more organisations than one.
+func (s *Store) groupNamed(ctx context.Context, pr principal.Principal, name string) bool {
+	var one int
+	err := s.db.QueryRowContext(ctx, s.sql(`
+		SELECT 1 FROM cronos_groups WHERE name = ? AND org = ? AND project = ?`),
+		name, pr.OrgID, pr.ProjectID).Scan(&one)
 	return err == nil
 }
 

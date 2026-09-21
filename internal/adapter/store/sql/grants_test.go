@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	store "github.com/gsoultan/cronos/internal/adapter/store/sql"
 	"github.com/gsoultan/cronos/internal/core/access"
@@ -51,6 +52,15 @@ func joins(t *testing.T, s *store.Store, id string) string {
 		t.Fatalf("creating %s: %v", id, err)
 	}
 	return id
+}
+
+// reader is somebody in acme/finance with the least role there is, so what
+// opens a report for them is a grant and nothing else.
+func reader(id string) principal.Principal {
+	return principal.Principal{
+		Subject: id, OrgID: "acme", ProjectID: "finance",
+		ProjectRole: principal.ProjectViewer, Member: true,
+	}
 }
 
 /* -- confinement ----------------------------------------------------------- */
@@ -182,6 +192,9 @@ func TestAGrantIsRecordedAndReadBack(t *testing.T) {
 	s := open(t)
 	ctx := context.Background()
 
+	// The group exists first, because a grant to one that does not is refused
+	// — see TestAGrantToSomebodyWhoIsNotHereIsRefused for why that matters.
+	group(t, s, acme, "finance", nil)
 	want := access.Grant{Report: "payroll", Kind: access.KindGroup, Subject: "finance"}
 	if err := s.Grant(ctx, acme, want); err != nil {
 		t.Fatal(err)
@@ -205,6 +218,102 @@ func TestAGrantIsRecordedAndReadBack(t *testing.T) {
 	}
 	if got, _ = s.Grants(ctx, "acme", "finance"); len(got) != 0 {
 		t.Fatalf("after revoking, grants are %v", got)
+	}
+}
+
+/*
+A grant to somebody who is not here is refused, and that is not pedantry.
+
+The first grant on a report is what makes it restricted. So a mistyped account
+id does not grant nothing — it takes the report away from everybody who could
+read it a moment ago and gives it to nobody, with a grant in the list and a
+padlock on the page to say it worked. Nothing in the interface can tell that
+state from a deliberate one.
+*/
+func TestAGrantToSomebodyWhoIsNotHereIsRefused(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+
+	for _, c := range []struct {
+		what string
+		g    access.Grant
+	}{
+		{"an account id nobody holds",
+			access.Grant{Report: "payroll", Kind: access.KindUser, Subject: "usr_typo"}},
+		{"a group name nobody created",
+			access.Grant{Report: "payroll", Kind: access.KindGroup, Subject: "finanace"}},
+	} {
+		err := s.Grant(ctx, acme, c.g)
+		if !errors.Is(err, access.ErrNoSuchSubject) {
+			t.Errorf("%s: got %v, want ErrNoSuchSubject", c.what, err)
+		}
+	}
+
+	// And nothing was written, so the report is still open to the project.
+	if got, _ := s.Grants(ctx, "acme", "finance"); len(got) != 0 {
+		t.Fatalf("a refused grant left %v behind — the report is now restricted to nobody", got)
+	}
+}
+
+/*
+Somebody in another tenant is not here either.
+
+An account id is not guessable, but it is copyable: two administrators in one
+deployment share a Slack channel. The row would be inert — access.Allowed asks
+for membership first — and it would still restrict the report.
+*/
+func TestAGrantToAnAccountInAnotherProjectIsRefused(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+
+	if err := s.CreateUser(ctx, identity.User{
+		ID: "usr_elsewhere", Email: "sam@rival.example",
+		Org: "rival", Project: "ops", Role: "admin",
+	}, "n0t-a-real-password"); err != nil {
+		t.Fatal(err)
+	}
+
+	err := s.Grant(ctx, acme, access.Grant{
+		Report: "payroll", Kind: access.KindUser, Subject: "usr_elsewhere",
+	})
+	if !errors.Is(err, access.ErrNoSuchSubject) {
+		t.Fatalf("got %v, want ErrNoSuchSubject", err)
+	}
+}
+
+/*
+Revoking is not checked the same way, on purpose.
+
+A person removed from the project leaves their grants behind. If revoking
+needed them to still be here, those rows could only be removed with a database
+prompt — and every one of them keeps a report restricted.
+*/
+func TestAGrantCanBeRevokedAfterThePersonIsGone(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+
+	g := access.Grant{Report: "payroll", Kind: access.KindUser, Subject: joins(t, s, "u-1")}
+	if err := s.Grant(ctx, acme, g); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RevokeGrant(ctx, acme, g); err != nil {
+		t.Fatalf("a grant could not be revoked: %v", err)
+	}
+	if got, _ := s.Grants(ctx, "acme", "finance"); len(got) != 0 {
+		t.Fatalf("after revoking, grants are %v", got)
+	}
+
+	// The proof that revoking asks nothing about the subject: a name this
+	// project has never held is accepted and removes nothing. However somebody
+	// left — an account deleted, a person moved to another project, a group
+	// dropped — the row they are named in has to be removable.
+	for _, gone := range []access.Grant{
+		{Report: "payroll", Kind: access.KindUser, Subject: "usr_long_gone"},
+		{Report: "payroll", Kind: access.KindGroup, Subject: "a-group-that-was"},
+	} {
+		if err := s.RevokeGrant(ctx, acme, gone); err != nil {
+			t.Errorf("revoking a grant naming %q: %v", gone.Subject, err)
+		}
 	}
 }
 
@@ -488,5 +597,104 @@ func TestOnlyThePersonsOwnProjectMaySetTheirScope(t *testing.T) {
 	}
 	if scope["region"] != "west" {
 		t.Errorf("confinement is %v, want the west it was set to", scope)
+	}
+}
+
+/*
+Assigning a report to somebody who has been invited and has not arrived.
+
+A report is restricted by its first grant, so "invite Sam and give them the
+receivables summary" had to be done in that order and then remembered — and
+the way it was remembered was somebody coming back days later, if at all.
+Granting up front was refused, because there is no account to name yet.
+
+The promise has to become a permission on its own. Nobody goes back.
+*/
+func TestAnInvitedPersonCanBeAssignedBeforeTheyArrive(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+
+	secret := invite(t, s, "sam@acme.example", time.Hour)
+	g := access.Grant{Report: "payroll", Kind: access.KindInvited, Subject: "sam@acme.example"}
+	if err := s.Grant(ctx, acme, g); err != nil {
+		t.Fatalf("granting to an invited address: %v", err)
+	}
+
+	// It restricts the report now, which is what was asked for.
+	got, err := s.Grants(ctx, "acme", "finance")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0] != g {
+		t.Fatalf("grants are %v, want the invited one", got)
+	}
+	// And opens nothing, because there is nobody holding it.
+	if access.Allowed(reader("sam@acme.example"), got, nil) {
+		t.Error("an invited grant opened a report for a session carrying that address")
+	}
+
+	// Accepting is where the promise becomes a permission.
+	user, err := s.Accept(ctx, secret, "a-password-they-chose")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err = s.Grants(ctx, "acme", "finance")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := access.Grant{Report: "payroll", Kind: access.KindUser, Subject: user.ID}
+	if len(got) != 1 || got[0] != want {
+		t.Fatalf("after accepting, grants are %v, want %v", got, want)
+	}
+	if !access.Allowed(reader(user.ID), got, nil) {
+		t.Error("the person who accepted cannot open the report they were invited to read")
+	}
+}
+
+// An address nobody invited is refused like any other subject that is not
+// here — otherwise this kind would be the hole the other two just closed.
+func TestAnAddressNobodyInvitedIsRefused(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+
+	err := s.Grant(ctx, acme, access.Grant{
+		Report: "payroll", Kind: access.KindInvited, Subject: "stranger@example.com",
+	})
+	if !errors.Is(err, access.ErrNoSuchSubject) {
+		t.Fatalf("got %v, want ErrNoSuchSubject", err)
+	}
+}
+
+/*
+An invitation that has expired is somebody who cannot arrive.
+
+Accepting is what rewrites the grant, and an expired invitation can never be
+accepted — so the row would sit there restricting the report for a person who
+will never hold it.
+*/
+func TestAnExpiredInvitationCannotBeAssigned(t *testing.T) {
+	s := open(t)
+
+	invite(t, s, "late@acme.example", -time.Hour)
+
+	err := s.Grant(context.Background(), acme, access.Grant{
+		Report: "payroll", Kind: access.KindInvited, Subject: "late@acme.example",
+	})
+	if !errors.Is(err, access.ErrNoSuchSubject) {
+		t.Fatalf("got %v, want ErrNoSuchSubject", err)
+	}
+}
+
+// Another tenant's invitation is not one here, however well-known the address.
+func TestAnInvitationInAnotherProjectIsRefused(t *testing.T) {
+	s := open(t)
+
+	invite(t, s, "sam@acme.example", time.Hour)
+
+	err := s.Grant(context.Background(), who("rival", "ops"), access.Grant{
+		Report: "payroll", Kind: access.KindInvited, Subject: "sam@acme.example",
+	})
+	if !errors.Is(err, access.ErrNoSuchSubject) {
+		t.Fatalf("got %v, want ErrNoSuchSubject", err)
 	}
 }

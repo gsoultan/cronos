@@ -90,6 +90,45 @@ ok('a row-scoped dataset says so', data.includes('row scoped'))
 /* And the sample fixture is nowhere near it. */
 ok('the sample sources are gone', !data.includes('Northwind'))
 
+/* -- Connecting a second source ------------------------------------------
+   A connected deployment had no way to add one. The wizard existed, published
+   correctly and was reachable only from the sample page, so a project could
+   edit and delete the sources it booted with and never gain another: the
+   second warehouse was a YAML file and a deploy.
+
+   Opening it is half the assertion. The hooks below the live branch's early
+   return meant that clicking this would have thrown "rendered more hooks than
+   during the previous render" — a crash that could not happen while nothing
+   linked to the panel. */
+ok('a connected editor can connect a source',
+  await page.locator('[data-testid=connect-source]').count() === 1)
+await page.click('[data-testid=connect-source]')
+await page.locator('text=What are you connecting?').waitFor({ timeout: 15000 })
+ok('and the wizard opens on the connected page',
+  (await page.locator('body').innerText()).includes('Choose a source'))
+ok('without throwing', errors.length === 0)
+if (errors.length) console.log(errors.slice(0, 3).map((e) => `       ${e}`).join('\n'))
+
+/* -- The switcher shows this deployment, not the fixture ------------------
+   It listed two organisations nobody belongs to — Acme Logistics and
+   Northwind Trading, out of the sample directory — and clicking a project in
+   them changed nothing, because the project is in the token and only the
+   server can mint one. /v1/auth/project has answered both halves the whole
+   time and nothing called it. */
+await page.click('[data-testid=workspace-trigger]')
+await page.locator('[data-testid=workspace-menu]').waitFor({ timeout: 15000 })
+await page.locator('[data-testid=workspace-menu] [role=menuitem]').first()
+  .waitFor({ timeout: 15000 })
+await page.waitForTimeout(600)   // the list is fetched when the menu opens
+const menu = await page.locator('[data-testid=workspace-menu]').innerText()
+ok('the switcher names the project this session is in', menu.includes('finance'))
+ok('and offers exactly one organisation, the one the account is in',
+  !menu.includes('Northwind'))
+ok('and no project out of the sample directory', !menu.includes('Operations'))
+ok('and it could read the list',
+  await page.locator('[data-testid=workspace-error]').count() === 0)
+await page.keyboard.press('Escape')
+
 await page.goto(`${B}/schedules`, { waitUntil: 'domcontentloaded' })
 await page.locator('[data-testid=schedules-card]').waitFor({ timeout: 15000 })
 const schedules = await page.locator('body').innerText()
