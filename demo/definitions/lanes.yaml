@@ -1,0 +1,21 @@
+apiVersion: cronos.dev/v1
+kind: Dataset
+metadata:
+  name: lanes
+  title: Transfers
+  description: Parcels moved from one depot to another in August.
+spec:
+  sources:
+    - ref: warehouse
+  query: |
+    SELECT lane, region, carrier, from_lat, from_lon, to_lat, to_lon, parcels
+    FROM lanes
+  fields:
+    - {name: lane,     type: string,  role: dimension, label: Transfer}
+    - {name: region,   type: string,  role: dimension, label: Region}
+    - {name: carrier,  type: string,  role: dimension, label: Carrier}
+    - {name: from_lat, type: decimal, role: dimension, hidden: true}
+    - {name: from_lon, type: decimal, role: dimension, hidden: true}
+    - {name: to_lat,   type: decimal, role: dimension, hidden: true}
+    - {name: to_lon,   type: decimal, role: dimension, hidden: true}
+    - {name: parcels,  type: decimal, role: measure, aggregate: sum, label: Parcels}

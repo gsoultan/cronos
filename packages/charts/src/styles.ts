@@ -287,7 +287,7 @@ tr:last-child td { border-bottom: 0 }
   stroke-width: 1.2;
   vector-effect: non-scaling-stroke;
 }
-.dot:focus-visible, .pin:focus-visible, .geo path:focus-visible {
+.dot:focus-visible, .pin:focus-visible, .geo path:focus-visible, .routes g:focus-visible {
   outline: 2px solid var(--cr-accent);
   outline-offset: 2px;
 }
@@ -300,15 +300,133 @@ tr:last-child td { border-bottom: 0 }
 
 /* -- Maps --------------------------------------------------------------- */
 
-.stage { position: relative; width: 100%; margin-top: 4px; overflow: hidden; border-radius: 4px }
-.geo { position: relative; display: block; width: 100%; height: 100% }
-.geo path { stroke: var(--cr-surface); stroke-width: 0.6; vector-effect: non-scaling-stroke }
-.tiles { position: absolute; inset: 0 }
-.tiles img { position: absolute; display: block }
+/* The window onto the map. Its own class, where it used to share .stage with
+   the funnel's rows — and so a grid display and a gap it never asked for.
+
+   The data's proportions come in as --geo-aspect, capped in height: a
+   full-width map at the data's shape is most of a screen tall, and a reader
+   scrolling past it should not have to scroll through it. One finger pans the
+   page, never the map (touch-action), so a phone can still scroll past; the
+   map takes two — see map/controls.ts. */
+.geo-stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: var(--geo-aspect, 1.6);
+  max-height: 520px;
+  margin-top: 4px;
+  overflow: hidden;
+  border-radius: 4px;
+  /* The ground under a map with no basemap, and past the tiles' edge. */
+  background: color-mix(in srgb, var(--cr-line) 45%, var(--cr-surface));
+  cursor: grab;
+  outline: none;
+  touch-action: pan-x pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.geo-stage:focus-visible { box-shadow: inset 0 0 0 2px var(--cr-accent) }
+.geo-stage.dragging { cursor: grabbing }
+/* No stroke unless a layer asks for one. Stroke inherits, and the report's
+   own .grid container sets one — one unit wide, which on a map is the width
+   of the planet. Every heat disc drew it, and the density layer painted as a
+   grey sheet over the whole map. */
+.geo { position: absolute; inset: 0; display: block; width: 100%; height: 100%; stroke: none }
+/* The hairline between two shaded areas. Areas only: written as ".geo path"
+   it outranked the flow and route rules and drew both in the surface colour
+   at 0.6px — a white line on a white map. */
+.shapes path, .hexes path { stroke: var(--cr-surface); stroke-width: 0.6; vector-effect: non-scaling-stroke }
+/* A ring inside another is a hole whichever way either was wound. GeoJSON asks
+   for opposite windings and data does not always keep to it; paper decides
+   holes by containment (run/printmap.go), and the screen has to agree. */
+.shapes path { fill-rule: evenodd }
+/* Shading over a basemap lets the streets through; on a bare map there is
+   nothing under it to see. */
+.tiled .shapes path { fill-opacity: 0.62 }
+.tiled .hexes path { fill-opacity: 0.8 }
+.tiles, .tile-level { position: absolute; inset: 0; pointer-events: none }
+.tiles img { position: absolute; display: block; max-width: none; user-select: none; -webkit-user-drag: none }
 .pin { fill: var(--cr-series-2) }
-.flow { fill: none; stroke: var(--cr-series-1); stroke-opacity: 0.75; stroke-linecap: round }
+.flow { fill: none; stroke-opacity: 0.8; stroke-linecap: round; vector-effect: non-scaling-stroke }
+.routes path { fill: none; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke }
+.routes .casing { stroke: var(--cr-surface); stroke-width: 7; stroke-opacity: 0.9 }
+.routes .route { stroke-width: 3.5 }
+.routes g:hover .route, .routes g:focus-visible .route { stroke-width: 5.5 }
 .heat { pointer-events: none }
+
+/* Counts over the map, in HTML so they are text at the page's size and
+   buttons a keyboard can reach. The layer passes the pointer through to the
+   map; the counts take it back. */
+.geo-overlay { position: absolute; inset: 0; pointer-events: none; overflow: hidden }
+.cluster {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 2px solid var(--cr-surface);
+  border-radius: 999px;
+  background: var(--cr-accent);
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.25);
+  pointer-events: auto;
+  cursor: zoom-in;
+}
+.cluster:focus-visible { outline: 2px solid var(--cr-accent); outline-offset: 2px }
+
+.geo-controls {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: grid;
+  gap: 1px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--cr-line);
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.2);
+}
+.geo-controls button {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  font: inherit;
+  font-size: 17px;
+  line-height: 1;
+  color: var(--cr-ink);
+  background: var(--cr-surface);
+  cursor: pointer;
+}
+.geo-controls button:hover:not(:disabled) { background: color-mix(in srgb, var(--cr-line) 50%, var(--cr-surface)) }
+.geo-controls button:disabled { color: var(--cr-ink-muted); opacity: 0.55; cursor: default }
+.geo-controls button:focus-visible { outline: 2px solid var(--cr-accent); outline-offset: -2px }
+.geo-hint {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: rgb(0 0 0 / 0.72);
+  color: #fff;
+  font-size: 13px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.geo-hint.on { opacity: 1 }
+/* Where the providers' own libraries put it, at the height their terms ask
+   for — and never restyled, which both of those terms forbid. */
+.geo-logo { position: absolute; left: 8px; bottom: 6px; height: 20px; width: auto; pointer-events: none }
 .credit { margin-top: 6px; font-size: 11px; color: var(--cr-ink-muted) }
+.credit a { color: inherit; text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 40%, transparent) }
+.credit .note { display: block; margin-top: 2px; color: var(--cr-ink-secondary) }
+.swatch.dot { border-radius: 999px }
 
 /* -- Legend and tooltip -------------------------------------------------- */
 

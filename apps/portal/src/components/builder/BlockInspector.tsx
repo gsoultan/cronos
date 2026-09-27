@@ -1,5 +1,10 @@
+import type { ReactNode } from 'react'
 import { Checkbox, MultiSelect, NumberInput, Select, TextInput } from '@mantine/core'
 import { Field } from '../form/Field'
+import {
+  basemapChoice, colours, defaultStyle, drawnLayers, excludedBy, MAX_HEX_KM, readsPoints,
+  readsShapes, relayer, styleOptions, switchBasemap, takesSeries, type BasemapChoice,
+} from '../../lib/maps'
 import { CATEGORICAL, FOLDED, GRIDDED, METERED, MULTI_SERIES, PLOTS, STACKABLE } from '../../lib/types'
 import type {
   Dataset, Field as FieldDef, Tile, TileMap, TileMetric, TileTarget,
@@ -31,10 +36,38 @@ const opts = (fs: FieldDef[]) => fs.map((f) => ({ value: f.name, label: f.label 
    combination is a list nobody can hold. */
 const LAYERS = [
   { value: 'polygon', label: 'Shaded regions' },
+  { value: 'line', label: 'Routes' },
+  { value: 'hexbin', label: 'Hexagons' },
   { value: 'heat', label: 'Density' },
+  { value: 'cluster', label: 'Clusters' },
   { value: 'bubble', label: 'Bubbles' },
   { value: 'scatter', label: 'Dots' },
   { value: 'flow', label: 'Flows' },
+]
+
+/* Shown whenever the rule has disabled a layer, so a greyed-out option comes
+   with its reason rather than looking broken. */
+const HEXAGONS_ALONE = 'Hexagons cannot share a map with shaded regions or routes: each '
+  + 'shades from its own scale, and one legend cannot explain two.'
+
+/** A layer as the picker names it, for the middle of a sentence. */
+const layerName = (value: string) =>
+  (LAYERS.find((l) => l.value === value)?.label ?? value).toLowerCase()
+
+/** "a", "a and b", "a, b and c". */
+function listed(items: string[]): string {
+  return items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items.at(-1)}`
+}
+
+/* The three tile sources the server knows the terms of, between the default
+   and the way out. None comes first because it is the default and stays so;
+   custom tiles come last because they are for whatever is not named. */
+const BASEMAPS: { value: BasemapChoice; label: string }[] = [
+  { value: 'none', label: 'None' },
+  { value: 'openstreetmap', label: 'OpenStreetMap' },
+  { value: 'mapbox', label: 'Mapbox' },
+  { value: 'google', label: 'Google Maps' },
+  { value: 'url', label: 'Custom tiles' },
 ]
 
 const is = (kinds: Tile['kind'][], kind: Tile['kind']) => kinds.includes(kind)
@@ -141,10 +174,14 @@ export function BlockInspector({
           onChange={(patch) => onChange({ target: { ...block.target, ...patch } })} />
       )}
 
+      {/* A map's rows are named by this unless its file names a label field
+          of its own, `map.region`, which the builder keeps and does not offer.
+          Then this only groups them, and saying "Labelled by" would name the
+          wrong control. */}
       {(is(CATEGORICAL, block.kind) || is(PLOTS, block.kind) || block.kind === 'map'
         || block.kind === 'combo') && (
-        <Field label={block.kind === 'map' ? 'Labelled by' : 'Grouped by'}
-          help={groupHelp(block.kind)}>
+        <Field label={block.kind === 'map' && !block.map?.region ? 'Labelled by' : 'Grouped by'}
+          help={groupHelp(block, fields)}>
           <Select data={opts(dimensions)} value={block.groupBy ?? null} allowDeselect={false}
             placeholder="Choose a field"
             onChange={(v) => onChange({ groupBy: v ?? undefined })} />
@@ -194,8 +231,7 @@ export function BlockInspector({
       )}
 
       {block.kind === 'map' && (
-        <MapFields map={block.map ?? {}} dimensions={dimensions}
-          onChange={(patch) => onChange({ map: { ...block.map, ...patch } })} />
+        <MapFields block={block} dimensions={dimensions} onChange={onChange} />
       )}
 
       {block.kind === 'table' && (
@@ -381,7 +417,11 @@ const TARGETS = [
   { value: 'value', label: 'A fixed number' },
 ]
 
-function groupHelp(kind: Tile['kind']): string {
+function groupHelp({ kind, map }: Tile, fields: FieldDef[]): string {
+  if (kind === 'map' && map?.region) {
+    const label = fields.find((f) => f.name === map.region)?.label ?? map.region
+    return `One region or point per value of this field. The file labels each one by ${label}.`
+  }
   if (kind === 'map') return 'Names each region or point, in its tooltip and its legend.'
   if (is(PLOTS, kind)) return 'One dot per value of this field.'
   if (is(GRIDDED, kind)) return 'Along the top of the grid.'
@@ -392,81 +432,211 @@ function groupHelp(kind: Tile['kind']): string {
 /**
  * The geography a map reads.
  *
- * Its own component because it is six controls that only one kind shows, and
- * inlining them put the inspector's single `return` past the point anybody
+ * Its own component because it is a dozen controls that only one kind shows,
+ * and inlining them put the inspector's single `return` past the point anybody
  * could see which branch they were in.
+ *
+ * What shows is decided by what the server will draw rather than by the
+ * picker's value. The two differ only when no layers are named and the fields
+ * imply one, and then the fields are what the map is drawn from.
  */
-function MapFields({ map, dimensions, onChange }: {
-  map: TileMap
+function MapFields({ block, dimensions, onChange }: {
+  block: Tile
   dimensions: FieldDef[]
-  onChange: (patch: Partial<TileMap>) => void
+  onChange: (patch: Partial<Tile>) => void
 }) {
+  const map = block.map ?? {}
+  const set = (patch: Partial<TileMap>) => onChange({ map: { ...map, ...patch } })
   const layers = map.layers ?? []
-  const needsPoints = layers.some((l) => l !== 'polygon')
+  const drawn = drawnLayers(map)
+  const excluded = excludedBy(layers)
+  const implied = layers.length === 0 ? LAYERS.find((l) => l.value === drawn[0]) : undefined
 
   return (
     <>
-      <Field label="Layers" help="Drawn bottom to top, in the order you pick them.">
-        <MultiSelect data={LAYERS} value={layers} clearable
-          placeholder="Choose what to draw"
-          onChange={(v) => onChange({ layers: v })} />
+      {/* Disabled rather than dropped on pick, so the author sees the rule
+          before meeting it instead of watching a layer they chose vanish. */}
+      <Field label="Layers" help={excluded.length > 0
+        ? `Drawn bottom to top, in the order you pick them. ${HEXAGONS_ALONE}`
+        : 'Drawn bottom to top, in the order you pick them.'}>
+        <MultiSelect value={layers} clearable
+          data={LAYERS.map(({ value, label }) => ({ value, label, disabled: excluded.includes(value) }))}
+          placeholder={implied ? `${implied.label}, as the fields imply` : 'Choose what to draw'}
+          onChange={(v) => onChange(relayer(block, v))} />
       </Field>
 
-      {layers.includes('polygon') && (
-        <Field label="Region shapes"
-          help="A field holding GeoJSON — ST_AsGeoJSON in PostGIS or DuckDB spatial.">
+      {readsShapes(drawn) && (
+        <Field label="Shapes"
+          help="A field holding GeoJSON — ST_AsGeoJSON in PostGIS or DuckDB spatial. Regions and routes both read it.">
           <Select data={opts(dimensions)} value={map.geometry ?? null} allowDeselect={false}
             placeholder="Choose a field"
-            onChange={(v) => onChange({ geometry: v ?? undefined })} />
+            onChange={(v) => set({ geometry: v ?? undefined })} />
         </Field>
       )}
 
-      {needsPoints && (
+      {readsPoints(drawn) && (
         <div className="grid grid-cols-2 gap-3">
           <Field label="Latitude">
             <Select data={opts(dimensions)} value={map.lat ?? null} allowDeselect={false}
-              placeholder="Choose a field" onChange={(v) => onChange({ lat: v ?? undefined })} />
+              placeholder="Choose a field" onChange={(v) => set({ lat: v ?? undefined })} />
           </Field>
           <Field label="Longitude">
             <Select data={opts(dimensions)} value={map.lon ?? null} allowDeselect={false}
-              placeholder="Choose a field" onChange={(v) => onChange({ lon: v ?? undefined })} />
+              placeholder="Choose a field" onChange={(v) => set({ lon: v ?? undefined })} />
           </Field>
         </div>
       )}
 
-      {layers.includes('flow') && (
+      {drawn.includes('flow') && (
         <div className="grid grid-cols-2 gap-3">
           <Field label="Ends at latitude">
             <Select data={opts(dimensions)} value={map.toLat ?? null} allowDeselect={false}
-              placeholder="Choose a field" onChange={(v) => onChange({ toLat: v ?? undefined })} />
+              placeholder="Choose a field" onChange={(v) => set({ toLat: v ?? undefined })} />
           </Field>
           <Field label="Ends at longitude">
             <Select data={opts(dimensions)} value={map.toLon ?? null} allowDeselect={false}
-              placeholder="Choose a field" onChange={(v) => onChange({ toLon: v ?? undefined })} />
+              placeholder="Choose a field" onChange={(v) => set({ toLon: v ?? undefined })} />
           </Field>
         </div>
       )}
 
-      {/* Empty by default, and it stays that way unless somebody types a URL.
-          A basemap is a request from the reader's browser to a third party we
-          would have chosen for them, and on OpenStreetMap's own servers it is
-          against the tile usage policy at any volume. */}
-      <Field label="Basemap tiles" required={false}
-        help="An XYZ template. Leave empty to draw the data on its own.">
-        <TextInput value={map.basemap ?? ''} data-testid="basemap-url"
-          placeholder="https://tile.example.org/{z}/{x}/{y}.png"
-          classNames={{ input: 'font-mono text-caption' }}
-          onChange={(e) => onChange({ basemap: e.currentTarget.value || undefined })} />
+      {/* A width, not a count across. A count redraws the grid whenever a
+          filter moves the edge of the data, and a hexagon that changes size
+          when somebody filters by carrier holds a number nobody can compare
+          with the one before it. */}
+      {drawn.includes('hexbin') && (
+        <Field label="Hexagon width (km)" required={false}
+          help="Flat side to flat side. Empty sizes them to the data, so a filter resizes them too.">
+          <NumberInput value={map.hexKm ?? ''} min={0} max={MAX_HEX_KM} allowNegative={false}
+            placeholder="Automatic" data-testid="hex-km"
+            onChange={(v) => set({
+              // Kept as typed, zero included: "0." is a number on its way to
+              // 0.5, and clearing it would empty the field under the cursor.
+              // The file writes zero as absent, which the server reads alike.
+              hexKm: v === '' ? undefined : Number(v),
+            })} />
+        </Field>
+      )}
+
+      {takesSeries(drawn) && (
+        <Field label="Coloured by" required={false}
+          help="One colour per value, on every dot, bubble, cluster and flow.">
+          <Select data={opts(dimensions)} value={block.series ?? null} clearable
+            placeholder="One colour" data-testid="map-series"
+            onChange={(v) => onChange({ series: v ?? undefined })} />
+        </Field>
+      )}
+
+      {/* Said rather than left missing. Somebody who drew dots over shaded
+          regions reasonably expects to colour the dots, and a control that is
+          simply absent reads as a bug. Naming the layers says which one to
+          move if the category matters more. */}
+      {!takesSeries(drawn) && !drawn.every(colours) && (
+        <p className="text-caption text-ink-muted">
+          Colour already shows the value in {listed(drawn.filter(colours).map(layerName))}, so
+          points here cannot also be coloured by a category. Give them a block of their own.
+        </p>
+      )}
+
+      <BasemapFields map={map} onChange={set} />
+    </>
+  )
+}
+
+/**
+ * What a map is drawn over.
+ *
+ * None by default, and it stays that way unless somebody picks one. A basemap
+ * is a request from each reader's browser to a third party we would have
+ * chosen for them, and it tells that party roughly where the data is.
+ *
+ * The key is never asked for. One typed here would be written into a file
+ * somebody commits; the server reads each provider's key from its own
+ * secrets, and a report that bills a different account names a secret in the
+ * file, which this keeps without showing an input for it.
+ */
+function BasemapFields({ map, onChange }: {
+  map: TileMap
+  onChange: (patch: Partial<TileMap>) => void
+}) {
+  const choice = basemapChoice(map)
+  const styles = map.provider ? styleOptions(map.provider, map.style) : []
+
+  return (
+    <>
+      <Field label="Basemap" required={false} help={basemapHelp(map)}>
+        <Select data={BASEMAPS} value={choice} allowDeselect={false}
+          data-testid="basemap-provider"
+          onChange={(v) => onChange(switchBasemap((v ?? 'none') as BasemapChoice))} />
       </Field>
 
-      {map.basemap && (
-        <Field label="Attribution" help="Every tile source requires its credit line be shown.">
-          <TextInput value={map.attribution ?? ''} placeholder="© OpenStreetMap contributors"
-            onChange={(e) => onChange({ attribution: e.currentTarget.value || undefined })} />
+      {/* One option is not a choice, so OpenStreetMap shows none. */}
+      {map.provider && styles.length > 1 && (
+        <Field label="Style">
+          <Select data={styles} value={map.style ?? defaultStyle(map.provider) ?? null}
+            allowDeselect={false} data-testid="basemap-style"
+            onChange={(v) => onChange({ style: v ?? undefined })} />
         </Field>
+      )}
+
+      {choice === 'url' && (
+        <>
+          <Field label="Tile URL" help="An https XYZ template, with {z}, {x} and {y} in it.">
+            <TextInput value={map.basemap ?? ''} data-testid="basemap-url"
+              placeholder="https://tile.example.org/{z}/{x}/{y}.png"
+              classNames={{ input: 'font-mono text-caption' }}
+              onChange={(e) => onChange({
+                // Empty stays empty rather than becoming absent, which would
+                // switch the basemap off under the cursor. See switchBasemap.
+                basemap: e.currentTarget.value,
+              })} />
+          </Field>
+          <Field label="Attribution" help="Every tile source requires its credit line be shown.">
+            <TextInput value={map.attribution ?? ''} placeholder="© OpenStreetMap contributors"
+              onChange={(e) => onChange({ attribution: e.currentTarget.value || undefined })} />
+          </Field>
+        </>
       )}
     </>
   )
+}
+
+/**
+ * What the chosen basemap costs and whom it asks, said before it is chosen:
+ * otherwise each of these is found out from a bill, a letter or a blocked key.
+ */
+function basemapHelp(map: TileMap): ReactNode {
+  // A key in the file is a report billing another account, and it is the one
+  // worth naming. The default is what every deployment is told to set.
+  const from = (secret: string) => (map.key
+    ? <><code className="font-mono text-caption">{map.key}</code>, named in the file</>
+    : <>the server secret <code className="font-mono text-caption">{secret}</code></>)
+
+  switch (map.provider) {
+    case 'openstreetmap':
+      return 'Needs no key. Its tile policy forbids heavy use: right for a demo or a quiet '
+        + 'internal report, wrong for an embedded one at volume.'
+    case 'mapbox':
+      return (
+        <>
+          Reads its token from {from('CRONOS_SECRET_MAPBOX_TOKEN')}. Every reader’s browser
+          receives it, so it has to be a public{' '}
+          <code className="font-mono text-caption">pk.</code> token.
+        </>
+      )
+    case 'google':
+      return (
+        <>
+          Reads its key from {from('CRONOS_SECRET_GOOGLE_MAPS_KEY')}, which every reader’s
+          browser receives — restrict it to the Map Tiles API. Google’s terms forbid its map
+          beside another provider’s, so every map in this report has to use Google Maps or
+          none; saving refuses a mix.
+        </>
+      )
+  }
+  if (map.basemap !== undefined) return 'Any XYZ tile server — your own, or one not named here.'
+  return 'None draws the data on its own. Anything else has each reader’s browser ask a '
+    + 'third party for tiles, which tells it roughly where the data is.'
 }
 
 const DIRECTIONS = [

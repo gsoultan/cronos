@@ -222,6 +222,66 @@ And what should be:
 | `CRONOS_SCHEDULER=1` | Arms schedules. Off by default. Safe to set on every replica — see Running several. |
 | `CRONOS_SCHEDULER_TICK` | e.g. `10s`. How often armed schedules are checked; a minute by default, which is cron's own resolution. Lower it if "06:00" has to mean 06:00 rather than some time in the minute after. |
 | `CRONOS_METRICS_ADDR` | e.g. `127.0.0.1:9090`. Serves the exposition there and nowhere else — see Probes. |
+| `CRONOS_SECRET_MAPBOX_TOKEN` | A Mapbox **public** token (`pk.`), for maps drawn over `provider: mapbox`. See Map basemaps. |
+| `CRONOS_SECRET_GOOGLE_MAPS_KEY` | A Google Maps Platform key with the Map Tiles API enabled, for maps drawn over `provider: google`. See Map basemaps. |
+
+## Map basemaps
+
+A map's basemap is fetched by the reader's browser, straight from the provider —
+not proxied through cronos. Google's terms forbid caching or rehosting its
+tiles, and a tile proxy is a bandwidth bill and a latency hop on every pan. So
+the key a provider needs is in every tile request, and every reader who opens
+the network tab has it. That is how these keys are designed to work; it decides
+how to restrict them.
+
+- **Mapbox**: a *public* token with the `styles:tiles` scope. cronos refuses a
+  secret `sk.` token rather than send it to every browser. Restrict it by URL to
+  the origins that show your reports — the host applications that embed them
+  and the portal — without a path: the viewer sends only the page's origin as
+  the Referer (see below), which is also what a URL restriction checks.
+- **Google**: a key restricted to the Map Tiles API, with a daily quota. Google
+  documents IP restrictions for this API, which cannot work for tiles a reader's
+  browser requests, so the API restriction and the quota are the controls that
+  hold. cronos mints the tile session with it on first use, keeps it for the two
+  weeks Google allows, and renews it behind readers before it lapses. Satellite
+  tiles are refused to projects billed in the EEA created after July 2025; a
+  roadmap or terrain style still works there. Google's terms also forbid a
+  Google map beside another provider's on one screen, which cronos enforces
+  when a report is saved.
+- **OpenStreetMap**: no key, and a [usage policy](https://operations.osmfoundation.org/policies/tiles/)
+  that forbids heavy use. Fine for a demo or a quiet internal report; for an
+  embedded product, point a URL basemap at a tile service you pay for.
+
+A key comes from the same place a datasource's password does — a file in
+`CRONOS_SECRETS_DIR` or a `CRONOS_SECRET_…` variable — under the names above,
+or under a name a report gives it. That name must start `mapbox-`, `google-`,
+or `tiles-` for a URL basemap: a basemap's key is published to every reader, so
+a report can only name a secret somebody made to be published. A missing key
+does not fail the report. The map is drawn without its basemap, the reader is
+told the basemap is not set up, and the log says which secret to set — once
+every ten minutes, not once per render.
+
+Secrets are the deployment's, not a project's. On a deployment serving several
+projects, any project's report may name any tile key the deployment holds — its
+readers' tile requests are then billed to that key's account — exactly as any
+project's datasource may name any datasource secret. Give projects that must not
+share a map account deployments of their own.
+
+The viewer sends each tile request with `referrerpolicy="strict-origin"`: the
+page's origin and nothing past it. OpenStreetMap blocks a tile request with no
+Referer at all, and a URL-restricted Mapbox token refuses one — so the policy
+this used to be, `no-referrer`, drew a basemap of refusal tiles. The path, which
+names our customer's own pages and often their customer, still goes nowhere.
+
+A host page with a Content-Security-Policy has to allow what a basemap loads:
+
+    img-src   'self' data: https://tile.openstreetmap.org https://api.mapbox.com https://tile.googleapis.com;
+    connect-src ... https://tile.googleapis.com;
+
+`data:` is the provider logos, which arrive inline in the report rather than as
+a request cronos would have to serve; `connect-src` is Google's copyright line,
+which the viewer asks for again as the reader pans, because it names whoever
+supplied the imagery in view. Only the providers a deployment uses need listing.
 
 ## Terminating TLS
 

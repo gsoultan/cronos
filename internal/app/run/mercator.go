@@ -56,21 +56,40 @@ func simplify(ring [][2]float64, tolerance float64) [][2]float64 {
 	if tolerance <= 0 || len(ring) < 3 {
 		return ring
 	}
-	keep := make([]bool, len(ring))
-	keep[0], keep[len(ring)-1] = true, true
-	mark(ring, 0, len(ring)-1, tolerance*tolerance, keep)
-
-	out := make([][2]float64, 0, len(ring))
-	for i, k := range keep {
-		if k {
-			out = append(out, ring[i])
-		}
-	}
+	out := thin(ring, tolerance)
 	// A ring thinned past a triangle is not a shape. Returning the original is
 	// better than returning a sliver that renders as a stray line across the
 	// map, and the caller already capped how much detail it asked to lose.
 	if len(out) < 4 {
 		return ring
+	}
+	return out
+}
+
+// simplifyLine thins an open line the way simplify thins a ring.
+//
+// No floor to fall back from: a line thinned to its two ends is still the
+// line — a straight stretch of motorway is two points — where a ring thinned
+// to two is a sliver.
+func simplifyLine(line [][2]float64, tolerance float64) [][2]float64 {
+	if tolerance <= 0 || len(line) < 3 {
+		return line
+	}
+	return thin(line, tolerance)
+}
+
+// thin keeps both ends and every vertex Douglas-Peucker finds further than
+// tolerance from the chord it would otherwise be replaced by.
+func thin(pts [][2]float64, tolerance float64) [][2]float64 {
+	keep := make([]bool, len(pts))
+	keep[0], keep[len(pts)-1] = true, true
+	mark(pts, 0, len(pts)-1, tolerance*tolerance, keep)
+
+	out := make([][2]float64, 0, len(pts))
+	for i, k := range keep {
+		if k {
+			out = append(out, pts[i])
+		}
 	}
 	return out
 }

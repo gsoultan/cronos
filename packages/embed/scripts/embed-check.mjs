@@ -105,7 +105,30 @@ const payload = (filtered) => ({
         legend: [{ step: 5, from: '700', to: '1,500' }],
         // A tile template the stub server answers, so no request leaves the
         // machine and the attribution rule is still exercised.
-        tiles: { url: `${'{z}'}/${'{x}'}/${'{y}'}.png`, attribution: '© OpenStreetMap contributors', maxZoom: 19 },
+        tiles: {
+          url: `${'{z}'}/${'{x}'}/${'{y}'}.png`, attribution: '© OpenStreetMap contributors', maxZoom: 19,
+          tileSize: 256,
+          credits: [{ text: '© OpenStreetMap contributors', href: 'https://www.openstreetmap.org/copyright' }],
+          logo: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='10'/%3E",
+          logoAlt: 'Provider',
+        },
+      },
+    },
+    {
+      // Six drops a street apart and one across the county: one circle with
+      // a count at the first zoom, which a click has to take apart.
+      kind: 'chart', chart: 'map', title: 'Nearby drops', series: [],
+      map: {
+        bounds: { minX: 0.4990, minY: 0.3320, maxX: 0.5010, maxY: 0.3330 },
+        layers: ['cluster'],
+        shapes: [], arcs: [], legend: [],
+        markers: [0, 1, 2, 3, 4, 5].map((i) => ({
+          label: `Drop ${i + 1}`, x: 0.49920 + i * 0.000004, y: 0.33250 + (i % 2) * 0.000004,
+          value: 1, formatted: '1', weight: 1, slot: i % 2,
+        })).concat([{ label: 'Far drop', x: 0.5008, y: 0.3322, value: 1, formatted: '1', weight: 1, slot: 0 }]),
+        keys: [{ label: 'Northline', slot: 0 }, { label: 'Swift Parcel', slot: 1 }],
+        note: 'Mapbox is not set up on this server, so the map is drawn without its basemap.',
+        partial: 'This map shows the first 5,000 places of more — narrow the filters to see the rest.',
       },
     },
     {
@@ -255,7 +278,7 @@ const report = page.locator('#r')
 await report.locator('.panel').first().waitFor()
 
 /* -- It renders ----------------------------------------------------------- */
-ok('renders every block', await report.locator('.panel').count() === 15)
+ok('renders every block', await report.locator('.panel').count() === 16)
 ok('the headline value is shown', (await report.locator('.stat').first().innerText()) === '€49.9M')
 ok('a delta is coloured by meaning, not direction',
   await report.locator('.delta b.up').first().isVisible())
@@ -358,8 +381,100 @@ ok('a basemap credits its tile source, which every one of them requires',
   (await map.locator('.credit').innerText()).includes('OpenStreetMap'))
 ok('tiles are laid under the data, not over it',
   await map.locator('.tiles img').count() > 0)
-ok('and they leak no referrer to the tile server',
-  await map.locator('.tiles img').first().getAttribute('referrerpolicy') === 'no-referrer')
+// The origin and not the path. OpenStreetMap refuses a tile request with no
+// Referer at all, and a Mapbox token restricted to a domain refuses one too —
+// `no-referrer`, which this asserted, drew a basemap of refusal tiles. The path
+// is our customer's application and still goes nowhere.
+ok('and they tell the tile server which site asks, and nothing past it',
+  await map.locator('.tiles img').first().getAttribute('referrerpolicy') === 'strict-origin')
+ok("a provider's credit links where its terms want it to",
+  await map.locator('.credit a').first().getAttribute('href') === 'https://www.openstreetmap.org/copyright'
+  && (await map.locator('.credit a').first().getAttribute('rel')).includes('noopener'))
+ok('and the logo its terms require sits on the map',
+  await map.locator('.geo-stage .geo-logo').getAttribute('alt') === 'Provider')
+
+/* Where a dot is drawn is where the data says it is. Every coordinate used to
+   go through the chart helper that rounds to three decimals — a sub-pixel in a
+   bar chart's units and forty kilometres in world units — so London (0.4996)
+   was drawn at 0.5, and on a map of one city every dot shared a handful of
+   places and every radius rounded to nothing. */
+ok('a marker is placed where the server put it, not on a forty-kilometre grid',
+  await map.locator('.dots circle').evaluateAll((cs) => cs.map((c) => c.getAttribute('cx')).sort().join())
+  === '0.4928,0.4996')
+ok('and it is drawn a size a reader can see',
+  await map.locator('.dots circle').first().evaluate((c) => c.getBoundingClientRect().width) >= 8)
+
+/* Stroke inherits, and the report grid sets one a unit wide — on a map, the
+   width of the planet. A heat disc that did not refuse it drew a grey sheet
+   over everything under it. */
+ok('a heat disc inherits no stroke from the page around it',
+  await map.locator('.heat circle').first().evaluate((c) => getComputedStyle(c).stroke) === 'none')
+ok('a flow is drawn in its colour, not in the colour of the paper',
+  await map.locator('.flows path').first().evaluate((f) => getComputedStyle(f).stroke) === 'rgb(42, 120, 214)')
+
+/* Pan and zoom. The viewBox is the window onto the world, so each gesture is
+   a number that has to move the right way. */
+const geo = () => map.locator('svg.geo').getAttribute('viewBox').then((v) => v.split(' ').map(Number))
+// The stub's template is {z}/{x}/{y}.png, so a tile's zoom is its first segment.
+const levels = () => map.locator('.tiles img').evaluateAll((is) =>
+  [...new Set(is.map((i) => Number(i.getAttribute('src').split('/')[0])))])
+const fitted = await geo()
+const level = Math.max(...await levels())
+await map.getByRole('button', { name: 'Zoom in' }).click()
+await page.waitForTimeout(100)
+const zoomed = await geo()
+ok('a zoom button halves the window', Math.abs(zoomed[2] - fitted[2] / 2) < 1e-9)
+ok('and the tiles follow it a level down', (await levels()).includes(level + 1))
+const box = await map.locator('.geo-stage').boundingBox()
+await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+await page.mouse.down()
+await page.mouse.move(box.x + box.width / 2 - 60, box.y + box.height / 2 - 30, { steps: 6 })
+await page.mouse.up()
+await page.waitForTimeout(100)
+const dragged = await geo()
+const perPx = zoomed[2] / box.width
+ok('a drag moves the map by the length of the drag',
+  Math.abs(dragged[0] - zoomed[0] - 60 * perPx) < perPx * 2 && Math.abs(dragged[1] - zoomed[1] - 30 * perPx) < perPx * 2)
+const wheeled = await geo()
+await page.mouse.wheel(0, 120)
+await page.waitForTimeout(100)
+ok('a plain wheel scrolls the page and leaves the map where it was',
+  JSON.stringify(await geo()) === JSON.stringify(wheeled))
+await map.locator('.geo-stage').focus()
+await page.keyboard.press('0')
+await page.waitForTimeout(100)
+ok('and 0 puts it back as it arrived', JSON.stringify(await geo()) === JSON.stringify(fitted))
+
+/* A press let go outside the map, before it had the pointer, is a release the
+   map never hears about. It kept the press, and the next hover across the map
+   dragged it. */
+const edge = await map.locator('.geo-stage').boundingBox()
+await page.mouse.move(edge.x + 1, edge.y + edge.height / 2)
+await page.mouse.down()
+await page.mouse.move(edge.x - 2, edge.y + edge.height / 2)
+await page.mouse.up()
+await page.mouse.move(edge.x + edge.width / 2, edge.y + edge.height / 3, { steps: 6 })
+await page.waitForTimeout(100)
+ok('a press let go outside the map leaves no drag behind for the next hover',
+  JSON.stringify(await geo()) === JSON.stringify(fitted))
+
+/* Clusters: a count where points would overlap, and a click that separates
+   them. */
+const nearby = report.locator('.panel', { hasText: 'Nearby drops' })
+await nearby.locator('.cluster').first().waitFor()
+ok('points a street apart are one circle with their count',
+  await nearby.locator('.cluster').count() === 1 && (await nearby.locator('.cluster').innerText()) === '6')
+ok('and the point across the county stands alone', await nearby.locator('svg.geo circle.pin').count() === 1)
+await nearby.locator('.cluster').click()
+await page.waitForTimeout(200)
+ok('a click on the count zooms in until they separate',
+  await nearby.locator('.cluster').count() === 0 && await nearby.locator('svg.geo circle.pin').count() >= 6)
+ok('coloured by the category the legend names',
+  await nearby.locator('.legend .key').count() === 2)
+ok('and a basemap that could not be drawn says why, under the map',
+  (await nearby.locator('.credit .note').innerText()).includes('not set up'))
+ok('a map drawn from part of its data says so',
+  (await nearby.locator('[part=partial]').innerText()).includes('first 5,000'))
 
 /* A mark that says nothing when pointed at reads as broken. */
 await map.locator('.shapes path').first().hover()
@@ -454,7 +569,7 @@ await real.evaluate((b) => document.querySelector('#r').setAttribute('endpoint',
 const live = real.locator('#r')
 await live.locator('.panel').first().waitFor()
 
-ok('every block of a real render draws', await live.locator('.panel').count() === 17)
+ok('every block of a real render draws', await live.locator('.panel').count() === 20)
 ok('and none of them fell through to "needs a newer viewer"',
   await live.locator('.unaffected', { hasText: 'newer viewer' }).count() === 0)
 ok('nothing was thrown drawing it', realErrors.length === 0)
@@ -472,6 +587,9 @@ for (const [title, selector] of [
   ['Scatter', 'circle.dot'],
   ['Bubble', 'circle.dot'],
   ['Map', '.shapes path'],
+  ['Routes', '.routes path.route'],
+  ['Hexagons', '.hexes path'],
+  ['Clusters', 'circle.pin, .cluster'],
   ['Combo', 'rect.col'],
   ['Funnel', '.band'],
   ['Waterfall', 'rect.col'],

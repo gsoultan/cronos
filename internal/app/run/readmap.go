@@ -1,13 +1,20 @@
 package run
 
 import (
+	"fmt"
+
 	"github.com/gsoultan/cronos/internal/core/definition"
+	"github.com/gsoultan/cronos/internal/core/query"
 )
 
 // readMap reads a map block's rows into the layers a viewer draws.
 //
 // The rows arrive in definition.Block.MapColumns order, which is the one place
 // the shape is decided — the compiler wrote the SELECT from the same list.
+//
+// The basemap is not read here. Resolving it can mean a key and a network
+// call, which is the Service's business and only for an output a browser
+// draws — see Service.tiles.
 func readMap(blk definition.Block, ds definition.Dataset, rows Rows) (*GeoMap, error) {
 	cols := blk.MapColumns()
 	at := make(map[definition.MapColumn]int, len(cols))
@@ -15,23 +22,17 @@ func readMap(blk definition.Block, ds definition.Dataset, rows Rows) (*GeoMap, e
 		at[c] = i
 	}
 
-	m := blk.Map
 	out := &GeoMap{
-		Layers:  layerNames(m),
+		Layers:  layerNames(blk.Map),
 		Shapes:  []Shape{},
 		Markers: []Marker{},
 		Arcs:    []Arc{},
 		Legend:  []Legend{},
 	}
-	if m.Basemap != nil {
-		out.Tiles = &Tiles{
-			URL:         m.Basemap.URL,
-			Attribution: m.Basemap.Attribution,
-			MaxZoom:     m.Basemap.Zoom(),
-		}
+	r := &mapReader{
+		blk: blk, at: at, box: newBounds(), points: newBounds(),
+		fold: foldOf(blk, ds), regions: map[string]int{},
 	}
-
-	r := &mapReader{blk: blk, at: at, box: newBounds(), fold: foldOf(blk, ds), regions: map[string]int{}}
 	if err := r.scan(rows, len(cols), out); err != nil {
 		return nil, err
 	}
@@ -43,19 +44,35 @@ func readMap(blk definition.Block, ds definition.Dataset, rows Rows) (*GeoMap, e
 // grows, and the region totals a polygon layer folds when the query ran at
 // point grain.
 type mapReader struct {
-	blk  definition.Block
-	at   map[definition.MapColumn]int
-	box  *Bounds
-	fold definition.Fold
-	// regions indexes GeoMap.Shapes by label, so a second row for a region
-	// folds into the shape already made rather than drawing it twice.
+	blk definition.Block
+	at  map[definition.MapColumn]int
+	box *Bounds
+	// points is the box of the points alone, which is what a hexagon is sized
+	// against — the padded box would grow every time it was asked.
+	points *Bounds
+	fold   definition.Fold
+	// regions indexes the shape or line already made for a label, so a second
+	// row for it folds into that rather than drawing it twice.
 	regions map[string]int
+	lined   map[string]int
 	weights []float64
 	arcAt   []int
+	// categories is each marker's series value, in row order, for the slots
+	// finish assigns once every row has been seen.
+	categories []string
+	// cut is whether the query had more rows than a map holds.
+	cut bool
 }
 
 func (r *mapReader) scan(rows Rows, width int, out *GeoMap) error {
+	read := 0
 	for rows.Next() {
+		if read == query.ChartLimit {
+			// The query asked for one row past the cap, and this is it.
+			r.cut = true
+			break
+		}
+		read++
 		cells := make([]any, width)
 		into := make([]any, width)
 		for i := range cells {
@@ -87,12 +104,16 @@ func (r *mapReader) row(cells []any, out *GeoMap) error {
 	return nil
 }
 
-// shape adds or folds one polygon.
+// shape adds or folds one polygon or line.
 func (r *mapReader) shape(cells []any, out *GeoMap, label string, value float64) error {
 	if i, seen := r.regions[label]; seen {
 		// The same region again, because the query ran at point grain. Its
 		// geometry is already drawn; only the value has to catch up.
 		out.Shapes[i].Value = refold(r.fold, out.Shapes[i].Value, value)
+		return nil
+	}
+	if i, seen := r.lined[label]; seen {
+		out.Lines[i].Value = refold(r.fold, out.Lines[i].Value, value)
 		return nil
 	}
 	raw := r.text(cells, definition.GeometryCol)
@@ -101,12 +122,38 @@ func (r *mapReader) shape(cells []any, out *GeoMap, label string, value float64)
 		// it draws the map that does match rather than failing the block.
 		return nil
 	}
-	path, err := geoPath(raw, r.blk.Map.Tolerance(), r.box)
+	path, kind, err := geoPath(raw, r.blk.Map.Tolerance(), r.box)
 	if err != nil {
 		return err
 	}
-	r.regions[label] = len(out.Shapes)
-	out.Shapes = append(out.Shapes, Shape{Label: label, Path: path, Value: value})
+	return r.place(out, Shape{Label: label, Path: path, Value: value}, kind)
+}
+
+// place files a shape under the layer that draws its kind of geometry.
+//
+// One field can hold both — districts and the roads between them — and each
+// layer draws its own. A kind no requested layer draws is the author pointing
+// the block at the wrong column, which is worth a sentence rather than a map
+// with nothing on it.
+func (r *mapReader) place(out *GeoMap, s Shape, kind geoKind) error {
+	m := r.blk.Map
+	switch {
+	case kind == areaGeometry && m.Draws(definition.PolygonLayer):
+		r.regions[s.Label] = len(out.Shapes)
+		out.Shapes = append(out.Shapes, s)
+	case kind == lineGeometry && m.Draws(definition.LineLayer):
+		if r.lined == nil {
+			r.lined = map[string]int{}
+		}
+		r.lined[s.Label] = len(out.Lines)
+		out.Lines = append(out.Lines, s)
+	case kind == areaGeometry:
+		return fmt.Errorf("%w: %q is an area, and this map draws lines from its "+
+			"geometry — add a polygon layer to shade it", ErrNotRenderable, s.Label)
+	default:
+		return fmt.Errorf("%w: %q is a line, and a polygon layer shades areas — "+
+			"add a line layer to draw it", ErrNotRenderable, s.Label)
+	}
 	return nil
 }
 
@@ -122,6 +169,7 @@ func (r *mapReader) point(cells []any, out *GeoMap, label string, value float64)
 	}
 	x, y := project(lon, lat)
 	r.box.add(x, y)
+	r.points.add(x, y)
 
 	m := Marker{Label: label, X: x, Y: y, Value: value, Formatted: compact(value)}
 	if i, ok := r.at[definition.SizeCol]; ok {
@@ -130,6 +178,9 @@ func (r *mapReader) point(cells []any, out *GeoMap, label string, value float64)
 	}
 	out.Markers = append(out.Markers, m)
 	r.weights = append(r.weights, value)
+	if _, ok := r.at[definition.SeriesCol]; ok {
+		r.categories = append(r.categories, r.text(cells, definition.SeriesCol))
+	}
 
 	if _, ok := r.at[definition.ToLatCol]; ok {
 		r.arc(cells, out, label, value, x, y)
@@ -144,36 +195,146 @@ func (r *mapReader) arc(cells []any, out *GeoMap, label string, value, x, y floa
 	}
 	x2, y2 := project(lon, lat)
 	r.box.add(x2, y2)
-	r.arcAt = append(r.arcAt, len(out.Arcs))
+	r.arcAt = append(r.arcAt, len(out.Markers)-1)
 	out.Arcs = append(out.Arcs, Arc{
 		Label: label, X1: x, Y1: y, X2: x2, Y2: y2,
 		Value: value, Formatted: compact(value),
 	})
 }
 
-// finish computes everything that needed every row: the box, the ramp the
-// polygons are shaded from, and the weights a bubble and a flow are sized by.
+// finish computes everything that needed every row: the hexagons, the box,
+// the ramp the shaded layers are coloured from, and the weights a bubble and
+// a flow are sized by.
 func (r *mapReader) finish(out *GeoMap) {
+	m := r.blk.Map
+	if m.Draws(definition.HexbinLayer) {
+		out.Hexes = hexbin(out.Markers, hexRadius(m.HexKm, r.points), r.fold, r.box)
+	}
 	out.Bounds = r.box.padded()
 
-	values := make([]float64, len(out.Shapes))
-	for i, s := range out.Shapes {
-		values[i] = s.Value
-	}
-	breaks := steps(values)
-	for i := range out.Shapes {
-		out.Shapes[i].Step = stepOf(out.Shapes[i].Value, breaks)
-		out.Shapes[i].Formatted = compact(out.Shapes[i].Value)
-	}
-	out.Legend = legendOf(values, breaks)
+	shade(out)
+	r.paint(out)
 
 	lo, hi := span(r.weights)
 	for i := range out.Markers {
 		out.Markers[i].Weight = weight(out.Markers[i].Value, lo, hi)
 	}
-	for _, i := range r.arcAt {
+	for i := range out.Arcs {
 		out.Arcs[i].Weight = weight(out.Arcs[i].Value, lo, hi)
 	}
+	if !markersDrawn(m) {
+		// Read for the hexagons or the flows and drawn by nothing. Sending
+		// them anyway was up to five thousand points of payload that every
+		// viewer parsed and ignored.
+		out.Markers = []Marker{}
+	}
+	if r.cut {
+		out.Partial = partial(r.blk)
+	}
+}
+
+// partial is the sentence under a map drawn from the first rows of more.
+func partial(blk definition.Block) string {
+	first := fmt.Sprintf("This map shows the first %s places of more", group(query.ChartLimit, 0))
+	if blk.Folds() {
+		return first + ", and its totals count only those — narrow the filters to count them all."
+	}
+	return first + " — narrow the filters to see the rest."
+}
+
+// shade gives every ramped mark its step, over one set of breaks.
+//
+// One set for regions and lines together: they are the same measure over the
+// same rows, so the same colour has to mean the same value on both. Hexagons
+// never share a map with either — definition.MapSpec refuses it — because a
+// hexagon's value is a fold of points and not a row.
+func shade(out *GeoMap) {
+	marks := make([]*Shape, 0, len(out.Shapes)+len(out.Lines)+len(out.Hexes))
+	for _, list := range [][]Shape{out.Shapes, out.Lines, out.Hexes} {
+		for i := range list {
+			marks = append(marks, &list[i])
+		}
+	}
+	values := make([]float64, len(marks))
+	for i, s := range marks {
+		values[i] = s.Value
+	}
+	breaks := steps(values)
+	for _, s := range marks {
+		s.Step = stepOf(s.Value, breaks)
+		s.Formatted = compact(s.Value)
+	}
+	out.Legend = legendOf(values, breaks)
+}
+
+// paint gives each marker and flow its category's colour, and names them.
+//
+// Slots by order of first appearance and capped at PlotSlots, the same rule a
+// scatter follows and for the same reason: on a map every category sits beside
+// every other, and only the first three slots of the palette hold apart
+// against all the rest.
+func (r *mapReader) paint(out *GeoMap) {
+	if len(r.categories) == 0 {
+		return
+	}
+	slot := slots(r.categories, PlotSlots)
+	for i := range out.Markers {
+		out.Markers[i].Slot = slot[r.categories[i]]
+	}
+	shown := r.categories
+	if !markersDrawn(r.blk.Map) {
+		// Only the flows are drawn, and a row with no destination is no flow.
+		// A legend naming a category nothing on the map is coloured in is a
+		// key to something that is not there.
+		shown = make([]string, 0, len(r.arcAt))
+	}
+	for i, at := range r.arcAt {
+		out.Arcs[i].Slot = slot[r.categories[at]]
+		if !markersDrawn(r.blk.Map) {
+			shown = append(shown, r.categories[at])
+		}
+	}
+	out.Keys = categoryKeys(shown, slot)
+}
+
+// categoryKeys is the categorical legend. Categories that share the last slot
+// are named together, because a swatch labelled with one of them would say the
+// others are something else.
+func categoryKeys(categories []string, slot map[string]int) []MapKey {
+	var out []MapKey
+	var folded []string
+	seen := map[string]bool{}
+	for _, c := range categories {
+		if seen[c] {
+			continue
+		}
+		seen[c] = true
+		if s := slot[c]; s < PlotSlots-1 {
+			out = append(out, MapKey{Label: c, Slot: s})
+		} else {
+			folded = append(folded, c)
+		}
+	}
+	switch len(folded) {
+	case 0:
+	case 1:
+		out = append(out, MapKey{Label: folded[0], Slot: PlotSlots - 1})
+	default:
+		out = append(out, MapKey{Label: fmt.Sprintf("%s and %d more", folded[0], len(folded)-1),
+			Slot: PlotSlots - 1})
+	}
+	return out
+}
+
+// markersDrawn reports whether any layer draws the points themselves.
+func markersDrawn(m *definition.MapSpec) bool {
+	for _, l := range []definition.MapLayer{definition.HeatLayer, definition.ClusterLayer,
+		definition.BubbleLayer, definition.ScatterLayer} {
+		if m.Draws(l) {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *mapReader) get(cells []any, c definition.MapColumn) any {
@@ -192,7 +353,7 @@ func (r *mapReader) text(cells []any, c definition.MapColumn) string {
 }
 
 // refold applies the measure's own aggregate a second time — see
-// definition.Block.Grouped.
+// definition.Block.Folds.
 func refold(f definition.Fold, a, b float64) float64 {
 	switch f {
 	case definition.FoldMin:

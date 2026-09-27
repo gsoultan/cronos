@@ -69,6 +69,40 @@ func (o Output) validate(reportDefault string) error {
 			return err
 		}
 	}
+	return o.validateBasemaps()
+}
+
+// validateBasemaps refuses a Google basemap drawn beside anybody else's.
+//
+// Google's Maps Service Terms forbid its content "with or near a non-Google
+// Map" (3.2.3(e)), and one output is one screen: a Google map in the first
+// block and an OpenStreetMap one in the third is exactly that, in the one
+// place a reader sees them together. Caught here, where the author can pick,
+// rather than by a letter to our customer.
+func (o Output) validateBasemaps() error {
+	google := -1
+	var other string
+	for i, b := range o.Layout {
+		if b.Map == nil || b.Map.Basemap == nil {
+			continue
+		}
+		switch bm := b.Map.Basemap; {
+		case bm.Provider == GoogleMaps:
+			// An index and not the title. A block needs no title, and the
+			// title was what this checked for — so an untitled Google map
+			// passed beside anybody's.
+			google = i
+		case bm.Provider != "":
+			other = bm.Provider.Title()
+		default:
+			other = "a url basemap"
+		}
+	}
+	if google >= 0 && other != "" {
+		return fmt.Errorf("%w: output %q draws Google Maps in block %d beside %s, which "+
+			"Google's terms forbid on one screen — give every map in it the same "+
+			"provider", ErrInvalid, o.Name, google, other)
+	}
 	return nil
 }
 
@@ -252,11 +286,14 @@ func (b Block) validateMap(output string, i int) error {
 		// an atlas, and this is a reporting tool.
 		return fmt.Errorf("%w: %s map %d needs a y measure to colour by", ErrInvalid, output, i)
 	}
-	if b.Map.Draws(PolygonLayer) && b.Labels() == "" {
+	if b.Map.geometric() && b.Labels() == "" {
 		// An unlabelled choropleth is a set of coloured shapes with no way to
 		// say which is which, in a legend or a tooltip or an export.
-		return fmt.Errorf("%w: %s map %d shades polygons but names nothing to label "+
-			"them — set x, or map.region", ErrInvalid, output, i)
+		return fmt.Errorf("%w: %s map %d draws the geometry field but names nothing "+
+			"to label it — set x, or map.region", ErrInvalid, output, i)
+	}
+	if err := b.validateMapSeries(output, i); err != nil {
+		return err
 	}
 	if err := b.validateFold(output, i); err != nil {
 		return err
@@ -264,21 +301,56 @@ func (b Block) validateMap(output string, i int) error {
 	return b.Map.Validate(output, i)
 }
 
+// validateMapSeries checks that colouring points by category leaves colour
+// with one meaning.
+//
+// A choropleth shades by value, and so does a line, a hexagon and a heat
+// field. Categorical dots on top of one would give the same channel two
+// jobs — which was the whole reason maps refused `series` until now — so it
+// is still refused there, and allowed where colour is otherwise unspent.
+func (b Block) validateMapSeries(output string, i int) error {
+	if b.Series.Field == "" {
+		return nil
+	}
+	for _, l := range b.Map.Resolved() {
+		if l.Coloured() {
+			return fmt.Errorf("%w: %s map %d colours by %q and draws a %s layer, which "+
+				"already spends colour on the value — colour scatter, bubble, cluster "+
+				"or flow layers by category, and split the rest into another block",
+				ErrInvalid, output, i, b.Series.Field, l)
+		}
+	}
+	if b.Series.Grain != "" {
+		return fmt.Errorf("%w: %s map %d sets a grain on series, which names a "+
+			"category to colour by rather than a date to bucket", ErrInvalid, output, i)
+	}
+	return nil
+}
+
 // validateFold refuses the one aggregate that cannot survive being applied
-// twice — see Block.Grouped.
+// twice — see Block.Folds.
 //
 // Only the aggregate written on the block is visible here; one inherited from
 // the field's own default is resolved where the datasets are, so query re-runs
 // this check with both in hand. Catching it at authoring time is still worth
 // the duplication: the author who typed `avg` is the one who can pick.
 func (b Block) validateFold(output string, i int) error {
-	if b.Grouped() && Foldable(b.Y.Aggregate) == Unfoldable {
-		return fmt.Errorf("%w: %s map %d shades polygons and draws points, so it runs "+
-			"per point and adds each region up from those — which an average cannot "+
-			"survive. Use sum, count, min or max, or split the layers across two blocks",
-			ErrInvalid, output, i)
+	if !b.Folds() || Foldable(b.Y.Aggregate) != Unfoldable {
+		return nil
 	}
-	return nil
+	return fmt.Errorf("%w: %s map %d %s — which an average cannot survive. "+
+		"Use sum, count, min or max, or split the layers across two blocks",
+		ErrInvalid, output, i, b.FoldReason())
+}
+
+// FoldReason says why a block's measure is applied twice, for the sentence
+// refusing an aggregate that cannot be.
+func (b Block) FoldReason() string {
+	if b.Grouped() {
+		return "draws the geometry field and points, so it runs per point and " +
+			"adds each region up from those"
+	}
+	return "draws hexagons, and adds each one up from the points inside it"
 }
 
 // Fold is how a polygon's value is recomputed from the point rows under it.

@@ -1,0 +1,29 @@
+apiVersion: cronos.dev/v1
+kind: Dataset
+metadata:
+  name: zones
+  title: Service zones
+  description: The area each depot delivers to, with the depot itself.
+spec:
+  sources:
+    - ref: warehouse
+  # The zone's outline and its depot's position in one row, so one map can
+  # shade the zones and put a bubble on each depot. A map is one query; two
+  # tables become one dataset, which is the join below.
+  query: |
+    SELECT z.zone, z.depot, p.city, p.region, z.shape, p.lat, p.lon,
+           z.parcels, z.on_time, p.capacity
+    FROM zones z
+    JOIN depots p ON p.depot = z.depot
+  fields:
+    - {name: zone,     type: string,  role: dimension, label: Zone}
+    - {name: depot,    type: string,  role: dimension, hidden: true}
+    - {name: city,     type: string,  role: dimension, label: Depot}
+    - {name: region,   type: string,  role: dimension, label: Region}
+    # GeoJSON, as ST_AsGeoJSON would return it from PostGIS.
+    - {name: shape,    type: string,  role: dimension, hidden: true}
+    - {name: lat,      type: decimal, role: dimension, hidden: true}
+    - {name: lon,      type: decimal, role: dimension, hidden: true}
+    - {name: parcels,  type: decimal, role: measure, aggregate: sum, label: Parcels a month}
+    - {name: on_time,  type: decimal, role: measure, aggregate: max, label: On time %}
+    - {name: capacity, type: decimal, role: measure, aggregate: sum, label: Parcels a day}

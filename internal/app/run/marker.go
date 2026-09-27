@@ -1,7 +1,7 @@
 package run
 
-// Marker is one point on a map — a dot, a bubble, or a contribution to a
-// density field, depending on which layers asked for it.
+// Marker is one point on a map — a dot, a bubble, a member of a cluster, or a
+// contribution to a density field, depending on which layers asked for it.
 type Marker struct {
 	Label     string  `json:"label"`
 	X         float64 `json:"x"`
@@ -15,9 +15,13 @@ type Marker struct {
 	Weight float64 `json:"weight"`
 	// Size is the bubble measure, already formatted, when one is set.
 	Size string `json:"size,omitempty"`
+	// Slot is the colour of the marker's category, when the block colours by
+	// one — see GeoMap.Keys.
+	Slot int `json:"slot,omitempty"`
 }
 
-// A marker carries no colour slot. A map does not split by series — every
-// layer already spends colour on magnitude, and a second encoding competing
-// for the same channel is what makes a choropleth with coloured dots on it
-// unreadable. ChartType.MultiSeries is where that is enforced.
+// A marker's colour is its category's or nothing. A map never colours points
+// by value as well as by size: every ramped layer already spends colour on
+// magnitude, and a second encoding competing for the same channel is what
+// makes a choropleth with coloured dots on it unreadable — which is why
+// definition.Block.validateMapSeries refuses a category beside one.

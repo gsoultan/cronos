@@ -101,6 +101,25 @@ spec:
             toLat: to_lat
             toLon: to_lon
         - kind: chart
+          chart: map
+          title: Routes
+          x: {field: depot}
+          y: {field: parcels, aggregate: sum}
+          map: {layers: [line], geometry: route}
+        - kind: chart
+          chart: map
+          title: Hexagons
+          x: {field: depot}
+          y: {field: parcels, aggregate: sum}
+          map: {layers: [hexbin], lat: lat, lon: lon}
+        - kind: chart
+          chart: map
+          title: Clusters
+          x: {field: depot}
+          y: {field: parcels, aggregate: sum}
+          series: {field: carrier}
+          map: {layers: [cluster], lat: lat, lon: lon}
+        - kind: chart
           chart: combo
           title: Combo
           x: {field: region}
@@ -157,8 +176,9 @@ func TestPayloadForEveryChartType(t *testing.T) {
 		t.Fatalf("render: %v", err)
 	}
 
-	// Every chart type, one block each, plus a stat and a table.
-	if len(view.Blocks) != 17 {
+	// Every chart type, one block each, plus a stat and a table — and the
+	// layers a map draws beyond the first, a map each.
+	if len(view.Blocks) != 20 {
 		t.Fatalf("want a block per chart type, got %d", len(view.Blocks))
 	}
 	if len(view.Filters) != 2 {

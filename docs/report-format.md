@@ -427,9 +427,9 @@ Charts are drawn by both. The paginated renderer typesets them as vector marks,
 so a PDF carries the same chart the browser does — the same palette, the same
 tick labels, and the same numbers, because the arrangement is worked out once on
 the server and both renderers place what they are given. A layout of charts and
-no table is a legitimate paginated output. The one exception is `map`, which
-prints a line saying to open the report in a browser: the geometry reaches the
-viewer as SVG paths, and a typesetter wants vertices.
+no table is a legitimate paginated output. A `map` prints too, in its own
+proportions and without its basemap — see "Maps" below. It used to print a line
+saying to open the report in a browser.
 
 This paragraph used to say a bar chart in a PDF rendered as a static image, which
 no code ever did — charts were dropped from a paginated output entirely, with
@@ -575,49 +575,158 @@ authors ask, and a type per combination is a list nobody can hold.
   x: {field: region}
   y: {field: parcels, aggregate: sum}
   map:
-    layers: [polygon, heat, bubble, flow]
+    layers: [polygon, scatter]
     geometry: region_shape      # a field holding GeoJSON
     lat: depot_lat
     lon: depot_lon
-    toLat: destination_lat      # flow layers only
-    toLon: destination_lon
-    basemap:
-      url: https://tile.openstreetmap.org/{z}/{x}/{y}.png
-      attribution: © OpenStreetMap contributors
+    basemap: {provider: mapbox, style: light}
 ```
 
 | Layer | Needs | Draws |
 | :--- | :--- | :--- |
 | `polygon` | `geometry` | Regions shaded by `y` — a choropleth |
+| `line` | `geometry` | Routes, roads and pipelines, coloured by `y` |
+| `hexbin` | `lat`, `lon` | Points folded into hexagons, each shaded by the total inside it |
 | `heat` | `lat`, `lon` | Point values spread into a density field |
+| `cluster` | `lat`, `lon` | Points that would overlap drawn as one counted circle, separating as the reader zooms in |
 | `bubble` | `lat`, `lon` | A circle per point, sized by `y` |
 | `scatter` | `lat`, `lon` | A dot per point |
 | `flow` | `lat`, `lon`, `toLat`, `toLon` | An arc from each origin to its destination |
 
+`x` names what each row is, in its tooltip — the region a polygon shades, the
+depot a dot marks. `map.region` overrides it, so a block can group by a code and
+label with a name.
+
 Geometry is a **field**, not a bundled atlas: a column of GeoJSON, which is what
 `ST_AsGeoJSON` returns in PostGIS and in DuckDB's spatial extension. There is no
 world map to keep up to date and no list of the countries cronos knows about.
+One field serves both geometry layers: the polygon layer shades the Polygons
+and MultiPolygons in it and the line layer strokes the LineStrings and
+MultiLineStrings, so a column holding districts and the roads between them is
+one block. A geometry no requested layer draws — a line under a polygon layer —
+is refused with a sentence rather than drawn as nothing. Points belong in `lat`
+and `lon`: `ST_Y(geom) AS lat, ST_X(geom) AS lon` in the dataset's query.
+
+`hexbin` sizes its hexagons with `hexKm`, their width flat side to flat side in
+kilometres; without it about two dozen span the data. A width rather than a
+count, because a count redraws the grid whenever a filter moves the edge of the
+data, and a hexagon that changes size when somebody filters by carrier is a
+number that cannot be compared with the one before it. The grid is regular in
+Web Mercator, which stretches a kilometre further from the equator, so the width
+holds to within two and a half percent: it is set by the stretch at the middle
+of the data rounded to a step of five percent, and a filter leaves the grid
+exactly where it was unless it moves the data far enough to change that.
+
+**Colour by category** with `series`, on the layers whose colour is otherwise
+unspent — `scatter`, `bubble`, `cluster` and `flow`:
+
+```yaml
+- kind: chart
+  chart: map
+  title: Every delivery, by carrier
+  x: {field: city}
+  y: {field: parcels, aggregate: sum}
+  series: {field: carrier}
+  map: {layers: [cluster], lat: lat, lon: lon}
+```
+
+It is refused beside `polygon`, `line`, `hexbin` or `heat`, which already spend
+colour on the value: two meanings for one channel is how a choropleth with
+coloured dots on it becomes unreadable. Categories take the first three colours
+of the palette, the way a scatter's series do, and a fourth and later share the
+third, named together in the legend.
 
 The server projects every geometry to **Web Mercator**, simplifies it, and sends
 SVG paths — the same argument that keeps currency formatting on the server.
 Shipping rings and a projection to every one of an ISV's end users would cost
 more than the whole embed bundle's budget. Web Mercator specifically, because it
 is the projection every XYZ tile server already publishes in, so a basemap lines
-up with the data for free.
+up with the data for free — and because the viewBox of that SVG is then the
+window onto the world, a reader **pans and zooms** it without a map library:
+drag to move, ⌘ or Ctrl and scroll (or a trackpad pinch) to zoom about the
+cursor, two fingers on a touch screen, the `+`, `−` and fit buttons, or the
+keyboard once the map has focus. A plain scroll wheel scrolls the page and says
+how to zoom; one finger scrolls a phone's page past the map. A map embedded in
+somebody else's page must not take their scroll wheel away from them.
+
+#### Basemaps
 
 `basemap` is **empty by default and opt-in**. A basemap is a request from the
 reader's browser to a third party that cronos would have chosen for them; it
-discloses roughly where the data is, and on OpenStreetMap's own servers it is
-against the tile usage policy at any volume. The URL must be `https` — an
-embedded report is served over https and a browser blocks mixed-content tiles
-silently — and `attribution` is required, because every tile source worth using
-requires its credit line be displayed.
+discloses roughly where the data is, and each provider has terms. Name one of
+the providers cronos knows the terms of, or give a URL for anything else:
+
+| `provider` | `style` | Key |
+| :--- | :--- | :--- |
+| `openstreetmap` | `standard` | None. The OpenStreetMap Foundation's [tile usage policy](https://operations.osmfoundation.org/policies/tiles/) forbids heavy use: right for a demo or a low-traffic internal report, wrong for an embedded product at volume. |
+| `mapbox` | `streets` (default), `outdoors`, `light`, `dark`, `satellite`, `satellite-streets`, `navigation-day`, `navigation-night`, or a Mapbox Studio style as `owner/style` | A **public** token (`pk.`) with the `styles:tiles` scope, from `${secret:mapbox-token}`. A secret `sk.` token is refused rather than sent to every reader's browser. |
+| `google` | `roadmap` (default), `satellite`, `terrain`, `hybrid`; `language` and `region` localise the labels | A key with the Map Tiles API enabled, from `${secret:google-maps-key}`. |
+
+```yaml
+basemap: {provider: openstreetmap}
+basemap: {provider: mapbox, style: dark}
+basemap: {provider: google, style: hybrid, language: id, region: ID}
+basemap: {provider: mapbox, style: acme/ckx1y2z3, key: "${secret:mapbox-acme}"}
+basemap:
+  url: https://tiles.example.org/{z}/{x}/{y}{r}.png?key=${secret:tiles-example}
+  attribution: © Example Maps
+  maxZoom: 18
+```
+
+A provider brings its own credit line and logo, in its own wording and with the
+links its terms want, and cronos draws them; `attribution` is refused beside a
+provider for that reason. Google's copyright names whoever supplied the imagery
+in view, so the viewer asks Google for it again as the reader pans. `maxZoom`
+caps how deep a reader can zoom, below the provider's own limit — a cost control,
+since every level is four times the tiles.
+
+A **URL** is any XYZ template: `https`, because an embedded report is served
+over https and a browser blocks mixed-content tiles silently; `{z}`, `{x}` and
+`{y}`; and `{r}` where the server has high-density tiles, filled with `@2x` on a
+screen that has the pixels. `attribution` is required with one, because every
+tile source worth using requires its credit line be displayed.
+
+**Keys are secrets, never literals**, resolved the way a datasource's are — see
+"Secrets" in [deploying.md](deploying.md). A basemap's key reaches every
+reader's browser by construction: it is in every tile request, and anybody who
+opens the network tab has it. So a basemap may only name a secret made to be a
+tile key — `mapbox-…` for Mapbox, `google-…` for Google, `tiles-…` in a URL —
+and anything else is refused when the report is saved. Without that rule,
+`${secret:warehouse-password}` in a tile URL would send the database password to
+every reader. A deployment with no key for a provider draws the map without its
+basemap, says so under the map in words that name no setting, and logs which
+secret to set.
+
+Google's terms forbid its maps **beside another provider's** on one screen
+(Maps Service Terms 3.2.3(e)), so an output that draws a Google basemap and any
+other basemap is refused; a map with no basemap is not somebody else's map. Give
+the Google maps a report of their own, as the demo's
+`parcel-network-google` does.
+
+On **paper** a map is drawn in its own proportions — polygons, lines, hexagons,
+dots and arcs as vector marks, with the legend — and without its basemap. The
+tiles are a third party's, requested by a reader's browser under that party's
+terms, and none of those terms is a server printing them into a document that is
+then mailed to five thousand people. A ring inside another is a hole, on paper
+and on screen alike, whichever way the data wound it; an island in a lake, and
+one region's exclave in another's hole, are drawn after the hole they sit in.
+
+A map reads at most 5,000 rows, like every chart. One that had more says so
+under itself and on paper: the rest are not on it, and a total folded from its
+points — a region added up from the points under it, a hexagon from the points
+inside it — counts only the ones that are.
 
 One block compiles to one query, so a map's layers share a grain. Asking for
-polygons *and* points runs at the point grain and adds each region up from the
-points under it. That is exact for `sum`, `count`, `min` and `max`, and it is
+the geometry field *and* points runs at the point grain and adds each region up
+from the points under it, and a `hexbin` layer adds each hexagon up from the
+points inside it. That is exact for `sum`, `count`, `min` and `max`, and it is
 refused for `avg`: an average of averages is a number nobody measured that looks
-entirely plausible. Split the layers across two blocks if you need one.
+entirely plausible. `hexbin` is refused beside `polygon` and `line` for the same
+family of reason: both shade from the ramp, one from rows and one from folded
+points, and one legend cannot explain two scales. Split the layers across two
+blocks if you need both. Two tables become one map by joining them in the
+dataset's query — the demo's `zones` dataset puts a zone's outline and its
+depot's position in one row.
 
 ## Schedule
 

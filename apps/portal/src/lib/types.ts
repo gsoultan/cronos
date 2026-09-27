@@ -184,18 +184,70 @@ export interface TileTarget {
   label?: string
 }
 
-/** The geography a map tile reads. */
+/**
+ * A tile source whose terms the server knows: its URL, the credit line and
+ * logo its licence requires, and where its key comes from. A closed set on the
+ * server, so adding one is code there rather than a string an author invents.
+ */
+export type BasemapProvider = 'openstreetmap' | 'mapbox' | 'google'
+
+/**
+ * The geography a map tile reads, and what it is drawn over.
+ *
+ * Flat, like Tile, although the file nests the basemap under `map.basemap`:
+ * the form edits one field at a time, and a nested object would make every
+ * control spread two levels to change one value. definitions.ts does the
+ * nesting, in both directions.
+ */
 export interface TileMap {
   /** Drawn bottom to top. Empty lets the server infer one from the fields. */
   layers?: string[]
-  /** The field carrying GeoJSON, for a polygon layer. */
+  /** The field carrying GeoJSON, read by the polygon and the line layer alike. */
   geometry?: string
+  /**
+   * Names each row in place of the block's x — group by a country code, label
+   * with the country's name. The builder offers no control for it; it is read
+   * and written so that opening a map and saving it does not relabel it.
+   */
+  region?: string
   lat?: string
   lon?: string
   toLat?: string
   toLon?: string
-  /** An XYZ tile template. Empty draws no basemap, which is the default: a
-   *  basemap is a request from the reader's browser to a third party. */
+  /** How far shapes are simplified, in Web Mercator world units. Kept as read:
+   *  it is tuned against a payload size, which is not a question for a form. */
+  simplify?: number
+  /** A hexbin layer's hexagon width, in kilometres. Undefined, or zero, sizes
+   *  them to the data. */
+  hexKm?: number
+  /** A named tile source. Exclusive with `basemap`, because a provider brings
+   *  its own tiles and its own credit line. */
+  provider?: BasemapProvider
+  /** One of the provider's looks. Undefined is its default. */
+  style?: string
+  /**
+   * A `${secret:name}` reference to the provider's key, for a report that
+   * bills a different account from the deployment's. Never shown in a form
+   * and never asked for — a key typed into one lands in the file — but kept
+   * as read, because dropping it moves the bill.
+   */
+  key?: string
+  /** Google only: the language its labels are drawn in. Kept as read. */
+  language?: string
+  /**
+   * Google only: the region whose conventions its borders and labels follow.
+   * `basemap.region` in the file, and named apart here because `region` on
+   * this type is already the label field. Kept as read.
+   */
+  basemapRegion?: string
+  /** How far the viewer zooms, for either kind of basemap. Kept as read. */
+  maxZoom?: number
+  /**
+   * An XYZ tile template, for a tile server with no provider name. Undefined
+   * draws no basemap, which is the default: a basemap is a request from the
+   * reader's browser to a third party. Empty is a template still being typed,
+   * and writes nothing either.
+   */
   basemap?: string
   attribution?: string
 }

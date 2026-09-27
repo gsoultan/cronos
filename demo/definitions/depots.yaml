@@ -1,0 +1,24 @@
+apiVersion: cronos.dev/v1
+kind: Dataset
+metadata:
+  name: depots
+  title: Depots
+  description: Where the network's parcels are sorted, and how much each one can take.
+spec:
+  sources:
+    - ref: warehouse
+  query: |
+    SELECT depot, city, region, carrier, lat, lon, capacity, staff
+    FROM depots
+  fields:
+    - {name: depot,    type: string,  role: dimension, hidden: true}
+    - {name: city,     type: string,  role: dimension, label: Depot}
+    - {name: region,   type: string,  role: dimension, label: Region}
+    - {name: carrier,  type: string,  role: dimension, label: Operated by}
+    # Coordinates are dimensions: a map groups by where something is and
+    # adds up what is there. Hidden, because a latitude in a table is a
+    # number nobody reads.
+    - {name: lat,      type: decimal, role: dimension, hidden: true}
+    - {name: lon,      type: decimal, role: dimension, hidden: true}
+    - {name: capacity, type: decimal, role: measure, aggregate: sum, label: Parcels a day}
+    - {name: staff,    type: decimal, role: measure, aggregate: sum, label: Staff}

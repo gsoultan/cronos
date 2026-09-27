@@ -22,6 +22,97 @@ needs a deployment to act says so under **Upgrading**.
 
 ## Unreleased
 
+**Maps pan and zoom, over OpenStreetMap, Mapbox or Google Maps.** A map was a
+picture fitted to its data: no way in, no way out, and a basemap only if the
+author typed an XYZ template and its credit line by hand. It is a window onto
+the world now — drag to move; ⌘ or Ctrl and scroll, a trackpad pinch or two
+fingers to zoom about the point under them; buttons and the keyboard for the
+rest — with the tiles following at the zoom the screen can show. A plain scroll
+wheel still scrolls the page, and one finger still scrolls a phone past the map:
+a map embedded in somebody else's application must not take their page from
+them. `basemap: {provider: openstreetmap | mapbox | google, style: …}` names a
+tile source cronos knows the terms of, and cronos writes what those terms ask
+for — the credit line in the provider's own words and links, the logo on the
+map, Google's copyright for whatever imagery is in view, and the session Google
+needs minted before its first tile. Keys come from the server's secrets, never
+from a definition: `CRONOS_SECRET_MAPBOX_TOKEN` and
+`CRONOS_SECRET_GOOGLE_MAPS_KEY`. A deployment without one draws the map without
+its basemap and says so. A URL template still works for everything else, with
+`{r}` for high-density tiles and a `${secret:tiles-…}` key where the tile server
+needs one. See "Maps" in [docs/report-format.md](docs/report-format.md) and
+"Map basemaps" in [docs/deploying.md](docs/deploying.md).
+
+**Routes, hexagons and clusters, and points coloured by what they are.** Three
+more map layers. `line` strokes the LineStrings in the geometry field that
+`polygon` reads the areas out of, shaded by value — roads, pipelines, and ferry
+crossings as MultiLineStrings. `hexbin` folds points into hexagons `hexKm`
+across and shades each by the total inside it, with the measure's own
+aggregate, and refuses `avg` for the reason a folded choropleth does. `cluster`
+draws points that would overlap as one counted circle that separates as the
+reader zooms in, or when it is clicked. `series` on a map colours dots,
+bubbles, clusters and flows by a category, with a legend — and is refused
+beside the layers that already spend colour on the value.
+
+**Maps print.** A paginated output drew a line saying to open the report in a
+browser where a map was asked for. It draws the map now, in its own
+proportions — regions, routes, hexagons, dots and flows as vector marks, holes
+cut back out of the regions they are in, and the legend — without the basemap,
+whose tiles are a third party's and not ours to print.
+
+**A map drawn from part of its data says so.** A map reads at most 5,000 rows,
+like every chart, and one that had more was drawn as if it were all of them —
+with its regions, and now its hexagons, added up from the rows that fitted and
+nothing on the page to say the rest were missing. It asks for one row past the
+cap, and when it gets it the map says so, under itself and on paper, and says
+what that does to its totals.
+
+**A basemap's key is a secret named as one.** A tile key is in every tile
+request, so whatever secret a basemap names is sent to every reader's browser.
+Without a rule about which secrets those may be, an author could read the
+warehouse password by putting `${secret:warehouse-password}` into a tile URL
+and opening the network tab. A basemap may only name a secret called
+`mapbox-…`, `google-…` or `tiles-…`, which is refused otherwise when the report
+is saved and again when the tiles are resolved; a Mapbox secret (`sk.`) token
+is refused outright. Google's key never reaches a log line: net/http quotes the
+URL it failed to reach, and the key is in it.
+
+**An OpenStreetMap basemap drew a map of refusals.** Tile requests were sent
+with `referrerpolicy="no-referrer"`, to keep our customer's page path from the
+tile server — and OpenStreetMap blocks a tile request that carries no Referer
+at all, as does a Mapbox token restricted to a domain. They send the page's
+origin now, and still nothing past it.
+
+**Every dot on a map was placed on a forty-kilometre grid.** Map coordinates
+went through the charts' number helper, which rounds to three decimals — a
+sub-pixel in a bar chart's units and forty kilometres in world units, where the
+planet is 1.0. London drew at 0.5 instead of 0.4996, and on a map of one city
+every dot shared a handful of places while every radius, worked out as a
+fraction of a viewBox a few thousandths across, rounded to nothing: the dots,
+the heat field and the flows were not drawn at all. Map geometry is written to
+nine decimals now, and paths to eight, which is under a pixel at the deepest
+zoom a tile server serves.
+
+**The heat layer painted a grey sheet, and flows were white.** Stroke inherits,
+and the embedded report's grid sets one a unit wide — on a map, the width of
+the planet. Every heat disc drew it over the map beneath; and the rule giving
+regions their hairline edge was written for every path, so it outranked the
+flows' own colour and drew them in the surface colour at 0.6px. The map sets no
+stroke anybody did not ask for, and the hairline is the regions' alone.
+
+**A map's legend reads in round numbers.** The breaks between bands were
+interpolated between two values and printed whole: "833.33–966.67" between two
+counts of parcels, and "36.00" for a break a hair over 36. They are rounded to
+three significant figures where they are made — to whole numbers when every
+value is one — and kept between the two values each was taken from, so a region
+shaded in a band is always inside the range the legend gives it.
+
+**The demo has a parcel network to put on a map.** `demo/seed.sql` adds
+depots, nine hundred generated deliveries around them, service zones, trunk
+routes and the transfers between depots. "Where the parcels go" draws them with
+every layer over OpenStreetMap and Mapbox, and prints; "The network on Google
+Maps" draws them over Google's road map, satellite imagery and terrain, on a
+screen of their own as Google's terms require.
+
 **A report reads as a dashboard.** Every block had a row of its own, so a chart
 with three bars was drawn at the width of a three-column table and there was
 nothing to compare across. Charts share a row now and a table keeps one to

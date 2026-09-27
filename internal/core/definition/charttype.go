@@ -119,6 +119,11 @@ func (c ChartType) MultiSeries() bool {
 	// and the inner ones are x.
 	case HeatmapChart, TreemapChart:
 		return true
+	// A map colours its points by category, on the layers that have not
+	// already given colour to the value — which Block.validateMapSeries
+	// checks, because it depends on the layers rather than on the type.
+	case MapChart:
+		return true
 	}
 	return false
 }

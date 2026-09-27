@@ -127,7 +127,7 @@ The same sequence the single-tenant boot ran, per project. Nothing is shared
 between two of these except the store, which scopes every statement itself.
 */
 func finish(ctx context.Context, cfg config.Server, rt *runtime,
-	defs publish.Store, records *sqlstore.Store, log *slog.Logger) error {
+	defs publish.Store, records *sqlstore.Store, maps run.Basemaps, log *slog.Logger) error {
 
 	// Before the connections are opened, because the store decides which
 	// sources exist: building engines from the directory and then adopting a
@@ -145,7 +145,7 @@ func finish(ctx context.Context, cfg config.Server, rt *runtime,
 
 	rt.project = &api.Project{
 		Reports:     rt.repo,
-		Runner:      run.New(rt.repo, engines),
+		Runner:      run.New(rt.repo, engines).WithBasemaps(maps),
 		Definitions: rt.repo,
 		Probes:      engines.probes(),
 	}

@@ -92,6 +92,7 @@ internal/
     driver/sql/          Anything database/sql speaks           ✓
     driver/duckdb/       Federation. cgo, `-tags duckdb`        ✓
     render/paginated/    Typst PDF                              ✓
+    basemap/             Map tiles: OpenStreetMap, Mapbox, Google ✓
     render/spreadsheet/  XLSX, written by hand, read by openpyxl ✓
     deliver/file/        Documents to a directory                ✓
     deliver/email/       SMTP with a MIME attachment             ✓
@@ -163,7 +164,7 @@ that needs a wrapper.
 | Stack | React 19.2+, Mantine 9, TanStack Router/Query/Form | Web component, framework-agnostic |
 | PWA / service worker | Yes | No |
 | Builder UI | Yes | **Never** |
-| Budget | See below | ≲40 KB gzip (**14.8 KB** today, gated by `bun run size`) |
+| Budget | See below | ≲40 KB gzip (**20.8 KB** today, gated by `bun run size`; the interactive map took it from 14.8) |
 
 ### Toolchain
 

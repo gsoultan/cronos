@@ -1,0 +1,188 @@
+apiVersion: cronos.dev/v1
+kind: Report
+metadata:
+  name: parcel-network
+  title: Where the parcels go
+  folder: Operations
+  description: The delivery network on a map — every layer cronos draws, over OpenStreetMap and Mapbox.
+spec:
+  dataset: drops
+
+  # Each binds to every dataset that has the field, and the blocks reading a
+  # dataset that does not say so under themselves.
+  filters:
+    - name: carrier
+      label: Carrier
+      type: enum
+      control: checkboxes
+      values: [Northline, Harbour Express, Swift Parcel]
+      bind:
+        drops: carrier
+        lanes: carrier
+    - name: region
+      label: Region
+      type: enum
+      values: [Benelux, Baltic, UK & IE]
+      bind:
+        drops: region
+        zones: region
+        routes: region
+        lanes: region
+    - name: status
+      label: Status
+      type: enum
+      control: checkboxes
+      values: [delivered, in transit, failed]
+      bind:
+        drops: status
+
+  outputs:
+    - name: interactive
+      renderer: interactive
+      layout:
+        - kind: stat
+          label: Deliveries
+          value: {field: id, aggregate: count}
+        - kind: stat
+          label: Parcels delivered
+          value: {field: parcels, aggregate: sum}
+          filter: status = 'delivered'
+        - kind: stat
+          label: Failed deliveries
+          value: {field: id, aggregate: count}
+          filter: status = 'failed'
+
+        # A choropleth with a point on top: each zone shaded by what it
+        # delivered, and its depot marked. OpenStreetMap needs no key, which
+        # is why this one draws a basemap on a deployment nobody configured.
+        - kind: chart
+          chart: map
+          dataset: zones
+          title: Service zones by parcels delivered
+          x: {field: city}
+          y: {field: parcels, aggregate: sum}
+          map:
+            layers: [polygon, scatter]
+            geometry: shape
+            lat: lat
+            lon: lon
+            basemap: {provider: openstreetmap}
+
+        # Nine hundred points would be a smear at this zoom. Clustered, they
+        # are a count per neighbourhood that separates as you zoom in, each
+        # delivery coloured by who carried it.
+        #
+        # Mapbox reads its token from the server: set
+        # CRONOS_SECRET_MAPBOX_TOKEN to a public (pk.) token before starting
+        # cronosd. Without one the map says so and draws the deliveries anyway.
+        - kind: chart
+          chart: map
+          title: Every delivery, by carrier
+          x: {field: city}
+          y: {field: parcels, aggregate: sum}
+          series: {field: carrier}
+          map:
+            layers: [cluster]
+            lat: lat
+            lon: lon
+            basemap: {provider: mapbox, style: streets}
+
+        # Where deliveries fail, as a density field with the failures on top.
+        - kind: chart
+          chart: map
+          title: Where deliveries fail
+          filter: status = 'failed'
+          x: {field: city}
+          y: {field: id, aggregate: count}
+          map:
+            layers: [heat, scatter]
+            lat: lat
+            lon: lon
+            basemap: {provider: mapbox, style: dark}
+
+        # The same deliveries folded into hexagons ten kilometres across —
+        # the width stays put when a filter moves the edge of the data, so
+        # two readings of this map compare.
+        - kind: chart
+          chart: map
+          title: Parcels per ten-kilometre hexagon
+          x: {field: city}
+          y: {field: parcels, aggregate: sum}
+          map:
+            layers: [hexbin]
+            lat: lat
+            lon: lon
+            hexKm: 10
+            basemap: {provider: mapbox, style: light}
+
+        # Lines from a GeoJSON field: roads, and the ferries that break them.
+        - kind: chart
+          chart: map
+          dataset: routes
+          title: Trunk routes by trucks a week
+          x: {field: route}
+          y: {field: trucks, aggregate: sum}
+          map:
+            layers: [line]
+            geometry: path
+            basemap: {provider: openstreetmap}
+
+        # No basemap at all — the default. The arcs bow to the left of their
+        # direction of travel, so Rotterdam → London and London → Rotterdam
+        # are two arcs rather than one line drawn twice.
+        - kind: chart
+          chart: map
+          dataset: lanes
+          title: Transfers between depots
+          x: {field: lane}
+          y: {field: parcels, aggregate: sum}
+          series: {field: carrier}
+          map:
+            layers: [flow, scatter]
+            lat: from_lat
+            lon: from_lon
+            toLat: to_lat
+            toLon: to_lon
+
+        - kind: table
+          dataset: depots
+          title: Depots
+          columns: [city, region, carrier, capacity, staff]
+          sort:
+            - {field: capacity, dir: desc}
+
+    # The maps on paper: every layer as vector marks, and no basemap — tiles
+    # are a third party's, fetched by a reader's browser under its terms, and
+    # none of those terms is a server printing them into a PDF.
+    - name: pdf
+      renderer: paginated
+      page: {size: a4, orientation: landscape, margins: 14mm}
+      layout:
+        - kind: chart
+          chart: map
+          dataset: zones
+          title: Service zones by parcels delivered
+          x: {field: city}
+          y: {field: parcels, aggregate: sum}
+          map: {layers: [polygon, scatter], geometry: shape, lat: lat, lon: lon}
+        - kind: chart
+          chart: map
+          title: Parcels per ten-kilometre hexagon
+          x: {field: city}
+          y: {field: parcels, aggregate: sum}
+          map: {layers: [hexbin], lat: lat, lon: lon, hexKm: 10}
+        - kind: chart
+          chart: map
+          dataset: routes
+          title: Trunk routes by trucks a week
+          x: {field: route}
+          y: {field: trucks, aggregate: sum}
+          map: {layers: [line], geometry: path}
+        - kind: chart
+          chart: map
+          dataset: lanes
+          title: Transfers between depots
+          x: {field: lane}
+          y: {field: parcels, aggregate: sum}
+          series: {field: carrier}
+          map: {layers: [flow, scatter], lat: from_lat, lon: from_lon, toLat: to_lat, toLon: to_lon}

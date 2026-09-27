@@ -202,6 +202,13 @@ func (b Builder) measure(ds definition.Dataset, m definition.MeasureRef) (string
 // on either breaks on the other.
 func (b Builder) wrap(sel []string, inner string, blk definition.Block,
 	group []string, order orderedBy) (string, error) {
+	return b.capped(sel, inner, blk, group, order, ChartLimit)
+}
+
+// capped is wrap with the cap spelled out, for a shape that has to know
+// whether it reached it.
+func (b Builder) capped(sel []string, inner string, blk definition.Block,
+	group []string, order orderedBy, limit int) (string, error) {
 
 	if order.err != nil {
 		return "", order.err
@@ -213,7 +220,7 @@ func (b Builder) wrap(sel []string, inner string, blk definition.Block,
 	if len(group) > 0 {
 		by = "\nGROUP BY " + strings.Join(group, ", ")
 	}
-	top, tail := b.dialect.Limit(ChartLimit)
+	top, tail := b.dialect.Limit(limit)
 	return fmt.Sprintf("SELECT %s%s\nFROM (\n%s\n) AS %s%s%s%s%s",
 		top, strings.Join(sel, ", "), inner, blockAlias, where(blk.Filter),
 		by, order.sql, tail), nil

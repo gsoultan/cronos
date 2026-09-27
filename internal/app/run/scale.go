@@ -43,23 +43,68 @@ func steps(values []float64) []float64 {
 	sorted := append([]float64(nil), values...)
 	sort.Float64s(sorted)
 
+	top := sorted[len(sorted)-1]
+	// Whole things are counted in whole numbers: a break between 12 trucks
+	// and 14 read "13.30", which is a truck and a third.
+	whole := true
+	for _, v := range sorted {
+		whole = whole && v == math.Trunc(v)
+	}
 	breaks := make([]float64, 0, RampSteps-1)
 	for i := 1; i < RampSteps; i++ {
 		at := float64(i) / RampSteps * float64(len(sorted)-1)
 		lo := int(at)
 		frac := at - float64(lo)
-		v := sorted[lo]
+		v, next := sorted[lo], sorted[lo]
 		if lo+1 < len(sorted) {
-			v += (sorted[lo+1] - sorted[lo]) * frac
+			next = sorted[lo+1]
+			v += (next - sorted[lo]) * frac
 		}
+		// Rounded, and kept between the two values it was interpolated from.
+		// Rounding alone could leave them: 1,004 rounds to 1,000, below every
+		// value of a set that starts at 1,004 — one band for all of it, and a
+		// legend reading "1,004–1,000".
+		v = round3(v)
+		if whole {
+			v = math.Round(v)
+		}
+		v = min(max(v, sorted[lo]), next)
 		// Ties collapse: forty regions all at zero cannot be split into six
-		// bands, and a legend claiming they can reads "0–0, 0–0, 0–0".
-		if len(breaks) > 0 && v <= breaks[len(breaks)-1] {
+		// bands, and a legend claiming they can reads "0–0, 0–0, 0–0". A break
+		// at the top collapses too — the band above it would hold nothing.
+		if v >= top || (len(breaks) > 0 && v <= breaks[len(breaks)-1]) {
 			continue
 		}
 		breaks = append(breaks, v)
 	}
 	return breaks
+}
+
+// round3 is v to three significant figures.
+//
+// A break interpolated between two values is a number nobody chose, and its
+// digits past the third are noise: the legend read "9,800–14,333.33". Rounded
+// here, where the break is made, rather than where it is printed, so a region
+// shaded in a band is always inside the range the legend gives that band.
+//
+// Divided rather than multiplied below one: 0.1 has no exact binary form, so
+// 360 × 0.1 is 36.00000000000001 — which compact prints as "36.00".
+func round3(v float64) float64 {
+	if v == 0 || math.IsNaN(v) || math.IsInf(v, 0) {
+		return v
+	}
+	exp := int(math.Floor(math.Log10(math.Abs(v)))) - 2
+	if exp < -300 {
+		// Past float64's exponent, the power of ten below is infinite and
+		// the rounding a NaN. Nothing that small is on a map.
+		return v
+	}
+	if exp >= 0 {
+		p := math.Pow10(exp)
+		return math.Round(v/p) * p
+	}
+	p := math.Pow10(-exp)
+	return math.Round(v*p) / p
 }
 
 // stepOf is which band v falls in, given the breaks.

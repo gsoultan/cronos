@@ -134,6 +134,9 @@
   "ramp-4": rgb("#3987e5"), "ramp-5": rgb("#256abf"), "ramp-6": rgb("#104281"),
   "up": rgb("#2a78d6"), "down": rgb("#e34948"), "neutral": rgb("#8c8981"),
   "line": rgb("#e1e0d9"),
+  // The page itself, for cutting a hole back out of a printed region — a
+  // lake inside a district. Typst's polygon has no holes of its own.
+  "paper": rgb("#ffffff"),
 )
 
 // A tone name to a colour. An unknown one is the slot-1 blue rather than an
@@ -237,11 +240,19 @@
           // by the full width would draw a pie as an ellipse, and an ellipse
           // encodes a direction the data does not have.
           let square = c.at("square", default: false) == true
-          let bw = if square { chart-box } else { size.width }
-          let dx = if square { (size.width - chart-box) / 2 } else { 0pt }
+          // A map takes its own proportions, as wide as the page allows and
+          // no taller than the box: stretched to fit, a country is a
+          // different shape and every distance on it is wrong.
+          let aspect = c.at("aspect", default: 0.0)
+          if aspect == none { aspect = 0.0 }
+          let bw = if square { chart-box } else if aspect > 0 {
+            calc.min(size.width, chart-box * aspect)
+          } else { size.width }
+          let bh = if aspect > 0 { bw / aspect } else { chart-box }
+          let dx = if square { (size.width - chart-box) / 2 } else { (size.width - bw) / 2 }
           place(dx: dx, {
-            for m in marks { draw-mark(m, bw, chart-box) }
-            mark-labels(marks, bw, chart-box)
+            for m in marks { draw-mark(m, bw, bh) }
+            mark-labels(marks, bw, bh)
           })
         })
       }))

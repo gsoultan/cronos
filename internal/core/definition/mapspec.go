@@ -6,17 +6,17 @@ import "fmt"
 //
 // Nested under `map:` rather than flattened into Block like the other kinds.
 // Block's fields are a flat union because each kind adds two or three; a map
-// adds nine, and folding those into the union would mean every author reading
-// the block reference scrolls past `toLat` to find `columns`. One key whose
-// value is a mapping is the smaller cost.
+// adds a dozen, and folding those into the union would mean every author
+// reading the block reference scrolls past `toLat` to find `columns`. One key
+// whose value is a mapping is the smaller cost.
 type MapSpec struct {
 	// Layers to draw, bottom to top. Empty means polygon when a geometry
 	// field is named and scatter when coordinates are.
 	Layers []MapLayer `json:"layers,omitempty" yaml:"layers,omitempty"`
 
-	// Geometry names the field carrying GeoJSON for the polygon layer —
-	// ST_AsGeoJSON in PostGIS, ST_AsGeoJSON in DuckDB's spatial extension, or
-	// a text column somebody stored it in.
+	// Geometry names the field carrying GeoJSON for the polygon and line
+	// layers — ST_AsGeoJSON in PostGIS, ST_AsGeoJSON in DuckDB's spatial
+	// extension, or a text column somebody stored it in.
 	Geometry string `json:"geometry,omitempty" yaml:"geometry,omitempty"`
 	// Region labels a polygon. Empty falls back to the block's x.
 	Region string `json:"region,omitempty" yaml:"region,omitempty"`
@@ -36,7 +36,20 @@ type MapSpec struct {
 	// value keeps every vertex — correct, and a way to put six megabytes of
 	// coastline through a browser, so it is spelled rather than defaulted.
 	Simplify float64 `json:"simplify,omitempty" yaml:"simplify,omitempty"`
+
+	// HexKm is how wide a hexbin layer's hexagons are, flat side to flat
+	// side, in kilometres — to within a few percent, see run.hexRadius. Zero
+	// sizes them to the data, about two dozen across. A width in kilometres
+	// rather than a count, because the count would redraw the grid every time
+	// a filter moved the edge of the data — and a hexagon that changes size
+	// when somebody filters by carrier is a number that cannot be compared
+	// with the one before it.
+	HexKm float64 `json:"hexKm,omitempty" yaml:"hexKm,omitempty"`
 }
+
+// MaxHexKm is as wide as a hexagon may be. Wider than a continent is a map
+// with one hexagon on it, which is a stat tile drawn expensively.
+const MaxHexKm = 5000
 
 // DefaultSimplify drops vertices closer than roughly 40 metres at the equator.
 //
@@ -95,6 +108,9 @@ func (m MapSpec) Validate(output string, i int) error {
 			return err
 		}
 	}
+	if err := m.validateHexes(output, i); err != nil {
+		return err
+	}
 	if m.Basemap != nil {
 		return m.Basemap.Validate(output, i)
 	}
@@ -106,15 +122,38 @@ func (m MapSpec) validateLayer(output string, i int, l MapLayer) error {
 	case !l.Valid():
 		return fmt.Errorf("%w: %s map %d has layer %q, want one of %v",
 			ErrInvalid, output, i, l, MapLayerNames())
-	case l == PolygonLayer && m.Geometry == "":
-		return fmt.Errorf("%w: %s map %d draws polygons but names no geometry field",
-			ErrInvalid, output, i)
+	case l.Geometric() && m.Geometry == "":
+		return fmt.Errorf("%w: %s map %d draws a %s layer but names no geometry field",
+			ErrInvalid, output, i, l)
 	case l.Points() && (m.Lat == "" || m.Lon == ""):
 		return fmt.Errorf("%w: %s map %d draws a %s layer, which needs lat and lon",
 			ErrInvalid, output, i, l)
 	case l == FlowLayer && (m.ToLat == "" || m.ToLon == ""):
 		return fmt.Errorf("%w: %s map %d draws flows, which need toLat and toLon "+
 			"for where each one lands", ErrInvalid, output, i)
+	}
+	return nil
+}
+
+// validateHexes checks what a hexbin layer is combined with and how wide it
+// draws.
+func (m MapSpec) validateHexes(output string, i int) error {
+	hexes := m.Draws(HexbinLayer)
+	switch {
+	case hexes && m.geometric():
+		// Both shade from the ramp, from different rows: a region's value is
+		// its own row and a hexagon's is the points inside it. One legend
+		// cannot explain two scales, and two legends under one map is a
+		// reader matching colours to the wrong one.
+		return fmt.Errorf("%w: %s map %d shades hexagons and draws the geometry "+
+			"field too, and one legend cannot explain both — split them across two "+
+			"blocks", ErrInvalid, output, i)
+	case m.HexKm < 0 || m.HexKm > MaxHexKm:
+		return fmt.Errorf("%w: %s map %d hexKm %g is outside 0–%d",
+			ErrInvalid, output, i, m.HexKm, MaxHexKm)
+	case m.HexKm > 0 && !hexes:
+		return fmt.Errorf("%w: %s map %d sets hexKm but draws no hexbin layer",
+			ErrInvalid, output, i)
 	}
 	return nil
 }
@@ -129,6 +168,7 @@ const (
 	LonCol      MapColumn = "lon"
 	ToLatCol    MapColumn = "toLat"
 	ToLonCol    MapColumn = "toLon"
+	SeriesCol   MapColumn = "series"
 	ValueCol    MapColumn = "value"
 	SizeCol     MapColumn = "size"
 )
@@ -152,7 +192,7 @@ func (b Block) MapColumns() []MapColumn {
 	if b.Labels() != "" {
 		out = append(out, RegionCol)
 	}
-	if m.Draws(PolygonLayer) {
+	if m.geometric() {
 		out = append(out, GeometryCol)
 	}
 	if m.points() {
@@ -161,11 +201,15 @@ func (b Block) MapColumns() []MapColumn {
 	if m.Draws(FlowLayer) {
 		out = append(out, ToLatCol, ToLonCol)
 	}
+	// The category a point is coloured by. Only on the layers that leave
+	// colour free for it — see validateMapSeries.
+	if b.Series.Field != "" {
+		out = append(out, SeriesCol)
+	}
 	out = append(out, ValueCol)
 	if b.Size.Field != "" {
 		out = append(out, SizeCol)
 	}
-	// No series column: a map does not split by series — see run.Marker.
 	return out
 }
 
@@ -190,6 +234,16 @@ func (m MapSpec) points() bool {
 	return false
 }
 
+// geometric reports whether any resolved layer reads the geometry field.
+func (m MapSpec) geometric() bool {
+	for _, l := range m.Resolved() {
+		if l.Geometric() {
+			return true
+		}
+	}
+	return false
+}
+
 // Grouped reports whether the block runs at point grain while also shading
 // polygons, so the polygon values have to be folded a second time.
 //
@@ -199,5 +253,13 @@ func (m MapSpec) points() bool {
 // correct for sum, count, min and max, and wrong for avg — which is why
 // validateFold refuses that rather than drawing an average of averages.
 func (b Block) Grouped() bool {
-	return b.Map != nil && b.Map.Draws(PolygonLayer) && b.Map.points()
+	return b.Map != nil && b.Map.geometric() && b.Map.points()
+}
+
+// Folds reports whether any of the block's values is its measure applied a
+// second time: a region added up from the points under it, or a hexagon from
+// the points inside it. Either way the aggregate has to survive being applied
+// to its own results, which an average does not.
+func (b Block) Folds() bool {
+	return b.Grouped() || (b.Map != nil && b.Map.Draws(HexbinLayer))
 }

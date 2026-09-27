@@ -9,10 +9,11 @@ import (
 // mapSQL compiles a map block.
 //
 // The grain is whatever the finest requested layer needs: a point layer means
-// a row per coordinate, a polygon layer alone means a row per region. Asking
-// for both runs at the point grain and folds the regions from it — see
+// a row per coordinate, a polygon or line layer alone means a row per shape.
+// Asking for both runs at the point grain and folds the shapes from it — see
 // definition.Block.Grouped for why that is one query rather than two, and
-// foldable for the aggregate it refuses.
+// foldable for the aggregate it refuses. A hexbin layer folds too, but in the
+// reader: a hexagon is a place on the map, not a value any column holds.
 //
 // Columns come out in definition.Block.MapColumns order, which is the contract
 // the reader scans them back by.
@@ -20,8 +21,8 @@ func (b Builder) mapSQL(ds definition.Dataset, blk definition.Block, inner strin
 	if err := foldable(ds, blk); err != nil {
 		return "", err
 	}
-	sel := make([]string, 0, 9)
-	group := make([]string, 0, 6)
+	sel := make([]string, 0, 10)
+	group := make([]string, 0, 7)
 
 	for _, c := range blk.MapColumns() {
 		expr, grouped, err := b.mapColumn(ds, blk, c)
@@ -33,7 +34,11 @@ func (b Builder) mapSQL(ds definition.Dataset, blk definition.Block, inner strin
 			group = append(group, expr)
 		}
 	}
-	return b.wrap(sel, inner, blk, group, b.order(ds, blk, len(group)))
+	// One row past the cap. A map folds its rows into totals — a region's,
+	// a hexagon's — so a map cut at the cap is not a smaller picture of the
+	// data but a wrong one, and the reader can only say so if it can tell a
+	// map that fit from one that did not.
+	return b.capped(sel, inner, blk, group, b.order(ds, blk, len(group)), ChartLimit+1)
 }
 
 // mapColumn renders one column and says whether it is grouped by rather than
@@ -61,6 +66,9 @@ func (b Builder) mapColumn(ds definition.Dataset, blk definition.Block,
 	case definition.ToLonCol:
 		col, err := column(ds, m.ToLon)
 		return col, true, err
+	case definition.SeriesCol:
+		col, err := column(ds, blk.Series.Field)
+		return col, true, err
 	case definition.ValueCol:
 		expr, err := b.measure(ds, blk.Y)
 		return expr, false, err
@@ -78,7 +86,7 @@ func (b Builder) mapColumn(ds definition.Dataset, blk definition.Block,
 // when the block named none — the case that reaches a reader as a plausible
 // wrong number rather than as an error.
 func foldable(ds definition.Dataset, blk definition.Block) error {
-	if !blk.Grouped() {
+	if !blk.Folds() {
 		return nil
 	}
 	name := blk.Y.Aggregate
@@ -91,10 +99,9 @@ func foldable(ds definition.Dataset, blk definition.Block) error {
 		name = f.Aggregate
 	}
 	if definition.Foldable(name) == definition.Unfoldable {
-		return fmt.Errorf("%w: map block shades polygons and draws points, so it runs "+
-			"per point and adds each region up from those — which %q cannot survive. "+
+		return fmt.Errorf("%w: map block %s — which %q cannot survive. "+
 			"Use sum, count, min or max, or split the layers across two blocks",
-			ErrBadTemplate, name)
+			ErrBadTemplate, blk.FoldReason(), name)
 	}
 	return nil
 }

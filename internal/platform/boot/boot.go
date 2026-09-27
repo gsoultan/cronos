@@ -47,6 +47,7 @@ import (
 	_ "time/tzdata"
 
 	"github.com/gsoultan/cronos/internal/adapter/api"
+	"github.com/gsoultan/cronos/internal/adapter/basemap"
 	"github.com/gsoultan/cronos/internal/adapter/driver/registry"
 	"github.com/gsoultan/cronos/internal/extension"
 	"github.com/gsoultan/cronos/internal/platform/build"
@@ -187,8 +188,12 @@ func Serve(log *slog.Logger) error {
 		return err
 	}
 
+	// One for every project: a Google session is good for anybody using the
+	// same key, and minting one per project would be a round trip to Google
+	// per project per restart for the same answer.
+	maps := basemap.New(secrets(cfg), log)
 	for _, rt := range runtimes {
-		if err := finish(ctx, cfg, rt, defs, records, log); err != nil {
+		if err := finish(ctx, cfg, rt, defs, records, maps, log); err != nil {
 			return err
 		}
 		defer rt.close() //nolint:errcheck // closing pools on the way out

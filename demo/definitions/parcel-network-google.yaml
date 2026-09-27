@@ -1,0 +1,71 @@
+apiVersion: cronos.dev/v1
+kind: Report
+metadata:
+  name: parcel-network-google
+  title: The network on Google Maps
+  folder: Operations
+  description: The same network over Google's road map, satellite imagery and terrain.
+spec:
+  dataset: drops
+
+  # A report of its own, not three more blocks on "Where the parcels go":
+  # Google's terms forbid a Google map beside anybody else's on one screen,
+  # and cronos refuses an output that mixes them.
+  #
+  # Google reads its key from the server: set CRONOS_SECRET_GOOGLE_MAPS_KEY to
+  # a key with the Map Tiles API enabled before starting cronosd. The key
+  # reaches every reader's browser in the tile URLs, so restrict it to the Map
+  # Tiles API and give it a quota. Without one each map says so and draws its
+  # data anyway.
+  filters:
+    - name: region
+      label: Region
+      type: enum
+      values: [Benelux, Baltic, UK & IE]
+      bind:
+        drops: region
+        zones: region
+        routes: region
+
+  outputs:
+    - name: interactive
+      renderer: interactive
+      layout:
+        - kind: chart
+          chart: map
+          title: Every delivery, by carrier
+          x: {field: city}
+          y: {field: parcels, aggregate: sum}
+          series: {field: carrier}
+          map:
+            layers: [cluster]
+            lat: lat
+            lon: lon
+            basemap: {provider: google, style: roadmap}
+
+        # Satellite imagery with Google's roads over it. Its copyright line
+        # names whoever supplied the imagery in view, so it changes as the
+        # map is panned — the viewer asks Google for it again each time.
+        - kind: chart
+          chart: map
+          dataset: zones
+          title: Service zones from above
+          x: {field: city}
+          y: {field: parcels, aggregate: sum}
+          map:
+            layers: [polygon, scatter]
+            geometry: shape
+            lat: lat
+            lon: lon
+            basemap: {provider: google, style: hybrid}
+
+        - kind: chart
+          chart: map
+          dataset: routes
+          title: Trunk routes over the terrain
+          x: {field: route}
+          y: {field: trucks, aggregate: sum}
+          map:
+            layers: [line]
+            geometry: path
+            basemap: {provider: google, style: terrain}
