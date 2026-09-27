@@ -26,8 +26,8 @@ func drops() definition.Dataset {
 func dropMap(layers ...definition.MapLayer) definition.Block {
 	return definition.Block{
 		Kind: definition.ChartBlock, Chart: definition.MapChart, Title: "Drops",
-		X: definition.DimensionRef{Field: "drop_id"},
-		Y: definition.MeasureRef{Field: "parcels", Aggregate: "sum"},
+		X:   definition.DimensionRef{Field: "drop_id"},
+		Y:   definition.MeasureRef{Field: "parcels", Aggregate: "sum"},
 		Map: &definition.MapSpec{Layers: layers, Lat: "lat", Lon: "lon"},
 	}
 }

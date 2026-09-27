@@ -496,4 +496,3 @@ func TestASaturatedCacheDoesNotGrowPastItsCeiling(t *testing.T) {
 			len(g.sessions), maxSessions)
 	}
 }
-

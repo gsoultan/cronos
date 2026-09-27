@@ -116,7 +116,7 @@ func areas(c *document.Chart, shapes []Shape, at func(x, y float64) [2]float64) 
 		}
 		s := shapes[r.shape]
 		c.Marks = append(c.Marks, document.Mark{Kind: document.PolyMark, Points: r.pts,
-			Tone: fmt.Sprintf("ramp-%d", min(max(s.Step, 0), RampSteps-1)+1),
+			Tone:  fmt.Sprintf("ramp-%d", min(max(s.Step, 0), RampSteps-1)+1),
 			Label: s.Label, Value: s.Formatted})
 	}
 }

@@ -31,7 +31,7 @@ type Tiles struct {
 	// the server sends is right for the map as first drawn and has to be
 	// asked for again once the reader pans somewhere else.
 	Viewport string `json:"viewport,omitempty"`
-	MaxZoom int    `json:"maxZoom"`
+	MaxZoom  int    `json:"maxZoom"`
 	// TileSize is the edge of a tile in CSS pixels at its native zoom: 256
 	// for most sources, 512 for Mapbox's. The zoom to request follows from
 	// it, so a viewer that assumed 256 asks for one level too deep — more
