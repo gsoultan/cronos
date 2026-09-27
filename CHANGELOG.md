@@ -22,6 +22,28 @@ needs a deployment to act says so under **Upgrading**.
 
 ## Unreleased
 
+**A report reads as a dashboard.** Every block had a row of its own, so a chart
+with three bars was drawn at the width of a three-column table and there was
+nothing to compare across. Charts share a row now and a table keeps one to
+itself — its columns have minimum widths, so half a row is where it would start
+scrolling sideways. The order is still the author's: blocks are grouped rather
+than packed, because packing fills a gap by lifting a later block above an
+earlier one. Stat tiles are sized against the column the report is drawn in
+rather than the window, which differ by the width of the navigation, and stop
+growing at 320px, so a report with two figures no longer gives each of them half
+the page.
+
+**A table is as tall as its rows.** Its window was 420px whatever the query
+returned, so a three-row answer sat on three hundred pixels of nothing — which
+reads as a load that failed rather than as a short result. It sizes to the rows
+now, up to the same cap, so a million-row table is still virtualised.
+
+**A table's headings scroll with its rows.** The rows had a horizontal scroller
+of their own, so on a narrow screen dragging them sideways left the headings
+behind and every column was labelled with its neighbour's name. At phone width
+the column off the edge was the measure — the one the report exists to show.
+Headings and rows share one scroller now.
+
 **A project can connect more than one datasource, without a restart.** It
 could hold several — the registry has routed a dataset to the warehouse it
 names since it existed — but only ones the process booted with. A source
@@ -130,9 +152,11 @@ There are two browser renderers now rather than three implementations:
 `@cronos/charts` holds the drawing, and the embed and the portal both use it.
 It has no runtime dependencies, which is what lets an application deliberately
 outside the package workspace share it without coupling anything. One
-stylesheet too, scoped to `:host` for the shadow root and to `.cronos-chart` in
-a page, so a report cannot be drawn one way here and another in a customer's
-page.
+stylesheet too, so a report cannot be drawn one way here and another in a
+customer's page. A shadow root scopes it for the embed; in the portal it is
+wrapped in `@scope (.cronos-chart)` and a cascade layer, because a page has no
+boundary, and a rule written for a shadow root — `.grid` — would otherwise
+reach everything around the chart.
 
 **Text blocks are drawn.** Neither browser renderer had a case for them, so a
 `kind: text` block — prose the author wrote by hand, which the format has

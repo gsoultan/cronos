@@ -163,7 +163,7 @@ that needs a wrapper.
 | Stack | React 19.2+, Mantine 9, TanStack Router/Query/Form | Web component, framework-agnostic |
 | PWA / service worker | Yes | No |
 | Builder UI | Yes | **Never** |
-| Budget | See below | ≲40 KB gzip (**3.0 KB** today, gated by `bun run size`) |
+| Budget | See below | ≲40 KB gzip (**14.8 KB** today, gated by `bun run size`) |
 
 ### Toolchain
 
@@ -182,10 +182,30 @@ Tailwind v4, configured in CSS. Three rules:
 - **No `dark:` variants.** Dark mode redefines the same theme variables under
   `[data-theme='dark']`, so every `bg-surface` switches on its own. Components
   never spell the theme twice. Adding a colour means adding both steps.
-- **Cascade layer order is `theme, base, mantine, components, utilities`.** Mantine
-  is imported via its `.layer.css` variants so a utility can override a component
-  style without `!important`. The unlayered files sit outside the layers entirely
-  and beat every utility — that is the failure mode to watch for.
+- **Cascade layer order is `theme, base, cronos-charts, mantine, components,
+  utilities`.** Mantine is imported via its `.layer.css` variants so a utility can
+  override a component style without `!important`. The unlayered files sit outside
+  the layers entirely and beat every utility — that is the failure mode to watch
+  for, and **a stylesheet does not have to be a file to hit it.**
+
+  `document.adoptedStyleSheets` is unlayered and sorts after every `<link>`, so a
+  sheet adopted at runtime beats the whole cascade. `@cronos/charts` is written for
+  a shadow root, where the boundary does the scoping and the selectors can be bare
+  — `.grid`, `.panel`, `.bars`, `*`. Adopted into the portal's document those are
+  global *and* unlayered, and the shell is a `<div class="grid grid-cols-[248px_…]">`:
+  from the first chart a session drew until it ended, the navigation column was half
+  the window. The same rule flattened the report's block grid, and the sheet's
+  literal `--cr-surface: #fff` beat the themed one, so charts stayed white on a dark
+  page. Every screen without a chart on it looked correct, which is why it lived so
+  long.
+
+  Adopting a sheet into the document therefore means both wrappers, which is what
+  `documentCss()` returns: `@scope` so an ordinary class name cannot reach the page
+  around it, and `@layer` so the host still owns the theme. The layer name has to be
+  ordered in the statement above or it is appended last and wins — and ordered
+  **above `base`**, because below it is below preflight (`*{margin:0;padding:0;border:0}`),
+  which leaves a panel with its background and no edges. `ServerChart.test.ts` pins
+  both ends of that.
 
 Logic with rules worth stating — SQL generation, filter compilation — carries unit
 tests (`bun test`). Anything that can be asserted without a browser should be.

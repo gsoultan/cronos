@@ -37,9 +37,35 @@ export function LiveReport({ view, applied = [] }: {
   const rest = view.blocks.filter((b) => b.kind !== 'stat')
 
   return (
-    <div className="grid gap-6" data-testid="live-report">
+    <div className="grid gap-4" data-testid="live-report">
+      {/* auto-fit against the column this report is drawn in, not against the
+          window. `sm:` and `xl:` are viewport widths, and the width that
+          decides how many tiles fit is this column's — which changes when the
+          navigation collapses, and is a customer's page in the embed. At 1192px
+          those two spellings differed by two tiles a row.
+
+          The track stops growing at 320px rather than taking 1fr. A row of
+          these is read by scanning across it, and a report with two stats was
+          giving each of them half of a 1560px column — a 48px figure alone in
+          a box wide enough for a paragraph, which reads as something missing
+          rather than as a headline. Capped, two stats and six stats are the
+          same tile, and the tile is the width StatTile sizes its hero figure
+          against.
+
+          320 and not 380 because auto-fit counts repetitions against the
+          track's maximum, not its minimum: at 380 a 728px column fitted one
+          track and stacked two tiles that had room to sit side by side.
+
+          `min(…, 100%)` on both ends of the track, and min-w-0 on the row. A
+          fixed 380px maximum is wider than a phone, and a track maximum does
+          not shrink to fit: at 390px it laid a 380px tile in a 358px column
+          and pushed the whole document 50px wide, which scrolls the page
+          sideways on every screen this is supposed to fit. min-w-0 is the
+          other half — these rows are grid items themselves, and an item's
+          automatic minimum size is its content's, so the 380 and the 400 below
+          would otherwise set a floor for the column above them. */}
       {stats.length > 0 && (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid min-w-0 gap-4 [grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),min(320px,100%)))]">
           {stats.map((b, i) => (
             <div key={b.title + i}>
               <StatTile label={b.title} value={b.value ?? '—'} hero={i === 0} />
@@ -48,11 +74,52 @@ export function LiveReport({ view, applied = [] }: {
           ))}
         </div>
       )}
-      {rest.map((b, i) => (
-        <Block key={b.title + i} block={b} view={view} applied={applied} />
+      {rowsOf(rest).map((row, i) => (
+        <div key={i}
+          className="grid min-w-0 items-stretch gap-4 [grid-template-columns:repeat(auto-fit,minmax(min(400px,100%),1fr))]">
+          {row.map((b, j) => (
+            <Block key={b.title + j} block={b} view={view} applied={applied} />
+          ))}
+        </div>
       ))}
     </div>
   )
+}
+
+/**
+ * The blocks, grouped into the rows they can share.
+ *
+ * Every block used to get a row of its own, so a chart with three bars was
+ * drawn at the same width as a table with three columns and the page was a
+ * column of cards with nothing to compare across. Two charts side by side is
+ * the reading this format is for.
+ *
+ * A table takes its own row rather than half of one. Its columns have minimum
+ * widths that do not shrink — that is what stops a measure column collapsing
+ * to nothing — so half a row is where it starts scrolling sideways instead.
+ *
+ * Grouped rather than left to grid auto-placement with a span, because
+ * auto-placement would leave a hole beside every table and the only way to
+ * backfill it is `grid-auto-flow: dense`, which moves a later block above an
+ * earlier one. The author chose this order; a layout is not entitled to
+ * rewrite it to save a gap.
+ */
+export function rowsOf(blocks: ReportBlock[]): ReportBlock[][] {
+  const out: ReportBlock[][] = []
+  // The row still taking blocks, or none — a table closes it and opens nothing.
+  let open: ReportBlock[] | null = null
+  for (const b of blocks) {
+    if (b.kind === 'table') {
+      out.push([b])
+      open = null
+    } else if (open) {
+      open.push(b)
+    } else {
+      open = [b]
+      out.push(open)
+    }
+  }
+  return out
 }
 
 function Block({ block, view, applied }: {
@@ -71,8 +138,8 @@ function Block({ block, view, applied }: {
      * for it, which was at least honest.
      */
     return (
-      <div>
-        <ServerChart block={block} />
+      <div className="flex flex-col">
+        <div className="min-h-0 flex-1"><ServerChart block={block} /></div>
         <Unaffected block={block} view={view} applied={applied} />
       </div>
     )

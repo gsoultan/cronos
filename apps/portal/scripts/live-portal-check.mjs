@@ -70,6 +70,64 @@ ok('a block says the filter that misses it does not apply',
 ok('no sample-data banner when connected',
   await page.locator('[data-testid=sample-banner]').count() === 0)
 
+/* -- A report is laid out as a report ------------------------------------- */
+
+/* customer-overview rather than billing-summary: its table has three rows, and
+   billing-summary's fills the window, so a hole under a short table could not
+   show there. Its own page, because two of these need a viewport the rest of
+   this file does not expect — and a new context, so the dark theme it turns on
+   stays here. */
+const layout = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+layout.on('pageerror', (e) => errors.push(String(e)))
+await layout.goto(`${B}/reports/customer-overview`, { waitUntil: 'domcontentloaded' })
+await layout.getByTestId('chart').first().waitFor({ timeout: 20000 })
+
+/* The chart stylesheet is written for a shadow root, so its selectors are bare,
+   and adopted into this document they were global and unlayered. `.grid`
+   reached the shell's own `<div class="grid ...">`: from the first chart a
+   session drew until it ended, the navigation was half the window. Every page
+   without a chart on it was laid out correctly, so only one with a chart can
+   check it. */
+const sidebar = await layout.getByTestId('sidebar').boundingBox()
+const main = await layout.getByRole('main').boundingBox()
+ok('a chart leaves the navigation its own width',
+  sidebar !== null && main !== null && sidebar.width < 1440 / 4 && main.x < 1440 / 4)
+
+/* Its window was 420px whatever came back, so three rows sat on three hundred
+   pixels of nothing. The window's first child is the virtualiser's sizer — as
+   tall as the rows it holds. */
+const hole = await layout.getByTestId('table-rows').first().evaluate(
+  (el) => el.clientHeight - el.firstElementChild.getBoundingClientRect().height)
+ok('a three-row table has no hole under it', hole < 1)
+
+/* The sheet's own `--cr-surface: #fff` beat the portal's themed one — an
+   adopted sheet is unlayered, so it outranked the unlayered theme by coming
+   last — and every chart stayed a white card on a dark page. */
+await layout.getByRole('button', { name: /dark theme/i }).click()
+await layout.waitForTimeout(300)
+const card = await layout.getByTestId('chart').first().evaluate(
+  (el) => getComputedStyle(el.firstElementChild).backgroundColor)
+ok('a chart is not a white card on a dark page', card !== 'rgb(255, 255, 255)')
+
+/* The rows had a horizontal scroller of their own, so on a narrow screen
+   scrolling them left the headings behind and every column was labelled with
+   its neighbour's name. Driven by the wheel over the rows, because that is the
+   gesture that moved the rows alone; and asserted to have moved, or two
+   columns that never scrolled would pass as two that scrolled together. */
+await layout.setViewportSize({ width: 390, height: 900 })
+await layout.waitForTimeout(300)
+const heading = layout.getByTestId('table-head').first().getByText(/^customer$/i)
+const cell = layout.getByTestId('table-rows').first().getByText('Aurora Freight', { exact: true })
+await cell.hover()
+const from = (await heading.boundingBox())?.x ?? 0
+await layout.mouse.wheel(200, 0)
+await layout.waitForTimeout(200)
+const headingAt = (await heading.boundingBox())?.x ?? 0
+const cellAt = (await cell.boundingBox())?.x ?? 0
+ok("a table's headings scroll with its rows",
+  headingAt < from && Math.abs(headingAt - cellAt) < 1)
+await layout.close()
+
 /* -- The catalogue: what the project contains ----------------------------- */
 await page.goto(`${B}/data`, { waitUntil: 'domcontentloaded' })
 await page.locator('[data-testid=datasets-card]').waitFor({ timeout: 15000 })

@@ -498,3 +498,47 @@ tr:last-child td { border-bottom: 0 }
 export function css(scope = ':host'): string {
   return sheet.replaceAll('$SCOPE$', scope)
 }
+
+/**
+ * The cascade layer the document stylesheet declares itself in.
+ *
+ * Exported because a host has to name it in its own `@layer` statement, ahead
+ * of the layers it keeps its own styles in. A layer nobody ordered is appended
+ * last and therefore wins, which is the whole problem below.
+ */
+export const LAYER = 'cronos-charts'
+
+/**
+ * The same stylesheet, for an ordinary document rather than a shadow root.
+ *
+ * Inside a shadow root the boundary does the scoping, so the rules above are
+ * written as plain class selectors — `.grid`, `.panel`, `.bars`, and a `*`
+ * that sets box-sizing. Adopted into a document those selectors are global,
+ * and an adopted stylesheet is unlayered, so each of them beats every layered
+ * utility on the page.
+ *
+ * The portal's application shell is a `<div class="grid ...">`. The moment a
+ * report drew its first chart, `.grid` gave that div
+ * `repeat(auto-fit, minmax(220px, 1fr))`: the 248px navigation column became
+ * half the window and the report was squeezed into the other half, for the
+ * rest of the session. The same rule flattened the report's own block grid
+ * into a masonry of orphaned cards, and `$SCOPE$`'s literal
+ * `--cr-surface: #fff` beat the portal's themed one, so every chart stayed
+ * white when the page went dark.
+ *
+ * Two wrappers, one per half of that:
+ *
+ *   - `@scope` stops the class selectors matching anything outside a chart, so
+ *     a name as ordinary as `.grid` cannot reach the shell;
+ *   - `@layer` puts the sheet below the host's own styles, so the host's
+ *     `--cr-*` values win and the charts wear its theme.
+ *
+ * `withScope` is false only where `@scope` is not implemented, because an
+ * at-rule a browser does not know is dropped with everything inside it — see
+ * ServerChart. The layer alone still fixes the theming and everything the host
+ * sets explicitly, which is the better half of two bad options.
+ */
+export function documentCss(scope: string, withScope = true): string {
+  const rules = css(withScope ? ':scope' : scope)
+  return `@layer ${LAYER} {\n${withScope ? `@scope (${scope}) {\n${rules}\n}` : rules}\n}\n`
+}
