@@ -7,8 +7,24 @@
  * component style without `!important`. Mantine ships `.layer.css` variants of
  * every stylesheet for exactly this — the unlayered ones would sit outside the
  * cascade layers entirely and beat every utility.
+ *
+ * `cronos-charts` sits directly above base for the same reason Mantine sits
+ * where it does. It is the layer @cronos/charts declares when ServerChart
+ * adopts its stylesheet into this document, and the name has to be ordered
+ * here or it is appended last and wins — which is what it did: the chart
+ * sheet's own `--cr-surface: #fff` beat the themed one below, and every chart
+ * stayed white on a dark page.
+ *
+ * Above `base` and not below it, because below `base` is below preflight, and
+ * preflight is `*{ margin: 0; padding: 0; border: 0 }`. A chart panel drawn
+ * there keeps its background and its corner radius and loses its padding and
+ * its border — a card with no edges, which looks like a stylesheet that failed
+ * to load rather than like a bug in the cascade.
+ *
+ * It is `LAYER` in packages/charts/src/styles.ts; the two spellings have to
+ * agree, and `bun test` there asserts the one this file names.
  */
-@layer theme, base, mantine, components, utilities;
+@layer theme, base, cronos-charts, mantine, components, utilities;
 
 @import 'tailwindcss/theme.css' layer(theme);
 @import 'tailwindcss/preflight.css' layer(base);

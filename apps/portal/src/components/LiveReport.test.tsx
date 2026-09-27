@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { bands } from './LiveReport'
+import { bands, rowsOf } from './LiveReport'
 import { monthLabel } from '../lib/format'
 
 /*
@@ -66,5 +66,55 @@ describe('why the axis cannot guess', () => {
     // is the worst possible distribution for noticing.
     expect(monthLabel('North')).toBe('North')
     expect(monthLabel('Paid')).toBe('Paid')
+  })
+})
+
+/*
+ * A report is laid out in rows, and the rows keep the author's order.
+ *
+ * Every block used to get a row of its own, so a chart with three bars was
+ * drawn at the width of a table with three columns and there was nothing to
+ * compare across. Two charts side by side is the reading this format is for.
+ *
+ * A table takes a row to itself because its columns have minimum widths that
+ * do not shrink — that is what stops a measure column collapsing — so half a
+ * row is where it starts scrolling sideways instead.
+ *
+ * Grouped rather than left to auto-placement with a span, because
+ * auto-placement leaves a hole beside every table and the only way to backfill
+ * one is `grid-auto-flow: dense`, which lifts a later block above an earlier
+ * one. An author who put the summary chart above the detail table meant it.
+ */
+const chart = (title: string) => ({ kind: 'chart', chart: 'bar', title, series: [] }) as never
+const table = (title: string) => ({ kind: 'table', title, columns: [], rows: [] }) as never
+
+describe('blocks are grouped into the rows they can share', () => {
+  test('charts beside each other', () => {
+    const out = rowsOf([chart('a'), chart('b')])
+    expect(out).toHaveLength(1)
+    expect(out[0]).toHaveLength(2)
+  })
+
+  test('a table takes its own row', () => {
+    const out = rowsOf([chart('a'), table('t'), chart('b')])
+    expect(out.map((r) => r.map((b) => b.title))).toEqual([['a'], ['t'], ['b']])
+  })
+
+  test('and the one after it opens a new row rather than joining the table', () => {
+    const out = rowsOf([table('t'), chart('a'), chart('b')])
+    expect(out.map((r) => r.map((b) => b.title))).toEqual([['t'], ['a', 'b']])
+  })
+
+  test('two tables do not share', () => {
+    expect(rowsOf([table('x'), table('y')])).toHaveLength(2)
+  })
+
+  test('order is never rearranged', () => {
+    const blocks = [chart('a'), table('t'), chart('b'), chart('c'), table('u')]
+    expect(rowsOf(blocks).flat().map((b) => b.title)).toEqual(['a', 't', 'b', 'c', 'u'])
+  })
+
+  test('nothing in, nothing out', () => {
+    expect(rowsOf([])).toEqual([])
   })
 })

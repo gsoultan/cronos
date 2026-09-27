@@ -87,7 +87,7 @@ export function drawChart(b: ChartBlock): HTMLElement {
 export { filterBar } from './filters'
 export { unaffectedNote } from './coverage'
 export { el, fill } from './dom'
-export { css } from './styles'
+export { css, documentCss, LAYER } from './styles'
 export type {
   Arc, Axis, Bar, Block, Bounds, Cell, ChartBlock, Coverage, Delta, FilterDef,
   FilterValues, Gauge, GeoMap, Group, LegendStop, Marker, Point, Rect,

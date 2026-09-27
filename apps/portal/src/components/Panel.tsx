@@ -13,7 +13,9 @@ export function Panel({
   flush?: boolean
 }) {
   return (
-    <section className="mb-4 overflow-hidden rounded-lg border border-line bg-surface shadow-card">
+    /* No bottom margin: every caller stacks these in a grid with a gap, and a
+       margin on top of that gap is two spacings for one relationship. */
+    <section className="overflow-hidden rounded-lg border border-line bg-surface shadow-card">
       <div className="flex items-center justify-between gap-4 border-b border-line p-4">
         <div>
           <h2 className="text-lead font-semibold text-ink">{title}</h2>
