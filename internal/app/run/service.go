@@ -2,6 +2,7 @@ package run
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/gsoultan/cronos/internal/core/definition"
@@ -33,12 +34,17 @@ type Engines interface {
 type Service struct {
 	datasets Datasets
 	engines  Engines
+	basemaps Basemaps
 }
 
 // New wires a Service.
 func New(d Datasets, e Engines) *Service {
 	return &Service{datasets: d, engines: e}
 }
+
+// WithBasemaps adds the tile providers a map's basemap may name. Without it a
+// map draws URL basemaps only — see templateTiles.
+func (s *Service) WithBasemaps(b Basemaps) *Service { s.basemaps = b; return s }
 
 // One is an Engines that answers with the same engine for everything.
 //
@@ -79,15 +85,48 @@ func (s *Service) Render(ctx context.Context, r definition.Report, req Request,
 	}
 	filters := query.Filters{Defs: r.Filters, Values: req.Filters}
 
+	// Only a browser draws a basemap. A PDF prints the data without one, so
+	// resolving tiles for it would be a Google session minted per statement
+	// of a five-thousand-recipient burst, for nothing.
+	drawn := out.Renderer == definition.Interactive
+
 	view := View{Title: r.Heading(), Description: r.Description, Filters: filterViews(r)}
 	for _, blk := range out.Layout {
 		b, err := s.block(ctx, r, blk, params, filters, pr)
 		if err != nil {
 			return View{}, err
 		}
+		if drawn && b.Map != nil && blk.Map.Basemap != nil {
+			b.Map.Tiles, b.Map.Note = s.tiles(ctx, *blk.Map.Basemap, b.Map.Bounds)
+		}
 		view.Blocks = append(view.Blocks, b)
 	}
 	return view, nil
+}
+
+// tiles resolves a basemap, and says why when it cannot be.
+//
+// After the block's rows are read and closed rather than while they are open:
+// a provider can take a network round trip to answer, and a connection held
+// across it is one the next report waits for.
+func (s *Service) tiles(ctx context.Context, b definition.Basemap, around Bounds) (*Tiles, string) {
+	var (
+		t   *Tiles
+		err error
+	)
+	if s.basemaps != nil {
+		t, err = s.basemaps.Tiles(ctx, b, around)
+	} else {
+		t, err = templateTiles(b)
+	}
+	if err == nil {
+		return t, ""
+	}
+	var u Unavailable
+	if errors.As(err, &u) {
+		return nil, u.Reason
+	}
+	return nil, "The basemap could not be loaded, so the map is drawn without it."
 }
 
 func pick(r definition.Report, name string) (definition.Output, error) {

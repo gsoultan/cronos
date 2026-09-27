@@ -1,0 +1,19 @@
+apiVersion: cronos.dev/v1
+kind: Dataset
+metadata:
+  name: routes
+  title: Trunk routes
+  description: The roads and ferries between depots, and how busy each one is.
+spec:
+  sources:
+    - ref: warehouse
+  query: |
+    SELECT route, region, path, trucks, parcels
+    FROM routes
+  fields:
+    - {name: route,   type: string,  role: dimension, label: Route}
+    - {name: region,  type: string,  role: dimension, label: Region}
+    # A LineString, or a MultiLineString where a ferry breaks the road.
+    - {name: path,    type: string,  role: dimension, hidden: true}
+    - {name: trucks,  type: decimal, role: measure, aggregate: sum, label: Trucks a week}
+    - {name: parcels, type: decimal, role: measure, aggregate: sum, label: Parcels a week}

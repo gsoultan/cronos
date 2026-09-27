@@ -34,10 +34,7 @@ func chartOf(b Block) document.Chart {
 	c := document.Chart{Title: b.Title, Kind: b.Chart, Marks: []document.Mark{}}
 	switch {
 	case b.Map != nil:
-		// The geometry reaches the browser as SVG path strings, which a
-		// typesetter cannot read — it wants vertices. Saying so beats a blank
-		// space where a map was asked for.
-		c.Note = "Maps are not printed. Open this report in a browser to see it."
+		printMap(&c, b.Map)
 	case b.Gauge != nil:
 		gauge(&c, b.Gauge)
 		c.Square = true

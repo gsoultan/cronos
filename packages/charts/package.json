@@ -11,7 +11,8 @@
     "./charts.css": "./src/charts.css"
   },
   "scripts": {
-    "check": "tsc --noEmit && oxlint src"
+    "check": "tsc --noEmit && oxlint src && bun test test",
+    "test": "bun test test"
   },
   "devDependencies": {
     "oxlint": "^1.78.0",

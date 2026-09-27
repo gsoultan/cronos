@@ -11,4 +11,6 @@ type Arc struct {
 	Formatted string  `json:"formatted"`
 	// Weight scales the stroke, 0..1 across the map.
 	Weight float64 `json:"weight"`
+	// Slot is the colour of the flow's category, as Marker.Slot.
+	Slot int `json:"slot,omitempty"`
 }

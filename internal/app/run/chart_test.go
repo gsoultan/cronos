@@ -32,15 +32,19 @@ import (
 const geoSchema = `
 CREATE TABLE depots (
   region TEXT, shape TEXT, lat REAL, lon REAL,
-  to_lat REAL, to_lon REAL, carrier TEXT, parcels REAL, staff REAL
+  to_lat REAL, to_lon REAL, carrier TEXT, parcels REAL, staff REAL,
+  depot TEXT, route TEXT
 );
 INSERT INTO depots VALUES
   ('England','{"type":"Polygon","coordinates":[[[-0.5,51.2],[0.3,51.2],[0.3,51.7],[-0.5,51.7],[-0.5,51.2]]]}',
-   51.5074, -0.1278, 53.4808, -2.2426, 'Aurora',  1200, 40),
+   51.5074, -0.1278, 53.4808, -2.2426, 'Aurora',  1200, 40,
+   'London', '{"type":"LineString","coordinates":[[-0.1278,51.5074],[-1.2577,52.9548],[-2.2426,53.4808]]}'),
   ('England','{"type":"Polygon","coordinates":[[[-0.5,51.2],[0.3,51.2],[0.3,51.7],[-0.5,51.7],[-0.5,51.2]]]}',
-   51.4545, -2.5879, 53.4808, -2.2426, 'Baltic',   300, 12),
+   51.4545, -2.5879, 53.4808, -2.2426, 'Baltic',   300, 12,
+   'Bristol', '{"type":"LineString","coordinates":[[-2.5879,51.4545],[-2.2426,53.4808]]}'),
   ('Scotland','{"type":"Polygon","coordinates":[[[-4.5,55.7],[-3.0,55.7],[-3.0,56.2],[-4.5,56.2],[-4.5,55.7]]]}',
-   55.9533, -3.1883, 51.5074, -0.1278, 'Aurora',   700, 25);`
+   55.9533, -3.1883, 51.5074, -0.1278, 'Aurora',   700, 25,
+   'Edinburgh', '{"type":"MultiLineString","coordinates":[[[-3.1883,55.9533],[-1.6178,54.9783]],[[-1.6178,54.9783],[-0.1278,51.5074]]]}');`
 
 const geoDataset = `
 apiVersion: cronos.dev/v1
@@ -48,9 +52,11 @@ kind: Dataset
 metadata: {name: depots}
 spec:
   sources: [{ref: warehouse}]
-  query: SELECT region, shape, lat, lon, to_lat, to_lon, carrier, parcels, staff FROM depots
+  query: SELECT region, shape, lat, lon, to_lat, to_lon, carrier, parcels, staff, depot, route FROM depots
   fields:
     - {name: region,  type: string,  role: dimension, label: Region}
+    - {name: depot,   type: string,  role: dimension, label: Depot}
+    - {name: route,   type: string,  role: dimension, hidden: true}
     - {name: shape,   type: string,  role: dimension, hidden: true}
     - {name: lat,     type: decimal, role: dimension, hidden: true}
     - {name: lon,     type: decimal, role: dimension, hidden: true}
@@ -826,7 +832,7 @@ func TestAHeatmapGridIsBounded(t *testing.T) {
 	}
 	for i := range run.HeatAxis + 20 {
 		if _, err := db.Exec(
-			`INSERT INTO depots VALUES (?, '', 0, 0, 0, 0, ?, 1, 1)`,
+			`INSERT INTO depots VALUES (?, '', 0, 0, 0, 0, ?, 1, 1, '', '')`,
 			fmt.Sprintf("r%03d", i), fmt.Sprintf("c%03d", i)); err != nil {
 			t.Fatal(err)
 		}
@@ -869,6 +875,7 @@ func TestPrintedChartsCarryWhatPaperNeeds(t *testing.T) {
 		name   string
 		block  string
 		square bool
+		aspect bool
 		note   string
 	}{{
 		name: "a pie is drawn in a square box",
@@ -896,14 +903,17 @@ func TestPrintedChartsCarryWhatPaperNeeds(t *testing.T) {
   x: {field: region}
   y: {field: parcels, aggregate: sum}`,
 	}, {
-		name: "a map says why it is not printed rather than leaving a gap",
+		// Stretched into the page's box, a country is a different shape and
+		// every distance on it is wrong. A map used to print a sentence
+		// saying to open a browser instead.
+		name: "a map is printed in its own proportions",
 		block: `- kind: chart
   chart: map
   title: Map
   x: {field: region}
   y: {field: parcels, aggregate: sum}
   map: {geometry: shape}`,
-		note: "browser",
+		aspect: true,
 	}} {
 		t.Run(c.name, func(t *testing.T) {
 			printed := run.Printable(run.View{Blocks: []run.Block{draw(t, c.block)}})
@@ -913,6 +923,10 @@ func TestPrintedChartsCarryWhatPaperNeeds(t *testing.T) {
 			p := printed[0]
 			if p.Square != c.square {
 				t.Errorf("square = %v, want %v", p.Square, c.square)
+			}
+			if c.aspect && (p.Aspect <= 0 || len(p.Marks) == 0 || p.Note != "") {
+				t.Errorf("aspect = %v with %d marks and note %q, want the map drawn",
+					p.Aspect, len(p.Marks), p.Note)
 			}
 			if c.note != "" && !strings.Contains(p.Note, c.note) {
 				t.Errorf("note = %q, want it to mention %q", p.Note, c.note)

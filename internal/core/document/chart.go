@@ -25,6 +25,11 @@ type Chart struct {
 	// as more. The charts whose geometry is circular say so here rather than
 	// every renderer knowing which types those are.
 	Square bool `json:"square,omitempty"`
+	// Aspect asks for a box this many times as wide as it is tall, for a
+	// chart whose geometry is a place. A map drawn into whatever box the page
+	// has left is a country stretched sideways, and a reader measuring a
+	// distance on it would be measuring the stretch.
+	Aspect float64 `json:"aspect,omitempty"`
 	// Note replaces the drawing when there is nothing to draw — an empty
 	// result, or a chart type this renderer does not print. A page that simply
 	// omits a block looks like a report that was never written that way.

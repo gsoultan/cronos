@@ -59,9 +59,16 @@ func charted() document.Document {
 			},
 		},
 		{
-			// The case a page must not simply omit.
-			Title: "A map", Kind: "map",
-			Note: "Maps are not printed. Open this report in a browser to see it.",
+			// A map keeps its own proportions, and a region with a lake in it
+			// is the region and then the lake cut back out in paper.
+			Title: "A map", Kind: "map", Aspect: 1.6,
+			Marks: []document.Mark{
+				{Kind: document.PolyMark, Tone: "ramp-4", Points: [][2]float64{{0.1, 0.1}, {0.9, 0.1}, {0.9, 0.9}, {0.1, 0.9}}},
+				{Kind: document.PolyMark, Tone: "paper", Points: [][2]float64{{0.4, 0.4}, {0.6, 0.4}, {0.6, 0.6}, {0.4, 0.6}}},
+				{Kind: document.LineMark, Tone: "ramp-6", Points: [][2]float64{{0.05, 0.95}, {0.5, 0.5}, {0.95, 0.2}}},
+				{Kind: document.DotMark, Tone: "series-2", X: 0.3, Y: 0.7, W: 0.02},
+			},
+			Keys: []document.Key{{Tone: "ramp-4", Label: "1,200–1,500"}},
 		},
 	}
 	return doc

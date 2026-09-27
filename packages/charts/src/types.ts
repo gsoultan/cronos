@@ -103,7 +103,8 @@ export interface Shape {
   step: number
 }
 
-/** One point on a map — a dot, a bubble, or a contribution to a heat field. */
+/** One point on a map — a dot, a bubble, a member of a cluster, or a
+ *  contribution to a heat field. */
 export interface Marker {
   label: string
   x: number
@@ -113,6 +114,8 @@ export interface Marker {
   /** The value scaled 0..1 across the map. */
   weight: number
   size?: string
+  /** The colour of the point's category, when the map colours by one. */
+  slot?: number
 }
 
 /** One flow, from somewhere to somewhere else. */
@@ -125,6 +128,13 @@ export interface Arc {
   value: number
   formatted: string
   weight: number
+  slot?: number
+}
+
+/** One entry of a map's categorical legend. */
+export interface MapKey {
+  label: string
+  slot: number
 }
 
 /** One band of a map's ramp, with the values it covers already formatted. */
@@ -134,13 +144,32 @@ export interface LegendStop {
   to: string
 }
 
+/** One part of a basemap's credit line, linked where its terms want one. */
+export interface Credit {
+  text: string
+  href?: string
+}
+
 /** The basemap under a map's data. Absent unless the author asked for one. */
 export interface Tiles {
   /** An XYZ template the viewer fills in per tile. */
   url: string
+  /** The same tiles at twice the pixel density, where the source has them. */
+  url2x?: string
   /** The credit line, which every tile source requires be displayed. */
   attribution: string
+  /** The same line in parts, some of them links. Drawn instead of
+   *  `attribution` by a viewer that knows it. */
+  credits?: Credit[]
+  /** A logo the provider's terms require on the map itself. */
+  logo?: string
+  logoAlt?: string
   maxZoom: number
+  /** A tile's edge in CSS pixels at its own zoom. 256 when absent. */
+  tileSize?: number
+  /** Where to ask for the credit line of what is in view, with the view
+   *  appended — Google's copyright depends on the imagery on screen. */
+  viewport?: string
 }
 
 export interface GeoMap {
@@ -153,7 +182,17 @@ export interface GeoMap {
   markers: Marker[]
   arcs: Arc[]
   legend: LegendStop[]
+  /** The line layer's routes and the hexbin layer's cells. */
+  lines?: Shape[]
+  hexes?: Shape[]
+  /** What each colour means, when points are coloured by category. */
+  keys?: MapKey[]
   tiles?: Tiles
+  /** Why a basemap the author asked for is not under the data. */
+  note?: string
+  /** That the map was drawn from the first rows of more than it could hold,
+   *  and what that does to its totals. */
+  partial?: string
 }
 
 /** One measure of a combo chart, and how it is drawn. */

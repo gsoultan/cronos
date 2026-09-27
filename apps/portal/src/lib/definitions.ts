@@ -1,5 +1,5 @@
 import { carryOver, document, fromYaml, toYaml, unmodelled, type Yaml } from './yaml'
-import type { Field, Param } from './types'
+import type { BasemapProvider, Field, Param, TileMap } from './types'
 
 /**
  * Form state to a definition document.
@@ -267,16 +267,12 @@ export interface ReportBlockInput {
   xField?: string
   /** A bubble's radius measure. */
   sizeField?: string
-  map?: {
-    layers?: string[]
-    geometry?: string
-    lat?: string
-    lon?: string
-    toLat?: string
-    toLon?: string
-    basemap?: string
-    attribution?: string
-  }
+  /**
+   * The builder's own type rather than a copy of it. The copy lagged: it had
+   * no `region` or `simplify`, so opening a map that set either and saving it
+   * dropped them — named in the drop warning, and dropped all the same.
+   */
+  map?: TileMap
   columns?: string[]
   pageSize?: number
   /** Narrows this block alone, as SQL the server compiles. */
@@ -409,13 +405,6 @@ function block(b: ReportBlockInput): Yaml {
   return narrowed({ kind: b.kind, dataset: reads, title: b.title, text: b.title })
 }
 
-/**
- * A map's geography.
- *
- * Nested under `map:` in the format rather than flattened into the block like
- * every other kind, because a map adds nine fields and the flat union is what
- * keeps the other four readable.
- */
 function metrics(list: ReportBlockInput['metrics']): Yaml {
   if (!list || list.length === 0) return undefined
   return list
@@ -445,23 +434,58 @@ function targetOf(t: ReportBlockInput['target']): Yaml {
   return { field: t.field, aggregate: t.aggregate ?? 'sum', label: t.label || undefined }
 }
 
+/**
+ * A map's geography.
+ *
+ * Nested under `map:` in the format rather than flattened into the block like
+ * every other kind, because a map adds a dozen fields and the flat union is
+ * what keeps the other four readable.
+ */
 function mapSpec(m: ReportBlockInput['map']): Yaml {
   if (!m) return undefined
   return {
     layers: m.layers && m.layers.length > 0 ? m.layers : undefined,
     geometry: m.geometry || undefined,
+    region: m.region || undefined,
     lat: m.lat || undefined,
     lon: m.lon || undefined,
     toLat: m.toLat || undefined,
     toLon: m.toLon || undefined,
-    // Written only as a pair. A tile template with no credit line is a report
-    // that puts our customer in breach of the tile source's terms, so the
-    // server refuses one — and emitting half of it here would turn that into
-    // a save that fails with nothing on screen having asked for it.
-    basemap: m.basemap
-      ? { url: m.basemap, attribution: m.attribution || undefined }
-      : undefined,
+    // Zero is the server's default for both — hexagons sized to the data,
+    // the usual simplification — which is also what absence says. A negative
+    // simplify is not zero: it keeps every vertex, and `||` leaves it alone.
+    hexKm: m.hexKm || undefined,
+    simplify: m.simplify || undefined,
+    basemap: basemapOf(m),
   }
+}
+
+/**
+ * The basemap, in whichever of its two forms the author chose.
+ *
+ * A provider wins when both are somehow set, and the url's half is not
+ * written: the server refuses a basemap that names both, and one that brings
+ * a provider's tiles and somebody else's credit line besides.
+ */
+function basemapOf(m: TileMap): Yaml {
+  if (m.provider) {
+    return {
+      provider: m.provider,
+      style: m.style || undefined,
+      key: m.key || undefined,
+      language: m.language || undefined,
+      region: m.basemapRegion || undefined,
+      maxZoom: m.maxZoom || undefined,
+    }
+  }
+  // Written only as a pair. A tile template with no credit line is a report
+  // that puts our customer in breach of the tile source's terms, so the
+  // server refuses one — and emitting half of it here would turn that into a
+  // save that fails with nothing on screen having asked for it.
+  if (m.basemap) {
+    return { url: m.basemap, attribution: m.attribution || undefined, maxZoom: m.maxZoom || undefined }
+  }
+  return undefined
 }
 
 export interface ScheduleInput {
@@ -767,8 +791,6 @@ function readBlock(v: Yaml): ReportBlockInput {
     const x = asMap(b.x)
     const y = asMap(b.y)
     const chart = str(b.chart) || 'bar'
-    const m = asMap(b.map)
-    const basemap = asMap(m.basemap)
     // The builder's palette has one entry per chart type, so a chart comes
     // back as the entry that would have drawn it rather than as `chart`.
     return {
@@ -792,21 +814,45 @@ function readBlock(v: Yaml): ReportBlockInput {
         }
       }),
       target: chart === 'gauge' ? readTarget(asMap(b.target)) : undefined,
-      map: chart === 'map'
-        ? {
-            layers: asList(m.layers).map(str),
-            geometry: str(m.geometry) || undefined,
-            lat: str(m.lat) || undefined,
-            lon: str(m.lon) || undefined,
-            toLat: str(m.toLat) || undefined,
-            toLon: str(m.toLon) || undefined,
-            basemap: str(basemap.url) || undefined,
-            attribution: str(basemap.attribution) || undefined,
-          }
-        : undefined,
+      map: chart === 'map' ? readMap(asMap(b.map)) : undefined,
     }
   }
   return { ...narrowing, kind, title: str(b.title) || str(b.text), dataset: str(b.dataset) || undefined }
+}
+
+/**
+ * A map's geography, back from the file.
+ *
+ * Every key, including the ones the inspector never shows. A map lives inside
+ * `outputs[].layout[]`, which the builder rewrites wholesale, so carry-over
+ * cannot reach it: whatever is not read here is gone on the next save. That
+ * is how `region` and `simplify` were lost, and how a basemap's key would have
+ * been — moving a report onto whichever account the deployment bills.
+ */
+function readMap(m: Doc): TileMap {
+  const basemap = asMap(m.basemap)
+  return {
+    layers: asList(m.layers).map(str),
+    geometry: str(m.geometry) || undefined,
+    region: str(m.region) || undefined,
+    lat: str(m.lat) || undefined,
+    lon: str(m.lon) || undefined,
+    toLat: str(m.toLat) || undefined,
+    toLon: str(m.toLon) || undefined,
+    hexKm: num(m.hexKm),
+    simplify: num(m.simplify),
+    // Cast rather than checked. The server refuses a provider it has no code
+    // for, so a stored one is one of these; a check here would be a second
+    // list to keep in step with that one.
+    provider: (str(basemap.provider) || undefined) as BasemapProvider | undefined,
+    style: str(basemap.style) || undefined,
+    key: str(basemap.key) || undefined,
+    language: str(basemap.language) || undefined,
+    basemapRegion: str(basemap.region) || undefined,
+    maxZoom: num(basemap.maxZoom),
+    basemap: str(basemap.url) || undefined,
+    attribution: str(basemap.attribution) || undefined,
+  }
 }
 
 /** A gauge's target, back from the file. */

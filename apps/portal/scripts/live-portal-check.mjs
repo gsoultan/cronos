@@ -128,6 +128,36 @@ ok("a table's headings scroll with its rows",
   headingAt < from && Math.abs(headingAt - cellAt) < 1)
 await layout.close()
 
+/* -- The parcel network: maps in the document ---------------------------------
+   A map leans on more of the charts' stylesheet than any other chart — a stage
+   whose height is an aspect-ratio, tiles laid in pixels under an SVG, buttons
+   placed over both — and in the portal that sheet arrives through @scope and
+   @layer (see ServerChart) rather than a shadow root. A rule that did not make
+   it through reads as a map of height nothing. Tiles are refused here: a check
+   is not a reason to ask OpenStreetMap for anything, and the question is
+   whether they are laid, not whether a third party answered. */
+const maps = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+maps.on('pageerror', (e) => errors.push(String(e)))
+await maps.route(/tile\.openstreetmap\.org|api\.mapbox\.com|tile\.googleapis\.com/, (r) => r.abort())
+await maps.goto(`${B}/reports/parcel-network`, { waitUntil: 'domcontentloaded' })
+await maps.locator('[data-testid=live-report] .geo-stage').first().waitFor({ timeout: 20000 })
+ok('every map of the parcel network draws in the portal',
+  await maps.locator('[data-testid=live-report] .geo-stage').count() === 6)
+ok('and a map is as tall as its proportions make it',
+  ((await maps.locator('.geo-stage').first().boundingBox())?.height ?? 0) > 200)
+ok('an OpenStreetMap basemap is laid under the data',
+  await maps.locator('.geo-stage').first().locator('.tiles img').count() > 0)
+ok('the routes are drawn from their GeoJSON', await maps.locator('.routes path.route').count() === 11)
+ok('and a map whose provider has no key here says so rather than drawing a blank',
+  (await maps.getByTestId('chart').filter({ hasText: 'Every delivery' }).locator('.credit').innerText())
+    .includes('Mapbox is not set up'))
+const viewBoxOf = () => maps.locator('svg.geo').first().getAttribute('viewBox')
+const fit = await viewBoxOf()
+await maps.getByRole('button', { name: 'Zoom in' }).first().click()
+await maps.waitForTimeout(200)
+ok('a map zooms in the portal as it does in the embed', (await viewBoxOf()) !== fit)
+await maps.close()
+
 /* -- The catalogue: what the project contains ----------------------------- */
 await page.goto(`${B}/data`, { waitUntil: 'domcontentloaded' })
 await page.locator('[data-testid=datasets-card]').waitFor({ timeout: 15000 })
@@ -136,9 +166,16 @@ const data = await page.locator('body').innerText()
 /* By the name the author gave them, not the identifier. A definition may carry
    a title, and the whole point of one is that the interface uses it — a page
    headed "statement-lines" is showing somebody a primary key. */
+/* Paged, six to a page: the demo holds ten since it gained a parcel network,
+   and "Statement lines" is on the second. Paging to it is the claim — every
+   dataset the server has is reachable — where asserting it on the first page
+   was a claim about how many the demo happened to hold. */
+const datasets = page.locator('[data-testid=datasets-card]')
+await datasets.getByRole('button', { name: 'Next' }).click()
+const second = await datasets.innerText()
 ok('the data page lists the datasets the server has',
   data.includes('Invoices') && data.includes('Active customers')
-  && data.includes('Statement lines'))
+  && second.includes('Statement lines'))
 ok('and the source they read', data.includes('warehouse'))
 /* The limits are what nobody opens the file for: what one query may spend, and
    how much it may hand back. */

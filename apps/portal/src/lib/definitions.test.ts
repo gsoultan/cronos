@@ -453,6 +453,177 @@ test('a map block is the only kind that writes a map', () => {
   expect(yaml).not.toContain('lat')
 })
 
+/*
+ * What a map holds that the builder has no control for.
+ *
+ * A map sits inside outputs[].layout[], which the builder rewrites wholesale,
+ * so carry-over cannot reach it: a key the reader skips is a key the next save
+ * deletes. `region` and `simplify` went that way for as long as the builder
+ * could open a map, and a basemap's key would have moved the report onto the
+ * deployment's account without anybody choosing to.
+ */
+
+/** A stored report holding one map, whose `map:` is the lines given. */
+function storedMap(...lines: string[]): string {
+  return [
+    'apiVersion: cronos.dev/v1',
+    'kind: Report',
+    'metadata: {name: r, title: R}',
+    'spec:',
+    '  dataset: drops',
+    '  outputs:',
+    '    - name: interactive',
+    '      renderer: interactive',
+    '      layout:',
+    '        - kind: chart',
+    '          chart: map',
+    '          title: Drops',
+    '          x: {field: drop_id}',
+    '          y: {field: parcels, aggregate: sum}',
+    '          map:',
+    ...lines.map((l) => `            ${l}`),
+    '',
+  ].join('\n')
+}
+
+test('a provider basemap keeps what the builder never shows', () => {
+  const back = readReport(storedMap(
+    'layers: [scatter]',
+    'lat: lat',
+    'lon: lon',
+    'basemap:',
+    '  provider: google',
+    '  style: satellite',
+    '  key: ${secret:google-maps-acme}',
+    '  language: id',
+    '  region: ID',
+    '  maxZoom: 16',
+  ))
+  // Measured against what a save writes, so empty means every key survives.
+  expect(back.drops).toEqual([])
+  expect(back.input.blocks[0]?.map).toMatchObject({
+    provider: 'google', style: 'satellite', key: '${secret:google-maps-acme}',
+    language: 'id', basemapRegion: 'ID', maxZoom: 16,
+  })
+
+  const resaved = report(back.input)
+  expect(resaved).toContain('key: ${secret:google-maps-acme}')
+  expect(resaved).toContain('region: ID')
+  expect(resaved).toContain('maxZoom: 16')
+  // The provider's credit line is its terms' wording, and the server writes it.
+  expect(resaved).not.toContain('url:')
+  expect(resaved).not.toContain('attribution')
+  expect(readReport(resaved).input.blocks).toEqual(back.input.blocks)
+})
+
+test('a Mapbox Studio style survives the round trip', () => {
+  const back = readReport(storedMap(
+    'lat: lat',
+    'lon: lon',
+    'basemap:',
+    '  provider: mapbox',
+    '  style: acme/cjx1abc2de3',
+    '  key: ${secret:mapbox-acme}',
+  ))
+  expect(back.drops).toEqual([])
+  expect(back.input.blocks[0]?.map?.style).toBe('acme/cjx1abc2de3')
+  expect(report(back.input)).toContain('style: acme/cjx1abc2de3')
+})
+
+test('a label field, a simplification and a hexagon width survive the round trip', () => {
+  const shapes = readReport(storedMap(
+    'layers: [polygon]',
+    'geometry: zone_shape',
+    'region: zone_name',
+    'simplify: 0.00001',
+  ))
+  expect(shapes.drops).toEqual([])
+  expect(shapes.input.blocks[0]?.map).toMatchObject({ region: 'zone_name', simplify: 0.00001 })
+
+  const hexes = readReport(storedMap('layers: [hexbin]', 'lat: lat', 'lon: lon', 'hexKm: 5'))
+  expect(hexes.drops).toEqual([])
+  expect(hexes.input.blocks[0]?.map?.hexKm).toBe(5)
+  expect(report(hexes.input)).toContain('hexKm: 5')
+})
+
+// Negative keeps every vertex. It is not zero, and a writer that treated it as
+// "not set" would put the default simplification back on somebody's coastline.
+test('a simplification that keeps every vertex is written', () => {
+  const yaml = report({
+    name: 'R', slug: 'r', dataset: 'zones',
+    blocks: [{
+      kind: 'map', title: 'Zones', groupBy: 'zone', field: 'parcels',
+      map: { layers: ['polygon'], geometry: 'shape', simplify: -1 },
+    }],
+  })
+  expect(yaml).toContain('simplify: -1')
+})
+
+test('a custom tile basemap round trips as before', () => {
+  const back = readReport(storedMap(
+    'layers: [scatter]',
+    'lat: lat',
+    'lon: lon',
+    'basemap:',
+    '  url: https://tile.example.org/{z}/{x}/{y}.png',
+    '  attribution: © Example contributors',
+    '  maxZoom: 18',
+  ))
+  expect(back.drops).toEqual([])
+  expect(back.input.blocks[0]?.map).toMatchObject({
+    basemap: 'https://tile.example.org/{z}/{x}/{y}.png',
+    attribution: '© Example contributors', maxZoom: 18,
+  })
+  expect(back.input.blocks[0]?.map?.provider).toBeUndefined()
+  expect(report(back.input)).not.toContain('provider')
+})
+
+/* The server refuses a basemap that names a provider and a url, and a
+   provider with somebody else's credit line. The inspector clears one form
+   when the other is picked; this is what holds if something skips it. */
+test('a basemap is written in one form, never both', () => {
+  const yaml = report({
+    name: 'R', slug: 'r', dataset: 'depots',
+    blocks: [{
+      kind: 'map', title: 'Depots', groupBy: 'region', field: 'parcels',
+      map: {
+        layers: ['scatter'], lat: 'lat', lon: 'lon', provider: 'mapbox', style: 'dark',
+        basemap: 'https://tile.example.org/{z}/{x}/{y}.png', attribution: '© Example',
+      },
+    }],
+  })
+  expect(yaml).toContain('provider: mapbox')
+  expect(yaml).not.toContain('url:')
+  expect(yaml).not.toContain('attribution')
+
+  // A url still being typed is no basemap yet.
+  const typing = report({
+    name: 'R', slug: 'r', dataset: 'depots',
+    blocks: [{
+      kind: 'map', title: 'Depots', groupBy: 'region', field: 'parcels',
+      map: { layers: ['scatter'], lat: 'lat', lon: 'lon', basemap: '', attribution: '© Ex' },
+    }],
+  })
+  expect(typing).not.toContain('basemap')
+})
+
+test('a map colours its points by the series it is given', () => {
+  const yaml = report({
+    name: 'R', slug: 'r', dataset: 'drops',
+    blocks: [{
+      kind: 'map', title: 'Drops by carrier', groupBy: 'drop_id', field: 'parcels',
+      series: 'carrier',
+      map: { layers: ['cluster', 'scatter'], lat: 'lat', lon: 'lon' },
+    }],
+  })
+  expect(yaml).toContain('series:\n            field: carrier')
+
+  const loaded = readReport(yaml)
+  expect(loaded.drops).toEqual([])
+  expect(loaded.input.blocks[0]?.series).toBe('carrier')
+  expect(loaded.input.blocks[0]?.map?.layers).toEqual(['cluster', 'scatter'])
+})
+
 test('a combo writes its measures and how each is drawn', () => {
   const yaml = report({
     name: 'R', slug: 'r', dataset: 'invoices',

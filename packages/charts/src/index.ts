@@ -89,7 +89,7 @@ export { unaffectedNote } from './coverage'
 export { el, fill } from './dom'
 export { css, documentCss, LAYER } from './styles'
 export type {
-  Arc, Axis, Bar, Block, Bounds, Cell, ChartBlock, Coverage, Delta, FilterDef,
-  FilterValues, Gauge, GeoMap, Group, LegendStop, Marker, Point, Rect,
+  Arc, Axis, Bar, Block, Bounds, Cell, ChartBlock, Coverage, Credit, Delta, FilterDef,
+  FilterValues, Gauge, GeoMap, Group, LegendStop, MapKey, Marker, Point, Rect,
   ReportPayload, Shape, Stage, StatBlock, Step, TableBlock, TextBlock, Tick, Tiles, Track,
 } from './types'

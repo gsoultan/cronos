@@ -1,19 +1,30 @@
-import type { Bounds, ChartBlock, GeoMap, Tiles } from '../types'
+import type { ChartBlock, GeoMap, MapKey } from '../types'
 import { el } from '../dom'
-import { svg, n } from '../svg'
+import { svg } from '../svg'
 import { rampLegend } from '../legend'
 import { withTips, type Tips } from '../tip'
-import { RAMP_STEPS } from '../palette'
+import { PLOT_PALETTE_SIZE, slotOf } from '../palette'
+import { viewport, type Viewport } from '../map/view'
+import { tileLayer } from '../map/tiles'
+import { areas, dots, flows, heat, routes, type Layer } from '../map/layers'
+import { clusters } from '../map/clusters'
+import { controls } from '../map/controls'
+import { credits } from '../map/credits'
+import { around, viewBox } from '../map/geo'
+
+/** How deep a map with no basemap may be zoomed: a street, about. */
+const DEEPEST = 18
 
 /**
  * A map.
  *
  * No map library, and no tile-loading library either. The server projects
  * every geometry to Web Mercator normalised to the unit square — which is the
- * space an XYZ tile grid is already defined in — so the whole basemap is an
- * `<img>` per tile at a position this file works out with two divisions. A
- * choropleth that pulled in Leaflet would cost more than this entire bundle's
- * budget before drawing anything.
+ * space an XYZ tile grid is already defined in — so the whole map is an SVG
+ * whose viewBox is the part of the world in view, over an `<img>` per tile at
+ * a position worked out with two multiplications. Panning moves the viewBox
+ * and zooming shrinks it; nothing is re-projected and nothing is refetched
+ * from the server.
  *
  * Layers are drawn in the order the server listed them, so an author who asks
  * for polygons under dots gets polygons under dots.
@@ -25,191 +36,165 @@ export function mapBlock(b: ChartBlock): HTMLElement {
     panel.append(el('p', { class: 'unaffected' }, 'Nothing to place on a map.'))
     return panel
   }
+  if (empty(m)) {
+    panel.append(el('p', { class: 'unaffected' }, 'No data in this period.'))
+    return panel
+  }
 
   const tips = withTips(panel)
-  const { minX, minY, maxX, maxY } = m.bounds
-  const canvas = svg('svg', {
-    viewBox: `${n(minX)} ${n(minY)} ${n(maxX - minX)} ${n(maxY - minY)}`,
-    class: 'geo', part: 'chart', 'aria-hidden': 'true',
-  })
-
-  for (const layer of m.layers) draw(layer, m, canvas, tips)
-
+  const tiles = m.tiles
+  const port = viewport(m.bounds, tiles?.maxZoom ?? DEEPEST, tiles?.tileSize ?? 256)
+  const canvas = svg('svg', { class: 'geo', part: 'chart', preserveAspectRatio: 'none' })
+  const overlay = el('div', { class: 'geo-overlay' })
   const stage = el('div', {
-    class: 'stage',
-    // The box is the data's own aspect ratio, so the map is never letterboxed
-    // and never stretched — and the tiles underneath line up either way.
-    style: `aspect-ratio: ${(maxX - minX) / (maxY - minY)}`,
+    class: tiles ? 'geo-stage tiled' : 'geo-stage', tabindex: '0', role: 'group',
+    'aria-label': `${b.title}. Drag or use the arrow keys to move the map, plus and minus to zoom.`,
+    // The data's own proportions, within reason. A country the shape of
+    // Chile would otherwise be a panel taller than the screen.
+    style: `--geo-aspect:${aspectOf(m)}`,
   })
-  if (m.tiles) stage.append(basemap(m.tiles, m.bounds))
-  stage.append(canvas)
-  panel.append(stage)
 
-  const key = rampLegend(m.legend)
-  if (key && m.layers.includes('polygon')) panel.append(key)
-  if (m.tiles) {
-    panel.append(el('p', { class: 'credit', part: 'attribution' }, m.tiles.attribution))
+  const basemap = tiles ? tileLayer(tiles) : null
+  if (basemap) stage.append(basemap.element)
+  stage.append(canvas, overlay)
+  if (tiles?.logo) {
+    stage.append(el('img', { class: 'geo-logo', part: 'logo', src: tiles.logo, alt: tiles.logoAlt ?? '' }))
   }
+
+  // Frames a cluster's members, and says whether that got any closer.
+  const show = (c: { members: { x: number; y: number }[] }) => {
+    const before = port.view().w
+    port.show(around(c.members))
+    redraw(true)
+    return port.view().w < before * 0.99
+  }
+  const layers = m.layers.flatMap((l) => draw(l, m, tips, overlay, show) ?? [])
+  for (const l of layers) canvas.append(l.node)
+
+  const line = credits(tiles, m.note)
+  let frame = 0
+  let settledNext = false
+  const render = () => {
+    frame = 0
+    const settled = settledNext
+    settledNext = false
+    const view = port.view()
+    const scale = port.scale()
+    canvas.setAttribute('viewBox', viewBox(view))
+    for (const l of layers) l.update?.(view, scale, settled)
+    if (basemap) basemap.lay(view, stage.clientWidth, stage.clientHeight)
+    if (settled) line.follow(view, basemap?.zoom() ?? -1)
+    buttons.refresh()
+  }
+  // One draw a frame however many events asked for one, and a settled draw
+  // wins over an unsettled one asked for in the same frame. `now` draws before
+  // the next paint, for a size change: a frame drawn at the old proportions
+  // is a map stretched sideways for a sixtieth of a second, which is visible.
+  const redraw = (settled: boolean, now = false) => {
+    settledNext ||= settled
+    if (now) {
+      cancelAnimationFrame(frame)
+      render()
+      return
+    }
+    if (!frame) frame = requestAnimationFrame(render)
+  }
+  const buttons = controls(stage, port, redraw, () => tips.hide())
+
+  panel.append(stage)
+  const ramp = ramped(m) ? rampLegend(m.legend) : null
+  if (ramp) panel.append(ramp)
+  const keyed = keyLegend(m.keys)
+  if (keyed) panel.append(keyed)
+  if (line.element) panel.append(line.element)
+  // Beside the legend, where a reader checks what the colours mean: a map
+  // drawn from part of its data has totals that mean less than they look.
+  if (m.partial) panel.append(el('p', { class: 'unaffected', part: 'partial' }, m.partial))
+
+  watch(stage, port, redraw)
+  canvas.setAttribute('viewBox', viewBox(port.view()))
   return panel
 }
 
-function draw(layer: string, m: GeoMap, canvas: SVGSVGElement, tips: Tips) {
+/** One layer, or nothing for a layer this build has never heard of. */
+function draw(layer: string, m: GeoMap, tips: Tips, overlay: HTMLElement,
+  show: (c: { members: { x: number; y: number }[] }) => boolean): Layer | undefined {
+  const keyed = (m.keys?.length ?? 0) > 0
   switch (layer) {
     case 'polygon':
-      return polygons(m, canvas, tips)
+      return areas(m.shapes, tips, 'shapes')
+    case 'hexbin':
+      return areas(m.hexes ?? [], tips, 'hexes')
+    case 'line':
+      return routes(m.lines ?? [], tips)
     case 'heat':
-      return heat(m, canvas)
+      return heat(m.markers)
+    case 'cluster':
+      return clusters(m.markers, tips, keyed, overlay, show)
     case 'bubble':
-      return dots(m, canvas, tips, true)
+      return dots(m.markers, tips, true, keyed)
     case 'scatter':
-      return dots(m, canvas, tips, false)
+      return dots(m.markers, tips, false, keyed)
     case 'flow':
-      return flows(m, canvas, tips)
-    // A layer this build has never heard of is a normal condition — the server
-    // and the viewer ship separately. Drawing the layers it does know beats
-    // refusing the whole map.
+      return flows(m.arcs, tips, keyed)
   }
-}
-
-function polygons(m: GeoMap, canvas: SVGSVGElement, tips: Tips) {
-  const g = svg('g', { class: 'shapes' })
-  for (const s of m.shapes) {
-    const path = svg('path', {
-      d: s.path, part: 'region',
-      fill: `var(--cr-ramp-${Math.min(s.step, RAMP_STEPS - 1) + 1})`,
-    })
-    tips.bind(path, s.label, s.formatted)
-    g.append(path)
-  }
-  canvas.append(g)
+  // A layer this build has never heard of is a normal condition — the server
+  // and the viewer ship separately. Drawing the layers it does know beats
+  // refusing the whole map.
+  return undefined
 }
 
 /**
- * The density layer: every point blurred into its neighbours.
+ * Sizes the map to its stage, and keeps it sized.
  *
- * A Gaussian blur over weighted circles rather than a kernel evaluated per
- * pixel. The browser does the same arithmetic on the GPU, and the alternative
- * is a per-pixel loop on the main thread of our customer's customer's page.
+ * Observed rather than measured once: the panel has no size until it is in
+ * the document, and a host page that opens a drawer or a phone turned
+ * sideways changes it afterwards. A stage taken out of the document reports a
+ * size of nothing, which is when the observer lets go of it.
  */
-function heat(m: GeoMap, canvas: SVGSVGElement) {
-  const id = `h${++filters}`
-  const span = Number(canvas.getAttribute('viewBox')?.split(' ')[2] ?? 1)
-
-  canvas.append(svg('filter', { id, x: '-20%', y: '-20%', width: '140%', height: '140%' },
-    svg('feGaussianBlur', { stdDeviation: n(span * 0.03) })))
-
-  const g = svg('g', { class: 'heat', filter: `url(#${id})` })
-  for (const p of m.markers) {
-    g.append(svg('circle', {
-      cx: n(p.x), cy: n(p.y), r: n(span * 0.035),
-      // Opacity and not radius carries the weight. A radius that shrank with
-      // the value would say a quiet place is a small place, and the two are
-      // different claims.
-      fill: `var(--cr-ramp-${RAMP_STEPS})`,
-      opacity: n(0.12 + p.weight * 0.5),
-    }))
-  }
-  canvas.append(g)
-}
-
-function dots(m: GeoMap, canvas: SVGSVGElement, tips: Tips, sized: boolean) {
-  const span = Number(canvas.getAttribute('viewBox')?.split(' ')[2] ?? 1)
-  const g = svg('g', { class: 'dots' })
-  for (const p of m.markers) {
-    // Area, not radius — see scatter.ts. The floor keeps a near-zero value
-    // visible, because a marker that renders as nothing is indistinguishable
-    // from a row that was filtered away.
-    const r = sized ? span * (0.008 + Math.sqrt(p.weight) * 0.022) : span * 0.009
-    const mark = svg('circle', { cx: n(p.x), cy: n(p.y), r: n(r), class: 'pin', part: 'marker' })
-    tips.bind(mark, p.label, p.size ? `${p.formatted} · ${p.size}` : p.formatted)
-    g.append(mark)
-  }
-  canvas.append(g)
-}
-
-/**
- * Flows, as arcs rather than straight lines.
- *
- * Two depots that trade in both directions produce two segments on exactly the
- * same line, and one hides the other. Bowing each one to the left of its own
- * direction of travel separates them, and makes the direction readable without
- * an arrowhead at every scale.
- */
-function flows(m: GeoMap, canvas: SVGSVGElement, tips: Tips) {
-  const span = Number(canvas.getAttribute('viewBox')?.split(' ')[2] ?? 1)
-  const g = svg('g', { class: 'flows' })
-  for (const a of m.arcs) {
-    const dx = a.x2 - a.x1
-    const dy = a.y2 - a.y1
-    const bow = 0.18
-    const cx = (a.x1 + a.x2) / 2 - dy * bow
-    const cy = (a.y1 + a.y2) / 2 + dx * bow
-    const arc = svg('path', {
-      d: `M${n(a.x1)} ${n(a.y1)}Q${n(cx)} ${n(cy)} ${n(a.x2)} ${n(a.y2)}`,
-      class: 'flow', part: 'flow',
-      'stroke-width': n(span * (0.002 + a.weight * 0.006)),
-    })
-    tips.bind(arc, a.label, a.formatted)
-    g.append(arc)
-  }
-  canvas.append(g)
-}
-
-let filters = 0
-
-/**
- * The tile layer.
- *
- * Sized once the element knows how wide it is, because the zoom to request is
- * a function of pixels per world unit and nothing else — asking for z=12 in a
- * 200px panel fetches ninety tiles to draw a thumbnail.
- */
-function basemap(tiles: Tiles, bounds: Bounds): HTMLElement {
-  const layer = el('div', { class: 'tiles', part: 'basemap' })
-
-  const lay = (width: number) => {
-    const span = Math.max(bounds.maxX - bounds.minX, 1e-9)
-    // 2^z tiles across the world, 256 px each: pick the zoom whose tiles land
-    // nearest to their native size, so the basemap is neither blurry nor
-    // fetched at four times the detail anybody can see.
-    const z = Math.max(0, Math.min(tiles.maxZoom,
-      Math.floor(Math.log2(Math.max(width, 1) / (span * 256)))))
-    const count = 2 ** z
-    const size = 1 / count
-
-    const nodes: HTMLElement[] = []
-    for (let tx = Math.floor(bounds.minX * count); tx <= Math.floor(bounds.maxX * count); tx++) {
-      for (let ty = Math.floor(bounds.minY * count); ty <= Math.floor(bounds.maxY * count); ty++) {
-        // A tile index outside the grid is a request the tile server answers
-        // with a 404 and a log line naming our customer.
-        if (tx < 0 || ty < 0 || tx >= count || ty >= count) continue
-        nodes.push(el('img', {
-          src: tiles.url.replace('{z}', String(z)).replace('{x}', String(tx)).replace('{y}', String(ty)),
-          alt: '', loading: 'lazy', decoding: 'async',
-          // The host page's URL is not the tile server's business. It is our
-          // customer's application, and often its path names their customer.
-          referrerpolicy: 'no-referrer',
-          style: place(tx * size, ty * size, size, bounds),
-        }))
-      }
-    }
-    layer.replaceChildren(...nodes)
-  }
-
-  // Observed rather than measured once: the panel has no width until it is in
-  // the document, and a host page that opens a drawer or rotates a phone
-  // changes it afterwards.
-  new ResizeObserver((entries) => {
+function watch(stage: HTMLElement, port: Viewport, redraw: (settled: boolean, now?: boolean) => void) {
+  if (typeof ResizeObserver === 'undefined') return
+  const seen = new ResizeObserver((entries) => {
     const box = entries[0]?.contentRect
-    if (box) lay(box.width)
-  }).observe(layer)
-  return layer
+    if (!stage.isConnected) {
+      seen.disconnect()
+      return
+    }
+    if (!box || box.width <= 0 || box.height <= 0) return
+    port.size(box.width, box.height)
+    redraw(true, true)
+  })
+  seen.observe(stage)
 }
 
-/** One tile's box, as a percentage of the bounds the SVG is drawn in. */
-function place(x: number, y: number, size: number, b: Bounds): string {
-  const w = b.maxX - b.minX
-  const h = b.maxY - b.minY
-  return `left:${((x - b.minX) / w) * 100}%;top:${((y - b.minY) / h) * 100}%;` +
-    `width:${(size / w) * 100}%;height:${(size / h) * 100}%`
+/** Whether there is anything at all to draw. */
+function empty(m: GeoMap): boolean {
+  return m.shapes.length + m.markers.length + m.arcs.length +
+    (m.lines?.length ?? 0) + (m.hexes?.length ?? 0) === 0
+}
+
+/** Whether a layer shaded from the ramp drew anything, which is when the
+ *  legend explaining the ramp belongs under the map. */
+function ramped(m: GeoMap): boolean {
+  return (m.layers.includes('polygon') && m.shapes.length > 0) ||
+    (m.layers.includes('line') && (m.lines?.length ?? 0) > 0) ||
+    (m.layers.includes('hexbin') && (m.hexes?.length ?? 0) > 0)
+}
+
+/** The stage's proportions: the data's, between a square and a wide strip. */
+function aspectOf(m: GeoMap): string {
+  const w = m.bounds.maxX - m.bounds.minX
+  const h = m.bounds.maxY - m.bounds.minY
+  const a = w > 0 && h > 0 ? w / h : 1.6
+  return String(Math.round(Math.min(Math.max(a, 1), 2.2) * 1000) / 1000)
+}
+
+/** The key for points coloured by category. */
+function keyLegend(keys: MapKey[] | undefined): HTMLElement | null {
+  if (!keys || keys.length === 0) return null
+  return el('div', { class: 'legend', part: 'legend' },
+    ...keys.map((k) =>
+      el('span', { class: 'key' },
+        el('i', { class: 'swatch dot', style: `background: var(--cr-series-${slotOf(k.slot, PLOT_PALETTE_SIZE)})` }),
+        k.label)))
 }

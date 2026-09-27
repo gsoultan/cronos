@@ -381,6 +381,11 @@ jobs:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
+      # The renderers' own logic — the map's viewport arithmetic and its
+      # clustering — has unit tests that nothing ran until this step: the
+      # embed builds the package, and building is not testing.
+      - working-directory: packages/charts
+        run: bun run check
       - working-directory: packages/embed
         run: bun run check
       - working-directory: packages/react

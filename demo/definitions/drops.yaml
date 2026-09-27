@@ -1,0 +1,25 @@
+apiVersion: cronos.dev/v1
+kind: Dataset
+metadata:
+  name: drops
+  title: Deliveries
+  description: Every delivery in August — where it was, who carried it and how it went.
+spec:
+  sources:
+    - ref: warehouse
+  query: |
+    SELECT d.id, d.depot, p.city, p.region, d.carrier, d.status,
+           d.lat, d.lon, d.parcels, d.dropped_on
+    FROM drops d
+    JOIN depots p ON p.depot = d.depot
+  fields:
+    - {name: id,         type: string,  role: dimension, hidden: true}
+    - {name: depot,      type: string,  role: dimension, hidden: true}
+    - {name: city,       type: string,  role: dimension, label: Depot}
+    - {name: region,     type: string,  role: dimension, label: Region}
+    - {name: carrier,    type: string,  role: dimension, label: Carrier}
+    - {name: status,     type: string,  role: dimension, label: Status}
+    - {name: lat,        type: decimal, role: dimension, hidden: true}
+    - {name: lon,        type: decimal, role: dimension, hidden: true}
+    - {name: dropped_on, type: date,    role: dimension, label: Delivered}
+    - {name: parcels,    type: decimal, role: measure, aggregate: sum, label: Parcels}
