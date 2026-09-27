@@ -21,3 +21,11 @@ packages/*/harness/*.js
 
 # A development deployment: accounts, and the database they live in.
 .dev/
+
+# Agent tooling: graphify's code graph and Serena's index and notes. Both are
+# built locally, and graphify-out/ is regenerated wholesale — one `git add -A`
+# from putting one machine's graph in the history. .dockerignore already keeps
+# them out of the image context; this keeps them out of commits. Knowledge
+# meant to be shared belongs in AGENTS.md and docs/, where it is reviewed.
+graphify-out/
+.serena/
