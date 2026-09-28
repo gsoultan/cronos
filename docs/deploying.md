@@ -770,6 +770,27 @@ minutes — and not every window. Two saves landing milliseconds apart can still
 both read the same current version and both succeed. Closing that needs a
 conditional write in each store, which is worth doing when somebody has hit it.
 
+## Drawing a draft
+
+`POST /v1/preview` draws a report nobody has published. It is how the builder's
+canvas shows a map block — the one block sample rows cannot draw, since a map
+is its places:
+
+```json
+{"report": "apiVersion: cronos.dev/v1\nkind: Report\n…", "filters": {}}
+```
+
+It answers as `POST /v1/reports/{name}` does, for the bar publishing sets: an
+editor or administrator of the project. The draft is checked as a publish checks
+it and refused with the same sentence — `422`, and the field, layer or dataset
+to fix — then drawn through the caller's own project and row scope, and kept
+nowhere. A reader and an embed token are refused, and so is an editor of
+another project, before the draft is looked at, so the refusal says nothing
+about which datasets exist here. It draws on the same allowance as a render,
+and the audit records it as `report.preview`. A large map comes back as it
+opens and is not refined as it is zoomed: a draft has no name to ask for a view
+of.
+
 ## Dependencies
 
 `govulncheck` and `bun audit` run in CI and fail a build. govulncheck traces

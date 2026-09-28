@@ -509,6 +509,7 @@ func Routes(d Deps) http.Handler {
 			WithProjects(d.Projects).WithGrants(granting)
 		mux.Handle("/v1/definitions", handler)
 		mux.Handle("/v1/definitions/{kind}/{name}", handler)
+		mountPreview(mux, d, author, perReader)
 
 		// Both resolve their project per request. A deployment with no named
 		// sources, or no scheduler armed, answers from the project rather than

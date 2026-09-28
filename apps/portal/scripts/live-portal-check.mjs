@@ -868,6 +868,11 @@ const builder = await browser.newPage({ viewport: { width: 1440, height: 900 } }
 builder.on('pageerror', (e) => errors.push(String(e)))
 await builder.goto(`${B}/reports/parcel-network/edit`, { waitUntil: 'domcontentloaded' })
 await builder.locator('[data-testid=canvas-block]').first().waitFor({ timeout: 20000 })
+/* The canvas draws each map block from the server, as it would be published —
+   the one kind of block sample rows cannot draw. */
+const drawnMaps = builder.locator('[data-testid=canvas-block] .geo-stage')
+for (let i = 0; i < 40 && await drawnMaps.count() < 9; i++) await builder.waitForTimeout(500)
+ok('the builder draws every map from the server, as it would be published', await drawnMaps.count() === 9)
 await builder.locator('[data-testid=canvas-block]').filter({ hasText: 'Every delivery' }).first().click()
 const keyPanel = builder.locator('[data-testid=basemap-key][data-secret="mapbox-token"]')
 await keyPanel.waitFor({ timeout: 10000 })

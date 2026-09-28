@@ -4,6 +4,7 @@ import { ColumnChart } from '../ColumnChart'
 import { LineChart } from '../LineChart'
 import { DataTable } from '../DataTable'
 import { BlockSketch } from './BlockSketch'
+import { MapPreview } from './MapPreview'
 import { sampleRows } from '../../lib/sampleRows'
 import { currency, monthLabel } from '../../lib/format'
 import type { Field, Tile } from '../../lib/types'
@@ -17,7 +18,7 @@ import type { Field, Tile } from '../../lib/types'
  * are the same `StatTile`, `ColumnChart`, `LineChart` and `DataTable` the
  * report renders, fed sample rows.
  */
-export function BlockPreview({ block, fields }: { block: Tile; fields: Field[] }) {
+export function BlockPreview({ block, fields, dataset }: { block: Tile; fields: Field[]; dataset: string }) {
   const field = fields.find((f) => f.name === block.field)
   const group = fields.find((f) => f.name === block.groupBy)
 
@@ -77,6 +78,9 @@ export function BlockPreview({ block, fields }: { block: Tile; fields: Field[] }
           )}
         </div>
       )
+
+    case 'map':
+      return <MapPreview block={block} dataset={dataset} />
 
     default:
       /* Not `null`, which is what this was: every chart type the palette gained

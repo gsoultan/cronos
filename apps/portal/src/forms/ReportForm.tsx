@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { report, withCarry, type Loaded, type ReportInput } from '../lib/definitions'
+import { blockInput, report, withCarry, type Loaded, type ReportInput } from '../lib/definitions'
 import { usePublish } from '../lib/usePublish'
 import { PublishError } from '../components/form/PublishError'
 import { UnmodelledWarning } from '../components/form/UnmodelledWarning'
@@ -18,6 +18,7 @@ import type { Dataset, ReportFilter, Tile, TileKind } from '../lib/types'
 import type { Template } from '../lib/templates'
 import { required, slug, toSlug } from '../lib/validators'
 import { useFocusMode } from '../lib/useSidebar'
+import { detectMap } from '../lib/maps'
 
 interface Props {
   onDone: () => void
@@ -141,14 +142,7 @@ export function ReportForm({ onDone, onCancel, initial }: Props) {
         // The builder's own vocabulary, translated in one place — see
         // definitions.ts. A block that is a "bar" here is a chart there.
         filters,
-        blocks: blocks.map((b) => ({
-          kind: b.kind, title: b.title, dataset: b.dataset,
-          field: b.field, groupBy: b.groupBy, aggregate: b.aggregate,
-          series: b.series, stacked: b.stacked,
-          xField: b.xField, sizeField: b.sizeField, map: b.map,
-          metrics: b.metrics, target: b.target,
-          columns: b.columns, filter: b.filter, sort: b.sort,
-        })),
+        blocks: blocks.map(blockInput),
       }), initial), initial?.version)
       if (saved) onDone()
     },
@@ -183,9 +177,11 @@ export function ReportForm({ onDone, onCancel, initial }: Props) {
       // which is a chart the author can see and fix rather than a blank panel.
       xField: PLOTS.includes(kind) ? visible.find((f) => f.role === 'measure')?.name : undefined,
       sizeField: kind === 'bubble' ? visible.find((f) => f.role === 'measure')?.name : undefined,
-      // A map with no layers draws nothing and says so; seeding dots gets the
-      // author to something on screen, which is where the rest is obvious.
-      map: kind === 'map' ? { layers: ['scatter'] } : undefined,
+      // A map reads what the dataset's names say it can — coordinates, a
+      // geometry — so the author starts from their data on a map, and from
+      // dots where nothing is recognisable. Every field: coordinates are
+      // usually hidden, being no use in a table.
+      map: kind === 'map' ? detectMap(fields) : undefined,
       // A combo needs two measures before it is a combo at all, and a funnel
       // needs at least one stage — seeded so the canvas shows something the
       // author can correct rather than an empty panel they have to guess at.

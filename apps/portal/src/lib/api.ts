@@ -545,6 +545,20 @@ export function runReport(name: string, body: { filters?: RunFilters; params?: R
 }
 
 /**
+ * A draft drawn as it would be published: the builder's preview. Checked as
+ * publishing checks it, and refused with the same sentence; nothing is kept.
+ * A large map comes back as it opens, and is not refined as it is zoomed — a
+ * draft has no name to ask for a view of.
+ */
+export function previewReport(yaml: string, signal?: AbortSignal) {
+  return call<ReportView>('/v1/preview', {
+    method: 'POST',
+    signal,
+    body: JSON.stringify({ report: yaml }),
+  })
+}
+
+/**
  * The part of a large map a reader has in view — see MapViewAsk in
  * @cronos/charts. The filters go again, as they went with the report: the
  * server applies everything a render applies, and a view with other filters

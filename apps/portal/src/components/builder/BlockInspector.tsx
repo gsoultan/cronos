@@ -1,10 +1,10 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Checkbox, MultiSelect, NumberInput, Select, TagsInput, TextInput } from '@mantine/core'
 import { Field } from '../form/Field'
 import { BasemapKeys } from './BasemapKeys'
 import {
   basemapChoice, colours, DEFAULT_KEY, defaultStyle, drawnLayers, excludedBy, MAX_HEX_KM,
-  MAX_RADIUS_KM, names, plays, readsPoints, readsShapes, relayer, shades, styleOptions, switchBasemap, takesSeries,
+  MAX_RADIUS_KM, names, plays, readsPoints, readsShapes, relayer, shades, studioStyle, styleOptions, switchBasemap, takesSeries,
   DEFAULT_TIME_GRAIN, TIME_GRAINS, type BasemapChoice,
 } from '../../lib/maps'
 import { CATEGORICAL, FOLDED, GRIDDED, METERED, MULTI_SERIES, PLOTS, STACKABLE } from '../../lib/types'
@@ -734,6 +734,8 @@ function BasemapFields({ map, onChange }: {
         </Field>
       )}
 
+      {map.provider === 'mapbox' && <StudioStyle map={map} onChange={onChange} />}
+
       {choice === 'url' && (
         <>
           <Field label="Tile URL" help="An https XYZ template, with {z}, {x} and {y} in it.">
@@ -755,6 +757,36 @@ function BasemapFields({ map, onChange }: {
 
       <BasemapKeys map={map} />
     </>
+  )
+}
+
+/**
+ * A style somebody made in Mapbox Studio, pasted as Studio gives it or typed
+ * as `owner/style`. What is typed is held until it reads as a style, so a
+ * half-pasted one is never drawn and the style before it stays until then;
+ * cleared, the map goes back to a named style.
+ */
+function StudioStyle({ map, onChange }: {
+  map: TileMap
+  onChange: (patch: Partial<TileMap>) => void
+}) {
+  const own = map.style && studioStyle(map.style) ? map.style : ''
+  const [typing, setTyping] = useState<string | null>(null)
+  const shown = typing ?? own
+  return (
+    <Field label="Studio style" required={false}
+      help="Paste the style URL from Studio’s Share menu, or type owner/style. A token in the URL is not kept.">
+      <TextInput value={shown} data-testid="basemap-studio" placeholder="mapbox://styles/owner/style"
+        classNames={{ input: 'font-mono text-caption' }}
+        error={typing ? 'Not a Studio style yet: mapbox://styles/owner/style, or owner/style.' : undefined}
+        onChange={(e) => {
+          const text = e.currentTarget.value
+          const id = studioStyle(text)
+          setTyping(id || text.trim() === '' ? null : text)
+          if (id) onChange({ style: id })
+          else if (text.trim() === '' && own) onChange({ style: undefined })
+        }} />
+    </Field>
   )
 }
 

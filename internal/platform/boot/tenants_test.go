@@ -119,6 +119,23 @@ func TestAnotherOrganisationCannotPublishHere(t *testing.T) {
 	}
 }
 
+// Nor draft one: a draft is checked against this project's datasets, and a
+// refusal that named one would tell another organisation it is here.
+func TestAnotherOrganisationCannotDraftHere(t *testing.T) {
+	only := &api.Project{}
+	one := &api.One{Org: "acme", ProjectID: "finance", Only: only}
+	pub := publishingFor{projects: one, byProject: map[*api.Project]*publish.Service{
+		only: publish.New(nil, nil),
+	}}
+	_, err := pub.Draft(context.Background(), []byte("kind: Report"), principal.Principal{
+		Subject: "usr_eve", OrgID: "rival", ProjectID: "finance",
+		ProjectRole: principal.ProjectAdmin,
+	})
+	if !errors.Is(err, publish.ErrForbidden) {
+		t.Fatalf("another organisation drafted here: %v", err)
+	}
+}
+
 /*
 A deployment told what it serves cannot be renamed by an HTTP request.
 

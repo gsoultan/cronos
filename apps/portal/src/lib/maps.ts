@@ -1,5 +1,5 @@
 import { referenced, referencedNames } from './secrets'
-import type { BasemapProvider, Tile, TileMap } from './types'
+import type { BasemapProvider, Field, Tile, TileMap } from './types'
 
 /**
  * What a map block may combine, restated from the server for the inspector.
@@ -66,6 +66,43 @@ export const readsShapes = (layers: string[]) => layers.some((l) => SHAPED.inclu
  *  the map reads cells a warehouse already indexed its rows by. */
 export const readsPoints = (layers: string[], cells?: string) =>
   layers.some((l) => !SHAPED.includes(l) && !(l === 'h3' && cells))
+
+/**
+ * What a new map block reads, guessed from the dataset's field names: so the
+ * first thing on the canvas is the data on a map, rather than a sentence
+ * asking for a latitude.
+ *
+ * By name, because a type cannot tell a latitude from any other decimal:
+ * `lat` or `latitude` and `lon`, `lng`, `long` or `longitude`, alone or at the
+ * end of a name — `depot_lat` — with `to_`, `dest_` or `destination_` in front
+ * for where a flow lands. A geometry is text named `geom`, `geometry`,
+ * `shape`, `boundary`, `outline` or `geojson`, or `path` or `track` for
+ * routes. Hidden fields count: coordinates usually are, being no use in a
+ * table. Nothing recognised is nothing guessed — dots, and the map says which
+ * field to name.
+ */
+export function detectMap(fields: Field[]): TileMap {
+  const find = (re: RegExp, text = false) =>
+    fields.find((f) => re.test(f.name) && (!text || f.type === 'string'))?.name
+  const lat = find(/^(?!(to|dest|destination)_)(.*_)?(lat|latitude)$/i)
+  const lon = find(/^(?!(to|dest|destination)_)(.*_)?(lon|lng|long|longitude)$/i)
+  const toLat = find(/^(to|dest|destination)_(lat|latitude)$/i)
+  const toLon = find(/^(to|dest|destination)_(lon|lng|long|longitude)$/i)
+  const area = find(/(^|_)(geom|geometry|shape|boundary|outline|geojson)$/i, true)
+  const route = area ? undefined : find(/(^|_)(path|track)$/i, true)
+  const places = !!(lat && lon)
+  const flows = places && !!(toLat && toLon)
+  const layers = [
+    ...(area ? ['polygon'] : route ? ['line'] : []),
+    ...(flows ? ['flow'] : []),
+    ...(places || !(area || route) ? ['scatter'] : []),
+  ]
+  return {
+    layers, geometry: area ?? route,
+    lat: places ? lat : undefined, lon: places ? lon : undefined,
+    toLat: flows ? toLat : undefined, toLon: flows ? toLon : undefined,
+  }
+}
 
 /** The periods a map can play through, and what one unset means. */
 export const TIME_GRAINS = ['day', 'week', 'month', 'quarter', 'year']
@@ -211,6 +248,21 @@ export function styleOptions(provider: BasemapProvider, current?: string): Optio
   const named = STYLES[provider] ?? []
   if (!current || named.some((s) => s.value === current)) return named
   return [...named, { value: current, label: provider === 'mapbox' ? `${current} (Studio)` : current }]
+}
+
+/**
+ * A Mapbox Studio style's id, `owner/style`, from whatever somebody pasted:
+ * the style URL Studio's Share menu gives (`mapbox://styles/owner/style`),
+ * its share page or editor URL, or the id itself — nothing for anything else.
+ * The share page's URL carries an access token; only the id is kept. The test
+ * is the server's own, definition/basemapprovider.go's studioStyle.
+ */
+export function studioStyle(pasted: string): string | undefined {
+  const s = pasted.trim()
+  const id = (s.match(/^mapbox:\/\/styles\/([^/?#]+\/[^/?#]+)/)
+    ?? s.match(/^https:\/\/api\.mapbox\.com\/styles\/v1\/([^/?#]+\/[^/?#]+?)(\.html)?([?#/]|$)/)
+    ?? s.match(/^https:\/\/studio\.mapbox\.com\/styles\/([^/?#]+\/[^/?#]+)/))?.[1] ?? s
+  return /^[a-z0-9][a-z0-9_-]*\/[A-Za-z0-9_-]+$/.test(id) ? id : undefined
 }
 
 /**

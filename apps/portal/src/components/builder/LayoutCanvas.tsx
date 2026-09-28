@@ -137,7 +137,7 @@ export function LayoutCanvas({
             {/* The preview is inert: clicks select the block rather than
                 landing on a chart tooltip or a table scroller. */}
             <div className="pointer-events-none">
-              <BlockPreview block={b} fields={datasetFor(b).fields} />
+              <BlockPreview block={b} fields={datasetFor(b).fields} dataset={datasetFor(b).name} />
             </div>
 
             {/* A block reading somewhere other than the report default says so
