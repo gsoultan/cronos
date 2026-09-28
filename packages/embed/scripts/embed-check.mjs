@@ -838,7 +838,7 @@ await real.evaluate((b) => document.querySelector('#r').setAttribute('endpoint',
 const live = real.locator('#r')
 await live.locator('.panel').first().waitFor()
 
-ok('every block of a real render draws', await live.locator('.panel').count() === 27)
+ok('every block of a real render draws', await live.locator('.panel').count() === 29)
 ok('and none of them fell through to "needs a newer viewer"',
   await live.locator('.unaffected', { hasText: 'newer viewer' }).count() === 0)
 ok('nothing was thrown drawing it', realErrors.length === 0)
@@ -872,6 +872,8 @@ for (const [title, selector] of [
   ['Bullet', '[part=target]'],
   ['Histogram', '[part=bar]'],
   ['Box plot', '[part=box]'],
+  ['Sankey', '[part=flow]'],
+  ['Sunburst', '[part=slice]'],
 ]) {
   const panel = live.locator('.panel').filter({ hasText: new RegExp(`^${title}`) })
   ok(`${title} draws its marks from the server's payload`,
@@ -913,6 +915,13 @@ ok('a box plot draws a box, a median and whiskers per category',
   await panelOf('Box plot').locator('[part=box]').count() === 2 &&
   await panelOf('Box plot').locator('.median').count() === 2 &&
   await panelOf('Box plot').locator('.whisker').count() === 8)
+ok('a sankey draws a band per pair that flows, and a node each side of it',
+  await panelOf('Sankey').locator('[part=flow]').count() === 3 &&
+  await panelOf('Sankey').locator('[part=node]').count() === 4 &&
+  await panelOf('Sankey').locator('text.name', { hasText: 'Aurora · 1,900' }).count() === 1)
+ok("a sunburst draws each part within its whole, and the server's whole in its middle",
+  await panelOf('Sunburst').locator('[part=slice]').count() === 5 &&
+  (await panelOf('Sunburst').locator('text.centre').textContent()) === '2,200')
 ok("a donut says the server's whole in its middle",
   (await live.locator('.panel').filter({ hasText: /^Donut/ }).locator('text.centre').textContent()) === '2,200')
 

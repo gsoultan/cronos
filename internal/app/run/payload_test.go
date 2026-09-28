@@ -199,6 +199,18 @@ spec:
           title: Box plot
           x: {field: region}
           y: {field: parcels}
+        - kind: chart
+          chart: sankey
+          title: Sankey
+          x: {field: region}
+          series: {field: carrier}
+          y: {field: parcels, aggregate: sum}
+        - kind: chart
+          chart: sunburst
+          title: Sunburst
+          x: {field: carrier}
+          series: {field: region}
+          y: {field: parcels, aggregate: sum}
         - kind: table
           title: Depots
           columns: [region, carrier, parcels]
@@ -223,7 +235,7 @@ func TestPayloadForEveryChartType(t *testing.T) {
 
 	// Every chart type, one block each, plus a stat and a table — and the
 	// layers a map draws beyond the first, a map each.
-	if len(view.Blocks) != 27 {
+	if len(view.Blocks) != 29 {
 		t.Fatalf("want a block per chart type, got %d", len(view.Blocks))
 	}
 	if len(view.Filters) != 2 {
@@ -245,7 +257,8 @@ func TestPayloadForEveryChartType(t *testing.T) {
 		`"chart": "funnel"`, `"chart": "waterfall"`, `"chart": "heatmap"`,
 		`"chart": "gauge"`, `"chart": "treemap"`, `"chart": "column"`,
 		`"chart": "radar"`, `"chart": "bullet"`, `"chart": "histogram"`, `"chart": "boxplot"`,
-		`"groups"`, `"totals"`, `"points"`, `"tracks"`, `"stages"`, `"percent"`, `"bullets"`, `"bands"`, `"bins"`, `"boxes"`,
+		`"chart": "sankey"`, `"chart": "sunburst"`,
+		`"groups"`, `"totals"`, `"points"`, `"tracks"`, `"stages"`, `"percent"`, `"bullets"`, `"bands"`, `"bins"`, `"boxes"`, `"sankey"`,
 		`"steps"`, `"cells"`, `"rects"`, `"gauge"`, `"shapes"`, `"markers"`, `"arcs"`,
 		`"frames"`, `"frameLegend"`,
 	} {
@@ -300,10 +313,10 @@ func TestEveryChartTypeReachesAPDF(t *testing.T) {
 	if !bytes.HasPrefix(res.Document, []byte("%PDF-")) {
 		t.Fatalf("output is not a PDF: %q", res.Document[:min(8, len(res.Document))])
 	}
-	// Nineteen chart types of vector marks is a materially larger document
+	// Twenty-one chart types of vector marks is a materially larger document
 	// than the table alone; a PDF this size is one the marks never reached.
 	if len(res.Document) < 8000 {
-		t.Errorf("the PDF is %d bytes — too small to carry nineteen chart types", len(res.Document))
+		t.Errorf("the PDF is %d bytes — too small to carry twenty-one chart types", len(res.Document))
 	}
 	if out := os.Getenv("CRONOS_PDF_OUT"); out != "" {
 		if err := os.WriteFile(out, res.Document, 0o600); err != nil {

@@ -21,6 +21,8 @@ export const PALETTE: { kind: TileKind; label: string; hint: string; icon: strin
   { kind: 'bullet', label: 'Bullet', hint: 'Each against a target', icon: '⊢' },
   { kind: 'histogram', label: 'Histogram', hint: 'How a number spreads', icon: '▙' },
   { kind: 'boxplot', label: 'Box plot', hint: 'Its spread, by category', icon: '⧈' },
+  { kind: 'sankey', label: 'Sankey', hint: 'Where it flows', icon: '⫘' },
+  { kind: 'sunburst', label: 'Sunburst', hint: 'Parts within parts, as rings', icon: '◉' },
   { kind: 'table', label: 'Table', hint: 'Every row', icon: '▤' },
 ]
 

@@ -7,7 +7,7 @@ import {
   MAX_RADIUS_KM, names, plays, readsPoints, readsShapes, relayer, shades, studioStyle, styleOptions, switchBasemap, takesSeries,
   DEFAULT_TIME_GRAIN, TIME_GRAINS, type BasemapChoice,
 } from '../../lib/maps'
-import { CATEGORICAL, GRIDDED, METERED, MULTI_SERIES, PLOTS, STACKABLE, TARGETED } from '../../lib/types'
+import { CATEGORICAL, GRIDDED, METERED, MULTI_SERIES, PAIRED, PLOTS, STACKABLE, TARGETED } from '../../lib/types'
 import type {
   Dataset, Field as FieldDef, Tile, TileMap, TileMetric, TileTarget,
 } from '../../lib/types'
@@ -240,12 +240,12 @@ export function BlockInspector({
       )}
 
       {is(MULTI_SERIES, block.kind) && (
-        <Field label={is(GRIDDED, block.kind) ? 'Down the side' : 'Split by'}
-          required={is(GRIDDED, block.kind)}
+        <Field label={pairedLabel(block.kind) ?? 'Split by'}
+          required={is(PAIRED, block.kind)}
           help={seriesHelp(block.kind)}>
           <Select data={opts(dimensions)} value={block.series ?? null}
-            clearable={!is(GRIDDED, block.kind)}
-            placeholder={is(GRIDDED, block.kind) ? 'Choose a field' : 'One series'}
+            clearable={!is(PAIRED, block.kind)}
+            placeholder={is(PAIRED, block.kind) ? 'Choose a field' : 'One series'}
             onChange={(v) => onChange({
               series: v ?? undefined,
               // A stack of one series is the same drawing, so dropping the
@@ -332,6 +332,8 @@ export function BlockInspector({
 
 function seriesHelp(kind: Tile['kind']): string {
   if (is(GRIDDED, kind)) return 'The other axis of the grid. A heatmap needs both.'
+  if (kind === 'sankey') return 'Where each flow goes: one node down the right per value.'
+  if (kind === 'sunburst') return 'The inner ring: one segment per value, its parts around it.'
   if (kind === 'treemap') return 'Groups the rectangles, drawing one box per value.'
   return 'Draws one series per value of this field.'
 }
@@ -454,6 +456,14 @@ const TARGETS = [
   { value: 'value', label: 'A fixed number' },
 ]
 
+/** What a paired chart calls its second dimension. */
+function pairedLabel(kind: Tile['kind']): string | undefined {
+  if (is(GRIDDED, kind)) return 'Down the side'
+  if (kind === 'sankey') return 'Flows to'
+  if (kind === 'sunburst') return 'Inner ring'
+  return undefined
+}
+
 /** The kinds whose grouping may be left empty, drawing one for every row. */
 const optionalGroup = (kind: Tile['kind']) => kind === 'bullet' || kind === 'boxplot'
 
@@ -471,6 +481,8 @@ function groupHelp({ kind, map }: Tile, fields: FieldDef[]): string {
   if (kind === 'map') return 'Names each region or point, in its tooltip and its legend.'
   if (is(PLOTS, kind)) return 'One dot per value of this field.'
   if (is(GRIDDED, kind)) return 'Along the top of the grid.'
+  if (kind === 'sankey') return 'Where each flow comes from: one node down the left per value.'
+  if (kind === 'sunburst') return 'The outer ring: the parts of each inner segment.'
   if (kind === 'waterfall') return 'One step per value, in this order.'
   if (kind === 'radar') return 'One spoke per value of this field. Three or more.'
   if (kind === 'bullet') return 'One bullet per value, each against its target. Leave empty for one.'

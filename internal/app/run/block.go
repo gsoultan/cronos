@@ -76,6 +76,8 @@ type Block struct {
 	// category, read against YAxis.
 	Bins  []Bin `json:"bins,omitempty"`
 	Boxes []Box `json:"boxes,omitempty"`
+	// Sankey is a flow chart, laid out.
+	Sankey *Sankey `json:"sankey,omitempty"`
 
 	// Table. Also never omitempty, for the same reason.
 	Columns []Column   `json:"columns"`

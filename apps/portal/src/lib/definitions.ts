@@ -454,6 +454,7 @@ const CHARTS: Record<string, string> = {
   combo: 'combo', funnel: 'funnel', waterfall: 'waterfall',
   heatmap: 'heatmap', gauge: 'gauge', treemap: 'treemap',
   radar: 'radar', bullet: 'bullet', histogram: 'histogram', boxplot: 'boxplot',
+  sankey: 'sankey', sunburst: 'sunburst',
 }
 
 /** The chart types whose horizontal axis is a measure rather than a bucket. */

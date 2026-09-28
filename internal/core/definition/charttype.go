@@ -44,6 +44,12 @@ const (
 	// BoxplotChart draws each category's spread: the middle half of its rows
 	// as a box, its median across it, and whiskers to the rest.
 	BoxplotChart ChartType = "boxplot"
+	// SankeyChart draws how a measure flows from each category of x to each
+	// of series: a band per pair, as thick as its share of the whole.
+	SankeyChart ChartType = "sankey"
+	// SunburstChart draws parts within parts as rings: series around the
+	// middle, and each one's categories of x around it.
+	SunburstChart ChartType = "sunburst"
 )
 
 // chartTypes is every type, in the order an error message should list them.
@@ -51,7 +57,7 @@ var chartTypes = []ChartType{
 	BarChart, ColumnChart, LineChart, AreaChart, PieChart, DonutChart,
 	ScatterChart, BubbleChart, MapChart,
 	ComboChart, FunnelChart, WaterfallChart, HeatmapChart, GaugeChart, TreemapChart,
-	RadarChart, BulletChart, HistogramChart, BoxplotChart,
+	RadarChart, BulletChart, HistogramChart, BoxplotChart, SankeyChart, SunburstChart,
 }
 
 // Valid reports whether c is a type every renderer knows how to refuse or draw.
@@ -69,7 +75,7 @@ func (c ChartType) Valid() bool {
 func (c ChartType) Categorical() bool {
 	switch c {
 	case BarChart, ColumnChart, LineChart, AreaChart, PieChart, DonutChart,
-		WaterfallChart, TreemapChart, HeatmapChart, RadarChart:
+		WaterfallChart, TreemapChart, HeatmapChart, RadarChart, SankeyChart, SunburstChart:
 		return true
 	}
 	return false
@@ -89,6 +95,13 @@ func (c ChartType) Metered() bool { return c == ComboChart || c == FunnelChart }
 
 // Gridded reports whether the chart needs two dimensions to place a value.
 func (c ChartType) Gridded() bool { return c == HeatmapChart }
+
+// Paired reports whether series is the chart's second dimension rather than
+// an optional split — what each flow goes to, which ring a part sits in — so
+// a chart of this type without one is refused rather than drawn as half of it.
+func (c ChartType) Paired() bool {
+	return c == HeatmapChart || c == SankeyChart || c == SunburstChart
+}
 
 // Folded reports whether the chart reads one number for the whole set, with no
 // bucketing at all.
@@ -145,9 +158,10 @@ func (c ChartType) MultiSeries() bool {
 		return true
 	// A heatmap's second dimension is not an alternative to one series, it is
 	// the other axis of the grid — so `series` is required rather than
-	// optional. A treemap nests with it: the outer rectangles are the series
-	// and the inner ones are x.
-	case HeatmapChart, TreemapChart:
+	// optional, as it is for where a sankey's flows go and which ring a
+	// sunburst's parts sit in. A treemap nests with it: the outer rectangles
+	// are the series and the inner ones are x.
+	case HeatmapChart, TreemapChart, SankeyChart, SunburstChart:
 		return true
 	// A map colours its points by category, on the layers that have not
 	// already given colour to the value — which Block.validateMapSeries

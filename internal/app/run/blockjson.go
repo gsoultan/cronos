@@ -103,7 +103,8 @@ func (b Block) shapeJSON(out map[string]any) {
 	case b.Groups != nil:
 		out["groups"] = b.Groups
 		out["stacked"] = b.Stacked
-		if b.Stacked {
+		// Each stack's height, or a sunburst's whole.
+		if b.Totals != nil {
 			out["totals"] = b.Totals
 		}
 		if b.Percent {
@@ -113,6 +114,8 @@ func (b Block) shapeJSON(out map[string]any) {
 		out["gauge"] = b.Gauge
 	case b.Boxes != nil:
 		out["boxes"] = b.Boxes
+	case b.Sankey != nil:
+		out["sankey"] = b.Sankey
 	case b.Tracks != nil:
 		out["tracks"] = b.Tracks
 		if b.Axis2 != nil {

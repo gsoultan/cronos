@@ -349,6 +349,20 @@ tr:last-child td { border-bottom: 0 }
 .median { stroke-width: 2.5; stroke-linecap: round }
 .whisker { stroke: var(--cr-ink-muted); stroke-width: 1.25 }
 .marks:hover .box:not(:hover) { opacity: 0.5 }
+
+/* A sankey's bands in their source's colour, softened, and the ones through
+   a node pointed at lit while the rest fall back. A target is drawn in the
+   scale's ink: its colour would claim it is one of the sources. */
+.flow-band { fill-opacity: 0.32; transition: fill-opacity 0.15s }
+.flow-band:hover, .flow-band.on { fill-opacity: 0.6 }
+.tracing .flow-band:not(.on) { fill-opacity: 0.08 }
+.flow-node { fill: var(--cr-ink-muted) }
+
+/* A sunburst's outer ring is its inner ring's colour, softened, so its names
+   are set in ink where the inner ring's are set in white. */
+.slice.child { fill-opacity: 0.58 }
+.sun-label { font-size: 10px; font-weight: 600; fill: #fff; pointer-events: none; text-anchor: middle }
+.sun-label.outer { fill: var(--cr-ink); paint-order: stroke; stroke: var(--cr-surface); stroke-width: 2px }
 .web .tick { paint-order: stroke; stroke: var(--cr-surface); stroke-width: 3px; stroke-linejoin: round }
 .marks:hover .radar:not(:hover) { opacity: 0.4 }
 
@@ -401,7 +415,7 @@ tr:last-child td { border-bottom: 0 }
 .enter .line, .enter .reading { stroke-dasharray: 1; animation: cr-draw 0.9s cubic-bezier(0.3, 0.6, 0.2, 1) both }
 .enter .area, .enter .point, .enter .dot, .enter .slice, .enter .cell, .enter .cell-value, .enter .tree-cell,
 .enter .band, .enter .neck, .enter .labels, .enter .value, .enter .shade, .enter .target, .enter .radar,
-.enter .box {
+.enter .box, .enter .flow-band, .enter .flow-node {
   animation: cr-fade 0.6s ease-out both }
 
 /* -- Maps --------------------------------------------------------------- */

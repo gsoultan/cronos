@@ -1154,3 +1154,16 @@ test('a box plot writes its measure unfolded, and round trips', () => {
   const back = readReport(yaml).input.blocks[0]
   expect([back?.kind, back?.field, back?.groupBy]).toEqual(['boxplot', 'total', 'status'])
 })
+
+test('a sankey and a sunburst keep both their dimensions', () => {
+  const yaml = report({
+    name: 'R', slug: 'r', dataset: 'invoices',
+    blocks: [
+      { kind: 'sankey', title: 'Flows', field: 'total', groupBy: 'status', series: 'region' },
+      { kind: 'sunburst', title: 'Rings', field: 'total', groupBy: 'customer_name', series: 'status' },
+    ],
+  })
+  const back = readReport(yaml).input.blocks
+  expect(back.map((b) => [b.kind, b.groupBy, b.series])).toEqual([
+    ['sankey', 'status', 'region'], ['sunburst', 'customer_name', 'status']])
+})
