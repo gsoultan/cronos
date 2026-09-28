@@ -22,6 +22,14 @@ needs a deployment to act says so under **Upgrading**.
 
 ## Unreleased
 
+**A map draws H3 cells.** An `h3` layer shades the cells of Uber's H3 grid: a
+column of cell ids a warehouse has indexed its rows by — rolled up into
+coarser parents with `h3Resolution` — or the places at `lat` and `lon` binned
+into them. H3 is ported to Go from its own C library, cell for cell and corner
+for corner, so builds stay free of cgo. The demo's parcel network draws its
+deliveries in resolution-6 cells. See "Maps" in
+[docs/report-format.md](docs/report-format.md).
+
 **A map names its places, circles the ground they serve, and says which way a
 flow goes.** `labels: true` names regions and places on the map, as many as fit
 without covering each other, the largest first. A `radius` layer draws a circle

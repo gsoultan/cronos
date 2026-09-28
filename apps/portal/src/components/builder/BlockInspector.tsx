@@ -46,12 +46,13 @@ const LAYERS = [
   { value: 'scatter', label: 'Dots' },
   { value: 'flow', label: 'Flows' },
   { value: 'radius', label: 'Distance around each place' },
+  { value: 'h3', label: 'H3 cells' },
 ]
 
 /* Shown whenever the rule has disabled a layer, so a greyed-out option comes
    with its reason rather than looking broken. */
-const HEXAGONS_ALONE = 'Hexagons cannot share a map with shaded regions or routes: each '
-  + 'shades from its own scale, and one legend cannot explain two.'
+const HEXAGONS_ALONE = 'Hexagons and H3 cells cannot share a map with shaded regions, routes '
+  + 'or each other: each shades from its own scale, and one legend cannot explain two.'
 
 /** A layer as the picker names it, for the middle of a sentence. */
 const layerName = (value: string) =>
@@ -477,7 +478,9 @@ function MapFields({ block, dimensions, onChange }: {
         </Field>
       )}
 
-      {readsPoints(drawn) && (
+      {drawn.includes('h3') && <H3Fields map={map} dimensions={dimensions} onChange={set} />}
+
+      {readsPoints(drawn, map.h3) && (
         <div className="grid grid-cols-2 gap-3">
           <Field label="Latitude">
             <Select data={opts(dimensions)} value={map.lat ?? null} allowDeselect={false}
@@ -564,6 +567,33 @@ function MapFields({ block, dimensions, onChange }: {
       )}
 
       <BasemapFields map={map} onChange={set} />
+    </>
+  )
+}
+
+/**
+ * An h3 layer's cells: a warehouse's own, from a column of cell ids, or the
+ * places binned into them — and how fine. Two controls rather than a mode
+ * switch, because the column being empty is the mode.
+ */
+function H3Fields({ map, dimensions, onChange }: {
+  map: TileMap
+  dimensions: FieldDef[]
+  onChange: (patch: Partial<TileMap>) => void
+}) {
+  return (
+    <>
+      <Field label="Cells" required={false}
+        help="A column of H3 cell ids, if the rows are indexed. Empty bins the places at their latitude and longitude.">
+        <Select data={opts(dimensions)} value={map.h3 ?? null} clearable data-testid="map-h3"
+          placeholder="Bin the places" onChange={(v) => onChange({ h3: v ?? undefined })} />
+      </Field>
+      <Field label="Resolution" required={false}
+        help={map.h3 ? 'Coarser than the column adds its cells up into their parents.' : '1 is continents, 15 is a doorstep.'}>
+        <NumberInput value={map.h3Resolution ?? ''} min={1} max={15} allowNegative={false} allowDecimal={false}
+          placeholder={map.h3 ? 'As indexed' : 'Sized to the data'} data-testid="map-h3-resolution"
+          onChange={(v) => onChange({ h3Resolution: v === '' ? undefined : Number(v) })} />
+      </Field>
     </>
   )
 }

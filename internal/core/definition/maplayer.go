@@ -29,11 +29,15 @@ const (
 	// RadiusLayer draws a circle of MapSpec.RadiusKm around each point — a
 	// delivery area, a catchment — measured on the ground.
 	RadiusLayer MapLayer = "radius"
+	// H3Layer shades the cells of Uber's H3 grid: cells a warehouse has
+	// indexed its rows by, in MapSpec.H3, or the places at lat and lon binned
+	// into them — each cell by the total of what falls in it.
+	H3Layer MapLayer = "h3"
 )
 
 var mapLayers = []MapLayer{
 	PolygonLayer, LineLayer, HexbinLayer, HeatLayer, ClusterLayer,
-	BubbleLayer, ScatterLayer, FlowLayer, RadiusLayer,
+	BubbleLayer, ScatterLayer, FlowLayer, RadiusLayer, H3Layer,
 }
 
 // Valid reports whether l is a layer the renderers implement.
@@ -47,8 +51,8 @@ func (l MapLayer) Valid() bool {
 }
 
 // Points reports whether the layer reads a coordinate per row rather than a
-// geometry.
-func (l MapLayer) Points() bool { return !l.Geometric() }
+// geometry. An H3 layer may read either cells or places — see MapSpec.points.
+func (l MapLayer) Points() bool { return !l.Geometric() && l != H3Layer }
 
 // Geometric reports whether the layer reads the GeoJSON field. A polygon
 // layer draws the areas in it and a line layer the lines; one field serves
@@ -59,7 +63,7 @@ func (l MapLayer) Geometric() bool { return l == PolygonLayer || l == LineLayer 
 // Ramped reports whether the layer shades each mark from the sequential ramp,
 // which is what the legend under a map explains.
 func (l MapLayer) Ramped() bool {
-	return l == PolygonLayer || l == LineLayer || l == HexbinLayer
+	return l == PolygonLayer || l == LineLayer || l == HexbinLayer || l == H3Layer
 }
 
 // Coloured reports whether the layer already spends colour on magnitude — the

@@ -69,6 +69,9 @@ func (b Builder) mapColumn(ds definition.Dataset, blk definition.Block,
 	case definition.SeriesCol:
 		col, err := column(ds, blk.Series.Field)
 		return col, true, err
+	case definition.H3Col:
+		col, err := column(ds, m.H3)
+		return col, true, err
 	case definition.ValueCol:
 		expr, err := b.measure(ds, blk.Y)
 		return expr, false, err

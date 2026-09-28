@@ -61,7 +61,7 @@ func onPaper(c *document.Chart, m *GeoMap, at func(x, y float64) [2]float64) {
 		switch layer {
 		case "polygon":
 			areas(c, m.Shapes, at, rampTones(m))
-		case "hexbin":
+		case "hexbin", "h3":
 			areas(c, m.Hexes, at, rampTones(m))
 		case "line":
 			strokes(c, m.Lines, at, rampTones(m))

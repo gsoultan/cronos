@@ -1048,3 +1048,11 @@ test('a map keeps its radius, its names and its moving flows', () => {
   expect(back.input.blocks[0]?.map).toMatchObject({ radiusKm: 25, labels: true, animate: true })
   expect(readReport(report(back.input)).input.blocks).toEqual(back.input.blocks)
 })
+
+// An h3 layer's cells round-trip whole: which column, and how fine.
+test('a map keeps its H3 cells', () => {
+  const back = readReport(storedMap('layers: [h3]', 'h3: cell', 'h3Resolution: 6'))
+  expect(back.drops).toEqual([])
+  expect(back.input.blocks[0]?.map).toMatchObject({ h3: 'cell', h3Resolution: 6 })
+  expect(readReport(report(back.input)).input.blocks).toEqual(back.input.blocks)
+})

@@ -27,6 +27,9 @@ func readMap(blk definition.Block, ds definition.Dataset, rows Rows) (*GeoMap, e
 		blk: blk, at: at, box: newBounds(), points: newBounds(),
 		fold: foldOf(blk, ds), regions: map[string]int{},
 	}
+	if blk.Map.Draws(definition.H3Layer) {
+		r.cells = newH3Cells(blk.Map, r.fold)
+	}
 	if err := r.scan(rows, len(cols), out); err != nil {
 		return nil, err
 	}
@@ -56,6 +59,8 @@ type mapReader struct {
 	categories []string
 	// cut is whether the query had more rows than a map holds.
 	cut bool
+	// cells gathers an h3 layer's cells; nil for a map without one.
+	cells *h3Cells
 }
 
 func (r *mapReader) scan(rows Rows, width int, out *GeoMap) error {
@@ -94,6 +99,9 @@ func (r *mapReader) row(cells []any, out *GeoMap) error {
 	}
 	if _, ok := r.at[definition.LatCol]; ok {
 		r.point(cells, out, label, value)
+	}
+	if _, ok := r.at[definition.H3Col]; ok {
+		r.cells.cell(r.get(cells, definition.H3Col), value)
 	}
 	return nil
 }
@@ -164,6 +172,9 @@ func (r *mapReader) point(cells []any, out *GeoMap, label string, value float64)
 	x, y := project(lon, lat)
 	r.box.add(x, y)
 	r.points.add(x, y)
+	if r.cells != nil && r.cells.binned {
+		r.cells.place(lat, lon, value)
+	}
 
 	m := Marker{Label: label, X: x, Y: y, Value: value, Formatted: compact(value)}
 	if i, ok := r.at[definition.SizeCol]; ok {
@@ -203,6 +214,9 @@ func (r *mapReader) finish(out *GeoMap) {
 	m := r.blk.Map
 	if m.Draws(definition.HexbinLayer) {
 		out.Hexes = hexbin(out.Markers, hexRadius(m.HexKm, r.points), r.fold, r.box)
+	}
+	if r.cells != nil {
+		out.Hexes = r.cells.shapes(r.points, r.box)
 	}
 	out.Bounds = r.box.padded()
 

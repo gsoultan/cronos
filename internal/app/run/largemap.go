@@ -130,6 +130,9 @@ func (q *bigMap) shapes(ctx context.Context, m *GeoMap, sv survey) error {
 			return err
 		}
 	}
+	if spec.Draws(definition.H3Layer) {
+		return q.h3(ctx, m, sv)
+	}
 	return nil
 }
 

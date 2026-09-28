@@ -11,7 +11,7 @@ import { g } from './geo'
 const PLACED = new Set(['scatter', 'bubble', 'cluster'])
 
 /** The layers shaded from the ramp. */
-export const SHADED = new Set(['polygon', 'hexbin', 'line'])
+export const SHADED = new Set(['polygon', 'hexbin', 'line', 'h3'])
 
 /**
  * The key for places coloured by category: each its colour and, on a map that

@@ -573,6 +573,8 @@ function mapSpec(m: ReportBlockInput['map']): Yaml {
     radiusKm: m.radiusKm || undefined,
     labels: m.labels || undefined,
     animate: m.animate || undefined,
+    h3: m.h3 || undefined,
+    h3Resolution: m.h3Resolution || undefined,
     basemap: basemapOf(m),
     overlays: m.overlays?.length ? m.overlays : undefined,
   }
@@ -1005,6 +1007,8 @@ function readMap(m: Doc): TileMap {
     radiusKm: num(m.radiusKm),
     labels: m.labels === true || undefined,
     animate: m.animate === true || undefined,
+    h3: str(m.h3) || undefined,
+    h3Resolution: num(m.h3Resolution),
     // Cast rather than checked. The server refuses a provider it has no code
     // for, so a stored one is one of these; a check here would be a second
     // list to keep in step with that one.

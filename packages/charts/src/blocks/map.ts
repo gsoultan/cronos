@@ -266,6 +266,8 @@ function draw(layer: string, m: GeoMap, s: Scene): Drawn | undefined {
     case 'polygon':
       return areas(m.shapes, s.tips, 'shapes', s.pick)
     case 'hexbin':
+    case 'h3':
+      // H3's cells arrive as hexagons do: shapes shaded from the ramp.
       return areas(m.hexes ?? [], s.tips, 'hexes')
     case 'line':
       return routes(m.lines ?? [], s.tips)
@@ -380,7 +382,7 @@ function empty(m: GeoMap): boolean {
 function ramped(m: GeoMap): boolean {
   return (m.layers.includes('polygon') && m.shapes.length > 0) ||
     (m.layers.includes('line') && (m.lines?.length ?? 0) > 0) ||
-    (m.layers.includes('hexbin') && (m.hexes?.length ?? 0) > 0)
+    ((m.layers.includes('hexbin') || m.layers.includes('h3')) && (m.hexes?.length ?? 0) > 0)
 }
 
 /** The stage's proportions: the data's, between a square and a wide strip. */

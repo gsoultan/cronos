@@ -142,7 +142,9 @@ await maps.route(/tile\.openstreetmap\.org|api\.mapbox\.com|tile\.googleapis\.co
 await maps.goto(`${B}/reports/parcel-network`, { waitUntil: 'domcontentloaded' })
 await maps.locator('[data-testid=live-report] .geo-stage').first().waitFor({ timeout: 20000 })
 ok('every map of the parcel network draws in the portal',
-  await maps.locator('[data-testid=live-report] .geo-stage').count() === 7)
+  await maps.locator('[data-testid=live-report] .geo-stage').count() === 8)
+ok('the deliveries are drawn in H3 cells',
+  await maps.getByTestId('chart').filter({ hasText: 'Parcels per H3 cell' }).locator('.hexes path').count() > 5)
 /* The zones on time against the target, in two hues either side of it: the
    server classes each side apart and says so, and the map reads the second
    ramp through the first one's names. */

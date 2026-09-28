@@ -78,5 +78,5 @@ func (m MapSpec) Middle() float64 {
 
 // shaded reports whether any layer colours its marks from the ramp.
 func (m MapSpec) shaded() bool {
-	return m.geometric() || m.Draws(HexbinLayer)
+	return m.geometric() || m.Draws(HexbinLayer) || m.Draws(H3Layer)
 }

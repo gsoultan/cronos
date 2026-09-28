@@ -380,6 +380,9 @@ func (b Block) FoldReason() string {
 		return "draws the geometry field and points, so it runs per point and " +
 			"adds each region up from those"
 	}
+	if b.Map != nil && b.foldsH3() {
+		return "draws H3 cells, and adds each one up from the places or finer cells inside it"
+	}
 	return "draws hexagons, and adds each one up from the points inside it"
 }
 

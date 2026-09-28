@@ -248,6 +248,15 @@ type row struct {
 
 func (r row) has(name string) bool { _, ok := r.at[name]; return ok }
 
+// raw is a column as the driver returned it, for a value only its reader can
+// make sense of — an H3 cell, as text or as a number.
+func (r row) raw(name string) any {
+	if i, ok := r.at[name]; ok {
+		return r.vals[i]
+	}
+	return nil
+}
+
 func (r row) null(name string) bool {
 	i, ok := r.at[name]
 	return !ok || r.vals[i] == nil

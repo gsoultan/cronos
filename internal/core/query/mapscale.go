@@ -83,6 +83,22 @@ func coordinates(ds definition.Dataset, latField, lonField string) (string, stri
 }
 
 /*
+BuildMapPlaces is a map's rows at the grain of a place — or of a cell, for an
+h3 layer drawing indexed cells — uncapped, for the one fold a warehouse cannot
+do in SQL: putting a place in an H3 cell. The reader streams it and keeps the
+cells, never the rows, and stops at a cap of its own.
+*/
+func (b Builder) BuildMapPlaces(ds definition.Dataset, blk definition.Block, in map[string]any,
+	f Filters, pr principal.Principal) (Plan, error) {
+
+	sql, args, err := b.mapBase(ds, blk, in, f, pr, nil)
+	if err != nil {
+		return Plan{}, err
+	}
+	return Plan{sql: sql, args: args}, nil
+}
+
+/*
 BuildMapCells gathers a map's places into the cells of a grid.
 
 A row per cell and category: how many places, their measure folded — its own
