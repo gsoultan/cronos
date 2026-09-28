@@ -98,6 +98,10 @@ func (c ChartType) Diverging() bool { return c == WaterfallChart }
 // difference in one place.
 func (c ChartType) Plots() bool { return c == ScatterChart || c == BubbleChart }
 
+// Divides reports whether the chart shows parts of a whole, so the whole is
+// worth saying: a donut carries it in its middle.
+func (c ChartType) Divides() bool { return c == PieChart || c == DonutChart }
+
 // Geographic reports whether the chart reads coordinates rather than an axis.
 func (c ChartType) Geographic() bool { return c == MapChart }
 

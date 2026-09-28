@@ -442,87 +442,132 @@ ok('the table says what it is showing',
   (await report.locator('.panel', { hasText: 'Invoices' }).innerText()).includes('1 of 1284'))
 
 /* -- The chart types ------------------------------------------------------ */
+// Marks by their part — the names a host styles them by — and colours by the
+// fill a reader sees.
+const fillOf = (mark) => mark.evaluate((a) => getComputedStyle(a).fill)
+const textOf = async (panel) => (await panel.textContent()) ?? ''
+
 const stack = report.locator('.panel', { hasText: 'Billed by carrier' })
-ok('a stacked bar draws a segment per series that has one',
-  await stack.locator('.track.stack .fill').count() === 3)
-ok('and the total beside it is the one the server formatted',
-  (await stack.innerText()).includes('€8.0M'))
+ok('a stacked bar draws a segment per series that has one', await stack.locator('[part=bar]').count() === 3)
+ok('and the total beside it is the one the server formatted', (await textOf(stack)).includes('€8.0M'))
 ok('two series get a legend, because colour alone is not a name',
   await stack.locator('.legend .key').count() === 2)
 ok('series take different colours',
-  await stack.locator('.fill').first().evaluate((a) => getComputedStyle(a).backgroundColor)
-  !== await stack.locator('.fill').last().evaluate((b) => getComputedStyle(b).backgroundColor))
+  await fillOf(stack.locator('[part=bar]').first()) !== await fillOf(stack.locator('[part=bar]').last()))
+await stack.locator('.legend .key').first().click()
+const without = await stack.locator('[part=bar]').count()
+await stack.locator('.legend .key').first().click()
+ok('a key hides its series, and shows it again',
+  without === 1 && await stack.locator('[part=bar]').count() === 3
+  && await stack.locator('.legend .key').first().getAttribute('aria-pressed') === 'true')
 
 const trend = report.locator('.panel', { hasText: 'Trend' })
-ok('a line chart draws a path', await trend.locator('path.line').count() === 1)
+ok('a line chart draws a path', await trend.locator('[part=line]').count() === 1)
 ok('and its axis carries the labels the engine formatted',
-  (await trend.locator('.ys').innerText()).includes('€8.0M'))
+  (await trend.locator('text.tick').allTextContents()).includes('€8.0M'))
 ok('one series gets no legend — the title already names it',
   await trend.locator('.legend').count() === 0)
 
 const donut = report.locator('.panel', { hasText: 'Share' })
-ok('a donut draws an arc per slice', await donut.locator('.pie circle').count() === 2)
-ok('and direct-labels them rather than needing a legend',
-  (await donut.innerText()).includes('€7.0M'))
+ok('a donut draws a slice per share', await donut.locator('[part=slice]').count() === 2)
+ok('and lists each with its value and its share',
+  (await textOf(donut)).includes('€7.0M') && (await textOf(donut)).includes('%'))
 
 const bubbles = report.locator('.panel', { hasText: 'Paid against billed' })
-ok('a bubble chart draws a dot per point', await bubbles.locator('circle.dot').count() === 2)
-ok('sized by its measure, not all alike', await bubbles.locator('circle.dot').first()
+ok('a bubble chart draws a dot per point', await bubbles.locator('[part=dot]').count() === 2)
+ok('sized by its measure, not all alike', await bubbles.locator('[part=dot]').first()
   .evaluate((a, b) => Number(a.getAttribute('r')) > Number(b.getAttribute('r')),
-    await bubbles.locator('circle.dot').last().elementHandle()))
+    await bubbles.locator('[part=dot]').last().elementHandle()))
+// It was drawn in a square and letterboxed: the dots in a strip down the
+// middle of a wide panel, under an axis that ran its whole width.
+ok('and its dots are placed across the whole plot, not a strip of it',
+  await bubbles.locator('svg.canvas').evaluate((svg) => {
+    const box = svg.getBoundingClientRect()
+    const xs = [...svg.querySelectorAll('.dot')].map((d) => d.getBoundingClientRect().x - box.x)
+    return Math.max(...xs) - Math.min(...xs) > box.width * 0.3
+  }))
 
 /* -- Combo, funnel, waterfall --------------------------------------------- */
 const combo = report.locator('.panel', { hasText: 'Billed and margin' })
 ok('a combo draws bars and a line together',
-  await combo.locator('rect.col').count() === 2 && await combo.locator('path.line').count() === 1)
+  await combo.locator('[part=bar]').count() === 2 && await combo.locator('[part=line]').count() === 1)
 ok('a combo always has a legend — the mark shape says bar or line, not which measure',
   await combo.locator('.legend .key').count() === 2)
-ok('a measure on its own scale says so, rather than looking comparable',
-  (await combo.innerText()).includes('(right)') && (await combo.locator('.axis2').innerText()).includes('20%'))
+// It was a sentence under the chart giving the range, and the line it scaled
+// was drawn against nothing a reader could see.
+ok('a measure on its own scale is read against an axis of its own, on the right',
+  (await textOf(combo)).includes('(right)') && await combo.locator('svg.canvas').evaluate((svg) => {
+    const box = svg.getBoundingClientRect()
+    return [...svg.querySelectorAll('text.tick')].some((t) =>
+      t.textContent === '20%' && t.getBoundingClientRect().x > box.x + box.width / 2)
+  }))
 
 const funnel = report.locator('.panel', { hasText: 'Conversion' })
-ok('a funnel draws a band per stage', await funnel.locator('.band').count() === 3)
-ok('and it narrows', await funnel.locator('.band').first().evaluate(
+ok('a funnel draws a band per stage', await funnel.locator('[part=stage]').count() === 3)
+ok('and it narrows', await funnel.locator('[part=stage]').first().evaluate(
   (a, b) => a.getBoundingClientRect().width > b.getBoundingClientRect().width,
-  await funnel.locator('.band').last().elementHandle()))
-ok('the fall is shown between the stages, not hidden in a tooltip',
-  (await funnel.innerText()).includes('-60.0%'))
+  await funnel.locator('[part=stage]').last().elementHandle()))
+ok('the fall is shown between the stages, not hidden in a tooltip', (await textOf(funnel)).includes('-60.0%'))
 ok('stages take the ordinal ramp, so the order is in the colour',
-  await funnel.locator('.band').first().evaluate((a) => getComputedStyle(a).backgroundColor)
-  !== await funnel.locator('.band').last().evaluate((b) => getComputedStyle(b).backgroundColor))
+  await fillOf(funnel.locator('[part=stage]').first()) !== await fillOf(funnel.locator('[part=stage]').last()))
 
 const fall = report.locator('.panel', { hasText: 'Movement' })
-ok('a waterfall draws a bar per step and a closing total',
-  await fall.locator('rect.col').count() === 4)
+ok('a waterfall draws a column per step and a closing total', await fall.locator('[part=bar]').count() === 4)
 ok('a fall is coloured against a rise',
-  await fall.locator('rect.col').nth(1).getAttribute('fill')
-  !== await fall.locator('rect.col').nth(2).getAttribute('fill'))
+  await fillOf(fall.locator('[part=bar]').nth(1)) !== await fillOf(fall.locator('[part=bar]').nth(2)))
 ok('and the total is neither',
-  await fall.locator('rect.col').last().getAttribute('fill') === 'var(--cr-neutral)')
+  (await fall.locator('[part=bar]').last().getAttribute('style') ?? '').includes('var(--cr-neutral)'))
+ok('each column says its change over it, rather than in a tooltip',
+  await fall.locator('text.value').count() === 4)
 
 /* -- Heatmap, gauge, treemap ---------------------------------------------- */
 const heat = report.locator('.panel', { hasText: 'Status by month' })
-ok('a heatmap draws every pair', await heat.locator('.cell').count() === 4)
+ok('a heatmap draws every pair', await heat.locator('[part=cell]').count() === 4)
 ok('a pair nothing matched is drawn as absence, not as a small number',
   await heat.locator('.cell.none').count() === 1)
+ok('a cell says its value, and the key says what each shade spans',
+  await heat.locator('text.cell-value').count() === 3 && await heat.locator('.legend .key').count() > 0)
 
 const gauge = report.locator('.panel', { hasText: 'Against plan' })
-ok('a gauge draws its arc over a track', await gauge.locator('.gauge circle').count() === 2)
-ok('beating the target is said in words, because the arc is capped',
-  (await gauge.innerText()).includes('25% over'))
+ok('a gauge draws its reading over a track',
+  await gauge.locator('.gauge .track').count() === 1 && await gauge.locator('.gauge .reading').count() === 1)
+ok('beating the target is said in words, because the arc is capped', (await textOf(gauge)).includes('25% over'))
 ok('and the figures are the accessible reading of a decorative arc',
   (await gauge.getAttribute('aria-label') ?? '').includes('€40.0M'))
 
 const tree = report.locator('.panel', { hasText: 'Territories' })
-ok('a treemap places every leaf', await tree.locator('.tree-cell').count() === 3)
-ok('grouped leaves sit inside a named frame',
+ok('a treemap places every leaf', await tree.locator('[part=cell]').count() === 3)
+ok('grouped leaves sit under a named header',
   await tree.locator('.tree-frame').count() === 2
   // textContent, not innerText: the group label is upper-cased in CSS, and
   // asserting on the rendered string would make this a test of the styling.
   && (await tree.locator('.tree-group').first().textContent()) === 'North')
 ok('a leaf takes its group colour, so what belongs together looks it',
-  await tree.locator('.tree-cell').first().evaluate((a) => getComputedStyle(a).backgroundColor)
-  === await tree.locator('.tree-cell').nth(1).evaluate((b) => getComputedStyle(b).backgroundColor))
+  await fillOf(tree.locator('[part=cell]').first()) === await fillOf(tree.locator('[part=cell]').nth(1)))
+
+/* -- Every chart ----------------------------------------------------------- */
+// The report container is .grid and so, once, were the plot's gridlines: the
+// rule that gave gridlines a stroke gave it to every shape in the report that
+// did not set one, and the invisible hover target of a stretched plot drew as
+// thick grey bars down its sides.
+ok('no mark inherits a stroke it did not ask for',
+  await report.locator('.hit, [part=bar], .cell:not(.none), .tree-cell').evaluateAll((marks) =>
+    marks.every((m) => getComputedStyle(m).stroke === 'none')))
+ok('every chart is drawn at its own size, not stretched to it',
+  await report.locator('svg.canvas').evaluateAll((svgs) => svgs.length > 0 && svgs.every((s) =>
+    Math.abs(s.viewBox.baseVal.width - s.getBoundingClientRect().width) < 1.5)))
+// Four pixels of play: Firefox's box for a line of SVG text takes in each
+// glyph's side bearings, three pixels a side at this size, where Chrome's and
+// Safari's stop at the ink. A label that runs off — "Aug 2026" drawn as
+// "Aug 202" — is off by far more than that.
+const runOff = await report.locator('svg.canvas').evaluateAll((svgs) => svgs.flatMap((s) => {
+  const box = s.getBoundingClientRect()
+  return [...s.querySelectorAll('text')].filter((t) => {
+    const r = t.getBoundingClientRect()
+    return r.width > 0 && (r.left < box.left - 4 || r.right > box.right + 4)
+  }).map((t) => t.textContent)
+}))
+ok(`and no label runs off the chart it is on${runOff.length ? ` (${runOff.join(', ')})` : ''}`, runOff.length === 0)
 
 /* -- The map -------------------------------------------------------------- */
 const map = report.locator('.panel', { hasText: 'Depots' })
@@ -585,6 +630,9 @@ await page.waitForTimeout(100)
 const zoomed = await geo()
 ok('a zoom button halves the window', Math.abs(zoomed[2] - fitted[2] / 2) < 1e-9)
 ok('and the tiles follow it a level down', (await levels()).includes(level + 1))
+// On screen before the pointer goes to it: a box measured below the fold is
+// somewhere the mouse cannot reach, and the drag never starts.
+await map.locator('.geo-stage').scrollIntoViewIfNeeded()
 const box = await map.locator('.geo-stage').boundingBox()
 await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
 await page.mouse.down()
@@ -724,7 +772,7 @@ ok("the host page's table styling does not reach in",
 /* -- Theming crosses the boundary on purpose ------------------------------ */
 await page.evaluate(() => document.querySelector('#r').style.setProperty('--cr-accent', 'rgb(255, 0, 0)'))
 ok('custom properties theme it',
-  await report.locator('.fill').first().evaluate((f) => getComputedStyle(f).backgroundColor) === 'rgb(255, 0, 0)')
+  await report.locator('[part=bar]').first().evaluate((f) => getComputedStyle(f).fill) === 'rgb(255, 0, 0)')
 
 /* -- The filter bar -------------------------------------------------------- */
 ok('the report draws its own filter bar', await report.locator('.filters .filter').count() === 2)
@@ -799,30 +847,32 @@ ok('nothing was thrown drawing it', realErrors.length === 0)
 // stub's. An empty panel is what a missing payload key looks like, and an
 // empty panel looks like a report that matched no rows.
 for (const [title, selector] of [
-  ['Parcels by region', '.fill'],
-  ['Stacked by carrier', '.track.stack .fill'],
-  ['Line', 'path.line'],
-  ['Area', 'path.area'],
-  ['Pie', '.pie circle'],
-  ['Donut', '.pie circle'],
-  ['Scatter', 'circle.dot'],
-  ['Bubble', 'circle.dot'],
+  ['Parcels by region', '[part=bar]'],
+  ['Stacked by carrier', '[part=bar]'],
+  ['Line', '[part=line]'],
+  ['Area', '[part=area]'],
+  ['Pie', '[part=slice]'],
+  ['Donut', '[part=slice]'],
+  ['Scatter', '[part=dot]'],
+  ['Bubble', '[part=dot]'],
   ['Map', '.shapes path'],
   ['Routes', '.routes path.route'],
   ['Hexagons', '.hexes path'],
   ['Clusters', 'circle.pin, .cluster'],
   ['By day', '.shapes path'],
-  ['Combo', 'rect.col'],
-  ['Funnel', '.band'],
-  ['Waterfall', 'rect.col'],
-  ['Heatmap', '.cell'],
-  ['Gauge', '.gauge circle'],
-  ['Treemap', '.tree-cell'],
+  ['Combo', '[part=bar]'],
+  ['Funnel', '[part=stage]'],
+  ['Waterfall', '[part=bar]'],
+  ['Heatmap', '[part=cell]'],
+  ['Gauge', '.gauge .track'],
+  ['Treemap', '[part=cell]'],
 ]) {
   const panel = live.locator('.panel').filter({ hasText: new RegExp(`^${title}`) })
   ok(`${title} draws its marks from the server's payload`,
     await panel.locator(selector).count() > 0)
 }
+ok("a donut says the server's whole in its middle",
+  (await live.locator('.panel').filter({ hasText: /^Donut/ }).locator('text.centre').textContent()) === '2,200')
 
 // A map that plays through time, as the server sends it: a day is that day's
 // places and shades, a region with nothing in it drawn empty and saying so,

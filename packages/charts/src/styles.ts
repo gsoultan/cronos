@@ -11,8 +11,11 @@
  * are the theming API — set them on the element or anywhere above it. There is
  * no `theme` attribute with a list of our opinions.
  */
-const sheet = `
-$SCOPE$ {
+/* The theme, as custom properties: light, and the same names re-stepped for a
+   dark surface. Held once each and placed three times below — as the default,
+   under the reader's own dark setting, and under a theme the page names — so
+   the lists cannot drift apart. */
+const LIGHT = `
   --cr-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --cr-ink: #14140f;
   --cr-ink-secondary: #52514e;
@@ -54,6 +57,15 @@ $SCOPE$ {
   --cr-ramp-4: #3987e5;
   --cr-ramp-5: #256abf;
   --cr-ramp-6: #104281;
+  /* The ink a number on each shade takes: dark on the light half, white on
+     the dark half. Beside the shades they go with, so a page that swaps one
+     swaps both. */
+  --cr-on-ramp-1: #14140f;
+  --cr-on-ramp-2: #14140f;
+  --cr-on-ramp-3: #14140f;
+  --cr-on-ramp-4: #fff;
+  --cr-on-ramp-5: #fff;
+  --cr-on-ramp-6: #fff;
 
   /* The diverging ramp, for a measure with a middle — a change, a margin: the
      sequential ramp's blue below it and the palette's orange above, darkest
@@ -90,7 +102,72 @@ $SCOPE$ {
   --cr-radius: 8px;
   --cr-gap: 16px;
 
-  display: block;
+`
+
+const DARK = `
+    --cr-ink: #f5f4f1;
+    --cr-ink-secondary: #b9b6ae;
+    --cr-ink-muted: #8c8981;
+    --cr-surface: #17171a;
+    --cr-line: #2c2c31;
+    --cr-good: #4ade80;
+    --cr-serious: #f87171;
+    /* Re-stepped for the dark surface, like every other hue here. */
+    --cr-accent: #3987e5;
+
+    /* The same eight hues, re-stepped for a dark surface — not the light
+       values with a filter over them. An automatic flip puts half the palette
+       below 3:1 against this background, which is the difference between a
+       series being a colour and a series being a smudge. */
+    --cr-series-1: var(--cr-accent);
+    --cr-series-2: #d95926;
+    --cr-series-3: #199e70;
+    --cr-series-4: #c98500;
+    --cr-series-5: #d55181;
+    --cr-series-6: #008300;
+    --cr-series-7: #9085e9;
+    --cr-series-8: #e66767;
+
+    /* Reversed, because "near zero recedes toward the surface" means dark
+       here. A ramp that stayed light-to-dark would paint the emptiest regions
+       brightest and the busiest ones invisible. */
+    --cr-ramp-1: #104281;
+    --cr-ramp-2: #1c5cab;
+    --cr-ramp-3: #2a78d6;
+    --cr-ramp-4: #5598e7;
+    --cr-ramp-5: #86b6ef;
+    --cr-ramp-6: #b7d3f6;
+    --cr-on-ramp-1: #fff;
+    --cr-on-ramp-2: #fff;
+    --cr-on-ramp-3: #fff;
+    --cr-on-ramp-4: #0b1526;
+    --cr-on-ramp-5: #0b1526;
+    --cr-on-ramp-6: #0b1526;
+    /* Reversed for the same reason: the shades either side of the midpoint
+       recede toward the surface, and the extremes are the bright ones. */
+    --cr-div-1: #b7d3f6;
+    --cr-div-2: #5598e7;
+    --cr-div-3: #1c5cab;
+    --cr-div-4: #8a3510;
+    --cr-div-5: #d95926;
+    --cr-div-6: #f5b28f;
+
+    /* Re-stepped for the dark surface, and reversed for the same reason the
+       sequential ramp is: the step nearest the surface has to stay visible
+       against it. */
+    --cr-step-1: #184f95;
+    --cr-step-2: #256abf;
+    --cr-step-3: #3987e5;
+    --cr-step-4: #6da7ec;
+    --cr-step-5: #9ec5f4;
+
+    --cr-up: #3987e5;
+    --cr-down: #e66767;
+`
+
+const sheet = `
+$SCOPE$ {
+${LIGHT}  display: block;
   font-family: var(--cr-font);
   color: var(--cr-ink);
   font-size: 14px;
@@ -120,17 +197,23 @@ $SCOPE$[hidden] { display: none }
   min-width: 0;
 }
 .panel h3 {
-  margin: 0 0 8px;
-  font-size: 13px;
+  margin: 0 0 10px;
+  font-size: 14px;
   font-weight: 600;
-  color: var(--cr-ink-secondary);
+  letter-spacing: -0.005em;
+  color: var(--cr-ink);
 }
 
-.stat { font-size: 30px; font-weight: 650; letter-spacing: -0.02em; line-height: 1.1 }
-.delta { margin-top: 6px; font-size: 13px; color: var(--cr-ink-muted) }
+.stat { margin: 4px 0 0; font-size: 32px; font-weight: 650; letter-spacing: -0.025em; line-height: 1.1; font-variant-numeric: tabular-nums }
+.delta { margin: 8px 0 0; font-size: 13px; color: var(--cr-ink-muted) }
 .delta b { font-weight: 600 }
 .up { color: var(--cr-good) }
 .down { color: var(--cr-serious) }
+/* A change, in a pill tinted by whether it is good news — the engine's call,
+   not the arrow's. */
+.pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-variant-numeric: tabular-nums }
+.pill.up { background: color-mix(in srgb, var(--cr-good) 13%, transparent) }
+.pill.down { background: color-mix(in srgb, var(--cr-serious) 13%, transparent) }
 
 table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums }
 th, td {
@@ -161,20 +244,6 @@ tr:last-child td { border-bottom: 0 }
 .prose { margin: 0; color: var(--cr-ink-secondary); max-width: 68ch }
 .msg { padding: 24px; text-align: center; color: var(--cr-ink-muted) }
 .msg.err { color: var(--cr-serious) }
-
-.bars { display: grid; gap: 2px }
-.bar-row { display: grid; grid-template-columns: minmax(56px, auto) 1fr auto; gap: 10px; align-items: center }
-.bar-row span { font-size: 12px; color: var(--cr-ink-secondary) }
-.bar-row .v { text-align: right; font-variant-numeric: tabular-nums; color: var(--cr-ink) }
-.track { height: 24px; display: flex; align-items: center }
-/* 24px cap and a 4px rounded data-end, per the mark spec. A bar that grows
-   past 24px stops reading as a bar and starts reading as a block of colour. */
-.fill {
-  height: 24px;
-  background: var(--cr-accent);
-  border-radius: 0 4px 4px 0;
-  min-width: 2px;
-}
 
 /* -- Filter bar ---------------------------------------------------------- */
 
@@ -227,89 +296,85 @@ tr:last-child td { border-bottom: 0 }
 
 /* -- Charts ------------------------------------------------------------- */
 
-/* A stack's segments are separated by the panel showing through, not by a
-   border. Two fills that touch read as one fill, and a border would add a
-   colour that is not in the data. */
-.track.stack { gap: 2px }
-.track.stack .fill { border-radius: 2px }
-.track.stack .fill:first-child { border-radius: 4px 2px 2px 4px }
-.track.stack .fill:last-child { border-radius: 2px 4px 4px 2px }
+/* Every chart is an SVG drawn at its panel's width in pixels (see frame.ts),
+   so nothing here scales a mark: a stroke is as wide as it says, text is the
+   size it says, and a circle stays one. */
+.chart-host { position: relative; min-width: 0; margin-top: 2px }
+.canvas { display: block; overflow: visible }
+.canvas text, .pie text, .gauge text { font-family: inherit }
 
-.bar-group { display: grid; grid-template-columns: minmax(56px, auto) 1fr; gap: 10px; padding: 4px 0 }
-.bar-group .bucket { font-size: 12px; color: var(--cr-ink-secondary); align-self: center }
-.bar-group .series { display: grid; gap: 2px; min-width: 0 }
-.bar-row.thin { grid-template-columns: 1fr auto }
-.bar-row.thin .track, .bar-row.thin .fill { height: 12px }
+/* Text in a chart, by role. Muted for the scale, secondary for names, ink for
+   the numbers a reader came for. */
+.tick { font-size: 11px; fill: var(--cr-ink-muted); font-variant-numeric: tabular-nums }
+.name { font-size: 12px; fill: var(--cr-ink-secondary) }
+.value { font-size: 12px; font-weight: 550; fill: var(--cr-ink); font-variant-numeric: tabular-nums }
+.drop { font-size: 11px; fill: var(--cr-ink-muted); font-variant-numeric: tabular-nums }
 
-/* The plot frame: tick labels in HTML around an SVG of marks. Keeping the
-   labels out of the SVG is what stops them scaling with the panel. */
-.plot {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  grid-template-areas: "ys canvas" ". xs";
-  gap: 4px 8px;
-  margin-top: 4px;
+/* Recessive: the grid is there to be measured against, not read. The line at
+   nothing is firmer, because every bar stands on it. */
+.gridline { stroke: var(--cr-line); stroke-width: 1; shape-rendering: crispEdges }
+.gridline.base, .gridline.zero { stroke: color-mix(in srgb, var(--cr-ink-muted) 55%, transparent) }
+
+.line { fill: none; stroke-width: 2.25; stroke-linejoin: round; stroke-linecap: round }
+.area { stroke: none }
+.area.stacked { opacity: 0.82 }
+/* A ring in the surface colour, so a dot on a line and two dots that touch
+   still read as separate marks. */
+.point { stroke: var(--cr-surface); stroke-width: 2 }
+.rule { stroke: var(--cr-ink-muted); stroke-width: 1; stroke-dasharray: 3 3; pointer-events: none }
+.focus { pointer-events: none }
+.hit { fill: transparent; stroke: none; cursor: crosshair }
+.thread { stroke: var(--cr-ink-muted); stroke-width: 1; stroke-dasharray: 3 3; opacity: 0.7 }
+
+/* Pointing at one bar lets the rest fall back, so the one being read stands
+   out without a colour that is not in the data. */
+.fill, .col, .dot, .slice, .cell, .tree-cell, .band { transition: opacity 0.15s, transform 0.15s }
+.marks:hover .fill:not(:hover), .marks:hover .col:not(:hover) { opacity: 0.55 }
+.dot { stroke: var(--cr-surface); stroke-width: 1.5; fill-opacity: 0.85 }
+.dot:hover { fill-opacity: 1 }
+.dot:focus-visible, .pin:focus-visible, .fill:focus-visible, .col:focus-visible, .slice:focus-visible,
+.cell:focus-visible, .tree-cell:focus-visible, .band:focus-visible,
+.geo path:focus-visible, .geo-above path:focus-visible, .routes g:focus-visible {
+  outline: 2px solid var(--cr-accent);
+  outline-offset: 2px;
 }
-.canvas-wrap { grid-area: canvas; position: relative; min-width: 0 }
-.canvas { display: block; width: 100%; height: 160px; overflow: visible }
-.ys, .xs { position: relative; font-size: 11px; color: var(--cr-ink-muted); font-variant-numeric: tabular-nums }
-.ys {
-  grid-area: ys;
-  height: 160px;
-  /* A floor, because the column is sized to its content and the labels inside
-     it are absolutely positioned — so the column measured zero and every tick
-     was clipped to its last few characters. "60,000" rendered as "000", which
-     is not a smaller label but a different number. */
-  min-width: 3.4rem;
-}
-.ys span { position: absolute; right: 0; transform: translateY(50%); white-space: nowrap }
-.xs { grid-area: xs; height: 14px }
-.xs span { position: absolute; transform: translateX(-50%); white-space: nowrap }
-/* Every other label, in a narrow panel.
-
-   The server thins ticks to about six, which is what a full-width card holds;
-   in a third-width one the same six run into each other and "May 2026 Jun 2026"
-   renders as "May 202Bun 202". Halving them is the only thing that helps that
-   a smaller font does not, and the axis is a scale rather than a list — the
-   gaps still read. */
-@container (max-width: 420px) {
-  .xs span:nth-child(even) { display: none }
-}
-
-/* Recessive: the grid is there to be measured against, not read. */
-.grid { stroke: var(--cr-line); stroke-width: 1; vector-effect: non-scaling-stroke }
-.line {
-  fill: none;
-  stroke-width: 2;
-  stroke-linejoin: round;
-  stroke-linecap: round;
-  /* Without this a stretched viewBox turns a 2px line into a wedge that is
-     thick where the chart is wide and hairline where it is tall. */
-  vector-effect: non-scaling-stroke;
-}
-.area { opacity: 0.16; stroke: none }
-.rule { stroke: var(--cr-ink-muted); stroke-width: 1; vector-effect: non-scaling-stroke; pointer-events: none }
-.rule[hidden] { display: none }
-.hit { cursor: crosshair }
-
-.dot, .pin {
-  /* A 2px ring in the surface colour, so two dots that overlap still read as
+.pin {
+  /* A ring in the surface colour, so two pins that overlap still read as
      two. Without it a cluster is one blob. */
   stroke: var(--cr-surface);
   stroke-width: 1.2;
   vector-effect: non-scaling-stroke;
 }
-.dot:focus-visible, .pin:focus-visible, .geo path:focus-visible, .geo-above path:focus-visible,
-.routes g:focus-visible {
-  outline: 2px solid var(--cr-accent);
-  outline-offset: 2px;
-}
 
-.pie { display: block; width: 100%; max-width: 200px; margin: 4px auto }
-.slices { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px }
-.slices li { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; font-size: 12px }
+/* A pie beside its list of slices, or above it where the panel is narrow. */
+.pie-wrap { display: flex; align-items: center; gap: 20px }
+.pie { display: block; width: min(200px, 100%); height: auto; flex: none; overflow: visible }
+.slice { stroke: var(--cr-surface); stroke-width: 1.5; cursor: default }
+.slices { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; flex: 1; min-width: 0 }
+.slices li { display: grid; grid-template-columns: auto 1fr auto auto; gap: 8px; align-items: center; font-size: 12px; padding: 3px 6px; border-radius: 6px }
+.slices li.on { background: color-mix(in srgb, var(--cr-line) 55%, transparent) }
 .slices .name { color: var(--cr-ink-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
-.slices .v { font-variant-numeric: tabular-nums }
+.slices .v, .slices .share { font-variant-numeric: tabular-nums }
+.slices .share { color: var(--cr-ink-muted); min-width: 3.2em; text-align: right }
+@container (max-width: 380px) {
+  .pie-wrap { flex-direction: column; align-items: stretch }
+  .pie { margin: 0 auto }
+}
+.centre { font-size: 22px; font-weight: 650; letter-spacing: -0.02em; fill: var(--cr-ink); text-anchor: middle; font-variant-numeric: tabular-nums }
+.centre-label { font-size: 12px; fill: var(--cr-ink-muted); text-anchor: middle }
+
+/* Marks arrive rather than appear, the first time a chart is drawn: columns
+   rise, bars reach, lines draw themselves, the rest fade in. Never again on a
+   resize, and never for a reader who asked their system for less motion. */
+@keyframes cr-rise { from { transform: scaleY(0) } }
+@keyframes cr-reach { from { transform: scaleX(0) } }
+@keyframes cr-draw { from { stroke-dashoffset: 1 } }
+@keyframes cr-fade { from { opacity: 0 } }
+.enter .col { transform-box: fill-box; transform-origin: 50% 100%; animation: cr-rise 0.55s cubic-bezier(0.2, 0.7, 0.2, 1) both }
+.enter .fill { transform-box: fill-box; transform-origin: 0 50%; animation: cr-reach 0.55s cubic-bezier(0.2, 0.7, 0.2, 1) both }
+.enter .line, .enter .reading { stroke-dasharray: 1; animation: cr-draw 0.9s cubic-bezier(0.3, 0.6, 0.2, 1) both }
+.enter .area, .enter .point, .enter .dot, .enter .slice, .enter .cell, .enter .cell-value, .enter .tree-cell,
+.enter .band, .enter .neck, .enter .labels, .enter .value { animation: cr-fade 0.6s ease-out both }
 
 /* -- Maps --------------------------------------------------------------- */
 
@@ -595,6 +660,12 @@ tr:last-child td { border-bottom: 0 }
 .legend { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 10px; font-size: 12px }
 .key { display: inline-flex; align-items: center; gap: 6px; color: var(--cr-ink-secondary) }
 .swatch { width: 10px; height: 10px; border-radius: 2px; flex: none }
+/* A key that hides its series: pressed while the series shows. */
+button.key { font: inherit; color: var(--cr-ink-secondary); background: none; border: 0; padding: 2px 6px; margin: 0 -6px; border-radius: 6px; cursor: pointer }
+button.key:hover { background: color-mix(in srgb, var(--cr-line) 55%, transparent) }
+button.key:focus-visible { outline: 2px solid var(--cr-accent); outline-offset: 1px }
+button.key[aria-pressed='false'] { color: var(--cr-ink-muted); text-decoration: line-through }
+button.key[aria-pressed='false'] .swatch { background: transparent !important; box-shadow: inset 0 0 0 1.5px var(--cr-ink-muted) }
 .legend.ramp { gap: 2px 8px; font-variant-numeric: tabular-nums }
 
 .panel { position: relative }
@@ -615,6 +686,9 @@ tr:last-child td { border-bottom: 0 }
 }
 .tip[hidden] { display: none }
 .tip span { opacity: 0.8; font-variant-numeric: tabular-nums }
+/* Every series at one point, each beside its colour and its number. */
+.tip .tip-row { display: flex; align-items: center; gap: 6px; opacity: 1 }
+.tip .tip-row em { margin-left: auto; padding-left: 14px; font-style: normal; font-weight: 600 }
 
 /* Motion is a preference, and a report is not the place to override it. */
 @media (prefers-reduced-motion: reduce) {
@@ -623,151 +697,59 @@ tr:last-child td { border-bottom: 0 }
 
 /* -- Combo, funnel, waterfall ------------------------------------------- */
 
-/* Vertical bars, for the charts whose x is a sequence rather than a ranking.
-   The 1px inset in the geometry plus this radius is the 2px surface gap two
-   adjacent fills need to stop reading as one fill. */
-.col { rx: 1 }
-.thread { stroke: var(--cr-line); stroke-width: 1; stroke-dasharray: 2 2; vector-effect: non-scaling-stroke }
 .rule-swatch { height: 3px; border-radius: 2px }
-.axis2 { margin-top: 8px; font-size: 12px; color: var(--cr-ink-muted); display: flex; align-items: center; gap: 6px }
-
-.funnel { display: grid; gap: 2px; margin-top: 4px }
-.stage { display: grid; gap: 2px }
-.stage-head { display: flex; justify-content: space-between; gap: 12px; font-size: 12px }
-.stage-head .name { color: var(--cr-ink-secondary) }
-.stage-head .v { font-variant-numeric: tabular-nums }
-.band-row { display: flex; justify-content: center }
-.band { height: 22px; border-radius: 3px; min-width: 4px }
-/* The fall belongs between the two stages it describes. It keeps its height
-   when empty so the first stage does not sit closer to its neighbour than the
-   rest do — a funnel is read down, and an uneven rhythm reads as a gap. */
-.drop {
-  min-height: 14px;
-  font-size: 11px;
-  color: var(--cr-ink-muted);
-  text-align: center;
-  font-variant-numeric: tabular-nums;
-}
+.neck { opacity: 0.16 }
 
 /* -- Heatmap ------------------------------------------------------------- */
 
-/* Rows are capped rather than square. A square cell in a full-width panel is
-   300px tall, so a four-by-three grid filled the screen — the chart is read by
-   comparing shades along a row, and a row taller than the eye can take in at
-   once is the one thing that stops. */
-.heat-grid {
-  display: grid;
-  grid-auto-rows: minmax(20px, 44px);
-  gap: 2px;
-  margin-top: 4px;
-  font-size: 11px;
-  align-items: stretch;
-}
-.col-head, .row-head { color: var(--cr-ink-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; align-self: center }
-.col-head { text-align: center }
-.row-head { text-align: right; padding-right: 4px }
-.cell { border-radius: 2px; min-height: 20px }
-/* A pair no row matched. A hairline outline rather than the ramp's lightest
-   step, because "none" and "nearly none" must not look alike. */
-.cell.none { background: transparent; box-shadow: inset 0 0 0 1px var(--cr-line) }
+/* A pair no row matched: an outline rather than the ramp's lightest step,
+   because "none" and "nearly none" must not look alike. */
+.cell.none { fill: transparent; stroke: var(--cr-line) }
+/* A cell's number in the ink its shade calls for — see --cr-on-ramp-*, which
+   switch with the shades whichever theme is on. */
+.cell-value { font-size: 11px; font-weight: 550; text-anchor: middle; pointer-events: none; font-variant-numeric: tabular-nums }
+.cell-value.s1 { fill: var(--cr-on-ramp-1) }
+.cell-value.s2 { fill: var(--cr-on-ramp-2) }
+.cell-value.s3 { fill: var(--cr-on-ramp-3) }
+.cell-value.s4 { fill: var(--cr-on-ramp-4) }
+.cell-value.s5 { fill: var(--cr-on-ramp-5) }
+.cell-value.s6 { fill: var(--cr-on-ramp-6) }
 
 /* -- Gauge --------------------------------------------------------------- */
 
-.gauge { display: block; width: 100%; max-width: 190px; margin: 4px auto -6px }
-.gauge-value { text-align: center }
-.panel .gauge + .stat { margin-top: 0 }
+.gauge { display: block; width: min(240px, 100%); height: auto; margin: 0 auto; overflow: visible }
+.gauge .track, .gauge .reading { fill: none; stroke-width: 16; stroke-linecap: round }
+.gauge .track { stroke: var(--cr-line) }
+.gauge .reading { stroke: var(--cr-accent) }
+.gauge .reading.over { stroke: var(--cr-good) }
+.gauge .centre { font-size: 26px }
+.gauge .tick { text-anchor: middle }
+.gauge-note { text-align: center }
 
 /* -- Treemap ------------------------------------------------------------- */
 
-/* Capped for the reason the heatmap's rows are: at a full-width panel a 16:10
-   box is most of a screen, and a treemap is read by comparing areas at a
-   glance rather than by scrolling one. */
-.tree {
-  position: relative;
-  width: 100%;
-  aspect-ratio: 16 / 10;
-  max-height: 300px;
-  margin-top: 4px;
-}
-.tree-cell, .tree-frame { position: absolute; border-radius: 2px; overflow: hidden }
-/* The 2px inset is the surface gap between neighbours; a border would add a
-   colour that is not in the data. */
-.tree-cell { outline: 2px solid var(--cr-surface); outline-offset: -2px }
-.tree-frame { outline: 1px solid var(--cr-line); outline-offset: -1px; pointer-events: none }
-.tree-group {
-  position: absolute;
-  top: 2px;
-  left: 4px;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--cr-ink-muted);
-}
-.tree-label { position: absolute; inset: 4px auto auto 6px; display: grid; gap: 1px; line-height: 1.25 }
-/* White on every step of both ramps: the ordinal ramp's light end clears 2:1
-   against the surface, not against text laid over it, so the label takes the
-   one colour that holds on all five steps and carries a shadow for the
-   lightest. */
-.tree-label b { font-size: 11px; font-weight: 600; color: #fff; text-shadow: 0 1px 2px rgb(0 0 0 / 0.45) }
-.tree-label span { font-size: 10px; color: #fff; opacity: 0.85; text-shadow: 0 1px 2px rgb(0 0 0 / 0.45) }
-
+.tree-frame { fill: none; stroke: var(--cr-line) }
+.tree-group { font-size: 10px; font-weight: 650; letter-spacing: 0.05em; text-transform: uppercase; fill: var(--cr-ink-muted) }
+.tree-cell { cursor: default }
+.tree-cell:hover { opacity: 0.88 }
+/* White on every step of both ramps, with a halo for the lightest: the ramps
+   clear their contrast floors against the surface, not against text laid on
+   them. */
+.tree-label, .tree-value { fill: #fff; pointer-events: none; paint-order: stroke; stroke: rgb(0 0 0 / 0.3); stroke-width: 2px; stroke-linejoin: round }
+.tree-label { font-size: 12px; font-weight: 600 }
+.tree-value { font-size: 11px; opacity: 0.92; font-variant-numeric: tabular-nums }
 @media (prefers-color-scheme: dark) {
   $SCOPE$ {
-    --cr-ink: #f5f4f1;
-    --cr-ink-secondary: #b9b6ae;
-    --cr-ink-muted: #8c8981;
-    --cr-surface: #17171a;
-    --cr-line: #2c2c31;
-    --cr-good: #4ade80;
-    --cr-serious: #f87171;
-    /* Re-stepped for the dark surface, like every other hue here. */
-    --cr-accent: #3987e5;
-
-    /* The same eight hues, re-stepped for a dark surface — not the light
-       values with a filter over them. An automatic flip puts half the palette
-       below 3:1 against this background, which is the difference between a
-       series being a colour and a series being a smudge. */
-    --cr-series-1: var(--cr-accent);
-    --cr-series-2: #d95926;
-    --cr-series-3: #199e70;
-    --cr-series-4: #c98500;
-    --cr-series-5: #d55181;
-    --cr-series-6: #008300;
-    --cr-series-7: #9085e9;
-    --cr-series-8: #e66767;
-
-    /* Reversed, because "near zero recedes toward the surface" means dark
-       here. A ramp that stayed light-to-dark would paint the emptiest regions
-       brightest and the busiest ones invisible. */
-    --cr-ramp-1: #104281;
-    --cr-ramp-2: #1c5cab;
-    --cr-ramp-3: #2a78d6;
-    --cr-ramp-4: #5598e7;
-    --cr-ramp-5: #86b6ef;
-    --cr-ramp-6: #b7d3f6;
-    /* Reversed for the same reason: the shades either side of the midpoint
-       recede toward the surface, and the extremes are the bright ones. */
-    --cr-div-1: #b7d3f6;
-    --cr-div-2: #5598e7;
-    --cr-div-3: #1c5cab;
-    --cr-div-4: #8a3510;
-    --cr-div-5: #d95926;
-    --cr-div-6: #f5b28f;
-
-    /* Re-stepped for the dark surface, and reversed for the same reason the
-       sequential ramp is: the step nearest the surface has to stay visible
-       against it. */
-    --cr-step-1: #184f95;
-    --cr-step-2: #256abf;
-    --cr-step-3: #3987e5;
-    --cr-step-4: #6da7ec;
-    --cr-step-5: #9ec5f4;
-
-    --cr-up: #3987e5;
-    --cr-down: #e66767;
-  }
+${DARK}  }
 }
+/* A theme the page names beats the reader's system setting, as the maps'
+   basemaps already did: the portal's own switch, or data-theme set on the
+   element. It used to follow the system alone, so a reader who picked the
+   dark theme on a light system got ramps stepped for the wrong surface. */
+$DARK$ {
+${DARK}}
+$LIGHT$ {
+${LIGHT}}
 `
 
 /**
@@ -780,7 +762,13 @@ tr:last-child td { border-bottom: 0 }
  * the same names.
  */
 export function css(scope = ':host'): string {
-  return sheet.replaceAll('$SCOPE$', scope)
+  // In a shadow root the element's own attribute names the theme; in a
+  // document, the attribute on any ancestor — the portal's <html> — or on
+  // the chart itself.
+  const named = (theme: string) => scope === ':host'
+    ? `:host([data-theme='${theme}'])`
+    : `[data-theme='${theme}'] ${scope}, ${scope}[data-theme='${theme}']`
+  return sheet.replaceAll('$DARK$', named('dark')).replaceAll('$LIGHT$', named('light')).replaceAll('$SCOPE$', scope)
 }
 
 /**

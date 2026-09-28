@@ -93,6 +93,9 @@ func (b Block) chartJSON(out map[string]any) {
 		out["heatColumns"] = b.HeatColumns
 	case b.Rects != nil:
 		out["rects"] = b.Rects
+	case b.Totals != nil:
+		// A share chart's whole, for the middle of a donut.
+		out["totals"] = b.Totals
 	}
 
 	// The vertical scale cuts across the shapes above rather than belonging to

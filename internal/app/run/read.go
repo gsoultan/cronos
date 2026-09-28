@@ -79,12 +79,35 @@ func readChart(out *Block, blk definition.Block, ds definition.Dataset, rows Row
 			out.Totals = totals(out.Groups)
 		}
 	default:
-		out.Series, err = readSeries(rows, blk.X.Grain)
+		err = out.readShares(blk, rows)
 	}
 	if err == nil {
 		out.scaleFor(blk.Chart)
 	}
 	return err
+}
+
+// readShares reads one series and, for a chart of parts of a whole, the whole.
+func (out *Block) readShares(blk definition.Block, rows Rows) error {
+	var err error
+	out.Series, err = readSeries(rows, blk.X.Grain)
+	if err == nil && blk.Chart.Divides() {
+		out.Totals = []Bar{sumOf(out.Series)}
+	}
+	return err
+}
+
+// sumOf is the total of the parts a share chart draws — the ones above
+// nothing, which are the only ones a slice can be — formatted here with the
+// parts, so the middle of a donut says it in the same form they do.
+func sumOf(parts []Bar) Bar {
+	var sum float64
+	for _, p := range parts {
+		if p.Value > 0 {
+			sum += p.Value
+		}
+	}
+	return Bar{Label: "Total", Value: sum, Formatted: compact(sum)}
 }
 
 // scaleFor gives the chart types that draw against a measured axis one, with

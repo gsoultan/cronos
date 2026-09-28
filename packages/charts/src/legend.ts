@@ -1,5 +1,6 @@
 import { el } from './dom'
-import type { Group, LegendStop } from './types'
+import type { LegendStop } from './types'
+import { slotOf } from './palette'
 
 /**
  * The key for a chart with more than one series.
@@ -11,14 +12,27 @@ import type { Group, LegendStop } from './types'
  * The label wears ink, never the series colour: coloured text at 12px fails
  * contrast on half the palette, and the swatch beside it is already carrying
  * the identity.
+ *
+ * Given `toggle`, each key is a button that hides its series and shows it
+ * again: the question a crowded chart is asked most is "without that one".
  */
-export function legend(groups: Group[]): HTMLElement | null {
-  if (groups.length < 2) return null
-  return el('div', { class: 'legend', part: 'legend' },
-    ...groups.map((g) =>
-      el('span', { class: 'key' },
-        el('i', { class: 'swatch', style: `background: var(--cr-series-${g.slot + 1})` }),
-        g.label)))
+export function legend(items: { label: string; slot: number; line?: boolean }[],
+  toggle?: (i: number, on: boolean) => void): HTMLElement | null {
+  if (items.length < 2) return null
+  return el('div', { class: 'legend', part: 'legend' }, ...items.map((g, i) => {
+    const swatch = el('i', {
+      class: g.line ? 'swatch rule-swatch' : 'swatch',
+      style: `background: var(--cr-series-${slotOf(g.slot)})`,
+    })
+    if (!toggle) return el('span', { class: 'key' }, swatch, g.label)
+    const key = el('button', { type: 'button', class: 'key', 'aria-pressed': 'true' }, swatch, g.label)
+    key.addEventListener('click', () => {
+      const on = key.getAttribute('aria-pressed') !== 'true'
+      key.setAttribute('aria-pressed', String(on))
+      toggle(i, on)
+    })
+    return key
+  }))
 }
 
 /**

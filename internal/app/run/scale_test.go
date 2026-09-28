@@ -65,3 +65,19 @@ func TestABreakBetweenWholeCountsIsAWholeCount(t *testing.T) {
 		t.Error("breaks between fractions were all rounded to whole numbers")
 	}
 }
+
+// An axis of whole counts ticks at whole counts: one invoice a month drew a
+// scale of 0, 0.5 and 1, as if there could be half an invoice.
+func TestAnAxisOfCountsHasNoHalves(t *testing.T) {
+	for _, values := range [][]float64{{1, 1, 1, 1}, {0, 1}, {0, 2, 3}} {
+		for _, tick := range axis(values).Ticks {
+			if strings.ContainsAny(tick.Label, ".") {
+				t.Errorf("%v: a tick at %q", values, tick.Label)
+			}
+		}
+	}
+	// A measure with fractions still gets the steps it needs.
+	if ticks := axis([]float64{0.2, 0.9}).Ticks; len(ticks) < 3 {
+		t.Errorf("fractions got %d ticks", len(ticks))
+	}
+}

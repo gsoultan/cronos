@@ -171,6 +171,11 @@ func axis(values []float64) Axis {
 		hi = lo + 1
 	}
 	step := niceStep((hi - lo) / 4)
+	if step < 1 && whole(values) {
+		// A count has no half. Ticks at 0.5 on an axis of invoices say there
+		// could be half of one, and a reader believes the axis.
+		step = 1
+	}
 	lo, hi = math.Floor(lo/step)*step, math.Ceil(hi/step)*step
 
 	out := Axis{Min: lo, Max: hi}
@@ -178,6 +183,16 @@ func axis(values []float64) Axis {
 		out.Ticks = append(out.Ticks, Tick{At: (v - lo) / (hi - lo), Label: compact(v)})
 	}
 	return out
+}
+
+// whole reports whether every value is a whole number.
+func whole(values []float64) bool {
+	for _, v := range values {
+		if v != math.Trunc(v) {
+			return false
+		}
+	}
+	return true
 }
 
 // niceStep rounds a raw interval to 1, 2, 5 or 10 times a power of ten.

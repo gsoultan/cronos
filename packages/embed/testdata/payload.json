@@ -223,7 +223,14 @@
           "formatted": "700"
         }
       ],
-      "title": "Pie"
+      "title": "Pie",
+      "totals": [
+        {
+          "label": "Total",
+          "value": 2200,
+          "formatted": "2,200"
+        }
+      ]
     },
     {
       "chart": "donut",
@@ -246,7 +253,14 @@
           "formatted": "700"
         }
       ],
-      "title": "Donut"
+      "title": "Donut",
+      "totals": [
+        {
+          "label": "Total",
+          "value": 2200,
+          "formatted": "2,200"
+        }
+      ]
     },
     {
       "chart": "scatter",

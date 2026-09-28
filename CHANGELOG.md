@@ -22,6 +22,23 @@ needs a deployment to act says so under **Upgrading**.
 
 ## Unreleased
 
+**Every chart, redrawn.** Charts are drawn at their panel's real width and drawn
+again when it changes, where they were drawn once and stretched: a scatter's
+dots filled a strip down the middle of a wide panel, a line chart's last label
+ran off its edge, and the stretched plot drew grey bars down its sides. Now
+labels are measured and cut to fit, bars carry their values and grow left of a
+zero line when negative, lines mark their points and a crosshair reads every
+series at once, areas fade, a combo's second measure has an axis of its own on
+the right, a waterfall writes each change over its column and threads the
+running total between them, a heatmap writes each cell's value and keys its
+shades, a gauge labels its dial and says how far along it the value is, a
+donut carries its total in its middle, a funnel narrows from stage to stage,
+and a treemap names its groups. Legend keys hide and show their series. A
+count's axis no longer ticks at halves. Charts follow a theme named with
+`data-theme` — the portal's switch, or one set on the embedded element — as
+well as the reader's system setting. The embed is smaller than before, at
+31.4 KB.
+
 **Maps send less.** A place's position is sent to the precision its region's
 outline already was, about forty centimetres on the ground, and its size to
 four decimals; a large map's cells go on the same grid. None of the dropped
