@@ -88,10 +88,10 @@ ok('deselecting returns the inspector to report settings',
  */
 const kinds = await p.locator('[data-testid=block-palette] button').evaluateAll(
   (bs) => bs.map((b) => b.getAttribute('aria-label')?.replace(/^Add /, '')))
-ok(`the palette offers every chart (${kinds.length})`, kinds.length >= 19)
+ok(`the palette offers every chart (${kinds.length})`, kinds.length >= 21)
 
 for (const label of ['Pie chart', 'Funnel', 'Map', 'Treemap', 'Heatmap', 'Gauge', 'Bubble',
-  'Column chart', 'Radar', 'Bullet']) {
+  'Column chart', 'Radar', 'Bullet', 'Histogram', 'Box plot']) {
   const before = await p.locator('[data-testid=layout-canvas] > div').count()
   await p.click(`[data-testid=block-palette] button[aria-label="Add ${label}"]`)
   await until(() => p.locator('[data-testid=layout-canvas] > div').count(), before + 1)
@@ -115,7 +115,8 @@ for (const label of ['Pie chart', 'Funnel', 'Map', 'Treemap', 'Heatmap', 'Gauge'
  */
 // A bar chart too: its bars lie down, and it was drawn with the column
 // component, standing up.
-for (const label of ['Bars + line', 'Waterfall', 'Area chart', 'Gauge', 'Bar chart', 'Radar', 'Bullet']) {
+for (const label of ['Bars + line', 'Waterfall', 'Area chart', 'Gauge', 'Bar chart', 'Radar', 'Bullet',
+  'Histogram', 'Box plot']) {
   const before = await p.locator('[data-testid=layout-canvas] > div').count()
   await p.click(`[data-testid=block-palette] button[aria-label="Add ${label}"]`)
   await until(() => p.locator('[data-testid=layout-canvas] > div').count(), before + 1)

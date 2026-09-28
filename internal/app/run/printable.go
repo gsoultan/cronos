@@ -60,6 +60,10 @@ func drawOn(c *document.Chart, b Block) {
 		c.Square = true
 	case b.Bullets != nil:
 		bullets(c, b)
+	case b.Bins != nil:
+		printBins(c, b)
+	case b.Boxes != nil:
+		printBoxes(c, b)
 	case b.Rects != nil:
 		treemap(c, b.Rects)
 	case b.Stages != nil:

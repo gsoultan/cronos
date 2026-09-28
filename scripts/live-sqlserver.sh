@@ -269,6 +269,17 @@ spec:
           title: Billed by month
           x: {field: placed_at, grain: month}
           y: {field: amount, aggregate: sum}
+        # FLOOR and CASE for the bins, and window functions for the ranks,
+        # capped with TOP rather than a trailing LIMIT.
+        - kind: chart
+          chart: histogram
+          title: Invoice sizes
+          x: {field: amount}
+        - kind: chart
+          chart: boxplot
+          title: Their spread by customer
+          x: {field: customer}
+          y: {field: amount}
 YAML
 
 CRONOS_ADDR=":$PORT" CRONOS_DEFINITIONS="$work/defs" \
@@ -298,7 +309,10 @@ case "$report" in *'"value":250'*) ;; *) die "January's total is not 250" ;; esa
 # it is the one type SQL Server returns differently from the others.
 case "$report" in *'"value":375.5'*) ;; *) printf '  %s\n' "$report"; die "February's total is not 375.50" ;; esac
 case "$report" in *'"formatted":"375.50"'*) ;; *) die "the decimal was not formatted" ;; esac
+case "$report" in *'"bins":[{'*) ;; *) printf '  %s\n' "$report"; die "the histogram has no bins" ;; esac
+case "$report" in *'"boxes":[{'*) ;; *) printf '  %s\n' "$report"; die "the box plot has no boxes" ;; esac
 ok "a report grouped by month comes back with the right numbers"
+ok "and a histogram bins, and a box plot ranks, in SQL Server's own SQL"
 ok "and a DECIMAL survives as a number rather than as bytes"
 
 say "All of it worked."

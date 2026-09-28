@@ -205,6 +205,9 @@ func (s *Service) block(ctx context.Context, r definition.Report, blk definition
 	if err != nil {
 		return Block{}, err
 	}
+	if blk.Chart == definition.HistogramChart {
+		return s.histogram(ctx, blk, ds, engine, params, filters, pr)
+	}
 	plan, cov, err := engine.Builder.BuildBlock(ds, blk, params, filters, pr)
 	if err != nil {
 		return Block{}, err

@@ -38,6 +38,12 @@ const (
 	// BulletChart is a gauge's reading in a row's height, one per category:
 	// a value, the target it is read against, and shades of how near.
 	BulletChart ChartType = "bullet"
+	// HistogramChart cuts a number's range into bins and counts the rows in
+	// each: how a measure spreads, rather than what each category sums to.
+	HistogramChart ChartType = "histogram"
+	// BoxplotChart draws each category's spread: the middle half of its rows
+	// as a box, its median across it, and whiskers to the rest.
+	BoxplotChart ChartType = "boxplot"
 )
 
 // chartTypes is every type, in the order an error message should list them.
@@ -45,7 +51,7 @@ var chartTypes = []ChartType{
 	BarChart, ColumnChart, LineChart, AreaChart, PieChart, DonutChart,
 	ScatterChart, BubbleChart, MapChart,
 	ComboChart, FunnelChart, WaterfallChart, HeatmapChart, GaugeChart, TreemapChart,
-	RadarChart, BulletChart,
+	RadarChart, BulletChart, HistogramChart, BoxplotChart,
 }
 
 // Valid reports whether c is a type every renderer knows how to refuse or draw.
@@ -112,6 +118,11 @@ func (c ChartType) Diverging() bool { return c == WaterfallChart }
 // read per row. Asking the type rather than the field's role keeps that
 // difference in one place.
 func (c ChartType) Plots() bool { return c == ScatterChart || c == BubbleChart }
+
+// Distributes reports whether the chart draws how a number's rows spread,
+// read row by row in the database rather than folded per category: a
+// histogram's bins, a box plot's quartiles.
+func (c ChartType) Distributes() bool { return c == HistogramChart || c == BoxplotChart }
 
 // Divides reports whether the chart shows parts of a whole, so the whole is
 // worth saying: a donut carries it in its middle.

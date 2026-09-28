@@ -64,12 +64,42 @@ func nonNilRows(v [][]string) [][]string {
 // collection and a viewer reading `series.map` predates knowing there was a
 // type to ask about.
 func (b Block) chartJSON(out map[string]any) {
+	if !b.measuredJSON(out) {
+		b.shapeJSON(out)
+	}
+
+	// The vertical scale cuts across the shapes above rather than belonging to
+	// one of them: a line carries groups or a series, a scatter carries
+	// points, and both are read against a measured axis. A bar has none, which
+	// is why this asks whether there is one rather than which shape it is.
+	if b.YAxis != nil {
+		out["yAxis"] = b.YAxis
+	}
+}
+
+// measuredJSON adds the shapes read along a measured scale of their own — a
+// scatter's points, a bullet chart's rows, a histogram's bins — with that
+// scale, and reports whether the block was one.
+func (b Block) measuredJSON(out map[string]any) bool {
+	switch {
+	case b.Points != nil:
+		out["points"] = b.Points
+	case b.Bullets != nil:
+		out["bullets"], out["bands"] = b.Bullets, b.Bands
+	case b.Bins != nil:
+		out["bins"] = b.Bins
+	default:
+		return false
+	}
+	out["xAxis"] = b.XAxis
+	return true
+}
+
+// shapeJSON adds every other chart's own collection.
+func (b Block) shapeJSON(out map[string]any) {
 	switch {
 	case b.Map != nil:
 		out["map"] = b.Map
-	case b.Points != nil:
-		out["points"] = b.Points
-		out["xAxis"] = b.XAxis
 	case b.Groups != nil:
 		out["groups"] = b.Groups
 		out["stacked"] = b.Stacked
@@ -81,10 +111,8 @@ func (b Block) chartJSON(out map[string]any) {
 		}
 	case b.Gauge != nil:
 		out["gauge"] = b.Gauge
-	case b.Bullets != nil:
-		out["bullets"] = b.Bullets
-		out["xAxis"] = b.XAxis
-		out["bands"] = b.Bands
+	case b.Boxes != nil:
+		out["boxes"] = b.Boxes
 	case b.Tracks != nil:
 		out["tracks"] = b.Tracks
 		if b.Axis2 != nil {
@@ -103,13 +131,5 @@ func (b Block) chartJSON(out map[string]any) {
 	case b.Totals != nil:
 		// A share chart's whole, for the middle of a donut.
 		out["totals"] = b.Totals
-	}
-
-	// The vertical scale cuts across the shapes above rather than belonging to
-	// one of them: a line carries groups or a series, a scatter carries
-	// points, and both are read against a measured axis. A bar has none, which
-	// is why this asks whether there is one rather than which shape it is.
-	if b.YAxis != nil {
-		out["yAxis"] = b.YAxis
 	}
 }

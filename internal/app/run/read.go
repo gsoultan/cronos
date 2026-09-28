@@ -53,6 +53,10 @@ func readChart(out *Block, blk definition.Block, ds definition.Dataset, rows Row
 	case blk.Chart == definition.BulletChart:
 		out.Bullets, out.XAxis, err = readBullets(blk, rows)
 		out.Bands = bandsOf(blk)
+	case blk.Chart == definition.BoxplotChart:
+		var y Axis
+		out.Boxes, y, err = readBoxes(blk, rows)
+		out.YAxis = &y
 	case blk.Chart.Mixes():
 		var y Axis
 		out.Tracks, y, out.Axis2, err = readCombo(blk, rows)

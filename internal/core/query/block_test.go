@@ -316,3 +316,57 @@ func TestABulletReadsItsTargetColumn(t *testing.T) {
 		t.Errorf("the target column is not read:\n%s", sql)
 	}
 }
+
+// A box plot ranks rows inside row scope, in each dialect here: window
+// functions and CASE, which all four have, and capped as every chart is.
+func TestABoxPlotRanksInsideRowScope(t *testing.T) {
+	blk := definition.Block{
+		Kind: definition.ChartBlock, Chart: definition.BoxplotChart, Title: "Spread",
+		X: definition.DimensionRef{Field: "status"},
+		Y: definition.MeasureRef{Field: "total"},
+	}
+	for _, d := range []Dialect{Postgres{}, SQLite{}, MySQL{}, SQLServer{}} {
+		sql := block(t, dated(), blk, d)
+		for _, want := range []string{"ROW_NUMBER() OVER (PARTITION BY status ORDER BY total)",
+			"COUNT(*) OVER (PARTITION BY status)", "GROUP BY q.bucket", "total IS NOT NULL"} {
+			if !strings.Contains(sql, want) {
+				t.Errorf("%T: a box plot's statement is missing %q:\n%s", d, want, sql)
+			}
+		}
+		if scope, rank := strings.Index(sql, "customer_id = "), strings.Index(sql, "ROW_NUMBER()"); scope < 0 || rank > scope {
+			t.Errorf("%T: a box plot does not rank inside row scope:\n%s", d, sql)
+		}
+	}
+}
+
+// A histogram's bins are cut inside row scope, from edges the server wrote,
+// and its field has to be a number.
+func TestAHistogramBinsInsideRowScope(t *testing.T) {
+	blk := definition.Block{
+		Kind: definition.ChartBlock, Chart: definition.HistogramChart, Title: "Sizes",
+		X: definition.DimensionRef{Field: "total"},
+	}
+	plan, err := NewBuilder(Postgres{}).WithClock(jan1).BuildHistogram(dated(), blk,
+		map[string]any{"from": "2026-07-01"}, Filters{}, embedded("c-9"), Bins{Origin: 0, Step: 500, Count: 4})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sql := plan.SQL()
+	for _, want := range []string{"FLOOR((total - 0E+00) / 5E+02)", "WHEN f.at > 3 THEN 3", "GROUP BY h.bin", "COUNT(*) AS value"} {
+		if !strings.Contains(sql, want) {
+			t.Errorf("a histogram's statement is missing %q:\n%s", want, sql)
+		}
+	}
+	if scope, bin := strings.Index(sql, "customer_id = $"), strings.Index(sql, "FLOOR("); scope < 0 || bin > scope {
+		t.Errorf("a histogram does not bin inside row scope:\n%s", sql)
+	}
+	if _, err := NewBuilder(Postgres{}).BuildHistogram(dated(), blk, nil, Filters{}, embedded("c-9"),
+		Bins{Step: -1, Count: 4}); !errors.Is(err, ErrBadTemplate) {
+		t.Errorf("bins of a negative width were compiled: %v", err)
+	}
+	blk.X.Field = "status"
+	if _, _, err := NewBuilder(Postgres{}).BuildBlock(dated(), blk, map[string]any{"from": "2026-07-01"},
+		Filters{}, embedded("c-9")); !errors.Is(err, ErrBadTemplate) {
+		t.Errorf("a histogram of a string was compiled: %v", err)
+	}
+}

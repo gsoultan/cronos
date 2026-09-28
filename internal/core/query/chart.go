@@ -31,6 +31,12 @@ func (b Builder) chartSQL(ds definition.Dataset, blk definition.Block, inner str
 		return b.plotSQL(ds, blk, inner)
 	case blk.Chart.Targeted():
 		return b.targetSQL(ds, blk, inner)
+	case blk.Chart == definition.HistogramChart:
+		// The survey: the bins are cut from its range, and read by
+		// BuildHistogram once they are.
+		return b.rangeSQL(ds, blk, inner)
+	case blk.Chart == definition.BoxplotChart:
+		return b.boxSQL(ds, blk, inner)
 	case len(blk.Metrics) > 0:
 		return b.metricSQL(ds, blk, inner)
 	}

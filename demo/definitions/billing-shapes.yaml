@@ -142,6 +142,19 @@ spec:
           y: {field: total, aggregate: sum}
           target: {value: 20000, label: Plan}
 
+        # How big the invoices are, rather than what they add up to — and how
+        # that differs between the paid ones and the rest.
+        - kind: chart
+          chart: histogram
+          title: Invoice sizes
+          x: {field: total}
+
+        - kind: chart
+          chart: boxplot
+          title: Invoice sizes by status
+          x: {field: status}
+          y: {field: total}
+
         - kind: table
           title: Invoices
           columns: [issued_at, customer_name, status, total]

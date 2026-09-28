@@ -162,6 +162,8 @@ func (b Block) validateChart(output string, i int) error {
 		return b.validateGauge(output, i)
 	case b.Chart == BulletChart:
 		return b.validateBullet(output, i)
+	case b.Chart.Distributes():
+		return b.validateSpread(output, i)
 	case len(b.Metrics) > 0:
 		return b.validateMetrics(output, i)
 	}
@@ -206,6 +208,9 @@ func (b Block) validateChartFields(output string, i int) error {
 	case len(b.Bands) > 0 && b.Chart != BulletChart:
 		return fmt.Errorf("%w: %s chart %d sets bands, which shade a bullet chart's track "+
 			"and a %s chart has none", ErrInvalid, output, i, b.Chart)
+	case b.Bins != 0 && b.Chart != HistogramChart:
+		return fmt.Errorf("%w: %s chart %d sets bins, which cut a histogram's range and a %s "+
+			"chart has none", ErrInvalid, output, i, b.Chart)
 	case b.Stacked.On() && b.Series.Field == "":
 		// One series stacked against nothing is the same drawing, so this is
 		// always a mistake rather than a no-op worth honouring silently.
@@ -214,6 +219,38 @@ func (b Block) validateChartFields(output string, i int) error {
 	}
 	return nil
 }
+
+// validateSpread checks a histogram or a box plot, which read a number row by
+// row: a histogram the number along x, a box plot y's in each category of x.
+func (b Block) validateSpread(output string, i int) error {
+	switch {
+	case len(b.Metrics) > 0:
+		return fmt.Errorf("%w: %s %s %d lists metrics — it reads one number's rows",
+			ErrInvalid, output, b.Chart, i)
+	case b.Chart == HistogramChart && b.X.Field == "":
+		return fmt.Errorf("%w: %s histogram %d bins no field — x names the number it bins",
+			ErrInvalid, output, i)
+	case b.Chart == HistogramChart && b.X.Grain != "":
+		return fmt.Errorf("%w: %s histogram %d bins %q by %s — a histogram bins a number, "+
+			"and a date bucketed by %[5]s is a column chart", ErrInvalid, output, i, b.X.Field, b.X.Grain)
+	case b.Chart == HistogramChart && b.Bins != 0 && (b.Bins < 2 || b.Bins > MaxBins):
+		return fmt.Errorf("%w: %s histogram %d asks for %d bins — want 2 to %d",
+			ErrInvalid, output, i, b.Bins, MaxBins)
+	case b.Chart == BoxplotChart && b.Y.Field == "":
+		return fmt.Errorf("%w: %s box plot %d measures no field — y names the number whose "+
+			"spread it draws", ErrInvalid, output, i)
+	case b.Chart == BoxplotChart && b.Y.Aggregate != "":
+		// A quartile of sums is a quartile of whatever the grouping made,
+		// which is not the spread anybody asked about.
+		return fmt.Errorf("%w: %s box plot %d folds y with %s — a box plot reads every row's "+
+			"value, so y takes no aggregate", ErrInvalid, output, i, b.Y.Aggregate)
+	}
+	return nil
+}
+
+// MaxBins is the most bins a histogram cuts: past it a bin is a sliver, and
+// the chart is the rows again.
+const MaxBins = 60
 
 // validateMetrics checks a chart that reads a list of measures.
 func (b Block) validateMetrics(output string, i int) error {

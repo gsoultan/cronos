@@ -342,12 +342,19 @@ tr:last-child td { border-bottom: 0 }
    Its scale sits inside the web, where a shape's edge can cross it, so each
    figure is haloed in the surface. */
 .web-ring { fill: none }
+
+/* A box plot: the box washed in its hue with its edge drawn, the median the
+   firmest line on it, the whiskers hairlines in the scale's ink. */
+.box-body { fill-opacity: 0.16; stroke-width: 1.5 }
+.median { stroke-width: 2.5; stroke-linecap: round }
+.whisker { stroke: var(--cr-ink-muted); stroke-width: 1.25 }
+.marks:hover .box:not(:hover) { opacity: 0.5 }
 .web .tick { paint-order: stroke; stroke: var(--cr-surface); stroke-width: 3px; stroke-linejoin: round }
 .marks:hover .radar:not(:hover) { opacity: 0.4 }
 
 /* Pointing at one bar lets the rest fall back, so the one being read stands
    out without a colour that is not in the data. */
-.fill, .col, .dot, .slice, .cell, .tree-cell, .band, .radar { transition: opacity 0.15s, transform 0.15s }
+.fill, .col, .dot, .slice, .cell, .tree-cell, .band, .radar, .box { transition: opacity 0.15s, transform 0.15s }
 .marks:hover .fill:not(:hover), .marks:hover .col:not(:hover) { opacity: 0.55 }
 .dot { stroke: var(--cr-surface); stroke-width: 1.5; fill-opacity: 0.85 }
 .dot:hover { fill-opacity: 1 }
@@ -393,7 +400,8 @@ tr:last-child td { border-bottom: 0 }
 .enter .fill { transform-box: fill-box; transform-origin: 0 50%; animation: cr-reach 0.55s cubic-bezier(0.2, 0.7, 0.2, 1) both }
 .enter .line, .enter .reading { stroke-dasharray: 1; animation: cr-draw 0.9s cubic-bezier(0.3, 0.6, 0.2, 1) both }
 .enter .area, .enter .point, .enter .dot, .enter .slice, .enter .cell, .enter .cell-value, .enter .tree-cell,
-.enter .band, .enter .neck, .enter .labels, .enter .value, .enter .shade, .enter .target, .enter .radar {
+.enter .band, .enter .neck, .enter .labels, .enter .value, .enter .shade, .enter .target, .enter .radar,
+.enter .box {
   animation: cr-fade 0.6s ease-out both }
 
 /* -- Maps --------------------------------------------------------------- */

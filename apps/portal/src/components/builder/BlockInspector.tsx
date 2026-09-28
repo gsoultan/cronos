@@ -153,17 +153,41 @@ export function BlockInspector({
         </div>
       </Field>
 
-      {block.kind !== 'table' && !is(METERED, block.kind) && (
+      {/* A histogram counts its rows: what it bins is chosen below. */}
+      {block.kind !== 'table' && !is(METERED, block.kind) && block.kind !== 'histogram' && (
         <>
-          <Field label="Measure" help="The number this block is about.">
+          <Field label="Measure" help={block.kind === 'boxplot'
+            ? 'The number whose spread each box draws, read row by row.'
+            : 'The number this block is about.'}>
             <Select data={opts(measures)} value={block.field ?? null} allowDeselect={false}
               placeholder={measures.length ? 'Choose a measure' : 'This dataset has no measures'}
               disabled={measures.length === 0}
               onChange={(v) => onChange({ field: v ?? undefined })} />
           </Field>
-          <Field label="Summarised as">
-            <Select data={AGGREGATES} value={block.aggregate ?? 'sum'} allowDeselect={false}
-              onChange={(v) => onChange({ aggregate: (v ?? 'sum') as Tile['aggregate'] })} />
+          {/* A box plot reads every row's value; a quartile of sums is not
+              the spread anybody asked about. */}
+          {block.kind !== 'boxplot' && (
+            <Field label="Summarised as">
+              <Select data={AGGREGATES} value={block.aggregate ?? 'sum'} allowDeselect={false}
+                onChange={(v) => onChange({ aggregate: (v ?? 'sum') as Tile['aggregate'] })} />
+            </Field>
+          )}
+        </>
+      )}
+
+      {block.kind === 'histogram' && (
+        <>
+          <Field label="Binned field" help="The number cut into bins along the bottom.">
+            <Select data={opts(measures)} value={block.xField ?? null} allowDeselect={false}
+              placeholder={measures.length ? 'Choose a measure' : 'This dataset has no measures'}
+              disabled={measures.length === 0}
+              onChange={(v) => onChange({ xField: v ?? undefined })} />
+          </Field>
+          <Field label="Bins" required={false}
+            help="About how many. They fall on round numbers, so the count is near this.">
+            <NumberInput value={block.bins ?? ''} min={2} max={60} placeholder="12"
+              data-testid="histogram-bins"
+              onChange={(v) => onChange({ bins: typeof v === 'number' && v >= 2 ? Math.min(v, 60) : undefined })} />
           </Field>
         </>
       )}
@@ -183,14 +207,14 @@ export function BlockInspector({
           Then this only groups them, and saying "Labelled by" would name the
           wrong control. */}
       {(is(CATEGORICAL, block.kind) || is(PLOTS, block.kind) || block.kind === 'map'
-        || block.kind === 'combo' || block.kind === 'bullet') && (
+        || block.kind === 'combo' || block.kind === 'bullet' || block.kind === 'boxplot') && (
         <Field label={block.kind === 'map' && !block.map?.region ? 'Labelled by' : 'Grouped by'}
           help={groupHelp(block, fields)}>
-          {/* Optional on a bullet chart alone: without it, one bullet for the
-              whole set. */}
+          {/* Optional on a bullet chart and a box plot: without it, one for
+              the whole set. */}
           <Select data={opts(dimensions)} value={block.groupBy ?? null}
-            allowDeselect={block.kind === 'bullet'} clearable={block.kind === 'bullet'}
-            placeholder={block.kind === 'bullet' ? 'The whole set' : 'Choose a field'}
+            allowDeselect={optionalGroup(block.kind)} clearable={optionalGroup(block.kind)}
+            placeholder={optionalGroup(block.kind) ? 'The whole set' : 'Choose a field'}
             onChange={(v) => onChange({ groupBy: v ?? undefined })} />
         </Field>
       )}
@@ -430,6 +454,9 @@ const TARGETS = [
   { value: 'value', label: 'A fixed number' },
 ]
 
+/** The kinds whose grouping may be left empty, drawing one for every row. */
+const optionalGroup = (kind: Tile['kind']) => kind === 'bullet' || kind === 'boxplot'
+
 const STACKS = [
   { value: 'beside', label: 'Beside each other' },
   { value: 'stacked', label: 'Stacked' },
@@ -447,6 +474,7 @@ function groupHelp({ kind, map }: Tile, fields: FieldDef[]): string {
   if (kind === 'waterfall') return 'One step per value, in this order.'
   if (kind === 'radar') return 'One spoke per value of this field. Three or more.'
   if (kind === 'bullet') return 'One bullet per value, each against its target. Leave empty for one.'
+  if (kind === 'boxplot') return 'One box per value of this field. Leave empty for one over every row.'
   return 'One bar, point or slice per value of this field.'
 }
 

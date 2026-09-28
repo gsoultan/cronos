@@ -166,6 +166,19 @@ func axis(values []float64) Axis {
 	if lo > 0 {
 		lo = 0
 	}
+	return niceAxis(lo, hi, values)
+}
+
+// spanAxis is a scale over where the values are, not from nothing: a box
+// plot places its boxes by where they sit, and a scale from zero squeezed a
+// spread of 900 to 1,100 into a sliver at its top.
+func spanAxis(values []float64) Axis {
+	lo, hi := span(values)
+	return niceAxis(lo, hi, values)
+}
+
+// niceAxis is a scale from lo to hi on round ends, with ticks on them.
+func niceAxis(lo, hi float64, values []float64) Axis {
 	if hi <= lo {
 		// Every point at one value. A scale with no width places them all at
 		// the same edge, which reads as a bug rather than as agreement.

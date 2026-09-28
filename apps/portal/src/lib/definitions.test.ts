@@ -1127,3 +1127,30 @@ test('a radar round trips as a radar', () => {
   expect(back?.kind).toBe('radar')
   expect(back?.series).toBe('region')
 })
+
+test('a histogram bins its number and counts, and round trips', () => {
+  const yaml = report({
+    name: 'R', slug: 'r', dataset: 'invoices',
+    blocks: [{ kind: 'histogram', title: 'Sizes', xField: 'total', bins: 20 }],
+  })
+  expect(yaml).toContain('chart: histogram')
+  expect(yaml).toContain('x:\n            field: total')
+  expect(yaml).not.toContain('y:')
+  expect(yaml).toContain('bins: 20')
+  const back = readReport(yaml).input.blocks[0]
+  expect([back?.kind, back?.xField, back?.bins, back?.groupBy]).toEqual(['histogram', 'total', 20, undefined])
+  expect(report({ ...readReport(yaml).input, name: 'R', slug: 'r', dataset: 'invoices' })).toBe(yaml)
+})
+
+// A box plot reads every row's value, so its y is written with no aggregate —
+// the server refuses one — whatever the canvas left in the form.
+test('a box plot writes its measure unfolded, and round trips', () => {
+  const yaml = report({
+    name: 'R', slug: 'r', dataset: 'invoices',
+    blocks: [{ kind: 'boxplot', title: 'Spread', field: 'total', aggregate: 'sum', groupBy: 'status' }],
+  })
+  expect(yaml).toContain('chart: boxplot')
+  expect(yaml).not.toContain('aggregate')
+  const back = readReport(yaml).input.blocks[0]
+  expect([back?.kind, back?.field, back?.groupBy]).toEqual(['boxplot', 'total', 'status'])
+})

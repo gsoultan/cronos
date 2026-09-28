@@ -76,7 +76,7 @@ export type TileKind =
   | 'bar' | 'column' | 'line' | 'area' | 'pie' | 'donut'
   | 'scatter' | 'bubble' | 'map'
   | 'combo' | 'funnel' | 'waterfall' | 'heatmap' | 'gauge' | 'treemap'
-  | 'radar' | 'bullet'
+  | 'radar' | 'bullet' | 'histogram' | 'boxplot'
 
 /** The tiles that bucket a dimension and fold a measure. */
 export const CATEGORICAL: TileKind[] = [
@@ -94,6 +94,10 @@ export const FOLDED: TileKind[] = ['gauge']
 
 /** The tiles read against a target: a gauge's one number, or each bullet. */
 export const TARGETED: TileKind[] = ['gauge', 'bullet']
+
+/** The tiles that read a number row by row: a histogram's bins, a box plot's
+ *  quartiles. Neither folds its measure with an aggregate. */
+export const SPREAD: TileKind[] = ['histogram', 'boxplot']
 
 /** The tiles that read two measures against each other. */
 export const PLOTS: TileKind[] = ['scatter', 'bubble']
@@ -140,6 +144,8 @@ export interface Tile {
   /** Where a bullet chart's track changes shade, as fractions of each row's
    *  target. Kept as read; the inspector does not edit them. */
   bands?: number[]
+  /** About how many bins a histogram cuts its range into. */
+  bins?: number
   columns?: string[]
   /**
    * Narrows this block alone — "of which, overdue".

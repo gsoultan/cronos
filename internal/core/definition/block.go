@@ -53,6 +53,10 @@ type Block struct {
 	// each row's target, ascending: `[0.6, 0.9]` shades below 60% darkest,
 	// then to 90%, then the rest. Empty takes those two.
 	Bands []float64 `json:"bands,omitempty" yaml:"bands,omitempty"`
+	// Bins is about how many bins a histogram cuts its range into. They fall
+	// on round numbers, so the count is near this rather than exactly it;
+	// empty takes twelve.
+	Bins int `json:"bins,omitempty" yaml:"bins,omitempty"`
 	// Map is the geography a map block reads.
 	Map *MapSpec `json:"map,omitempty" yaml:"map,omitempty"`
 

@@ -22,6 +22,16 @@ needs a deployment to act says so under **Upgrading**.
 
 ## Unreleased
 
+**Histograms and box plots.** `chart: histogram` cuts a number's range into
+about twelve bins on round numbers (`bins:` for more or fewer) and counts the
+rows in each; `chart: boxplot` draws each category's quartiles, median and
+whiskers. Both read every row in the database — a histogram sends a bin at a
+time and a box plot eight numbers a category — with SQL every supported
+database runs, so they need no percentile function. They draw in the viewer,
+the portal and a PDF, the builder offers them, and the demo's billing report
+shows each; see "Charts" in [docs/report-format.md](docs/report-format.md).
+The embed is 34.3 KB.
+
 **Three more chart types, and stacks to 100%.** `chart: column` is the bar
 chart stood up, against a scale; `chart: radar` draws a spoke per category and
 a shape per series; `chart: bullet` reads each category's value against a

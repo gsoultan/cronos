@@ -72,6 +72,10 @@ type Block struct {
 	// fractions of each row's target its track changes shade at.
 	Bullets []Bullet  `json:"bullets,omitempty"`
 	Bands   []float64 `json:"bands,omitempty"`
+	// Bins are a histogram's, read along XAxis; Boxes a box plot's, one a
+	// category, read against YAxis.
+	Bins  []Bin `json:"bins,omitempty"`
+	Boxes []Box `json:"boxes,omitempty"`
 
 	// Table. Also never omitempty, for the same reason.
 	Columns []Column   `json:"columns"`

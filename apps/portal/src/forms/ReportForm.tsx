@@ -88,6 +88,7 @@ function tiles(blocks: ReportInput['blocks']): Tile[] {
       metrics: b.metrics as Tile['metrics'],
       target: b.target as Tile['target'],
       bands: b.bands,
+      bins: b.bins,
       columns: b.columns,
       filter: b.filter,
       sort: b.sort?.map((k) => ({ field: k.field, dir: k.dir as 'asc' | 'desc' | undefined })),
@@ -170,18 +171,24 @@ export function ReportForm({ onDone, onCancel, initial }: Props) {
       kind,
       title: preset.label,
       span: spanFor(kind),
-      field: visible.find((f) => f.role === 'measure')?.name,
+      // A histogram counts rows unless told otherwise, and bins the number
+      // it keeps where a plot keeps its horizontal measure, below.
+      field: kind === 'histogram' ? undefined : visible.find((f) => f.role === 'measure')?.name,
       // A number and a gauge are one figure for the whole set, so they are
-      // grouped by nothing. A gauge used to be seeded with a grouping it
-      // hid, and the server refused the report the canvas wrote from it.
-      groupBy: kind === 'stat' || kind === 'gauge'
+      // grouped by nothing — nor is a histogram, which bins rather than
+      // groups. A gauge used to be seeded with a grouping it hid, and the
+      // server refused the report the canvas wrote from it.
+      groupBy: kind === 'stat' || kind === 'gauge' || kind === 'histogram'
         ? undefined
         : visible.find((f) => f.role === 'dimension')?.name,
-      aggregate: 'sum',
+      // A box plot reads every row's value, so it folds with nothing.
+      aggregate: kind === 'boxplot' ? undefined : 'sum',
       // A plot needs two measures before it draws anything, so the second one
       // is seeded too — with the same field when the dataset has only one,
       // which is a chart the author can see and fix rather than a blank panel.
-      xField: PLOTS.includes(kind) ? visible.find((f) => f.role === 'measure')?.name : undefined,
+      xField: PLOTS.includes(kind) || kind === 'histogram'
+        ? visible.find((f) => f.role === 'measure')?.name
+        : undefined,
       sizeField: kind === 'bubble' ? visible.find((f) => f.role === 'measure')?.name : undefined,
       // A map reads what the dataset's names say it can — coordinates, a
       // geometry — so the author starts from their data on a map, and from
