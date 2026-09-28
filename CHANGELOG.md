@@ -39,6 +39,18 @@ count's axis no longer ticks at halves. Charts follow a theme named with
 well as the reader's system setting. The embed is smaller than before, at
 31.4 KB.
 
+**Printed charts say what they show.** A chart in a PDF carries the words the
+screen does: bars their names and values, lines and columns their categories
+underneath, a combo its second scale down the right, a waterfall each change,
+a heatmap its figures, a donut its whole and a gauge its reading set large, a
+treemap its groups, and a pie's slices an edge between them. Four were wrong
+on paper and are fixed: a gauge printed on its side, a line split by a series
+printed as bars, a combo's line ran past its columns, and a map of somewhere
+tall printed its places as specks. A chart of rows is as tall as its rows
+rather than a fixed box, a map is printed 90mm tall, and scatter and bubble
+dots are the screen's size rather than three times it. A PDF with maps runs
+longer: each takes about twice the height of the page it did.
+
 **Maps send less.** A place's position is sent to the precision its region's
 outline already was, about forty centimetres on the ground, and its size to
 four decimals; a large map's cells go on the same grid. None of the dropped

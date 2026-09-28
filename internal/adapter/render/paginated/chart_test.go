@@ -34,6 +34,7 @@ func marks() []document.Mark {
 		{Kind: document.PolyMark, Tone: "series-3-wash",
 			Points: [][2]float64{{0, 1}, {0.5, 0.4}, {1, 0.7}, {1, 1}}},
 		{Kind: document.DotMark, X: 0.3, Y: 0.5, W: 0.03, Tone: "series-4", Label: "A dot"},
+		{Kind: document.TextMark, X: 0.82, Y: 0.2, Label: "1,500", Anchor: document.StartAnchor, Strong: true},
 	}
 }
 
@@ -125,6 +126,59 @@ func TestChartsAreTypesetOntoThePage(t *testing.T) {
 	keep(t, buf.Bytes())
 }
 
+// worded is a chart as the server prints one: its words placed as marks, a
+// scale along the bottom and a second down the right in its measure's
+// colour, in a box as tall as it asked for.
+func worded() document.Chart {
+	return document.Chart{
+		Title: "Parcels and staff", Kind: "combo", Height: 30, Tone2: "series-2",
+		Ticks:  []document.Tick{{At: 0, Label: "0"}, {At: 1, Label: "2,000"}},
+		Ticks2: []document.Tick{{At: 0, Label: "0"}, {At: 1, Label: "40"}},
+		XTicks: []document.Tick{{At: 0.25, Label: "England"}, {At: 0.75, Label: "Scotland"}},
+		Marks: []document.Mark{
+			{Kind: document.RectMark, X: 0.15, Y: 0.25, W: 0.2, H: 0.75, Tone: "series-1"},
+			{Kind: document.LineMark, Tone: "series-2", Stroke: 1.4, Points: [][2]float64{{0.25, 0.5}, {0.75, 0.2}}},
+			{Kind: document.TextMark, X: 0.25, Y: 0.2, Label: "1,500", Strong: true},
+			{Kind: document.TextMark, X: 0, Y: 0.5, Label: "Northline", Anchor: document.StartAnchor, Tone: "muted"},
+			{Kind: document.TextMark, X: 1, Y: 0.5, Label: "+12%", Anchor: document.EndAnchor, Tone: "good"},
+			{Kind: document.TextMark, X: 0.5, Y: 0.9, Label: "on a shade", Tone: "white"},
+		},
+	}
+}
+
+func TestAChartsWordsAndScalesReachThePage(t *testing.T) {
+	// A printed chart was shapes and nothing else: no bar said how much, no
+	// line said which month, and a second measure's scale was a sentence.
+	// Every field the template reads is here, because one it misreads fails
+	// the whole document, not the chart.
+	render := func(c document.Chart) []byte {
+		t.Helper()
+		doc := fixture(1, 3)
+		doc.Charts = []document.Chart{c}
+		var buf bytes.Buffer
+		if err := New(TypstCLI{}).Render(context.Background(), doc, &buf); err != nil {
+			t.Fatalf("render: %v", err)
+		}
+		return buf.Bytes()
+	}
+	full := render(worded())
+	bare := worded()
+	bare.Marks, bare.XTicks, bare.Ticks2 = bare.Marks[:2], nil, nil
+	if plain := render(bare); len(full) <= len(plain) {
+		t.Errorf("the worded PDF is %d bytes against %d without its words — they did not reach the page",
+			len(full), len(plain))
+	}
+	keep(t, full)
+}
+
+func TestAWordlessTextMarkIsRefused(t *testing.T) {
+	doc := charted()
+	doc.Charts[0].Marks = append(doc.Charts[0].Marks, document.Mark{Kind: document.TextMark, X: 0.5, Y: 0.5})
+	if err := doc.Validate(); err == nil {
+		t.Fatal("a text mark with nothing to say was accepted")
+	}
+}
+
 func TestAChartOnlyOutputIsADocument(t *testing.T) {
 	// A layout of charts and no table is a dashboard on paper. It used to be
 	// refused as "no table to print", which was the only honest answer while
@@ -155,5 +209,19 @@ func TestAMarkNothingDrawsIsRefusedBeforeTypst(t *testing.T) {
 	doc.Charts[0].Marks = append(doc.Charts[0].Marks, document.Mark{Kind: "sunburst"})
 	if err := doc.Validate(); err == nil {
 		t.Fatal("a mark kind nothing draws was accepted")
+	}
+}
+
+func TestAWordIsPrintedNotRun(t *testing.T) {
+	// A chart's words are its data's — a customer's name, a region — and reach
+	// Typst as strings, which it sets as text. Read as markup, this one would
+	// run, and fail the document.
+	c := worded()
+	c.Marks = append(c.Marks, document.Mark{Kind: document.TextMark, X: 0.5, Y: 0.5, Label: `#panic("ran")`})
+	doc := fixture(1, 3)
+	doc.Charts = []document.Chart{c}
+	var buf bytes.Buffer
+	if err := New(TypstCLI{}).Render(context.Background(), doc, &buf); err != nil {
+		t.Fatalf("a label that looks like markup was run: %v", err)
 	}
 }

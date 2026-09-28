@@ -11,6 +11,12 @@ import (
 	"github.com/gsoultan/cronos/internal/core/document"
 )
 
+// mapHeight is the box a printed map is drawn in, in millimetres, as wide as
+// its proportions make that within the page. A map was drawn in the box every
+// chart gets, 46mm, which printed Britain the size of a stamp and its places
+// as specks on it.
+const mapHeight = 90.0
+
 // printTolerance is how much detail a printed map keeps: a thousandth of the
 // box, about a tenth of a millimetre at the width a report prints a map.
 // The browser's paths are simplified for a screen that can zoom; paper
@@ -39,7 +45,7 @@ func printMap(c *document.Chart, m *GeoMap) {
 	if w <= 0 || h <= 0 {
 		return
 	}
-	c.Aspect = w / h
+	c.Aspect, c.Height = w/h, mapHeight
 	at := func(x, y float64) [2]float64 { return [2]float64{(x - b.MinX) / w, (y - b.MinY) / h} }
 	onPaper(c, m, at)
 	// The datasets drawn over it, in order, on the same box.
@@ -52,6 +58,24 @@ func printMap(c *document.Chart, m *GeoMap) {
 	}
 	// On paper as on screen: a map drawn from part of its data says so.
 	c.Note = m.Partial
+	byHeight(c)
+}
+
+// byHeight sizes a map's dots against its height, which is the same on every
+// page, rather than its width, which is whatever its proportions and the page
+// make it. The template draws a dot's radius as a share of the box's width,
+// so each is divided by the map's aspect. Against the width, a map of
+// somewhere tall — Edinburgh to Bristol, a narrow box — printed its places a
+// fifth of a millimetre across: a legend and nothing on it.
+func byHeight(c *document.Chart) {
+	if c.Aspect <= 0 {
+		return
+	}
+	for i := range c.Marks {
+		if c.Marks[i].Kind == document.DotMark {
+			c.Marks[i].W /= c.Aspect
+		}
+	}
 }
 
 // onPaper draws one map's layers as marks, in the order its author listed them.
@@ -69,7 +93,7 @@ func onPaper(c *document.Chart, m *GeoMap, at func(x, y float64) [2]float64) {
 			for _, p := range m.Markers {
 				xy := at(p.X, p.Y)
 				c.Marks = append(c.Marks, document.Mark{Kind: document.DotMark,
-					X: xy[0], Y: xy[1], W: 0.035, Tone: "ramp-6-wash"})
+					X: xy[0], Y: xy[1], W: 0.05, Tone: "ramp-6-wash"})
 			}
 			cellDots(c, m.Cells, at, layer, keyed)
 		case "bubble", "scatter", "cluster":
@@ -166,9 +190,9 @@ func strokes(c *document.Chart, lines []Shape, at func(x, y float64) [2]float64,
 func pins(c *document.Chart, markers []Marker, at func(x, y float64) [2]float64, sized, keyed bool) {
 	for _, p := range markers {
 		xy := at(p.X, p.Y)
-		r := 0.006
+		r := 0.011
 		if sized {
-			r = 0.006 + sqrt(p.Weight)*0.02
+			r = 0.011 + sqrt(p.Weight)*0.03
 		}
 		colour, shape := "series-2", ""
 		if keyed {
@@ -197,14 +221,14 @@ func cellDots(c *document.Chart, cells *Cells, at func(x, y float64) [2]float64,
 		xy := at(cells.X[i], cells.Y[i])
 		share := sqrt(float64(n) / float64(most))
 		mark := document.Mark{Kind: document.DotMark, X: xy[0], Y: xy[1],
-			W: 0.003 + share*0.012, Tone: "series-2", Value: compact(cells.V[i]),
+			W: 0.0055 + share*0.02, Tone: "series-2", Value: compact(cells.V[i]),
 			Label: places(n)}
 		if n == 1 && i < len(cells.L) && cells.L[i] != "" {
 			mark.Label = cells.L[i]
 		}
 		switch {
 		case layer == "heat":
-			mark.W, mark.Tone = 0.01+share*0.03, "ramp-6-wash"
+			mark.W, mark.Tone = 0.015+share*0.045, "ramp-6-wash"
 		case keyed && i < len(cells.S):
 			mark.Tone, mark.Shape = tone(cells.S[i]), glyph(cells.S[i])
 		}
@@ -233,7 +257,7 @@ func flows(c *document.Chart, arcs []Arc, at func(x, y float64) [2]float64, keye
 		c.Marks = append(c.Marks, document.Mark{Kind: document.LineMark, Points: pts,
 			Tone: colour, Label: a.Label, Value: a.Formatted})
 		// Which way it goes, as on screen: a head where it lands.
-		if head := arrowhead(ctl, q, 0.012); head != nil {
+		if head := arrowhead(ctl, q, 0.02, c.Aspect); head != nil {
 			c.Marks = append(c.Marks, document.Mark{Kind: document.PolyMark, Points: head, Tone: colour})
 		}
 	}

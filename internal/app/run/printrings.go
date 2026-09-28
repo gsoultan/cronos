@@ -68,15 +68,23 @@ func geodesic(lat, lon, km float64, n int) [][2]float64 {
 }
 
 // arrowhead is a flow's head: a small triangle at q, pointing from ctl to q,
-// its size a share of the box.
-func arrowhead(ctl, q [2]float64, size float64) [][2]float64 {
-	dx, dy := q[0]-ctl[0], q[1]-ctl[1]
+// its size a share of the box's height. It is worked out where a unit is the
+// same length both ways and put back into the box's fractions: worked out in
+// those, across a map of anything but a square, the head came out squashed
+// flat along the width.
+func arrowhead(ctl, q [2]float64, size, aspect float64) [][2]float64 {
+	if aspect <= 0 {
+		aspect = 1
+	}
+	dx, dy := (q[0]-ctl[0])*aspect, q[1]-ctl[1]
 	l := math.Hypot(dx, dy)
 	if l == 0 {
 		return nil
 	}
 	ux, uy := dx/l, dy/l
-	base := [2]float64{q[0] - ux*size, q[1] - uy*size}
 	w := size * 0.55
-	return [][2]float64{q, {base[0] - uy*w, base[1] + ux*w}, {base[0] + uy*w, base[1] - ux*w}}
+	corner := func(across float64) [2]float64 {
+		return [2]float64{q[0] + (-ux*size-uy*across)/aspect, q[1] - uy*size + ux*across}
+	}
+	return [][2]float64{q, corner(w), corner(-w)}
 }
