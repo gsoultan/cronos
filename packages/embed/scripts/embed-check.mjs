@@ -535,6 +535,10 @@ ok('a shaded map carries the legend that makes its colours readable',
   await map.locator('.legend.ramp .key').count() === 1)
 ok('a basemap credits its tile source, which every one of them requires',
   (await map.locator('.credit').innerText()).includes('OpenStreetMap'))
+// Laid by the first draw, which follows the stage being sized — a rendering
+// update after the panel is placed, and WebKit on Linux takes its time over
+// one; the stage's own marks are there from the start.
+await map.locator('.tiles img').first().waitFor({ timeout: 5000 }).catch(() => {})
 ok('tiles are laid under the data, not over it',
   await map.locator('.tiles img').count() > 0)
 // The origin and not the path. OpenStreetMap refuses a tile request with no
