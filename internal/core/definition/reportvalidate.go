@@ -150,29 +150,9 @@ func (b Block) validateShape(output string, i int) error {
 // failed at the viewer months later as "pie charts need a newer viewer" — a
 // message that blames the reader's browser for the author's typo.
 func (b Block) validateChart(output string, i int) error {
-	switch {
-	case b.Chart == "":
-		return fmt.Errorf("%w: %s chart %d does not say what kind of chart — want one of %v",
-			ErrInvalid, output, i, ChartTypeNames())
-	case !b.Chart.Valid():
-		return fmt.Errorf("%w: %s chart %d is a %q chart, want one of %v",
-			ErrInvalid, output, i, b.Chart, ChartTypeNames())
-	case b.Series.Field != "" && !b.Chart.MultiSeries():
-		return fmt.Errorf("%w: %s chart %d splits by series, which a %s chart cannot draw",
-			ErrInvalid, output, i, b.Chart)
-	case b.Stacked && !b.Chart.Stacks():
-		return fmt.Errorf("%w: %s chart %d is stacked, which a %s chart cannot be",
-			ErrInvalid, output, i, b.Chart)
-	case b.Target.Set() && !b.Chart.Folded():
-		return fmt.Errorf("%w: %s chart %d sets a target, which only a gauge reads",
-			ErrInvalid, output, i)
-	case b.Stacked && b.Series.Field == "":
-		// One series stacked against nothing is the same drawing, so this is
-		// always a mistake rather than a no-op worth honouring silently.
-		return fmt.Errorf("%w: %s chart %d is stacked but splits by no series",
-			ErrInvalid, output, i)
+	if err := b.validateChartFields(output, i); err != nil {
+		return err
 	}
-
 	switch {
 	case b.Chart.Geographic():
 		return b.validateMap(output, i)
@@ -180,6 +160,8 @@ func (b Block) validateChart(output string, i int) error {
 		return b.validatePlot(output, i)
 	case b.Chart.Folded():
 		return b.validateGauge(output, i)
+	case b.Chart == BulletChart:
+		return b.validateBullet(output, i)
 	case len(b.Metrics) > 0:
 		return b.validateMetrics(output, i)
 	}
@@ -195,6 +177,40 @@ func (b Block) validateChart(output string, i int) error {
 		// split: a heatmap with one dimension is a bar chart wearing squares.
 		return fmt.Errorf("%w: %s chart %d is a heatmap, which needs series for its "+
 			"second axis", ErrInvalid, output, i)
+	}
+	return nil
+}
+
+// validateChartFields checks the type, and each field against whether the
+// type reads it at all.
+func (b Block) validateChartFields(output string, i int) error {
+	switch {
+	case b.Chart == "":
+		return fmt.Errorf("%w: %s chart %d does not say what kind of chart — want one of %v",
+			ErrInvalid, output, i, ChartTypeNames())
+	case !b.Chart.Valid():
+		return fmt.Errorf("%w: %s chart %d is a %q chart, want one of %v",
+			ErrInvalid, output, i, b.Chart, ChartTypeNames())
+	case b.Series.Field != "" && !b.Chart.MultiSeries():
+		return fmt.Errorf("%w: %s chart %d splits by series, which a %s chart cannot draw",
+			ErrInvalid, output, i, b.Chart)
+	case b.Stacked.On() && !b.Chart.Stacks():
+		return fmt.Errorf("%w: %s chart %d is stacked, which a %s chart cannot be",
+			ErrInvalid, output, i, b.Chart)
+	case b.Stacked.Shares() && b.Chart == AreaChart:
+		return fmt.Errorf("%w: %s chart %d is stacked to its whole, which a bar or a column "+
+			"chart draws and an area chart does not yet — stack it with true", ErrInvalid, output, i)
+	case b.Target.Set() && !b.Chart.Targeted():
+		return fmt.Errorf("%w: %s chart %d sets a target, which only a gauge or a bullet "+
+			"chart reads", ErrInvalid, output, i)
+	case len(b.Bands) > 0 && b.Chart != BulletChart:
+		return fmt.Errorf("%w: %s chart %d sets bands, which shade a bullet chart's track "+
+			"and a %s chart has none", ErrInvalid, output, i, b.Chart)
+	case b.Stacked.On() && b.Series.Field == "":
+		// One series stacked against nothing is the same drawing, so this is
+		// always a mistake rather than a no-op worth honouring silently.
+		return fmt.Errorf("%w: %s chart %d is stacked but splits by no series",
+			ErrInvalid, output, i)
 	}
 	return nil
 }
@@ -244,7 +260,33 @@ func (b Block) validateGauge(output string, i int) error {
 		return fmt.Errorf("%w: %s gauge %d groups by %q — a gauge is one number, and "+
 			"bucketing it would draw several", ErrInvalid, output, i, b.X.Field)
 	}
-	return b.Target.validate(output, i)
+	return b.Target.validate(output, i, "gauge")
+}
+
+// validateBullet checks a bullet chart: a measure against a target, once for
+// the whole set or once for each of x's categories.
+func (b Block) validateBullet(output string, i int) error {
+	switch {
+	case b.Y.Field == "":
+		return fmt.Errorf("%w: %s bullet chart %d measures no field", ErrInvalid, output, i)
+	case len(b.Metrics) > 0:
+		return fmt.Errorf("%w: %s bullet chart %d lists metrics — it reads y against its "+
+			"target", ErrInvalid, output, i)
+	}
+	if err := b.Target.validate(output, i, "bullet chart"); err != nil {
+		return err
+	}
+	if len(b.Bands) > 2 {
+		return fmt.Errorf("%w: %s bullet chart %d sets %d bands — a track has three shades, "+
+			"so two places where they change", ErrInvalid, output, i, len(b.Bands))
+	}
+	for k, f := range b.Bands {
+		if f <= 0 || (k > 0 && f <= b.Bands[k-1]) {
+			return fmt.Errorf("%w: %s bullet chart %d has bands %v — want fractions of the "+
+				"target above nothing, ascending, like [0.6, 0.9]", ErrInvalid, output, i, b.Bands)
+		}
+	}
+	return nil
 }
 
 // validatePlot checks a scatter or bubble, whose x is a number and not a bucket.

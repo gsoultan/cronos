@@ -46,7 +46,10 @@ export function BlockPreview({ block, fields, dataset }: { block: Tile; fields: 
           delta={Math.round((jitter * 18 - 6) * 10) / 10} deltaPeriod="last month" />
       )
 
-    case 'bar':
+    // A column chart, and only a column chart: a bar chart's bars lie down,
+    // and this drew them standing up — a picture of a chart the report did
+    // not draw. The bar chart is sketched lying down, below.
+    case 'column':
       return (
         <ColumnChart title={block.title}
           subtitle={group ? `By ${group.label.toLowerCase()}` : undefined}

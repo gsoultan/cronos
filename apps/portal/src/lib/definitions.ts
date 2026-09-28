@@ -368,8 +368,10 @@ export interface ReportBlockInput {
     secondary?: boolean
   }[]
   target?: { field?: string; aggregate?: string; value?: number; label?: string }
+  /** Where a bullet chart's track changes shade, as the file has them. */
+  bands?: number[]
   series?: string
-  stacked?: boolean
+  stacked?: boolean | 'percent'
   /** A plot's horizontal measure. */
   xField?: string
   /** A bubble's radius measure. */
@@ -396,7 +398,7 @@ export function blockInput(b: Tile): ReportBlockInput {
     field: b.field, groupBy: b.groupBy, aggregate: b.aggregate,
     series: b.series, stacked: b.stacked,
     xField: b.xField, sizeField: b.sizeField, map: b.map,
-    metrics: b.metrics, target: b.target,
+    metrics: b.metrics, target: b.target, bands: b.bands,
     columns: b.columns, filter: b.filter, sort: b.sort,
   }
 }
@@ -445,10 +447,11 @@ export function report(input: ReportInput): string {
  * gains an entry the other should not, this is where that lives.
  */
 const CHARTS: Record<string, string> = {
-  bar: 'bar', line: 'line', area: 'area', pie: 'pie', donut: 'donut',
+  bar: 'bar', column: 'column', line: 'line', area: 'area', pie: 'pie', donut: 'donut',
   scatter: 'scatter', bubble: 'bubble', map: 'map',
   combo: 'combo', funnel: 'funnel', waterfall: 'waterfall',
   heatmap: 'heatmap', gauge: 'gauge', treemap: 'treemap',
+  radar: 'radar', bullet: 'bullet',
 }
 
 /** The chart types whose horizontal axis is a measure rather than a bucket. */
@@ -456,6 +459,9 @@ const PLOTTED = new Set(['scatter', 'bubble'])
 
 /** The chart types that read a list of measures rather than one. */
 const METERED = new Set(['combo', 'funnel'])
+
+/** The chart types read against a target. */
+const TARGETED = new Set(['gauge', 'bullet'])
 
 /**
  * The filter bar, or nothing when the report has none.
@@ -514,7 +520,12 @@ function block(b: ReportBlockInput): Yaml {
       // A plot's x names what each dot *is* and its xValue is where the dot
       // sits. One field cannot be both a dimension and a measure, and letting
       // it try is how a date grain ends up on a number.
-      x: chart === 'funnel' && (b.metrics?.length ?? 0) > 0
+      // Nor does a gauge, which is one number: a grouping left on one — the
+      // canvas seeds one on every block it adds — was written, and the
+      // server refused the report for it. And nothing is written for no
+      // grouping at all, which a bullet chart may have: an empty field was,
+      // so saving one unchanged changed its file.
+      x: (chart === 'funnel' && (b.metrics?.length ?? 0) > 0) || chart === 'gauge' || !b.groupBy
         ? undefined
         : { field: b.groupBy, grain: PLOTTED.has(chart) ? undefined : b.grain || undefined },
       xValue: PLOTTED.has(chart) && b.xField
@@ -524,7 +535,8 @@ function block(b: ReportBlockInput): Yaml {
       // would be two answers to what the chart measures.
       y: METERED.has(chart) ? undefined : { field: b.field, aggregate: b.aggregate ?? 'sum' },
       metrics: METERED.has(chart) ? metrics(b.metrics) : undefined,
-      target: chart === 'gauge' ? targetOf(b.target) : undefined,
+      target: TARGETED.has(chart) ? targetOf(b.target) : undefined,
+      bands: chart === 'bullet' && b.bands?.length ? b.bands : undefined,
       series: b.series ? { field: b.series } : undefined,
       stacked: b.stacked || undefined,
       size: chart === 'bubble' && b.sizeField
@@ -985,7 +997,7 @@ function readBlock(v: Yaml): ReportBlockInput {
       groupBy: str(x.field), grain: str(x.grain) || undefined,
       field: str(y.field), aggregate: str(y.aggregate) || undefined,
       series: str(asMap(b.series).field) || undefined,
-      stacked: b.stacked === true || undefined,
+      stacked: b.stacked === true ? true : b.stacked === 'percent' ? 'percent' : undefined,
       xField: str(asMap(b.xValue).field) || undefined,
       sizeField: str(asMap(b.size).field) || undefined,
       metrics: asList(b.metrics).map((raw) => {
@@ -998,7 +1010,8 @@ function readBlock(v: Yaml): ReportBlockInput {
           secondary: str(metric.axis) === 'secondary' || undefined,
         }
       }),
-      target: chart === 'gauge' ? readTarget(asMap(b.target)) : undefined,
+      target: TARGETED.has(chart) ? readTarget(asMap(b.target)) : undefined,
+      bands: chart === 'bullet' && asList(b.bands).length ? asList(b.bands).map(Number) : undefined,
       map: chart === 'map' ? readMap(asMap(b.map)) : undefined,
     }
   }
@@ -1055,7 +1068,7 @@ function readMap(m: Doc): TileMap {
   }
 }
 
-/** A gauge's target, back from the file. */
+/** A gauge's or a bullet chart's target, back from the file. */
 function readTarget(t: Record<string, Yaml>): ReportBlockInput['target'] {
   const value = num(t.value)
   if (value !== undefined) {

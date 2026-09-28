@@ -169,7 +169,7 @@ func TestDashboardCharts(t *testing.T) {
 			charts = append(charts, string(b.Chart)+":"+b.X.Field+"/"+b.Y.Field+"/"+b.Series.Field)
 		}
 	}
-	want := []string{"bar:region/revenue/", "line:month/orders/region", "pie:region/revenue/"}
+	want := []string{"column:region/revenue/", "line:month/orders/region", "pie:region/revenue/"}
 	if strings.Join(charts, " ") != strings.Join(want, " ") {
 		t.Errorf("charts = %v\nwant %v", charts, want)
 	}
@@ -178,7 +178,7 @@ func TestDashboardCharts(t *testing.T) {
 		// The bar chart's seriesExpression is "Revenue" — one series, named. A
 		// cronos chart with no series field draws exactly one.
 		for _, b := range out.Layout {
-			if b.Kind == "chart" && b.Chart == "bar" && b.Series.Field != "" {
+			if b.Kind == "chart" && b.Chart == "column" && b.Series.Field != "" {
 				t.Errorf("a literal series name became a field: %q", b.Series.Field)
 			}
 		}
@@ -201,6 +201,30 @@ func TestDashboardCharts(t *testing.T) {
 			t.Errorf("page = %+v, want landscape A4 for 842x595", pdf.Page)
 		}
 	})
+}
+
+// A Jasper bar chart stands up unless its plot lays it down, and imports the
+// way it was drawn: every bar chart used to arrive as horizontal bars, the one
+// orientation Jasper does not draw by default.
+func TestABarChartKeepsItsOrientation(t *testing.T) {
+	data, err := os.ReadFile("testdata/dashboard.jrxml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	laid := strings.Replace(string(data), "<barPlot><plot/>", `<barPlot><plot orientation="Horizontal"/>`, 1)
+	if laid == string(data) {
+		t.Fatal("the fixture's bar plot moved; this test no longer lays it down")
+	}
+	res, err := (Importer{DataSource: "warehouse"}).Import([]byte(laid))
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, _ := res.Report.Output("interactive")
+	for _, b := range out.Layout {
+		if b.Kind == "chart" && b.Y.Field == "revenue" && b.Chart != "pie" && b.Chart != "bar" {
+			t.Errorf("a horizontal bar chart imported as %q", b.Chart)
+		}
+	}
 }
 
 func importRaw(t *testing.T, name string) (Result, error) {

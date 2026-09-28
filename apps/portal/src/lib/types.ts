@@ -73,13 +73,14 @@ export type FilterNode = Condition | Group
  */
 export type TileKind =
   | 'stat' | 'table'
-  | 'bar' | 'line' | 'area' | 'pie' | 'donut'
+  | 'bar' | 'column' | 'line' | 'area' | 'pie' | 'donut'
   | 'scatter' | 'bubble' | 'map'
   | 'combo' | 'funnel' | 'waterfall' | 'heatmap' | 'gauge' | 'treemap'
+  | 'radar' | 'bullet'
 
 /** The tiles that bucket a dimension and fold a measure. */
 export const CATEGORICAL: TileKind[] = [
-  'bar', 'line', 'area', 'pie', 'donut', 'waterfall', 'heatmap', 'treemap',
+  'bar', 'column', 'line', 'area', 'pie', 'donut', 'waterfall', 'heatmap', 'treemap', 'radar',
 ]
 
 /** The tiles that read a list of measures rather than one. */
@@ -91,16 +92,19 @@ export const GRIDDED: TileKind[] = ['heatmap']
 /** The tiles that fold the whole set to one number. */
 export const FOLDED: TileKind[] = ['gauge']
 
+/** The tiles read against a target: a gauge's one number, or each bullet. */
+export const TARGETED: TileKind[] = ['gauge', 'bullet']
+
 /** The tiles that read two measures against each other. */
 export const PLOTS: TileKind[] = ['scatter', 'bubble']
 
 /** The tiles that can draw more than one series at once. */
 export const MULTI_SERIES: TileKind[] = [
-  'bar', 'line', 'area', 'scatter', 'bubble', 'heatmap', 'treemap',
+  'bar', 'column', 'line', 'area', 'scatter', 'bubble', 'heatmap', 'treemap', 'radar',
 ]
 
 /** The tiles a series dimension stacks on rather than drawing beside. */
-export const STACKABLE: TileKind[] = ['bar', 'area']
+export const STACKABLE: TileKind[] = ['bar', 'column', 'area']
 
 export interface Tile {
   id: string
@@ -118,8 +122,9 @@ export interface Tile {
   groupBy?: string
   series?: string
   aggregate?: 'sum' | 'count' | 'avg' | 'min' | 'max'
-  /** Draws a multi-series bar or area as one stack per bucket. */
-  stacked?: boolean
+  /** Draws a multi-series bar, column or area as one stack per bucket —
+   *  `percent` for each part as its share of its bucket's whole. */
+  stacked?: boolean | 'percent'
   /** The horizontal measure of a scatter or bubble, whose x is a number
    *  rather than a bucket. */
   xField?: string
@@ -130,8 +135,11 @@ export interface Tile {
   /** Several measures, for the kinds that read a list — a combo's bars and
    *  lines, or a funnel whose stages are separate columns. */
   metrics?: TileMetric[]
-  /** What a gauge reads its value against. */
+  /** What a gauge or a bullet chart reads its values against. */
   target?: TileTarget
+  /** Where a bullet chart's track changes shade, as fractions of each row's
+   *  target. Kept as read; the inspector does not edit them. */
+  bands?: number[]
   columns?: string[]
   /**
    * Narrows this block alone — "of which, overdue".
@@ -186,7 +194,7 @@ export interface TileMetric {
   secondary?: boolean
 }
 
-/** What a gauge measures against: a column, or a number. */
+/** What a gauge or a bullet chart measures against: a column, or a number. */
 export interface TileTarget {
   field?: string
   aggregate?: 'sum' | 'count' | 'avg' | 'min' | 'max'

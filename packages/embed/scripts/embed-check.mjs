@@ -838,7 +838,7 @@ await real.evaluate((b) => document.querySelector('#r').setAttribute('endpoint',
 const live = real.locator('#r')
 await live.locator('.panel').first().waitFor()
 
-ok('every block of a real render draws', await live.locator('.panel').count() === 21)
+ok('every block of a real render draws', await live.locator('.panel').count() === 25)
 ok('and none of them fell through to "needs a newer viewer"',
   await live.locator('.unaffected', { hasText: 'newer viewer' }).count() === 0)
 ok('nothing was thrown drawing it', realErrors.length === 0)
@@ -866,11 +866,42 @@ for (const [title, selector] of [
   ['Heatmap', '[part=cell]'],
   ['Gauge', '.gauge .track'],
   ['Treemap', '[part=cell]'],
+  ['Columns by carrier', '[part=bar]'],
+  ['Share by carrier', '[part=bar]'],
+  ['Radar', '[part=point]'],
+  ['Bullet', '[part=target]'],
 ]) {
   const panel = live.locator('.panel').filter({ hasText: new RegExp(`^${title}`) })
   ok(`${title} draws its marks from the server's payload`,
     await panel.locator(selector).count() > 0)
 }
+const panelOf = (title) => live.locator('.panel').filter({ hasText: new RegExp(`^${title}`) })
+// Grouped columns leave a pair the server padded with nothing undrawn: three
+// columns for the three carrier-regions that have parcels, not four.
+ok('grouped columns draw a column per pair that has one',
+  await panelOf('Columns by carrier').locator('[part=bar]').count() === 3)
+ok('a stack of shares is read against percentages',
+  await panelOf('Share by carrier').locator('text.tick', { hasText: '100%' }).count() === 1)
+{
+  // Every part of a stack of shares reaches the top of its scale together:
+  // England's two parts and Scotland's one each end at 100%.
+  const tops = await panelOf('Share by carrier').locator('[part=bar]').evaluateAll((parts) =>
+    parts.map((p) => p.getBoundingClientRect().top))
+  ok('each bucket of a stack of shares fills to its whole',
+    tops.length === 3 && Math.abs(Math.min(tops[0], tops[1]) - tops[2]) < 2)
+}
+ok('a radar draws a point per spoke per series, and names its spokes',
+  await panelOf('Radar').locator('[part=point]').count() === 6 &&
+  await panelOf('Radar').locator('text.name', { hasText: 'Edinburgh' }).count() === 1)
+// A ring is a closed path, which fills black unless a rule says otherwise —
+// and `.ring` is a map's radius, washed in a category's hue.
+ok("a radar's rings are drawn and not filled",
+  await panelOf('Radar').locator('path.web-ring').evaluateAll((rings) =>
+    rings.length === 3 && rings.every((r) => getComputedStyle(r).fill === 'none')))
+ok('a bullet draws a bar and a target mark per category, and says the share',
+  await panelOf('Bullet').locator('[part=bar]').count() === 2 &&
+  await panelOf('Bullet').locator('[part=target]').count() === 2 &&
+  await panelOf('Bullet').locator('text.name', { hasText: '150%' }).count() === 1)
 ok("a donut says the server's whole in its middle",
   (await live.locator('.panel').filter({ hasText: /^Donut/ }).locator('text.centre').textContent()) === '2,200')
 

@@ -1069,3 +1069,61 @@ test('a map keeps the periods it plays through', () => {
   const unset = { ...back.input, blocks: [{ ...block, map: { ...block.map, timeGrain: undefined } }] }
   expect(report(unset)).toContain('grain: month')
 })
+
+// A gauge is one number, and the canvas used to seed every block it added with
+// a grouping — the gauge's hidden, and written: the server refused the report.
+test('a gauge writes no grouping, even one left on it', () => {
+  const yaml = report({
+    name: 'R', slug: 'r', dataset: 'invoices',
+    blocks: [{
+      kind: 'gauge', title: 'Against plan', field: 'total', groupBy: 'customer_name',
+      target: { value: 100000 },
+    }],
+  })
+  expect(yaml).not.toContain('x:')
+})
+
+test('a column chart stacked to its whole round trips', () => {
+  const yaml = report({
+    name: 'R', slug: 'r', dataset: 'invoices',
+    blocks: [
+      { kind: 'column', title: 'Shares', field: 'total', groupBy: 'issued_at', series: 'status', stacked: 'percent' },
+      { kind: 'column', title: 'Parts', field: 'total', groupBy: 'issued_at', series: 'status', stacked: true },
+    ],
+  })
+  expect(yaml).toContain('chart: column')
+  expect(yaml).toContain('stacked: percent')
+  expect(yaml).toContain('stacked: true')
+  const back = readReport(yaml).input.blocks
+  expect(back.map((b) => [b.kind, b.stacked])).toEqual([['column', 'percent'], ['column', true]])
+})
+
+test('a bullet chart keeps its target and its bands', () => {
+  const yaml = report({
+    name: 'R', slug: 'r', dataset: 'invoices',
+    blocks: [
+      { kind: 'bullet', title: 'Against plan', field: 'total', groupBy: 'status',
+        target: { value: 5000, label: 'Plan' }, bands: [0.5, 0.8] },
+      { kind: 'bullet', title: 'Overall', field: 'total', target: { field: 'quota', aggregate: 'sum' } },
+    ],
+  })
+  expect(yaml).toContain('chart: bullet')
+  expect(yaml).toContain('value: 5000')
+  const back = readReport(yaml).input.blocks
+  expect(back[0]?.target?.value).toBe(5000)
+  expect(back[0]?.bands).toEqual([0.5, 0.8])
+  expect(back[0]?.groupBy).toBe('status')
+  expect(back[1]?.target?.field).toBe('quota')
+  // Opened and saved untouched, the file is the file.
+  expect(report({ ...readReport(yaml).input, name: 'R', slug: 'r', dataset: 'invoices' })).toBe(yaml)
+})
+
+test('a radar round trips as a radar', () => {
+  const yaml = report({
+    name: 'R', slug: 'r', dataset: 'invoices',
+    blocks: [{ kind: 'radar', title: 'Profile', field: 'total', groupBy: 'status', series: 'region' }],
+  })
+  const back = readReport(yaml).input.blocks[0]
+  expect(back?.kind).toBe('radar')
+  expect(back?.series).toBe('region')
+})

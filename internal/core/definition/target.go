@@ -2,7 +2,8 @@ package definition
 
 import "fmt"
 
-// Target is what a gauge measures its value against.
+// Target is what a gauge measures its value against, or each of a bullet
+// chart's rows.
 //
 // Either a field or a constant, because both are ordinary. "Against this
 // month's quota" is a column; "against 95%" is a number somebody agreed once
@@ -29,7 +30,7 @@ func (t Target) Ref() MeasureRef {
 	return MeasureRef{Field: t.Field, Aggregate: t.Aggregate}
 }
 
-// Heading is what the gauge calls it.
+// Heading is what the chart calls it.
 func (t Target) Heading() string {
 	if t.Label != "" {
 		return t.Label
@@ -37,19 +38,20 @@ func (t Target) Heading() string {
 	return "Target"
 }
 
-// validate reports why the target cannot be stored.
-func (t Target) validate(output string, i int) error {
+// validate reports why the target cannot be stored, on a chart of the kind
+// named: a gauge, or a bullet chart.
+func (t Target) validate(output string, i int, kind string) error {
 	switch {
 	case !t.Set():
-		return fmt.Errorf("%w: %s gauge %d has no target — a gauge is a number against "+
-			"something, and without one it is a stat tile", ErrInvalid, output, i)
+		return fmt.Errorf("%w: %s %s %d has no target — it is a number against "+
+			"something, and without one it is a stat tile or a bar", ErrInvalid, output, kind, i)
 	case t.Field != "" && t.Value != nil:
 		// Silently preferring one would make the other look honoured.
-		return fmt.Errorf("%w: %s gauge %d sets both a target field and a target value",
-			ErrInvalid, output, i)
+		return fmt.Errorf("%w: %s %s %d sets both a target field and a target value",
+			ErrInvalid, output, kind, i)
 	case t.Fixed() && *t.Value == 0:
-		return fmt.Errorf("%w: %s gauge %d has a target of zero, which nothing can be a "+
-			"proportion of", ErrInvalid, output, i)
+		return fmt.Errorf("%w: %s %s %d has a target of zero, which nothing can be a "+
+			"proportion of", ErrInvalid, output, kind, i)
 	}
 	return nil
 }

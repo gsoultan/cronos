@@ -77,7 +77,7 @@ definitions**: a `Dataset` and a `Report`.
 | `pageWidth`/`pageHeight`/margins | `page` | 595×842 points is recognised as A4 |
 | `$V{PAGE_NUMBER}` in the page footer | `footer.text` | "Page {{ .page }} of {{ .pages }}" |
 | `<title>` first static text | a `text` block, and the report's title | |
-| `<barChart>` `<lineChart>` `<areaChart>` | a `chart` block | Category → x, value → y |
+| `<barChart>` `<lineChart>` `<areaChart>` `<pieChart>` | a `chart` block | Category → x, value → y. A bar chart is a `column` unless its plot says `orientation="Horizontal"`, which is a `bar`; `stacked…` charts stack |
 | A report-level total that was printed | a `stat` block | Labelled with the caption beside it |
 | `pattern="¤#,##0.00"` | `format: currency` | The symbol is the author saying it is money |
 
@@ -97,9 +97,9 @@ definition.
 | **Images and logos** | Not a block | The paginated output's `header.template`, a Typst file |
 | **`printWhenExpression`** | No conditional block | Imported unconditionally — check it does not now show what it hid |
 | **Fonts, colours, borders, positions** | Styled by theme, laid out by block | Nothing; this is the trade |
-| **Pie charts** | No pie renderer | Imported as a bar chart of the same values |
 | **The JasperReports 7 element syntax** | This reads the classic `<textField>` bands | The query still imports; the layout has to be rebuilt |
-| **XY, time-series, scatter, gauge charts** | cronos charts a dimension against a measure | Rebuild in the builder |
+| **XY, time-series, scatter charts** | cronos charts a dimension against a measure | Rebuild in the builder |
+| **Meter, thermometer and spider charts** | A gauge or a bullet needs a target the range does not give; a spider chart arrives as a component | Rebuild as `gauge`, `bullet` or `radar` |
 | **Row-level security** | A `.jrxml` has none to carry | **Read the next section.** |
 
 ### Two files are refused outright

@@ -77,7 +77,7 @@ func groupEnds(b Block) []float64 {
 	for i := range b.Groups[0].Bars {
 		up, down := 0.0, 0.0
 		for _, g := range b.Groups {
-			v := g.Bars[i].Value
+			v := partOf(b, i, g.Bars[i].Value)
 			if !b.Stacked {
 				out = append(out, v)
 			} else if v < 0 {
@@ -91,6 +91,22 @@ func groupEnds(b Block) []float64 {
 		}
 	}
 	return out
+}
+
+// partOf is what a stacked part measures: its value, or — when the stack is
+// drawn to its whole — its share of its bucket's parts either side of nothing.
+func partOf(b Block, i int, v float64) float64 {
+	if !b.Percent {
+		return v
+	}
+	whole := 0.0
+	for _, g := range b.Groups {
+		whole += abs(g.Bars[i].Value)
+	}
+	if whole == 0 {
+		return 0
+	}
+	return v / whole
 }
 
 // barMark is one bar from nothing to v, a sliver at least: a bar that

@@ -13,7 +13,10 @@ package definition
 type ChartType string
 
 const (
-	BarChart     ChartType = "bar"
+	BarChart ChartType = "bar"
+	// ColumnChart is the bar chart stood up, for categories read left to
+	// right: months, weeks, the steps of something.
+	ColumnChart  ChartType = "column"
 	LineChart    ChartType = "line"
 	AreaChart    ChartType = "area"
 	PieChart     ChartType = "pie"
@@ -28,13 +31,21 @@ const (
 	HeatmapChart   ChartType = "heatmap"
 	GaugeChart     ChartType = "gauge"
 	TreemapChart   ChartType = "treemap"
+
+	// RadarChart draws each category as a spoke and each series as a shape
+	// through its values: a profile across a handful of measures.
+	RadarChart ChartType = "radar"
+	// BulletChart is a gauge's reading in a row's height, one per category:
+	// a value, the target it is read against, and shades of how near.
+	BulletChart ChartType = "bullet"
 )
 
 // chartTypes is every type, in the order an error message should list them.
 var chartTypes = []ChartType{
-	BarChart, LineChart, AreaChart, PieChart, DonutChart,
+	BarChart, ColumnChart, LineChart, AreaChart, PieChart, DonutChart,
 	ScatterChart, BubbleChart, MapChart,
 	ComboChart, FunnelChart, WaterfallChart, HeatmapChart, GaugeChart, TreemapChart,
+	RadarChart, BulletChart,
 }
 
 // Valid reports whether c is a type every renderer knows how to refuse or draw.
@@ -51,8 +62,8 @@ func (c ChartType) Valid() bool {
 // measure — one label, one number, which is what `x` and `y` mean for it.
 func (c ChartType) Categorical() bool {
 	switch c {
-	case BarChart, LineChart, AreaChart, PieChart, DonutChart,
-		WaterfallChart, TreemapChart, HeatmapChart:
+	case BarChart, ColumnChart, LineChart, AreaChart, PieChart, DonutChart,
+		WaterfallChart, TreemapChart, HeatmapChart, RadarChart:
 		return true
 	}
 	return false
@@ -76,6 +87,10 @@ func (c ChartType) Gridded() bool { return c == HeatmapChart }
 // Folded reports whether the chart reads one number for the whole set, with no
 // bucketing at all.
 func (c ChartType) Folded() bool { return c == GaugeChart }
+
+// Targeted reports whether the chart reads its values against a target: a
+// gauge's one number, or each of a bullet chart's.
+func (c ChartType) Targeted() bool { return c == GaugeChart || c == BulletChart }
 
 // Ordinal reports whether the chart's categories have an order that carries
 // meaning, so they take a one-hue ramp rather than eight identities.
@@ -110,12 +125,12 @@ func (c ChartType) Geographic() bool { return c == MapChart }
 // Pie and donut are already part-to-whole, so a series dimension on them would
 // be a second whole with nowhere to go; line and scatter stack into a shape
 // that reads as a total nobody measured.
-func (c ChartType) Stacks() bool { return c == BarChart || c == AreaChart }
+func (c ChartType) Stacks() bool { return c == BarChart || c == ColumnChart || c == AreaChart }
 
 // MultiSeries reports whether the type can draw more than one series at once.
 func (c ChartType) MultiSeries() bool {
 	switch c {
-	case BarChart, LineChart, AreaChart, ScatterChart, BubbleChart:
+	case BarChart, ColumnChart, LineChart, AreaChart, ScatterChart, BubbleChart, RadarChart:
 		return true
 	// A heatmap's second dimension is not an alternative to one series, it is
 	// the other axis of the grid — so `series` is required rather than

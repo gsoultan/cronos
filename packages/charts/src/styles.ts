@@ -326,9 +326,28 @@ tr:last-child td { border-bottom: 0 }
 .hit { fill: transparent; stroke: none; cursor: crosshair }
 .thread { stroke: var(--cr-ink-muted); stroke-width: 1; stroke-dasharray: 3 3; opacity: 0.7 }
 
+/* A bullet's track: its target's fractions in three greys, darkest furthest
+   from it, and the target a firm mark across the bar. */
+.shade { stroke: none }
+.shade.s0 { fill: color-mix(in srgb, var(--cr-ink-muted) 34%, var(--cr-surface)) }
+.shade.s1 { fill: color-mix(in srgb, var(--cr-ink-muted) 20%, var(--cr-surface)) }
+.shade.s2 { fill: color-mix(in srgb, var(--cr-ink-muted) 9%, var(--cr-surface)) }
+.target { stroke: var(--cr-ink); stroke-width: 2.5; stroke-linecap: round }
+
+/* A radar's shapes are washes with their edges drawn, so one behind another
+   still shows through. */
+.radar { fill-opacity: 0.14; stroke-width: 2; stroke-linejoin: round }
+/* A radar's ring is a closed path, and a closed path fills black unless told
+   not to. Not .ring: that is a map's radius, washed in its category's hue.
+   Its scale sits inside the web, where a shape's edge can cross it, so each
+   figure is haloed in the surface. */
+.web-ring { fill: none }
+.web .tick { paint-order: stroke; stroke: var(--cr-surface); stroke-width: 3px; stroke-linejoin: round }
+.marks:hover .radar:not(:hover) { opacity: 0.4 }
+
 /* Pointing at one bar lets the rest fall back, so the one being read stands
    out without a colour that is not in the data. */
-.fill, .col, .dot, .slice, .cell, .tree-cell, .band { transition: opacity 0.15s, transform 0.15s }
+.fill, .col, .dot, .slice, .cell, .tree-cell, .band, .radar { transition: opacity 0.15s, transform 0.15s }
 .marks:hover .fill:not(:hover), .marks:hover .col:not(:hover) { opacity: 0.55 }
 .dot { stroke: var(--cr-surface); stroke-width: 1.5; fill-opacity: 0.85 }
 .dot:hover { fill-opacity: 1 }
@@ -374,7 +393,8 @@ tr:last-child td { border-bottom: 0 }
 .enter .fill { transform-box: fill-box; transform-origin: 0 50%; animation: cr-reach 0.55s cubic-bezier(0.2, 0.7, 0.2, 1) both }
 .enter .line, .enter .reading { stroke-dasharray: 1; animation: cr-draw 0.9s cubic-bezier(0.3, 0.6, 0.2, 1) both }
 .enter .area, .enter .point, .enter .dot, .enter .slice, .enter .cell, .enter .cell-value, .enter .tree-cell,
-.enter .band, .enter .neck, .enter .labels, .enter .value { animation: cr-fade 0.6s ease-out both }
+.enter .band, .enter .neck, .enter .labels, .enter .value, .enter .shade, .enter .target, .enter .radar {
+  animation: cr-fade 0.6s ease-out both }
 
 /* -- Maps --------------------------------------------------------------- */
 

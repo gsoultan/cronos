@@ -36,34 +36,7 @@ func chartOf(b Block) document.Chart {
 	// the template reads as `none` and cannot call `.len()` on — so a chart
 	// that carries a note instead of marks took the whole document down.
 	c := document.Chart{Title: b.Title, Kind: b.Chart, Marks: []document.Mark{}}
-	switch {
-	case b.Map != nil:
-		printMap(&c, b.Map)
-	case b.Gauge != nil:
-		gauge(&c, b.Gauge)
-		c.Square = true
-	case b.Rects != nil:
-		treemap(&c, b.Rects)
-	case b.Stages != nil:
-		funnel(&c, b.Stages)
-	case b.Steps != nil:
-		waterfall(&c, b.Steps, b.YAxis)
-	case b.Cells != nil:
-		heatmap(&c, b)
-	case b.Points != nil:
-		plot(&c, b)
-	case b.Tracks != nil:
-		combo(&c, b)
-	case b.Chart == "line" || b.Chart == "area":
-		line(&c, b)
-	case b.Groups != nil:
-		grouped(&c, b)
-	case b.Chart == "pie" || b.Chart == "donut":
-		pie(&c, b)
-		c.Square = true
-	default:
-		bars(&c, b.Series)
-	}
+	drawOn(&c, b)
 	// A word with nothing to say — a category with no name, a figure with no
 	// formatting — is left off rather than sent: the document refuses a text
 	// mark it cannot draw, and a blank name is not worth a failed burst.
@@ -74,6 +47,48 @@ func chartOf(b Block) document.Chart {
 		c.Note = "No data in this period."
 	}
 	return c
+}
+
+// drawOn draws the block's own shape: by what it carries where the shape is
+// its own, and by its type where two types carry the same thing.
+func drawOn(c *document.Chart, b Block) {
+	switch {
+	case b.Map != nil:
+		printMap(c, b.Map)
+	case b.Gauge != nil:
+		gauge(c, b.Gauge)
+		c.Square = true
+	case b.Bullets != nil:
+		bullets(c, b)
+	case b.Rects != nil:
+		treemap(c, b.Rects)
+	case b.Stages != nil:
+		funnel(c, b.Stages)
+	case b.Steps != nil:
+		waterfall(c, b.Steps, b.YAxis)
+	case b.Cells != nil:
+		heatmap(c, b)
+	case b.Points != nil:
+		plot(c, b)
+	case b.Tracks != nil:
+		combo(c, b)
+	case b.Chart == "line" || b.Chart == "area":
+		line(c, b)
+	case b.Chart == "column":
+		columns(c, b)
+	case b.Chart == "radar":
+		// A square of its own size rather than the one a pie takes: a web's
+		// names sit around it, and at a pie's size they crowd its rings.
+		radar(c, b)
+		c.Aspect, c.Height = 1, 64
+	case b.Groups != nil:
+		grouped(c, b)
+	case b.Chart == "pie" || b.Chart == "donut":
+		pie(c, b)
+		c.Square = true
+	default:
+		bars(c, b.Series)
+	}
 }
 
 // bars draws the horizontal bars a bar chart is, which is the same arrangement
@@ -135,7 +150,7 @@ func grouped(c *document.Chart, b Block) {
 func stackRow(c *document.Chart, b Block, x func(float64) float64, i int, top, h float64) {
 	up, down := 0.0, 0.0
 	for _, g := range b.Groups {
-		v := g.Bars[i].Value
+		v := partOf(b, i, g.Bars[i].Value)
 		if v == 0 {
 			continue
 		}
@@ -152,7 +167,7 @@ func stackRow(c *document.Chart, b Block, x func(float64) float64, i int, top, h
 	if i < len(b.Totals) {
 		t := b.Totals[i]
 		end := up
-		if t.Value < 0 {
+		if t.Value < 0 && !b.Percent {
 			end = down
 		}
 		c.Marks = append(c.Marks, valueAt(x, end, t.Formatted, top+h/2))

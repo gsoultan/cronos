@@ -2,7 +2,8 @@ import type { TileKind } from '../../lib/types'
 
 export const PALETTE: { kind: TileKind; label: string; hint: string; icon: string }[] = [
   { kind: 'stat', label: 'Number', hint: 'One headline figure', icon: '#' },
-  { kind: 'bar', label: 'Bar chart', hint: 'Compare categories', icon: '▮' },
+  { kind: 'bar', label: 'Bar chart', hint: 'Compare categories', icon: '☰' },
+  { kind: 'column', label: 'Column chart', hint: 'Categories left to right', icon: '▮' },
   { kind: 'line', label: 'Line chart', hint: 'Change over time', icon: '⟋' },
   { kind: 'area', label: 'Area chart', hint: 'A total, over time', icon: '◺' },
   { kind: 'pie', label: 'Pie chart', hint: 'Parts of a whole', icon: '◕' },
@@ -16,6 +17,8 @@ export const PALETTE: { kind: TileKind; label: string; hint: string; icon: strin
   { kind: 'heatmap', label: 'Heatmap', hint: 'Two dimensions at once', icon: '▦' },
   { kind: 'gauge', label: 'Gauge', hint: 'Against a target', icon: '◔' },
   { kind: 'treemap', label: 'Treemap', hint: 'Parts within parts', icon: '▧' },
+  { kind: 'radar', label: 'Radar', hint: 'A profile across measures', icon: '✳' },
+  { kind: 'bullet', label: 'Bullet', hint: 'Each against a target', icon: '⊢' },
   { kind: 'table', label: 'Table', hint: 'Every row', icon: '▤' },
 ]
 
