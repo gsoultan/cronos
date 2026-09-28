@@ -32,3 +32,7 @@ func (SQLite) Bucket(grain, expr string) (string, error) {
 func (SQLite) Limit(n int) (string, string) {
 	return "", fmt.Sprintf("\nLIMIT %d", n)
 }
+
+// Ln needs SQLite's math functions, which the driver this build ships with
+// compiles in. A SQLite built without them answers "no such function: ln".
+func (SQLite) Ln(expr string) string { return "ln(" + expr + ")" }

@@ -410,10 +410,15 @@ SELECT 'England', '', 51.5 + (i %% 97) * 0.0003, -0.12 + (i / 97) * 0.0005, 0, 0
        'Aurora', 1, 1, 'd' || i, '' FROM n;`, query.ChartLimit+extra)
 }
 
-// A map is capped at ChartLimit rows like every chart — and a map folds its
-// rows into totals, so one cut at the cap was not a smaller picture of the data
-// but a wrong one, drawn as if it were the whole.
-func TestAMapCutAtTheCapSaysSo(t *testing.T) {
+/*
+A map with more places than one payload holds is not cut at the cap.
+
+It used to be: capped at ChartLimit like every chart, and a map folds its rows
+into totals, so one cut at the cap was not a smaller picture of the data but a
+wrong one — and after that it said so, which was honest and still wrong. Now it
+is asked again, and the database folds every place.
+*/
+func TestAMapWithMorePlacesThanTheCapCountsThemAll(t *testing.T) {
 	hexes := `- kind: chart
   chart: map
   title: Drops
@@ -422,25 +427,36 @@ func TestAMapCutAtTheCapSaysSo(t *testing.T) {
   map: {layers: [hexbin], lat: lat, lon: lon}`
 	dots := strings.Replace(hexes, "[hexbin]", "[scatter]", 1)
 
-	whole := renderOne(t, depotsWith(t, grid(0)), hexes)
-	if whole.Map.Partial != "" {
-		t.Errorf("a map of exactly the cap says it was cut: %q", whole.Map.Partial)
+	whole := renderOne(t, depotsWith(t, grid(0)), dots)
+	if whole.Map.Cells != nil || len(whole.Map.Markers) != query.ChartLimit {
+		t.Errorf("a map of exactly the cap was gathered: %d markers, cells %v",
+			len(whole.Map.Markers), whole.Map.Cells != nil)
 	}
 
 	s := depotsWith(t, grid(1))
-	cut := renderOne(t, s, hexes)
-	if !strings.Contains(cut.Map.Partial, "5,000") || !strings.Contains(cut.Map.Partial, "totals") {
-		t.Errorf("a hexbin cut at the cap says %q, want the cap and what it does to the totals", cut.Map.Partial)
-	}
+	over := renderOne(t, s, hexes)
 	total := 0.0
-	for _, h := range cut.Map.Hexes {
+	for _, h := range over.Map.Hexes {
 		total += h.Value
 	}
-	if total != query.ChartLimit {
-		t.Errorf("the hexagons hold %v, want the %d rows that were read and no more", total, query.ChartLimit)
+	if total != query.ChartLimit+1 || over.Map.Partial != "" {
+		t.Errorf("the hexagons hold %v and say %q, want every one of the %d places and no caveat",
+			total, over.Map.Partial, query.ChartLimit+1)
 	}
-	if p := renderOne(t, s, dots).Map.Partial; !strings.Contains(p, "see the rest") {
-		t.Errorf("a dot map cut at the cap says %q", p)
+
+	d := renderOne(t, s, dots)
+	if d.Map.Cells == nil || len(d.Map.Markers) != 0 {
+		t.Fatalf("a dot map past the cap came back as %d markers", len(d.Map.Markers))
+	}
+	n := 0
+	for _, c := range d.Map.Cells.N {
+		n += c
+	}
+	if n != query.ChartLimit+1 || d.Map.Places != query.ChartLimit+1 || d.Map.Partial != "" {
+		t.Errorf("cells hold %d places and say %d, %q", n, d.Map.Places, d.Map.Partial)
+	}
+	if d.Map.Detail == nil || d.Map.Detail.Output != "interactive" || d.Map.Detail.Block != 0 {
+		t.Errorf("a large map does not say how to ask for more of it: %+v", d.Map.Detail)
 	}
 }
 

@@ -19,3 +19,6 @@ func (MySQL) Bucket(grain, expr string) (string, error) {
 func (MySQL) Limit(n int) (string, string) {
 	return "", fmt.Sprintf("\nLIMIT %d", n)
 }
+
+// Ln is the natural logarithm.
+func (MySQL) Ln(expr string) string { return "LN(" + expr + ")" }

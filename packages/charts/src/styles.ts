@@ -352,6 +352,23 @@ tr:last-child td { border-bottom: 0 }
 .routes .route { stroke-width: 3.5 }
 .routes g:hover .route, .routes g:focus-visible .route { stroke-width: 5.5 }
 .heat { pointer-events: none }
+/* A large map's places, painted over the shapes. The pointer passes through
+   to the map and the shapes; the painted marks answer it by position. */
+.geo-canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none }
+/* A view on its way: a thread along the top, rather than a spinner over the
+   map a reader is still looking at. */
+.geo-stage.busy::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 30%;
+  height: 2px;
+  background: var(--cr-accent);
+  animation: geo-busy 1.1s linear infinite;
+}
+@keyframes geo-busy { from { transform: translateX(-100%) } to { transform: translateX(340%) } }
+@media (prefers-reduced-motion: reduce) { .geo-stage.busy::after { animation: none; width: 100% } }
 
 /* Counts over the map, in HTML so they are text at the page's size and
    buttons a keyboard can reach. The layer passes the pointer through to the

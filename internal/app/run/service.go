@@ -91,10 +91,17 @@ func (s *Service) Render(ctx context.Context, r definition.Report, req Request,
 	drawn := out.Renderer == definition.Interactive
 
 	view := View{Title: r.Heading(), Description: r.Description, Filters: filterViews(r)}
-	for _, blk := range out.Layout {
+	for i, blk := range out.Layout {
 		b, err := s.block(ctx, r, blk, params, filters, pr)
 		if err != nil {
 			return View{}, err
+		}
+		// More places than a map holds: asked again, gathered, rather than
+		// drawn from the first five thousand — see large.
+		if b.Map != nil && b.Map.cut && pointed(blk.Map) {
+			if b.Map, err = s.large(ctx, r, out, i, params, filters, pr); err != nil {
+				return View{}, err
+			}
 		}
 		if drawn && b.Map != nil && blk.Map.Basemap != nil {
 			b.Map.Tiles, b.Map.Note = s.tiles(ctx, *blk.Map.Basemap, b.Map.Bounds)

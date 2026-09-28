@@ -67,3 +67,25 @@ func TestAnExclaveInAnotherRegionsHoleIsStillOnPaper(t *testing.T) {
 		t.Errorf("painted %q, want the exclave's piece after the hole it sits in", got)
 	}
 }
+
+// A large map on paper is its cells, a dot each, sized by the share of the
+// busiest cell's places — and a lone place keeps its own name.
+func TestALargeMapPrintsItsCells(t *testing.T) {
+	var c document.Chart
+	printMap(&c, &GeoMap{
+		Bounds: Bounds{MaxX: 1, MaxY: 1},
+		Layers: []string{"scatter"},
+		Cells: &Cells{Size: 0.25, X: []float64{0.2, 0.7}, Y: []float64{0.3, 0.8},
+			N: []int{400, 1}, V: []float64{812, 3}, L: []string{"", "Depot 7"}},
+	})
+	if len(c.Marks) != 2 {
+		t.Fatalf("%d marks for two cells", len(c.Marks))
+	}
+	busy, lone := c.Marks[0], c.Marks[1]
+	if busy.Label != "400 locations" || lone.Label != "Depot 7" {
+		t.Errorf("labels %q and %q", busy.Label, lone.Label)
+	}
+	if busy.W <= lone.W {
+		t.Errorf("four hundred places print no larger than one: %v vs %v", busy.W, lone.W)
+	}
+}

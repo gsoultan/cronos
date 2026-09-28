@@ -218,6 +218,56 @@ let lastBody = null
 let unauthorized = false
 let future = false
 
+/* A large map: a million places, sent as the cells the server gathers them
+   into — here a grid of 1,200, in two categories — with the way to ask for more.
+   Generated rather than written by the server: a real one is hundreds of
+   kilobytes of cells, and the Go tests already pin the field names. */
+const LARGE = { minX: 0.5125, minY: 0.3285, maxX: 0.5145, maxY: 0.3300 }
+const largeMap = () => {
+  const x = [], y = [], n = [], v = [], s = [], l = []
+  for (let i = 0; i < 40; i++) {
+    for (let j = 0; j < 30; j++) {
+      x.push(LARGE.minX + (i + 0.5) * (LARGE.maxX - LARGE.minX) / 40)
+      y.push(LARGE.minY + (j + 0.5) * (LARGE.maxY - LARGE.minY) / 30)
+      n.push(1 + ((i * 7 + j * 13) % 900))
+      v.push(10 + ((i * 3 + j) % 50))
+      s.push((i + j) % 2)
+      l.push('')
+    }
+  }
+  return {
+    title: 'A million drops',
+    blocks: [{
+      kind: 'chart', chart: 'map', title: 'Every drop', series: [],
+      map: {
+        bounds: LARGE, layers: ['scatter'], shapes: [], markers: [], arcs: [], legend: [],
+        keys: [{ label: 'Aurora', slot: 0 }, { label: 'Baltic', slot: 1 }],
+        cells: { size: 0.00005, x, y, n, v, s, l },
+        places: 1_000_000,
+        detail: { output: 'screen', block: 0, categories: ['Aurora', 'Baltic'] },
+      },
+    }],
+  }
+}
+/* A view: one named place at the middle of whatever was asked for, and a few
+   around it — so the check can point at the middle and read its name. */
+const largeView = (ask) => {
+  const [x0, y0, x1, y1] = ask.view
+  const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2
+  const x = [cx], y = [cy], n = [1], v = [42], s = [0], l = ['Centre drop']
+  for (let i = 1; i <= 8; i++) {
+    // Along the top, clear of the middle.
+    x.push(x0 + (x1 - x0) * i / 10); y.push(y0 + (y1 - y0) * 0.15)
+    n.push(1); v.push(i); s.push(i % 2); l.push(`Drop ${i}`)
+  }
+  return {
+    bounds: { minX: x0, minY: y0, maxX: x1, maxY: y1 }, layers: ['scatter'],
+    shapes: [], markers: [], arcs: [], legend: [],
+    cells: { size: (x1 - x0) / 400, x, y, n, v, s, l },
+  }
+}
+const viewAsks = []
+
 const server = createServer((req, res) => {
   if (req.url === '/' || req.url === '') {
     res.writeHead(200, { 'content-type': 'text/html' })
@@ -230,6 +280,24 @@ const server = createServer((req, res) => {
   if (req.url === '/real') {
     res.writeHead(200, { 'content-type': 'text/html' })
     return res.end(HOST.replace('report="monthly"', 'report="every-chart"'))
+  }
+  if (req.url === '/large') {
+    res.writeHead(200, { 'content-type': 'text/html' })
+    return res.end(HOST.replace('report="monthly"', 'report="large-map"'))
+  }
+  if (req.url === '/v1/embed/reports/large-map/map') {
+    let body = ''
+    req.on('data', (c) => (body += c))
+    return req.on('end', () => {
+      const ask = JSON.parse(body)
+      viewAsks.push(ask)
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify(largeView(ask)))
+    })
+  }
+  if (req.url === '/v1/embed/reports/large-map') {
+    res.writeHead(200, { 'content-type': 'application/json' })
+    return res.end(JSON.stringify(largeMap()))
   }
   if (req.url.startsWith('/v1/embed/reports/every-chart')) {
     // The payload this server actually produces, written by
@@ -608,6 +676,62 @@ ok('and an enum offers the values the definition listed',
   await live.locator('.filters select option').count() === 3)
 
 await real.close()
+
+/* -- A large map ---------------------------------------------------------- */
+
+/*
+ * A million places cannot be elements. They arrive as cells, are painted on a
+ * canvas, and the map asks the server for the part in view each time a reader
+ * stops moving it — with the element's own token and filters, the renderer
+ * never holding either. Pointing at a painted place names it, though there is
+ * no element under the pointer to listen.
+ */
+const big = await browser.newPage()
+const bigErrors = []
+big.on('pageerror', (e) => bigErrors.push(String(e)))
+await big.goto(`${base}/large`, { waitUntil: 'domcontentloaded' })
+await big.evaluate((b) => document.querySelector('#r').setAttribute('endpoint', b), base)
+const bigMap = big.locator('#r')
+await bigMap.locator('[part=map-canvas]').waitFor()
+
+const painted = () => big.evaluate(() => {
+  const c = document.querySelector('#r').shadowRoot.querySelector('[part=map-canvas]')
+  const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data
+  let n = 0
+  for (let i = 3; i < d.length; i += 4) if (d[i] > 0) n++
+  return n
+})
+ok('a large map paints its cells rather than building an element each',
+  await painted() > 500 && await bigMap.locator('[part=marker]').count() === 0)
+ok('and says how many places it holds',
+  (await bigMap.locator('[part=places]').innerText()).includes('1,000,000 places'))
+
+for (let i = 0; i < 40 && viewAsks.length === 0; i++) await big.waitForTimeout(100)
+const first = viewAsks[0]
+ok('it asks for the part in view once it settles', viewAsks.length >= 1)
+ok('with the view, its size, the map it is and the colours it opened with',
+  first && first.block === 0 && first.output === 'screen' && first.view.length === 4
+  && first.view.every((n) => n >= 0 && n <= 1) && first.width > 0 && first.height > 0
+  && JSON.stringify(first.categories) === '["Aurora","Baltic"]')
+ok('and with the filters the report was drawn with', first && typeof first.filters === 'object')
+
+// The answer puts a named place at the middle of the view it was asked for.
+await big.waitForTimeout(300)
+const mapStage = bigMap.locator('[part=chart]').locator('..')
+const mapBox = await mapStage.boundingBox()
+await big.mouse.move(mapBox.x + mapBox.width / 2, mapBox.y + mapBox.height / 2)
+await big.waitForTimeout(100)
+ok('pointing at a painted place names it',
+  (await bigMap.locator('[part=tooltip]').innerText().catch(() => '')).includes('Centre drop'))
+
+const asked = viewAsks.length
+await bigMap.getByRole('button', { name: 'Zoom in' }).click()
+for (let i = 0; i < 40 && viewAsks.length === asked; i++) await big.waitForTimeout(100)
+const deeper = viewAsks.at(-1)
+ok('zooming in asks for a smaller part of the world',
+  viewAsks.length > asked && deeper.view[2] - deeper.view[0] < first.view[2] - first.view[0])
+ok('nothing was thrown drawing a large map', bigErrors.length === 0)
+await big.close()
 
 /* -- Removal -------------------------------------------------------------- */
 await page.evaluate(() => document.querySelector('#r').remove())

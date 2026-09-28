@@ -3,11 +3,11 @@ package query
 // Dialect is what differs between databases once a statement is otherwise
 // written.
 //
-// Three methods, and they are the only three the compiler has needed: how an
-// argument is marked, how a date is truncated, and how rows are capped.
-// Everything else about a compiled plan is portable SQL, and keeping this
-// interface small is what stops it becoming a query builder with a database's
-// worth of opinions.
+// Four methods, and they are the only four the compiler has needed: how an
+// argument is marked, how a date is truncated, how rows are capped, and what
+// the natural logarithm is called. Everything else about a compiled plan is
+// portable SQL, and keeping this interface small is what stops it becoming a
+// query builder with a database's worth of opinions.
 type Dialect interface {
 	// At returns the placeholder for argument n, counting from 1.
 	At(n int) string
@@ -24,4 +24,8 @@ type Dialect interface {
 	// SQL Server answered it with "Incorrect syntax near 'LIMIT'" — a sentence
 	// naming a keyword that is not in the dialect at all.
 	Limit(n int) (prefix, suffix string)
+	// Ln is the natural logarithm of expr. A map with more points than a
+	// browser can hold projects them in the database, and Web Mercator's y is
+	// a logarithm — LN everywhere except SQL Server, whose LN is spelled LOG.
+	Ln(expr string) string
 }

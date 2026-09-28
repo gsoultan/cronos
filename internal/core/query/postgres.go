@@ -25,3 +25,6 @@ func (Postgres) Bucket(grain, expr string) (string, error) {
 func (Postgres) Limit(n int) (string, string) {
 	return "", fmt.Sprintf("\nLIMIT %d", n)
 }
+
+// Ln is the natural logarithm.
+func (Postgres) Ln(expr string) string { return "LN(" + expr + ")" }

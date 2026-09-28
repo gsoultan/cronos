@@ -49,14 +49,28 @@ export function cluster(markers: Marker[], cell: number): Cluster[] {
   }
 
   return out.map((s) => {
+    // Weighted by the places each member stands for: a cell of a large map
+    // holding forty pulls the circle towards it forty times as hard as a
+    // cell holding one.
     let x = 0
     let y = 0
+    let n = 0
     for (const m of s.members) {
-      x += m.x
-      y += m.y
+      const w = m.n ?? 1
+      x += m.x * w
+      y += m.y * w
+      n += w
     }
-    return { x: x / s.members.length, y: y / s.members.length, members: s.members }
+    return { x: x / n, y: y / n, members: s.members }
   })
+}
+
+/** How many places a cluster holds: its members, or the places they stand
+ *  for when a member is a cell of a large map. */
+export function placesIn(c: Cluster): number {
+  let n = 0
+  for (const m of c.members) n += m.n ?? 1
+  return n
 }
 
 /** The closest seed within reach of m in its cell or the eight around it. */

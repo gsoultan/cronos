@@ -13,4 +13,7 @@ var (
 	// operator's log; what a caller sees is decided at the edge, because a
 	// driver error names tables.
 	ErrExecute = errors.New("run: execute")
+	// ErrNotAMap means a view was asked of something that is not a large map:
+	// a block that is not one, or a view that is not on the globe.
+	ErrNotAMap = errors.New("run: not a map that can be viewed")
 )

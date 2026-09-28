@@ -1,4 +1,4 @@
-import type { FilterValues, ReportPayload } from '@cronos/charts'
+import type { FilterValues, GeoMap, MapViewAsk, ReportPayload } from '@cronos/charts'
 
 /**
  * Fetches a report.
@@ -21,19 +21,31 @@ export class Client {
   ) {}
 
   async report(name: string, filters: FilterValues, signal: AbortSignal): Promise<ReportPayload> {
-    const url = `${this.endpoint.replace(/\/$/, '')}/v1/embed/reports/${encodeURIComponent(name)}`
-    const res = await fetch(url, {
+    return this.#post<ReportPayload>(`/v1/embed/reports/${encodeURIComponent(name)}`, { filters }, signal)
+  }
+
+  /**
+   * The part of a large map a reader has in view. The filters go again, as
+   * they went with the report: the server applies everything a render applies,
+   * and a view with different filters would be a different map.
+   */
+  async mapView(name: string, ask: MapViewAsk, filters: FilterValues, signal: AbortSignal): Promise<GeoMap> {
+    return this.#post<GeoMap>(`/v1/embed/reports/${encodeURIComponent(name)}/map`, { ...ask, filters }, signal)
+  }
+
+  async #post<T>(path: string, body: unknown, signal: AbortSignal): Promise<T> {
+    const res = await fetch(`${this.endpoint.replace(/\/$/, '')}${path}`, {
       method: 'POST',
       signal,
       headers: {
         'authorization': `Bearer ${this.token}`,
         'content-type': 'application/json',
       },
-      body: JSON.stringify({ filters }),
+      body: JSON.stringify(body),
     })
 
     if (!res.ok) throw new Error(await message(res))
-    return (await res.json()) as ReportPayload
+    return (await res.json()) as T
   }
 }
 

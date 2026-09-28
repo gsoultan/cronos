@@ -133,6 +133,11 @@ Do not add a pattern that is not solving a problem named here.
   `run.ExportLimit` allows, times six columns. That is the number to check
   against if the cap ever rises; this entry used to say nothing materialises a
   full result set, which was true of two paths out of three.
+- A map with more places than a payload holds is gathered in the database, not
+  read into Go: cells a few pixels wide (`query.BuildMapCells`), hexagons and
+  regions over every row, a view at a time as the reader zooms. 0.13 Go
+  allocations per source row at a million — `BenchmarkLargeMapOpens` — because
+  the rows never cross the wire; what does is bounded by `query.MaxCells`.
 - Columnar batches (Arrow) on the data plane, not `[]map[string]any`.
 - Every datasource carries a statement timeout and a row cap. No unbounded query.
 - Burst fan-out is bounded by `concurrency`, with backpressure to the renderer.
@@ -170,7 +175,7 @@ that needs a wrapper.
 | Stack | React 19.2+, Mantine 9, TanStack Router/Query/Form | Web component, framework-agnostic |
 | PWA / service worker | Yes | No |
 | Builder UI | Yes | **Never** |
-| Budget | See below | ≲40 KB gzip (**20.8 KB** today, gated by `bun run size`; the interactive map took it from 14.8) |
+| Budget | See below | ≲40 KB gzip (**24.4 KB** today, gated by `bun run size`; the interactive map took it from 14.8, and painting a large one's cells from 20.8) |
 
 ### Toolchain
 

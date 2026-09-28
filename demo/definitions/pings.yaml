@@ -1,0 +1,22 @@
+apiVersion: cronos.dev/v1
+kind: Dataset
+metadata:
+  name: pings
+  title: Van positions
+  description: Where every van on the road was in August, every few minutes — two hundred thousand positions.
+spec:
+  sources:
+    - ref: warehouse
+  query: |
+    SELECT g.id, g.depot, p.city, p.region, g.carrier, g.lat, g.lon, g.speed
+    FROM pings g
+    JOIN depots p ON p.depot = g.depot
+  fields:
+    - {name: id,      type: string,  role: dimension, hidden: true}
+    - {name: depot,   type: string,  role: dimension, hidden: true}
+    - {name: city,    type: string,  role: dimension, label: Depot}
+    - {name: region,  type: string,  role: dimension, label: Region}
+    - {name: carrier, type: string,  role: dimension, label: Carrier}
+    - {name: lat,     type: decimal, role: dimension, hidden: true}
+    - {name: lon,     type: decimal, role: dimension, hidden: true}
+    - {name: speed,   type: decimal, role: measure, aggregate: avg, label: Speed (km/h)}

@@ -1,0 +1,74 @@
+apiVersion: cronos.dev/v1
+kind: Report
+metadata:
+  name: fleet
+  title: Vans on the road
+  folder: Operations
+  description: Two hundred thousand positions on three maps — more than any browser can hold one by one, and every one of them counted.
+spec:
+  dataset: pings
+
+  filters:
+    - name: carrier
+      label: Carrier
+      type: enum
+      control: checkboxes
+      values: [Northline, Harbour Express, Swift Parcel]
+      bind:
+        pings: carrier
+    - name: region
+      label: Region
+      type: enum
+      values: [Benelux, Baltic, UK & IE]
+      bind:
+        pings: region
+
+  outputs:
+    - name: interactive
+      renderer: interactive
+      layout:
+        - kind: stat
+          label: Positions
+          value: {field: id, aggregate: count}
+
+        # Too many places to send one by one, so the database gathers them
+        # into cells a few pixels wide and the map asks again as a reader
+        # zooms: from a density across Europe to single vans on one street.
+        - kind: chart
+          chart: map
+          title: Where the vans are
+          x: {field: id}
+          y: {field: id, aggregate: count}
+          map:
+            layers: [heat]
+            lat: lat
+            lon: lon
+            basemap: {provider: openstreetmap}
+
+        # Counted circles that split as the reader zooms, each van coloured
+        # by who runs it. Every count is over all two hundred thousand.
+        - kind: chart
+          chart: map
+          title: Vans by carrier
+          x: {field: id}
+          y: {field: id, aggregate: count}
+          series: {field: carrier}
+          map:
+            layers: [cluster]
+            lat: lat
+            lon: lon
+            basemap: {provider: openstreetmap}
+
+        # Hexagons twenty-five kilometres across, folded in the database —
+        # exact at any size, because no position is left out of the count.
+        - kind: chart
+          chart: map
+          title: Positions per 25 km hexagon
+          x: {field: id}
+          y: {field: id, aggregate: count}
+          map:
+            layers: [hexbin]
+            lat: lat
+            lon: lon
+            hexKm: 25
+            basemap: {provider: openstreetmap}

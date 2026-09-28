@@ -23,7 +23,7 @@ import {
 import { currency, monthLabel } from '../lib/format'
 import { useRowWorker } from '../lib/useRowWorker'
 import { useReport } from '../lib/useReport'
-import type { RunFilters } from '../lib/api'
+import { mapView, type RunFilters } from '../lib/api'
 import { useCatalog } from '../lib/useCatalog'
 import { LiveReport } from '../components/LiveReport'
 import { ReportFilters } from '../components/ReportFilters'
@@ -251,7 +251,8 @@ function ServerReport({ name, filters, onFilter, query }: {
           the connected portal never drew a control. */}
       <ReportFilters filters={query.data.filters ?? []} value={filters} onApply={onFilter} />
 
-      <LiveReport view={query.data} applied={Object.keys(filters)} />
+      <LiveReport view={query.data} applied={Object.keys(filters)}
+        mapView={(ask, signal) => mapView(name, ask, filters, signal)} />
     </>
   )
 }
