@@ -115,7 +115,7 @@ var secretRef = regexp.MustCompile(`^\$\{secret:([A-Za-z0-9_.-]+)\}$`)
 
 // anyRef finds every reference in a string, for a URL that carries one among
 // its query parameters.
-var anyRef = regexp.MustCompile(`\$\{secret:([A-Za-z0-9_.-]*)\}`)
+var anyRef = regexp.MustCompile(`\$\{secret:([A-Za-z0-9_.-]*)(?:\|url)?\}`)
 
 // TileKeyPrefix is how the secret behind a URL basemap's key must be named.
 //

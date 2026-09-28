@@ -8,6 +8,9 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 export CRONOS_SIGNING_KEY="${CRONOS_SIGNING_KEY:-development-key-at-least-32-bytes-long}"
+# So Settings → Secrets can store a key, the way a deployment set up through
+# first-run setup can.
+export CRONOS_SECRETS_KEY="${CRONOS_SECRETS_KEY:-development-secrets-key-at-least-32-bytes}"
 export CRONOS_DEFINITIONS=demo/definitions
 export CRONOS_SEED=demo/seed.sql
 export CRONOS_ADDR="${CRONOS_ADDR:-:8794}"

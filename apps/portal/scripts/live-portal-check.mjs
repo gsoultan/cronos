@@ -602,6 +602,237 @@ const delivered = readdirSync(process.env.DELIVERIES ?? '/tmp', { recursive: tru
   .filter((f) => String(f).includes('to-a-colleague'))
 ok('and a document was delivered', delivered.length > 0)
 
+/* -- Secrets -------------------------------------------------------------
+   A map drawn with no basemap and a warehouse that will not open are both a
+   secret nobody set. Until Settings had a Secrets tab the only place that said
+   so was the server's log, and the only fix was an environment variable and a
+   restart. live-portal.sh exports a CRONOS_SECRETS_KEY, so this server can
+   keep one the way a deployment set up through first run can.
+
+   Last among the browser sections, because it changes what parcel-network
+   draws: the maps section above asserts the note a keyless Mapbox map shows. */
+
+const API = process.env.API
+const bearer = (token) => ({ authorization: `Bearer ${token}` })
+const secretsPage = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+secretsPage.on('pageerror', (e) => errors.push(String(e)))
+await secretsPage.goto(`${B}/settings`, { waitUntil: 'domcontentloaded' })
+await secretsPage.locator('[role=tab]:has-text("Secrets")').click()
+await secretsPage.locator('[data-testid=secrets-panel]').waitFor({ timeout: 15000 })
+
+/* Listed although nothing stores it and no report names it: a Mapbox map with
+   no key of its own reads the provider's default, and that is exactly the name
+   somebody fixing the map has to be told. */
+const mapboxRow = secretsPage.locator('[data-testid=secret-row][data-secret="mapbox-token"]')
+ok('Settings lists the key a Mapbox map reads, though no file names it',
+  await mapboxRow.count() === 1)
+ok('and says nothing answers it',
+  (await mapboxRow.getByTestId('secret-source').innerText()) === 'Missing')
+ok('and which report is missing it',
+  (await mapboxRow.getByTestId('secret-used-by').innerText()).includes('parcel-network'))
+
+/* Set the way somebody fixing the map would. Any pk. value does: the tiles are
+   refused below, and the claim is where they are asked for, not whether Mapbox
+   answers a made-up token. */
+const FAKE_TOKEN = 'pk.live-portal-check'
+await mapboxRow.getByTestId('secret-set').click()
+await mapboxRow.getByTestId('secret-value').fill(FAKE_TOKEN)
+await mapboxRow.getByTestId('secret-save').click()
+await mapboxRow.getByTestId('secret-source').filter({ hasText: 'Stored in this project' })
+  .waitFor({ timeout: 15000 })
+ok('setting it through the tab stores it in the project',
+  (await mapboxRow.getByTestId('secret-source').innerText()) === 'Stored in this project')
+ok('and says the report reads it without a restart',
+  (await secretsPage.getByTestId('secrets-said').innerText()).includes('nothing needs restarting'))
+/* Write-only means nowhere: not in the page's text and not in a field left
+   holding it after the save. */
+const fields = await secretsPage.locator('input').evaluateAll((n) => n.map((e) => e.value))
+ok('and nothing on the page holds the value afterwards',
+  !(await secretsPage.locator('body').innerText()).includes(FAKE_TOKEN)
+  && !fields.some((v) => v.includes(FAKE_TOKEN)))
+
+/* The server agrees, and never hands the value back — to the editor who set it
+   any more than to anybody else. */
+const listedText = await fetch(`${API}/v1/secrets`, { headers: bearer(process.env.TOKEN) })
+  .then((r) => r.text())
+const listedMapbox = JSON.parse(listedText).secrets.find((s) => s.name === 'mapbox-token')
+ok('the server lists it as stored here', listedMapbox?.source === 'project')
+ok('and the list carries no value', !listedText.includes(FAKE_TOKEN))
+
+/* The report draws with it on its next render — no restart, no redeploy. A new
+   page, so nothing the first visit cached can stand in for the server's answer;
+   tiles recorded and refused, for the reason the maps section gives. */
+const withKey = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+withKey.on('pageerror', (e) => errors.push(String(e)))
+const tilesAsked = []
+await withKey.route(/tile\.openstreetmap\.org|api\.mapbox\.com|tile\.googleapis\.com/, (r) => {
+  tilesAsked.push(r.request().url())
+  return r.abort()
+})
+await withKey.goto(`${B}/reports/parcel-network`, { waitUntil: 'domcontentloaded' })
+await withKey.locator('[data-testid=live-report] .geo-stage').first().waitFor({ timeout: 20000 })
+const everyDelivery = withKey.getByTestId('chart').filter({ hasText: 'Every delivery' })
+await everyDelivery.locator('.tiles img').first().waitFor({ state: 'attached', timeout: 15000 })
+const tileSources = await everyDelivery.locator('.tiles img')
+  .evaluateAll((n) => n.map((e) => e.getAttribute('src') ?? ''))
+ok('a Mapbox map now lays tiles from api.mapbox.com',
+  tileSources.length > 0 && tileSources.every((s) => s.startsWith('https://api.mapbox.com/')))
+ok('with the token that was set', tileSources.some((s) => s.includes(`access_token=${FAKE_TOKEN}`)))
+ok('and the browser asked Mapbox for them',
+  tilesAsked.some((u) => u.startsWith('https://api.mapbox.com/')))
+ok('and the note that Mapbox is not set up is gone',
+  !(await withKey.getByTestId('live-report').innerText()).includes('Mapbox is not set up'))
+await withKey.close()
+
+/* A viewer reads reports and nothing that opens anything: which secrets a
+   project holds, and what each one opens, is a map of where to aim. */
+const viewerList = await fetch(`${API}/v1/secrets`, { headers: bearer(process.env.VIEWER) })
+ok('a viewer may not read the list of secrets', viewerList.status === 403)
+const viewerSet = await fetch(`${API}/v1/secrets/mapbox-token`, {
+  method: 'PUT', headers: { ...bearer(process.env.VIEWER), 'content-type': 'application/json' },
+  body: JSON.stringify({ value: 'pk.from-a-viewer' }),
+})
+ok('nor set one', viewerSet.status === 403)
+
+/* And the tab is not offered to one. The token baked into this portal is an
+   editor's, so a viewer's session is written where the portal reads who is
+   signed in — which is all the tab is decided by. The 403s above are what
+   actually stop a viewer; this is the interface not offering a door that
+   opens onto one. */
+const viewerContext = await browser.newContext()
+await viewerContext.addInitScript(() => localStorage.setItem('cronos.user', JSON.stringify({
+  id: 'sam', email: 'sam@acme.example', org: 'acme', project: 'finance', role: 'viewer',
+})))
+const viewerPage = await viewerContext.newPage()
+viewerPage.on('pageerror', (e) => errors.push(String(e)))
+await viewerPage.goto(`${B}/settings`, { waitUntil: 'domcontentloaded' })
+await viewerPage.locator('[role=tab]:has-text("Security")').waitFor({ timeout: 15000 })
+ok('and a viewer is not offered the Secrets tab',
+  await viewerPage.locator('[role=tab]:has-text("Secrets")').count() === 0)
+await viewerContext.close()
+
+/* Removing it says what uses it and both ways that can go, then does it. The
+   deployment has no Mapbox token of its own here, so the map loses its key. */
+await mapboxRow.getByTestId('secret-remove').click()
+const asked = await mapboxRow.getByTestId('secret-remove-ask').innerText()
+ok('removing one names what uses it and what happens to it',
+  asked.includes('parcel-network') && asked.includes('without a basemap'))
+await mapboxRow.getByTestId('secret-remove-confirm').click()
+await mapboxRow.getByTestId('secret-source').filter({ hasText: 'Missing' })
+  .waitFor({ timeout: 15000 })
+ok('and once removed, nothing answers it again',
+  (await mapboxRow.getByTestId('secret-source').innerText()) === 'Missing')
+ok('which the tab says in so many words',
+  (await secretsPage.getByTestId('secrets-said').innerText()).includes('Nothing answers it now'))
+await secretsPage.close()
+
+/* The same key from the builder, where the map is being drawn. A map block
+   says whether its basemap's key is set and takes one in place — inside the
+   report's own form, so Enter in the key field must store the key and not
+   publish the report around it. */
+const builder = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+builder.on('pageerror', (e) => errors.push(String(e)))
+await builder.goto(`${B}/reports/parcel-network/edit`, { waitUntil: 'domcontentloaded' })
+await builder.locator('[data-testid=canvas-block]').first().waitFor({ timeout: 20000 })
+await builder.locator('[data-testid=canvas-block]').filter({ hasText: 'Every delivery' }).first().click()
+const keyPanel = builder.locator('[data-testid=basemap-key][data-secret="mapbox-token"]')
+await keyPanel.waitFor({ timeout: 10000 })
+ok('the builder says a Mapbox map’s key is missing',
+  (await keyPanel.getByTestId('secret-source').innerText()) === 'Missing')
+
+/* A secret token can change the account, and a map key is sent to every
+   reader, so one is refused before it is stored anywhere. */
+await keyPanel.getByTestId('basemap-key-set').click()
+await keyPanel.getByTestId('secret-value').fill('sk.not-for-a-browser')
+await keyPanel.getByTestId('secret-save').click()
+await keyPanel.getByTestId('secret-error').waitFor({ timeout: 5000 }).catch(() => {})
+ok('and refuses a Mapbox secret token as the key',
+  await keyPanel.getByTestId('secret-error').count() === 1
+  && (await keyPanel.getByTestId('secret-error').innerText()).includes('pk.'))
+
+await keyPanel.getByTestId('secret-value').fill(FAKE_TOKEN)
+await keyPanel.getByTestId('secret-value').press('Enter')
+await keyPanel.getByTestId('secret-source').filter({ hasText: 'Stored in this project' })
+  .waitFor({ timeout: 15000 }).catch(() => {})
+const stayed = builder.url().endsWith('/reports/parcel-network/edit')
+ok('without publishing the report or leaving it', stayed)
+ok('and stores a public one from the builder', stayed
+  && (await keyPanel.getByTestId('secret-source').innerText()) === 'Stored in this project')
+await builder.close()
+
+/* Back where it started, for whatever reads the list after this. */
+const unset = await fetch(`${API}/v1/secrets/mapbox-token`, {
+  method: 'DELETE', headers: bearer(process.env.TOKEN),
+})
+ok('and a key set from the builder is the same secret the tab removes', unset.status === 204)
+
+/* -- The wizard keeps the password it asks for ----------------------------
+   It used to collect one and throw it away, while the definition it published
+   named ${secret:<name>_password} — so every database connected through the
+   portal had a connection string that could not open. Nothing listens on port
+   1, so the connection itself fails; the claim is that it fails for that
+   reason and not for want of a password. The password has a space in it,
+   because it sits in a URL and a space is the first thing that breaks one —
+   stored as typed, and encoded by the server where the definition says
+   `|url`. */
+
+await page.goto(`${B}/data`, { waitUntil: 'domcontentloaded' })
+await page.locator('[data-testid=connect-source]').click()
+await page.locator('text=What are you connecting?').waitFor({ timeout: 15000 })
+await page.locator('button:has-text("PostgreSQL")').click()
+await page.locator('button:has-text("Continue")').click()
+await page.locator('[data-testid=source-host]').fill('127.0.0.1')
+await page.locator('[data-testid=source-port]').fill('1')
+await page.locator('[data-testid=source-database]').fill('scratch')
+await page.locator('[data-testid=source-user]').fill('reader')
+await page.locator('[data-testid=source-password]').fill('correct horse battery staple')
+await page.locator('button:has-text("Continue")').click()
+await page.locator('button:has-text("Continue")').click()
+await page.locator('[data-testid=source-name]').fill('Scratch warehouse')
+/* Waited for and then counted, so a wizard that stores nothing fails the
+   assertions below by name rather than stopping the run at a timeout. */
+const storedAs = page.locator('[data-testid=stored-as]')
+await storedAs.waitFor({ timeout: 5000 }).catch(() => {})
+ok('the wizard says which secret the password becomes',
+  await storedAs.count() === 1 && (await storedAs.innerText()).includes('scratch-warehouse_password'))
+await page.locator('button:has-text("Save source")').click()
+await page.locator('[data-testid=sources-card]').filter({ hasText: 'Scratch warehouse' })
+  .waitFor({ timeout: 15000 })
+
+const scratchDefinition = await fetch(`${API}/v1/definitions/DataSource/scratch-warehouse`,
+  { headers: bearer(process.env.TOKEN) }).then((r) => r.text())
+ok('the definition names the secret, encoded for the URL it sits in, and holds no password',
+  scratchDefinition.includes('${secret:scratch-warehouse_password|url}')
+  && !scratchDefinition.includes('horse'))
+
+await page.goto(`${B}/settings`, { waitUntil: 'domcontentloaded' })
+await page.locator('[role=tab]:has-text("Secrets")').click()
+const scratchRow = page.locator('[data-testid=secret-row][data-secret="scratch-warehouse_password"]')
+await scratchRow.waitFor({ timeout: 15000 })
+ok('and the password is stored in the project',
+  (await scratchRow.getByTestId('secret-source').innerText()) === 'Stored in this project')
+ok('used by the source it was typed for',
+  (await scratchRow.getByTestId('secret-used-by').innerText()).includes('scratch-warehouse'))
+
+const scratchProbe = await fetch(`${API}/v1/datasources/scratch-warehouse/test`, {
+  method: 'POST', headers: bearer(process.env.TOKEN),
+}).then((r) => r.json())
+ok('and the source opens with it — what fails is the port, not a missing password',
+  !String(scratchProbe.error).includes('not resolved')
+  && String(scratchProbe.error).includes('127.0.0.1'))
+
+/* Gone again, so nothing after this — or a rerun against the same store —
+   meets a source that cannot connect. */
+const dropSource = await fetch(`${API}/v1/definitions/DataSource/scratch-warehouse`, {
+  method: 'DELETE', headers: bearer(process.env.TOKEN),
+})
+const dropSecret = await fetch(`${API}/v1/secrets/scratch-warehouse_password`, {
+  method: 'DELETE', headers: bearer(process.env.TOKEN),
+})
+ok('and what the check made is removed', dropSource.status === 204 && dropSecret.status === 204)
+
+ok(`nothing was thrown in the secrets sections (${errors.length})`, errors.length === 0)
+
 console.log(fails ? `\n${fails} failed` : '\nall passed')
 
 /*

@@ -15,13 +15,17 @@ import (
 )
 
 // Resolver turns every basemap a report can name into tiles. It implements
-// run.Basemaps, and one serves the whole deployment: a Google session is good
-// for every project that uses the same key.
+// run.Basemaps. The Google sessions and the memory of what was logged are the
+// deployment's: a session is good for every project using the same key.
 type Resolver struct {
 	secrets secret.Resolver
 	google  *googleTiles
 	log     *slog.Logger
-	warned  warnings
+	warned  *warnings
+	// project names whose keys these are, in a log line and in what is
+	// remembered about it — two projects each missing their own Mapbox token
+	// are two things for an operator to fix.
+	project string
 }
 
 // New wires a Resolver reading keys from secrets.
@@ -30,8 +34,22 @@ func New(secrets secret.Resolver, log *slog.Logger) *Resolver {
 		secrets: secrets,
 		google:  newGoogle(&http.Client{Timeout: 10 * time.Second}, googleBase),
 		log:     log,
-		warned:  warnings{last: map[string]time.Time{}},
+		warned:  &warnings{last: map[string]time.Time{}},
 	}
+}
+
+/*
+For is the same resolver reading one project's keys.
+
+A tile key is a project's own — the portal stores it per project — so each
+project resolves against its own secrets while sharing the sessions, which are
+keyed by a digest of the key and so cannot hand one key's session to a project
+that holds another.
+*/
+func (r *Resolver) For(project string, secrets secret.Resolver) *Resolver {
+	c := *r
+	c.secrets, c.project = secrets, project
+	return &c
 }
 
 // Tiles resolves b.
@@ -83,7 +101,8 @@ func (r *Resolver) key(b definition.Basemap) (string, error) {
 	}
 	v, err := secret.Resolve(ref, r.secrets)
 	if err != nil || strings.TrimSpace(v) == "" {
-		r.warn("missing:"+names[0], "basemap key is not configured", "provider", b.Provider,
+		r.warn("missing:"+names[0], "basemap key is not configured — set it in the "+
+			"project's Settings → Secrets, or in the environment", "provider", b.Provider,
 			"secret", names[0], "environment", envName(names[0]))
 		return "", unavailable(b.Provider)
 	}
@@ -134,6 +153,10 @@ func envName(name string) string {
 // report that names it, and a line per render is a log nobody can read the
 // rest of.
 func (r *Resolver) warn(reason, msg string, args ...any) {
+	if r.project != "" {
+		reason = r.project + "\x00" + reason
+		args = append([]any{"project", r.project}, args...)
+	}
 	if r.warned.due(reason, time.Now()) {
 		r.log.Warn(msg, args...)
 	}

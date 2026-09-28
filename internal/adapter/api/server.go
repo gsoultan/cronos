@@ -79,6 +79,10 @@ type Deps struct {
 	// Policies is what a project requires of the people in it — today, whether
 	// everybody needs a second factor.
 	Policies Policies
+	// Secrets are what a project's editors store: tile keys, warehouse
+	// passwords. Absent without a records store, which has nowhere to keep
+	// them.
+	Secrets Secrets
 	// Accounts counts them, for the first-run check.
 	Accounts Accounts
 	// Invitations holds places for people who have not arrived. Absent — a
@@ -509,6 +513,15 @@ func Routes(d Deps) http.Handler {
 		// the same question as sending one.
 		mux.Handle("/v1/schedules/{name}/run",
 			NewSchedules(d.Projects, author, d.Log).WithGrants(granting))
+
+		// Secrets, for an author or a pipeline, never an embed token. Mounted
+		// even where no key seals them, so the portal can say what to set
+		// rather than failing to reach an endpoint.
+		if d.Secrets != nil {
+			secrets := NewSecretsAPI(d.Secrets, author, d.Log)
+			mux.Handle("/v1/secrets", secrets)
+			mux.Handle("/v1/secrets/{name}", secrets)
+		}
 
 		// Behind the admin key and never the embed token: a run record names
 		// every recipient of a burst.

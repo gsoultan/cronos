@@ -12,6 +12,7 @@ import (
 	"github.com/gsoultan/cronos/internal/core/definition"
 	"github.com/gsoultan/cronos/internal/core/query"
 	"github.com/gsoultan/cronos/internal/platform/config"
+	"github.com/gsoultan/cronos/internal/platform/secret"
 )
 
 /*
@@ -29,10 +30,10 @@ nobody runs. It stops the moment a source is defined, which is the rule that
 keeps it from being a trap: a deployment with three warehouses must not answer a
 dataset naming a fourth by quietly reading the development database instead.
 */
-func datasources(cfg config.Server, repo *file.Repository,
+func datasources(cfg config.Server, repo *file.Repository, secrets secret.Resolver,
 	log *slog.Logger) (*sources, func() error, error) {
 
-	reg, err := registry.New(repo.DataSources(), secrets(cfg), log)
+	reg, err := registry.New(repo.DataSources(), secrets, log)
 	if err != nil {
 		return nil, nil, err
 	}

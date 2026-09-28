@@ -27,15 +27,24 @@ await p.waitForTimeout(500)
 const uri = p.locator('[data-testid=source-uri]')
 await uri.waitFor({ timeout: 10000 })
 ok('a lake asks where it is', await uri.isVisible())
-ok('and for the key that opens it', await p.locator('[data-testid=source-credentials]').isVisible())
+ok('and for the key that opens it',
+  await p.locator('[data-testid=source-credentials-value]').isVisible())
 ok('and the region it answers in', await p.locator('[data-testid=source-region]').isVisible())
 ok('and the address, for a store that is not the cloud\'s own',
   await p.locator('[data-testid=source-endpoint]').isVisible())
 
-/* The placeholder is the whole guidance. Somebody who types a key here rather
-   than a reference to one has put a credential in a file that gets committed,
-   and the field is the last place to say so. */
-ok('the credential field asks for a reference rather than a key',
+/* The key itself is taken now, because it goes to the server as a secret and
+   the file names the secret — so the field is one that does not show what is
+   typed into it, the way a password field does not. */
+ok('a pasted key goes into a field that does not show it',
+  (await p.locator('[data-testid=source-credentials-value]').getAttribute('type')) === 'password')
+
+/* And a reference is one click away, for a secret somebody manages elsewhere.
+   Its placeholder is the whole guidance: somebody who types a key there rather
+   than a reference to one has put a credential in a file that gets committed. */
+await p.locator('[data-testid=credentials-mode]').getByText('Name a secret').click()
+await p.locator('[data-testid=source-credentials]').waitFor({ timeout: 5000 })
+ok('the reference field asks for a reference rather than a key',
   (await p.locator('[data-testid=source-credentials]').getAttribute('placeholder') ?? '')
     .includes('${secret:'))
 

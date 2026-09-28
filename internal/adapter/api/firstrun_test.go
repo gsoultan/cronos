@@ -2,6 +2,7 @@ package api_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -171,6 +172,40 @@ func TestTheSigningKeyIsGeneratedAndNotSupplied(t *testing.T) {
 	}
 	if file.SigningKey != "generated-key-at-least-32-bytes-x" {
 		t.Errorf("signing key is %q, want the generated one", file.SigningKey)
+	}
+}
+
+/*
+Setup writes a secrets key too, and a different one.
+
+Without it a deployment set up through the browser — the one whose people
+would type passwords into the portal — has nowhere safe to keep them. And not
+the signing key again: rotating that after a leaked token would then make every
+stored secret unreadable.
+*/
+func TestSetupWritesASecretsKeyOfItsOwn(t *testing.T) {
+	dir := t.TempDir()
+	n := 0
+	h := api.NewFirstRun(api.FirstRunDeps{
+		ConfigPath: filepath.Join(dir, "config.yaml"),
+		Accepts:    func(string) bool { return true },
+		NewKey: func() (string, error) {
+			n++
+			return fmt.Sprintf("generated-key-%d-at-least-32-bytes-long", n), nil
+		},
+		Finished: func() {},
+		Log:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+	if w := post(t, h, complete(nil)); w.Code != http.StatusOK {
+		t.Fatalf("setup answered %d: %s", w.Code, w.Body.String())
+	}
+	file, _, err := config.ReadFile(filepath.Join(dir, "config.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if file.SecretsKey == "" || file.SecretsKey == file.SigningKey {
+		t.Errorf("secrets key %q beside signing key %q — want one, and not the same one",
+			file.SecretsKey, file.SigningKey)
 	}
 }
 

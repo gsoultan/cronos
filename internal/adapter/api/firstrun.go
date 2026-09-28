@@ -154,12 +154,10 @@ func (h *FirstRun) configure(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Generated, never typed. This is the root of trust for every token the
-	// deployment will issue, and a person choosing one chooses a memorable one.
-	key, err := h.newKey()
+	keys, err := h.generate()
 	if err != nil {
-		h.log.Error("could not generate a signing key", "err", err)
-		fail(w, http.StatusInternalServerError, "Could not generate a signing key.")
+		h.log.Error("could not generate a key", "err", err)
+		fail(w, http.StatusInternalServerError, "Could not generate a key.")
 		return
 	}
 
@@ -192,7 +190,8 @@ func (h *FirstRun) configure(w http.ResponseWriter, r *http.Request) {
 	}
 
 	file := config.File{
-		SigningKey:  key,
+		SigningKey:  keys.signing,
+		SecretsKey:  keys.secrets,
 		Org:         in.Org,
 		Project:     in.Project,
 		Driver:      in.Driver,
@@ -241,4 +240,27 @@ func (h *FirstRun) configure(w http.ResponseWriter, r *http.Request) {
 	if h.done != nil {
 		go h.done()
 	}
+}
+
+// generated is what setup makes rather than asks for.
+type generated struct{ signing, secrets string }
+
+/*
+generate makes both keys. Generated, never typed: one is the root of trust for
+every token the deployment will issue and the other seals every password
+somebody stores in it, and a person choosing either chooses a memorable one.
+
+Two keys rather than one used twice, so rotating the signing key — the routine
+answer to a leaked token — does not also make every stored secret unreadable.
+*/
+func (h *FirstRun) generate() (generated, error) {
+	signing, err := h.newKey()
+	if err != nil {
+		return generated{}, err
+	}
+	secrets, err := h.newKey()
+	if err != nil {
+		return generated{}, err
+	}
+	return generated{signing: signing, secrets: secrets}, nil
 }

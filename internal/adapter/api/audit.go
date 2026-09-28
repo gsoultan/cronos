@@ -52,6 +52,8 @@ const (
 	ActionPlatformRevoke  = "platform.admin.revoke"
 	ActionSetup           = "platform.setup"
 	ActionPolicySet       = "project.policy.set"
+	ActionSecretSet       = "project.secret.set"
+	ActionSecretDelete    = "project.secret.delete"
 	ActionFactorAdd       = "auth.factor.add"
 	ActionFactorCodes     = "auth.factor.codes"
 	// Removing a second factor is the one worth a warning in the log: it is

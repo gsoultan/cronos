@@ -2,6 +2,7 @@ package secret_test
 
 import (
 	"errors"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -138,5 +139,48 @@ func TestNamesListsWhatAStringWillNeed(t *testing.T) {
 	got := secret.Names("${secret:b}//${secret:a}:${secret:b}")
 	if len(got) != 2 || got[0] != "a" || got[1] != "b" {
 		t.Fatalf("got %v", got)
+	}
+}
+
+// A project of several reads the deployment's secrets only by the names its
+// operator shared.
+func TestOnlyAnswersForTheNamesItWasGiven(t *testing.T) {
+	from := secret.Map{"mapbox-token": "pk.x", "billing-password": "hunter2"}
+	only := secret.Only{Names: map[string]bool{"mapbox-token": true}, From: from}
+
+	if v, ok := only.Secret("mapbox-token"); !ok || v != "pk.x" {
+		t.Errorf("a shared name = %q, %v", v, ok)
+	}
+	if v, ok := only.Secret("billing-password"); ok {
+		t.Errorf("a name nobody shared resolved to %q", v)
+	}
+}
+
+// A password in a URL is percent-encoded where the definition says it sits in
+// one, and stored as itself: the same secret still reads correctly anywhere a
+// definition uses it plain.
+func TestAReferenceInAURLIsEncodedAndTheSecretIsNot(t *testing.T) {
+	from := secret.Map{"pw": "p@ss w/rd:#%?&=~é"}
+	got, err := secret.Resolve("postgres://reader:${secret:pw|url}@db:5432/x", from)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "postgres://reader:p%40ss%20w%2Frd%3A%23%25%3F%26%3D~%C3%A9@db:5432/x"
+	if got != want {
+		t.Errorf("got %s\nwant %s", got, want)
+	}
+	u, err := url.Parse(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p, _ := u.User.Password(); p != from["pw"] {
+		t.Errorf("a URL parser reads the password back as %q", p)
+	}
+	plain, _ := secret.Resolve("${secret:pw}", from)
+	if plain != from["pw"] {
+		t.Errorf("a plain reference changed the value: %q", plain)
+	}
+	if names := secret.Names("a ${secret:pw|url} b ${secret:other}"); len(names) != 2 || names[0] != "other" || names[1] != "pw" {
+		t.Errorf("Names = %v", names)
 	}
 }

@@ -283,6 +283,15 @@ That trade is worth naming: with several, isolation is a property of the code
 rather than of the operating system. One process per project is still supported
 and is still the stronger answer.
 
+**A project's secrets are its own.** What a project stores through the portal is
+sealed to its organisation, project and name, and resolved only by that
+project's connections and maps. The deployment's own — its environment and its
+secrets directory — are read by no project of several, except names the
+operator lists in `CRONOS_SHARED_SECRETS` and files under
+`CRONOS_SECRETS_DIR/<org>/<project>/`. They used to be read by every project,
+which let one customer's editor publish a datasource naming another's warehouse
+password and a host of their own. See Secrets in deploying.md.
+
 **A token now has to name a project the server serves.** It always carried one;
 the embed handler simply never read it, because one signing key meant one
 deployment meant one project. Any token signed with the right key opened any
@@ -338,11 +347,20 @@ Read paths therefore split cleanly:
 
 ## Cache keys
 
-Any cache key includes **organization, project, principal and definition
-version**. A cache that omits any of them is a cross-tenant leak with extra
-steps, and this is the single most likely place for one to appear — the query
-result cache for API-backed datasources, where the upstream call is expensive
-enough that caching is mandatory.
+A cache is keyed by **whoever may read what it holds**. A cache that omits them
+is a cross-tenant leak with extra steps. What the server caches today, and why
+each key is enough:
+
+| Cache | Keyed by | Because |
+| :--- | :--- | :--- |
+| Whether an account still stands, and the scope it is confined to | the token's subject | a subject is one account in one tenant, which is narrower than a tenant |
+| Resolved secrets | organisation, project, name | a secret belongs to the project, not to the person asking, and no response carries one |
+| Google tile sessions | a digest of the key, style, locale | a session is a capability of the key, which every project using it already holds |
+
+The browser's query cache names nobody at all, and is emptied when the session
+changes. The next cache to worry about is a query result cache for API-backed
+datasources, where the upstream call is expensive enough that caching becomes
+mandatory: it needs the principal and the definition version as well.
 
 ## Storage
 

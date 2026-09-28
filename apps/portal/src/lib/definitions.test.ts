@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import {
-  dataset, dataSource, readDataset, readDataSource, readReport, readSchedule, report, schedule,
-  withCarry,
+  connectionFor, dataset, dataSource, passwordSecret, readDataset, readDataSource,
+  readReport, readSchedule, report, schedule, withCarry, type SourceInput,
 } from './definitions'
 import type { Field, Param } from './types'
 
@@ -60,10 +60,159 @@ test('a datasource never carries the password', () => {
     host: 'db.acme.example', port: 5432, database: 'analytics', user: 'reader',
   })
   expect(yaml).toContain('driver: postgres')
-  expect(yaml).toContain('${secret:warehouse_password}')
+  expect(yaml).toContain('${secret:warehouse_password|url}')
   expect(yaml).not.toContain('password: ')
   expect(yaml).toContain('maxRows: 1000000')
 })
+
+/*
+ * The name the file reads and the name the wizard stores the password under
+ * are one function now. They were one line apart and never connected: the file
+ * named `<slug>_password`, the form threw the password away, and every
+ * database connected through the portal named a secret nothing held.
+ */
+test('a new source stores its password under the name its connection string reads', () => {
+  const input = { name: 'Scratch', slug: 'scratch', kind: 'postgres', host: 'db', user: 'reader' }
+  expect(passwordSecret(input)).toBe('scratch_password')
+  expect(dataSource(input)).toContain('reader:${secret:scratch_password|url}@db')
+})
+
+/*
+ * The password is stored as typed, and a connection string that reads it inside
+ * a URL says so: `|url`, which the server encodes as it substitutes.
+ *
+ * It was stored percent-encoded by this form instead, which worked for a
+ * password typed here and broke for the same secret replaced from Settings,
+ * where the form could not know a URL would read it. A space came back from
+ * the probe as "unexpected spaces found in password"; an @ would have ended the
+ * userinfo early and connected somewhere else.
+ */
+test('a new source reads its password encoded for the URL it sits in', () => {
+  const yaml = dataSource({ name: 'Scratch', slug: 'scratch', kind: 'postgres', host: 'db', port: 5432,
+    database: 'x', user: 'reader' })
+  expect(yaml).toContain('postgres://reader:${secret:scratch_password|url}@db:5432/x')
+})
+
+/*
+ * Each driver's own grammar. This wrote one URL for all of them, and MySQL's
+ * driver cannot parse a URL at all — it reads `user:password@tcp(host:port)/db`
+ * — while SQL Server's takes a URL's path for the instance name, so the
+ * database went where no database is read. A source of either kind connected
+ * through the wizard never connected.
+ */
+test('a connection string is written in the form its driver reads', () => {
+  const my = dataSource({ name: 'ERP', slug: 'erp', kind: 'mysql', host: 'db', port: 3306,
+    database: 'erp', user: 'root' })
+  // As written: this driver takes the password raw, so there is nothing to encode.
+  expect(my).toContain('root:${secret:erp_password}@tcp(db:3306)/erp?parseTime=true')
+  const ms = dataSource({ name: 'ERP', slug: 'erp', kind: 'sqlserver', host: 'db', port: 1433,
+    database: 'erp', user: 'sa' })
+  expect(ms).toContain('sqlserver://sa:${secret:erp_password|url}@db:1433?database=erp')
+})
+
+test('each form reads back into its parts and writes back the same', () => {
+  for (const [driver, dsn] of [
+    ['mysql', 'root:${secret:erp_password}@tcp(db:3306)/erp?parseTime=true'],
+    ['sqlserver', 'sqlserver://sa:${secret:erp_password|url}@db:1433?database=erp&encrypt=disable'],
+    ['postgres', 'postgres://reader:${secret:wh|url}@db:5432/analytics?sslmode=require'],
+  ] as const) {
+    const read = readDataSource([
+      'apiVersion: cronos.dev/v1', 'kind: DataSource', 'metadata:', '  name: erp', 'spec:',
+      `  driver: ${driver}`, `  dsn: "${dsn}"`,
+    ].join('\n')).input
+    expect(read.host).toBe('db')
+    expect(read.passwordSecret).toBeDefined()
+    expect(dataSource({ ...read, dsn: undefined })).toContain(dsn)
+  }
+})
+
+/* A file somebody wrote by hand names its own secret. Rebuilding the string
+   from its parts — a new host, say — must keep naming that one, or the edit
+   quietly points the source at a secret nothing has stored. */
+test('an edited source keeps reading the secret its file names', () => {
+  const stored = readDataSource([
+    'apiVersion: cronos.dev/v1', 'kind: DataSource', 'metadata:', '  name: warehouse', 'spec:',
+    '  driver: postgres',
+    '  dsn: "postgres://reader:${secret:warehouse-password}@db.internal:5432/analytics?sslmode=require"',
+  ].join('\n'))
+  expect(stored.input.passwordSecret).toBe('warehouse-password')
+  expect(passwordSecret(stored.input)).toBe('warehouse-password')
+
+  const moved = dataSource({ ...stored.input, dsn: undefined, host: 'db.new' })
+  expect(moved).toContain('reader:${secret:warehouse-password}@db.new:5432/analytics')
+})
+
+/* No secret in the password's place — a literal, or nothing — is not a name to
+   store under. The form then stores it under the source's own name and
+   rebuilds the string to read that. */
+test('a connection string with no reference names no password secret', () => {
+  expect(passwordNamedBy('postgres://reader:hunter2@db/x')).toBeUndefined()
+  expect(passwordNamedBy('postgres://reader@db/x')).toBeUndefined()
+  expect(passwordNamedBy('file:cronos-demo?mode=memory&cache=shared')).toBeUndefined()
+  expect(passwordNamedBy('postgres://reader:pre${secret:x}@db/x')).toBeUndefined()
+})
+
+/*
+ * An edited host is written.
+ *
+ * The form seeds its connection-string field with the stored string for every
+ * kind of source — the SQLite screen shows it — and chose `value.dsn || …`, so
+ * for a database the stored string always won: a source moved to a new host
+ * went on connecting to the old one, with nothing on screen to say so.
+ */
+const handWritten = () => readDataSource([
+  'apiVersion: cronos.dev/v1', 'kind: DataSource', 'metadata:', '  name: warehouse', 'spec:',
+  '  driver: postgres',
+  '  dsn: "postgres://reader:${secret:warehouse-password}@db.internal:5432/analytics?sslmode=require"',
+].join('\n')).input
+
+const asLoaded = (input: SourceInput) => ({
+  dsn: input.dsn ?? '', host: input.host ?? '', port: input.port ?? 5432,
+  database: input.database ?? '', user: input.user ?? '', password: '',
+})
+
+test('an edited host is written, and the stored string’s options survive it', () => {
+  const stored = handWritten()
+  const form = { ...asLoaded(stored), host: 'db.new' }
+  const chosen = connectionFor('sql', form, stored)
+  expect(chosen).toBeUndefined()
+
+  const yaml = dataSource({ ...stored, host: form.host, dsn: chosen })
+  expect(yaml).toContain('reader:${secret:warehouse-password}@db.new:5432/analytics?sslmode=require')
+})
+
+test('an untouched connection keeps its string exactly as written', () => {
+  const stored = handWritten()
+  expect(connectionFor('sql', asLoaded(stored), stored)).toBe(stored.dsn)
+  // A new password where the string already names a secret is stored under
+  // that name, and changes nothing about the string.
+  expect(connectionFor('sql', { ...asLoaded(stored), password: 'x' }, stored)).toBe(stored.dsn)
+})
+
+/* Where the string names no secret, a typed password has to be read from
+   somewhere, so the string is rebuilt to name one. */
+test('a literal password is replaced by a reference when a new one is typed', () => {
+  const stored = readDataSource([
+    'apiVersion: cronos.dev/v1', 'kind: DataSource', 'metadata:', '  name: warehouse', 'spec:',
+    '  driver: postgres', '  dsn: "postgres://reader:hunter2@db.internal:5432/analytics"',
+  ].join('\n')).input
+  expect(connectionFor('sql', asLoaded(stored), stored)).toBe(stored.dsn)
+  expect(connectionFor('sql', { ...asLoaded(stored), password: 'x' }, stored)).toBeUndefined()
+})
+
+test('a connection string typed whole is written as typed, and a new source keeps nothing', () => {
+  const typed = { ...asLoaded(handWritten()), dsn: 'file:/var/lib/cronos/warehouse.db' }
+  expect(connectionFor('dsn', typed, handWritten())).toBe('file:/var/lib/cronos/warehouse.db')
+  expect(connectionFor('sql', { ...typed, dsn: '' }, undefined)).toBeUndefined()
+})
+
+/** The password secret a stored source with this connection string reads. */
+function passwordNamedBy(dsn: string): string | undefined {
+  return readDataSource([
+    'apiVersion: cronos.dev/v1', 'kind: DataSource', 'metadata:', '  name: w', 'spec:',
+    '  driver: postgres', `  dsn: "${dsn}"`,
+  ].join('\n')).input.passwordSecret
+}
 
 test('an object store is addressed rather than connected to', () => {
   const yaml = dataSource({ name: 'Lake', slug: 'lake', kind: 'objectstore', uri: 's3://acme/events' })

@@ -189,27 +189,9 @@ func (d *Definitions) list(w http.ResponseWriter, r *http.Request, pr principal.
 // and a management API that hands back its own rendering makes every round
 // trip a diff.
 func (d *Definitions) get(w http.ResponseWriter, r *http.Request, pr principal.Principal, kind, name string) {
-	/*
-	   A report the caller may not open is one they may not read either.
-
-	   404 rather than 403, the same answer /v1/reports/{name} gives — telling
-	   somebody a definition is there and that they are not on its list is the
-	   fact the grant was made to withhold.
-	*/
-	if canonicalKind(kind) == "Report" {
-		allowed, known := d.gate.may(r.Context(), pr, name)
-		if !known {
-			fail(w, http.StatusServiceUnavailable, "Could not check who may open this report.")
-			return
-		}
-		if !allowed {
-			audit(r.Context(), d.log, pr, ActionRead, name, Refused,
-				map[string]any{"reason": "not granted", "via": "definitions"})
-			fail(w, http.StatusNotFound, "No such definition.")
-			return
-		}
+	if d.withheld(w, r, pr, kind, name) {
+		return
 	}
-
 	raw, err := d.store.Get(r.Context(), pr, canonicalKind(kind), name)
 	if err != nil {
 		// The store first, so a published edit wins over the file it was read
@@ -234,6 +216,41 @@ func (d *Definitions) get(w http.ResponseWriter, r *http.Request, pr principal.P
 	*/
 	w.Header().Set("ETag", strconv.Quote(publish.Version(raw)))
 	_, _ = w.Write(raw)
+}
+
+// withheld refuses a definition the caller may not read, and says whether it
+// did. 404 rather than 403 either way, the answer a definition that does not
+// exist gets.
+func (d *Definitions) withheld(w http.ResponseWriter, r *http.Request, pr principal.Principal,
+	kind, name string) bool {
+
+	switch canonicalKind(kind) {
+	case codec.KindReport:
+		// A report the caller may not open is one they may not read either:
+		// telling somebody a definition is there and that they are not on its
+		// list is the fact the grant was made to withhold.
+		allowed, known := d.gate.may(r.Context(), pr, name)
+		if !known {
+			fail(w, http.StatusServiceUnavailable, "Could not check who may open this report.")
+			return true
+		}
+		if !allowed {
+			audit(r.Context(), d.log, pr, ActionRead, name, Refused,
+				map[string]any{"reason": "not granted", "via": "definitions"})
+			fail(w, http.StatusNotFound, "No such definition.")
+			return true
+		}
+	case codec.KindDataSource:
+		// A datasource's document is for the people who may change it. It can
+		// hold a password written inline — allowed, and what a first
+		// deployment does — and it names the host and the account every report
+		// reads with. Nothing a viewer does needs either, and this served both.
+		if !pr.CanEdit() {
+			fail(w, http.StatusNotFound, "No such definition.")
+			return true
+		}
+	}
+	return false
 }
 
 // fromLoaded answers from the running view, which is scoped to the one
@@ -317,6 +334,10 @@ func canonicalKind(urlKind string) string {
 		return codec.KindDataset
 	case "reports", "report":
 		return codec.KindReport
+	// Every spelling of the one kind a viewer may not read, so the check above
+	// cannot be stepped around by asking in lowercase.
+	case "datasources", "datasource":
+		return codec.KindDataSource
 	}
 	return urlKind
 }

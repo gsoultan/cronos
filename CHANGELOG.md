@@ -22,6 +22,71 @@ needs a deployment to act says so under **Upgrading**.
 
 ## Unreleased
 
+**Secrets are set in the portal, and kept sealed.** A password or a tile key used
+to be the deployment's alone — an environment variable or a mounted file, set by
+whoever runs the server — so connecting a warehouse from the portal produced a
+definition naming `${secret:warehouse_password}` and nothing anywhere to answer
+it. Settings → Secrets, the datasource wizard's password field and a map's "Set
+key" now store a value in the project, sealed with AES-256-GCM under
+`CRONOS_SECRETS_KEY` and bound to its organisation, project and name. Nobody
+reads one back: there is no request that returns a value. Settings lists every
+secret the project's definitions use and says whether the project stores it, the
+deployment supplies it, or nothing does — which is where a map without its
+basemap and a source that will not open both show up. A change applies at once:
+the datasources that read the secret are opened again, a map's next render uses
+the new key, and every other replica notices within thirty seconds. A pipeline
+sets them with `PUT /v1/secrets/{name}`. See "Secrets" in
+[docs/deploying.md](docs/deploying.md).
+
+**A database connected through the portal opens.** The datasource wizard asked
+for a password, wrote `${secret:<name>_password}` into the connection string,
+and threw the password away. Every database connected that way was listed in the
+catalogue and could not be opened until somebody set an environment variable and
+restarted the server. The password is now stored as that secret before the
+source is published.
+
+**A MySQL or SQL Server source connected through the portal connects.** The
+wizard wrote every database as a URL. MySQL's driver cannot read one — it
+takes `user:password@tcp(host:port)/db` — and SQL Server's reads a URL's path as
+the instance name, so the database went where nothing reads it. Each is now
+written in its own driver's form.
+
+**Moving a database source to another host from the portal moves it.** The
+edit form kept the stored connection string whatever was changed on screen, so
+a source given a new host, port, database or user went on connecting to the
+old one, with nothing saying so.
+
+**`${secret:name|url}` puts a secret into a URL encoded.** A password with a
+space, an `@` or a `/` in it broke any connection string that is a URL, and the
+only remedy was to store it percent-encoded by hand. With `|url` the server
+encodes it where it is substituted and the secret holds the password itself.
+The wizard writes new Postgres and SQL Server sources this way; a definition
+written by hand can do the same.
+
+**A dataset joining a database whose password is a secret works.** The
+single-database path resolved the reference and the federation did not, so
+DuckDB was asked to attach the literal text `${secret:…}`: the source answered a
+report over itself and failed the moment a dataset joined it to anything else.
+
+**Requiring two-factor, and granting an organisation role, work from a portal
+served on its own origin.** Both are PUT requests, and PUT was missing from the
+methods the API allows across origins, so the browser refused them before they
+were sent and the portal reported a network error. Every method a handler
+answers is now checked against that list.
+
+**A viewer can no longer read a datasource's definition.** It can hold a password
+written inline, and names the host and account every report reads with; nothing
+a viewer does needs either. `GET /v1/definitions/DataSource/{name}` answers 404
+to a viewer, as it does for a report they were not granted.
+
+**On a deployment serving several projects, a project reads only its own
+secrets.** Any project could name any secret in the deployment's environment or
+secrets directory — so an editor in one could publish a datasource whose
+connection string points at a host of their own and names another customer's
+warehouse password, and cronos would send it there. A project of several now
+reads its own stored secrets, files under `CRONOS_SECRETS_DIR/<org>/<project>/`,
+and the deployment names listed in `CRONOS_SHARED_SECRETS`. See Upgrading.
+
 **Maps pan and zoom, over OpenStreetMap, Mapbox or Google Maps.** A map was a
 picture fitted to its data: no way in, no way out, and a basemap only if the
 author typed an XYZ template and its credit line by hand. It is a window onto
@@ -510,6 +575,21 @@ An on-premises object store that was silently reading nothing needs `endpoint:`
 adding to its datasource. It will have been failing as an empty result rather
 than an error, so a lake that has "no data" and should have some is the shape
 to look for.
+
+Set `CRONOS_SECRETS_KEY` — 32 bytes or more, generated rather than typed — to let
+the portal store secrets. Nothing else changes without it: the portal says what
+to set, and every secret still resolves from the environment and the secrets
+directory as before. A deployment set up through first-run setup from this
+release has one already. Back it up, and not beside the database's backups — see
+"Backing up" in [docs/deploying.md](docs/deploying.md). Stored secrets add a
+table, applied on first start after the upgrade.
+
+A deployment with `CRONOS_PROJECTS` whose projects read secrets from the
+environment or the secrets directory must now say which: list the names every
+project may read in `CRONOS_SHARED_SECRETS`, move a project's own into
+`CRONOS_SECRETS_DIR/<org>/<project>/`, or store them in that project through the
+portal. A datasource still naming one is not opened, and the startup log names
+the secret it could not resolve. A single-project deployment is unaffected.
 
 ---
 

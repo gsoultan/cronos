@@ -1,4 +1,5 @@
 import type { Block } from '@cronos/charts'
+import type { SecretList } from './types'
 /**
  * The cronos API, as the portal sees it.
  *
@@ -1420,4 +1421,42 @@ export function changeGrant(report: string, kind: GrantKind, subject: string, gi
     method: give ? 'POST' : 'DELETE',
     body: JSON.stringify({ kind, subject }),
   })
+}
+
+/* -- Secrets ---------------------------------------------------------------
+ *
+ * Write-only, and the shape of these three is the whole of that promise:
+ * nothing here returns a value, so there is nothing for a page to cache, log
+ * or render by mistake. Editors and administrators only; a viewer is refused
+ * the list as well, because which passwords a project holds, and what each one
+ * opens, is a map of where to aim.
+ */
+
+/**
+ * What this project stores, and every name its definitions use.
+ *
+ * The second half is the point. A map with no basemap and a warehouse that
+ * will not open are both a secret nobody set, and this is the one place that
+ * says so before a reader finds out.
+ */
+export function secrets() {
+  return call<SecretList>('/v1/secrets')
+}
+
+/**
+ * Stores a value under a name, replacing whatever was there.
+ *
+ * It takes effect without a restart: a source whose connection string names
+ * it is reopened, and a map's tiles use a new key on their next render.
+ */
+export function setSecret(name: string, value: string) {
+  return call<void>(`/v1/secrets/${encodeURIComponent(name)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ value }),
+  })
+}
+
+/** Removes a stored one. Whatever read it falls back to the deployment's own, or to nothing. */
+export function deleteSecret(name: string) {
+  return call<void>(`/v1/secrets/${encodeURIComponent(name)}`, { method: 'DELETE' })
 }

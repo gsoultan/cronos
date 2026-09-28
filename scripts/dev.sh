@@ -229,6 +229,7 @@ if [ "$RUN_API" = 1 ]; then
 	# opens has real numbers in it rather than an empty state.
 	CRONOS_ADDR=":$API_PORT" \
 	CRONOS_SIGNING_KEY="${CRONOS_SIGNING_KEY:-development-key-at-least-32-bytes-long}" \
+	CRONOS_SECRETS_KEY="${CRONOS_SECRETS_KEY:-development-secrets-key-at-least-32-bytes}" \
 	CRONOS_DEFINITIONS="${CRONOS_DEFINITIONS:-demo/definitions}" \
 	CRONOS_SEED="${CRONOS_SEED:-demo/seed.sql}" \
 	CRONOS_ORIGINS="${CRONOS_ORIGINS:-http://localhost:$WEB_PORT}" \

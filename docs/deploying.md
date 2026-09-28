@@ -212,18 +212,66 @@ And what should be:
 
 | Variable | Why |
 |---|---|
+| `CRONOS_SECRETS_KEY` | 32 bytes minimum. Seals the secrets people store in the portal — a Mapbox token set on a map, the password typed into the datasource wizard. Without it the portal stores none, and says what to set. First-run setup generates one. Rotate it through `CRONOS_SECRETS_KEY_PREVIOUS` — see Rotating the secrets key. |
 | `CRONOS_SECRETS_DIR` | A directory of files, one per secret. Preferred over the environment: an environment variable is visible in `/proc` to anything running as the same user and appears in a crash dump. |
 | `CRONOS_HISTORY_RETENTION` | e.g. `2160h`. Unset keeps run history for ever. |
 | `CRONOS_BEHIND_PROXY=1` | Required behind a terminating proxy, and only there — see Terminating TLS. It keys rate limits on `X-Forwarded-For` and makes the SSO state cookie `Secure`. Believing it without a proxy keys every limit by a value the caller chooses; omitting it behind one sends that cookie without `Secure`. |
 | `CRONOS_SIGNING_KEY_PREVIOUS` | Comma-separated keys accepted but never minted with, for a rotation. Unset outside one. |
+| `CRONOS_SECRETS_KEY_PREVIOUS` | Comma-separated keys that open stored secrets and seal none, for a rotation. Unset outside one. |
+| `CRONOS_SHARED_SECRETS` | With `CRONOS_PROJECTS`: the deployment secrets every project may read, e.g. `mapbox-token`. No other deployment secret is readable by any project — see Secrets. |
 | `CRONOS_AUDIT` | `log` by default, `off` to stop it. |
 | `CRONOS_SMTP_HOST`, `CRONOS_SMTP_FROM` | A mail relay. Needed to deliver a schedule by email, and to invite anybody. |
 | `CRONOS_PORTAL_URL` | Where the portal is served, for links in email. Without it, invitations are not offered — there would be nothing to put in the link. |
 | `CRONOS_SCHEDULER=1` | Arms schedules. Off by default. Safe to set on every replica — see Running several. |
 | `CRONOS_SCHEDULER_TICK` | e.g. `10s`. How often armed schedules are checked; a minute by default, which is cron's own resolution. Lower it if "06:00" has to mean 06:00 rather than some time in the minute after. |
 | `CRONOS_METRICS_ADDR` | e.g. `127.0.0.1:9090`. Serves the exposition there and nowhere else — see Probes. |
-| `CRONOS_SECRET_MAPBOX_TOKEN` | A Mapbox **public** token (`pk.`), for maps drawn over `provider: mapbox`. See Map basemaps. |
-| `CRONOS_SECRET_GOOGLE_MAPS_KEY` | A Google Maps Platform key with the Map Tiles API enabled, for maps drawn over `provider: google`. See Map basemaps. |
+| `CRONOS_SECRET_MAPBOX_TOKEN` | A Mapbox **public** token (`pk.`), for maps drawn over `provider: mapbox`, for every project that has not set its own. See Map basemaps. |
+| `CRONOS_SECRET_GOOGLE_MAPS_KEY` | A Google Maps Platform key with the Map Tiles API enabled, for maps drawn over `provider: google`, likewise. See Map basemaps. |
+
+## Secrets
+
+A definition never holds a password. It holds `${secret:name}`, and the value is
+looked up when a connection is opened or a map is drawn — first in what the
+project stored, then in a file named `name` in `CRONOS_SECRETS_DIR`, then in
+`CRONOS_SECRET_NAME` (upper-cased, dots and dashes as underscores).
+
+**Stored in the project** is what the portal does: Settings → Secrets, the
+password field of the datasource wizard, and a map's "Set key". An editor sets a
+value and nobody reads it back — there is no request, for anybody, that returns
+one. Settings lists every name the project's definitions use, and says for each
+whether the project stores it, the deployment supplies it, or nothing does: a
+map with no basemap and a source that will not open are both a secret nobody
+set, and that list is where they show. A pipeline sets them with the admin key:
+
+```bash
+curl -X PUT "$CRONOS/v1/secrets/warehouse_password" \
+  -H "Authorization: Bearer $CRONOS_ADMIN_KEY" -d '{"value":"…"}'
+```
+
+A password inside a connection string that is a URL is named
+`${secret:name|url}`, and the server percent-encodes it as it goes in: a space,
+an `@` or a `/` in a password otherwise ends the URL's userinfo early and the
+driver connects to an address nobody wrote. The value stored is the password
+itself. The datasource wizard writes it that way for Postgres and SQL Server;
+MySQL's connection string is not a URL and takes the password as it is.
+
+A change takes effect at once. The datasources that read the secret are opened
+again — a source that would not open for want of its password opens — and the
+next render of a map uses the new key. Every other replica notices within thirty
+seconds.
+
+Values are sealed before they reach the database: AES-256-GCM under a key derived
+from `CRONOS_SECRETS_KEY`, each bound to its organisation, project and name, so
+a value copied into another project's row does not open there. A dump of the
+database is ciphertext; see Backing up for what that makes of the key.
+
+**With several projects** (`CRONOS_PROJECTS`) the environment and the secrets
+directory are the deployment's, and no project reads them — except names listed
+in `CRONOS_SHARED_SECRETS`, and files under `CRONOS_SECRETS_DIR/<org>/<project>/`,
+which are that project's. Before this, any project could name any deployment
+secret: an editor could publish a datasource whose DSN points at a host of their
+own and names another customer's warehouse password, and the process would send
+it there.
 
 ## Map basemaps
 
@@ -252,20 +300,19 @@ how to restrict them.
   that forbids heavy use. Fine for a demo or a quiet internal report; for an
   embedded product, point a URL basemap at a tile service you pay for.
 
-A key comes from the same place a datasource's password does — a file in
-`CRONOS_SECRETS_DIR` or a `CRONOS_SECRET_…` variable — under the names above,
-or under a name a report gives it. That name must start `mapbox-`, `google-`,
-or `tiles-` for a URL basemap: a basemap's key is published to every reader, so
-a report can only name a secret somebody made to be published. A missing key
-does not fail the report. The map is drawn without its basemap, the reader is
-told the basemap is not set up, and the log says which secret to set — once
-every ten minutes, not once per render.
+A key comes from the same places a datasource's password does — see Secrets —
+under the names above, or under a name a report gives it. The simplest is the
+map itself: the builder shows whether its key is set and takes one. The name
+must start `mapbox-`, `google-`, or `tiles-` for a URL basemap: a basemap's key
+is published to every reader, so a report can only name a secret somebody made
+to be published. A missing key does not fail the report. The map is drawn
+without its basemap, the reader is told the basemap is not set up, Settings →
+Secrets lists it as missing, and the log says which secret to set and for which
+project — once every ten minutes, not once per render.
 
-Secrets are the deployment's, not a project's. On a deployment serving several
-projects, any project's report may name any tile key the deployment holds — its
-readers' tile requests are then billed to that key's account — exactly as any
-project's datasource may name any datasource secret. Give projects that must not
-share a map account deployments of their own.
+Each project's key is its own, and its readers' tile requests are billed to its
+account. A deployment serving several projects can give them one key by setting
+it in the environment and listing it in `CRONOS_SHARED_SECRETS`.
 
 The viewer sends each tile request with `referrerpolicy="strict-origin"`: the
 page's origin and nothing past it. OpenStreetMap blocks a tile request with no
@@ -438,7 +485,9 @@ cannot change.
 
 The signing key is **generated**, not typed. It is the root of trust for every
 token the deployment will issue, and a person choosing one chooses a memorable
-one.
+one. So is the secrets key, beside it — a second key rather than the first one
+used twice, so that rotating the signing key, the routine answer to a leaked
+token, does not also make every stored password unreadable.
 
 cronos refuses to start if `config.yaml` is readable by anybody but its owner.
 It holds the key, and a key every account on the host can read is one that has
@@ -960,6 +1009,13 @@ every session ends, every share link stops opening, and every embed token a
 host application holds becomes invalid. Keep it wherever you keep the thing
 that would end your business if you lost it.
 
+**The secrets key.** Also not in the database, and it is the only thing that
+opens the secrets the database holds. Lose it and every stored password and
+tile key has to be typed in again; keep it beside the database's backups and a
+stolen backup is a stolen set of passwords. So back it up, and not there. A
+deployment set up through first-run setup has it in the configuration file,
+next to the signing key.
+
 ### Rotating the signing key
 
 `CRONOS_SIGNING_KEY_PREVIOUS` is a comma-separated list of keys that are
@@ -994,6 +1050,31 @@ that are held longest in practice, and they are bounded by the same 24 hours.
 And a key retired here still has to be a real key — one under 32 bytes is
 refused at boot rather than ignored, because a weak key on the way out is a
 weak key.
+
+### Rotating the secrets key
+
+The same shape, with one difference: stored secrets are sealed again rather than
+waited out. Every instance that starts with a previous key reseals whatever that
+key sealed, and says how many in its startup line.
+
+```bash
+# 1. Roll out the new key as a previous one, so every replica can open what
+#    the new key will seal. Nothing is resealed yet.
+CRONOS_SECRETS_KEY="<old>"
+CRONOS_SECRETS_KEY_PREVIOUS="<new>"
+
+# 2. Swap them. The first instance to start reseals everything under <new>;
+#    the rest can still open both.
+CRONOS_SECRETS_KEY="<new>"
+CRONOS_SECRETS_KEY_PREVIOUS="<old>"
+
+# 3. Once every instance runs step 2, drop the old key.
+CRONOS_SECRETS_KEY="<new>"
+```
+
+A single instance can go straight to step 2. A key replaced without step 2 is
+the failure worth knowing the look of: startup logs every secret no configured
+key can open, by project and name, and each has to be set again.
 
 The definitions directory is not state. It is a bootstrap: once the store holds
 anything, the directory is not consulted again.

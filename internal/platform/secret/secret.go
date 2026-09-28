@@ -22,12 +22,23 @@ import (
 )
 
 // reference matches ${secret:name}, where a name is what an environment
-// variable or a file may be called.
+// variable or a file may be called, and ${secret:name|url} for a value that
+// sits inside a URL — see Resolve.
 //
 // Deliberately narrow. A name with a slash in it could name a file outside the
 // directory a Files resolver was pointed at, and a name with a space in it is
 // a typo somebody should be told about rather than a lookup that fails oddly.
-var reference = regexp.MustCompile(`\$\{secret:([A-Za-z0-9_.-]+)\}`)
+var reference = regexp.MustCompile(`\$\{secret:([A-Za-z0-9_.-]+)(\|url)?\}`)
+
+// wholeName is a name somebody may store a value under: what reference allows
+// between the braces, starting with a letter or a digit so a name cannot be
+// "." or ".." — both of which reference accepts, and which a Files resolver
+// would read as a directory.
+var wholeName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]*$`)
+
+// ValidName reports whether name can be stored and then written as
+// ${secret:name}.
+func ValidName(name string) bool { return wholeName.MatchString(name) }
 
 // Resolver answers with the value behind a name.
 type Resolver interface {
@@ -45,6 +56,13 @@ string that will fail somewhere less obvious than here — half a password, or a
 host that is still the literal text `${secret:db_host}` — so a missing name is
 an error naming every name that was missing, at startup, rather than a
 connection error at six in the morning.
+
+A reference written ${secret:name|url} is percent-encoded on its way in. Most
+connection strings are URLs, and a password is whatever a generator produced:
+a space, an `@` or a `/` in one ends the userinfo early, and the driver connects
+to an address nobody wrote. The value stored stays the password itself — so it
+reads the same wherever else it is used — and the definition says where it
+sits.
 */
 func Resolve(s string, from Resolver) (string, error) {
 	if from == nil {
@@ -57,11 +75,14 @@ func Resolve(s string, from Resolver) (string, error) {
 
 	var missing []string
 	out := reference.ReplaceAllStringFunc(s, func(match string) string {
-		name := reference.FindStringSubmatch(match)[1]
-		value, ok := from.Secret(name)
+		m := reference.FindStringSubmatch(match)
+		value, ok := from.Secret(m[1])
 		if !ok {
-			missing = append(missing, name)
+			missing = append(missing, m[1])
 			return match
+		}
+		if m[2] != "" {
+			return urlEscaped(value)
 		}
 		return value
 	})
@@ -82,6 +103,28 @@ func Names(s string) []string {
 	}
 	sort.Strings(out)
 	return unique(out)
+}
+
+// urlEscaped percent-encodes everything but RFC 3986's unreserved characters,
+// so a value means itself in a URL's userinfo, path and query alike — which
+// url.QueryEscape does not promise for the first, nor url.PathEscape for the
+// last.
+func urlEscaped(v string) string {
+	const hex = "0123456789ABCDEF"
+	var b strings.Builder
+	b.Grow(len(v))
+	for i := 0; i < len(v); i++ {
+		c := v[i]
+		if 'A' <= c && c <= 'Z' || 'a' <= c && c <= 'z' || '0' <= c && c <= '9' ||
+			c == '-' || c == '.' || c == '_' || c == '~' {
+			b.WriteByte(c)
+			continue
+		}
+		b.WriteByte('%')
+		b.WriteByte(hex[c>>4])
+		b.WriteByte(hex[c&15])
+	}
+	return b.String()
 }
 
 func unique(in []string) []string {
