@@ -159,7 +159,9 @@ cronos-report {
 ```
 
 There is no `theme` attribute with a list of our opinions. Dark mode follows
-`prefers-color-scheme` unless the host overrides the tokens.
+`prefers-color-scheme` unless the host overrides the tokens — or names the
+theme itself with `data-theme="dark"` or `data-theme="light"` on the element,
+for a page with a theme switch of its own.
 
 Structural parts are exposed for the cases custom properties cannot reach:
 `::part(panel)`, `::part(stat)`, `::part(table)`, `::part(bar)`,

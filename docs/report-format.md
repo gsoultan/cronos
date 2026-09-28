@@ -482,6 +482,15 @@ result — on `bar` and `area` only, because a stacked line has a top edge that
 reads as a total nobody measured. Splitting a `pie` is refused for the same
 class of reason: it is already part-to-whole.
 
+Every chart is drawn at the width of the panel it is in, and drawn again when
+that changes, so a circle stays round, a label is measured and cut to its room
+rather than run off the edge, and category labels thin to every second or
+third when they would touch. A bar carries its number at its end, and a bar
+below zero grows left from a line at nothing. A chart split by `series:` has a
+legend whose keys hide and show each series. A `donut` carries the total in its
+middle, and both share charts list every slice with its value and its share.
+Numbers on a chart are always the ones the server formatted.
+
 A scatter's horizontal axis is a measure, so it is `xValue` and not `x`. `x`
 stays the dimension that says what each dot *is* — which is also what bounds
 the chart, since one dot per row is one dot per however many rows the dataset
@@ -518,9 +527,10 @@ one plot is the most-flagged mistake in charting: where the two axes line up is
 a choice nobody made on purpose, so the chart shows a correlation that is not in
 the data. Sharing one scale is the default, and a measure that genuinely needs
 its own has to say so — which is the difference between a considered decision
-and an accident. The viewer marks such a track "(right)" in the legend, because
-a reader otherwise has no way to know that line is not comparable to the bars
-beside it.
+and an accident. The viewer marks such a track "(right)" in the legend and
+reads it against a second axis on the right, its numbers in the track's own
+colour, because a reader otherwise has no way to know that line is not
+comparable to the bars beside it.
 
 A funnel comes in two shapes, because data does. Stages as **columns** is how
 most warehouses model one:
@@ -549,12 +559,15 @@ chain of float additions done twice in two languages happens to put it. A
 closing total is appended automatically. Rises and falls take a diverging pair —
 blue and red, deliberately not green and red, which is the one pair a colourblind
 reader cannot separate on the one chart whose whole point is which side of
-nothing a bar is on.
+nothing a bar is on. Each column carries its change written over it, and a
+dashed thread takes the running total from one column to the next.
 
 A **heatmap** needs both dimensions: `x` along the top and `series` down the
 side. The grid comes back dense, and a pair no row matched is marked `empty`
 rather than dropped — "no rows" and "rows totalling nearly nothing" are
-different answers, and the ramp's lightest step cannot say both.
+different answers, and the ramp's lightest step cannot say both. A cell carries
+its value where the value fits, and a key under the grid says what each shade
+spans.
 
 A **gauge** folds the whole set to one number and reads it against a `target:`,
 which is either a measure or a fixed value:
@@ -567,8 +580,10 @@ which is either a measure or a fixed value:
   target: {value: 100000, label: Plan}    # or {field: quota, aggregate: sum}
 ```
 
-The arc is capped at the target and beating it is said in words beside the
-figure, because an arc drawn to 180% wraps past its own start and reads as 80%.
+The dial runs from nothing to the target, both ends labelled, with the value and
+its share of the target in the middle. The arc is capped at the target and
+beating it turns it to the good colour and is said in words beside it, because
+an arc drawn to 180% wraps past its own start and reads as 80%.
 
 A **treemap** nests when `series` is set: the groups become outer rectangles and
 each is laid out again inside its own box. The squarified layout runs on the

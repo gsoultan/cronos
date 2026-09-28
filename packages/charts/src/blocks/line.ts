@@ -1,79 +1,97 @@
 import type { Bar, ChartBlock, Group } from '../types'
-import { el } from '../dom'
 import { svg, n } from '../svg'
-import { plot, on, PLOT_W } from '../plot'
+import { cartesian, type Cartesian } from '../axes'
+import { measure, sized, uid } from '../frame'
+import { chartPanel, host, hue, nothing, PLOT_HEIGHT } from '../chart'
 import { legend } from '../legend'
-import { withTips } from '../tip'
+import { withTips, type Tips } from '../tip'
 
-const HEIGHT = 58
+/** Past this many points a series is a line, not a line of dots. */
+const MARKED = 24
 
 /**
  * A line or area chart.
  *
- * SVG here, where the bar chart is divs: a line is a single path through every
- * point, which is the one shape a grid of elements cannot express. It stretches
- * to the panel with `preserveAspectRatio: none`, and the strokes carry
- * `vector-effect: non-scaling-stroke` so a 2px line stays 2px at every width
- * rather than becoming a wedge.
+ * Each point sits in the middle of its category's band, as a column would, so
+ * the first and last labels have the room the others have rather than hanging
+ * off the plot's edges. A dot marks each point while there are few enough to
+ * count; past that the crosshair is what answers "what was March", for every
+ * series at once.
  *
- * No marker per point. A dot on every month of a two-year series is forty-eight
- * dots and no information; the crosshair on hover is what answers "what was
- * March", and it answers it for every series at once.
+ * An area fades toward its floor, so a second series behind it still shows
+ * through; stacked, each band is solid and sits on the ones below it.
  */
 export function lineBlock(b: ChartBlock, area: boolean): HTMLElement {
-  const panel = el('section', { class: 'panel wide', part: 'panel' }, el('h3', {}, b.title))
+  const panel = chartPanel(b.title)
   const y = b.yAxis
   const groups: Group[] = b.groups ?? [{ label: b.title, slot: 0, bars: b.series ?? [] }]
   const buckets = groups[0]?.bars ?? []
+  if (!y || buckets.length === 0) return nothing(panel)
 
-  if (!y || buckets.length === 0) {
-    panel.append(el('p', { class: 'unaffected' }, 'No data in this period.'))
-    return panel
-  }
-
-  const p = plot({ min: 0, max: 1, ticks: xTicks(buckets) }, y, HEIGHT, true)
-  // Stacked areas are drawn from the top down, so each band sits on the sum of
-  // the ones below it rather than on the baseline.
-  const floors = buckets.map(() => 0)
-
-  for (const g of groups) {
-    // Stacked tops accumulate into floors, so each band's top edge is the
-    // running total and its base is where the previous band left off.
-    const tops = g.bars.map((bar, i) => {
-      if (!b.stacked) return bar.value
-      return (floors[i] = (floors[i] ?? 0) + bar.value)
+  const tips = withTips(panel)
+  const at = host(panel)
+  const shown = groups.map(() => true)
+  let entered = false
+  const draw = (width: number) => {
+    const c = cartesian({ width, height: PLOT_HEIGHT, m: measure(at), y, categories: buckets.map((x) => x.label) })
+    const xs = buckets.map((_, i) => c.band(i).x + c.band(i).w / 2)
+    const floors = buckets.map(() => 0)
+    const tops = groups.map((g, k) => {
+      if (!shown[k]) return []
+      const base = [...floors]
+      const top = g.bars.map((bar, i) => (b.stacked ? (floors[i] = (floors[i] ?? 0) + bar.value) : bar.value))
+      series(c, g, top.map((v, i) => [xs[i] ?? 0, c.y(v)]), area, b.stacked ? base : null, buckets.length,
+        c.y(Math.max(y.min, 0)))
+      return top
     })
-    const points = tops.map((v, i) => p.at(xOf(i, buckets.length), on(y, v)))
-
-    if (area) {
-      const base = b.stacked
-        ? tops.map((v, i) => p.at(xOf(i, buckets.length), on(y, v - (g.bars[i]?.value ?? 0))))
-        : []
-      p.canvas.append(svg('path', {
-        class: 'area', part: 'area',
-        fill: `var(--cr-series-${g.slot + 1})`,
-        d: `${trace(points)} ${close(base, p, y, buckets.length)}`,
-      }))
-    }
-    p.canvas.append(svg('path', {
-      class: 'line', part: 'line',
-      stroke: `var(--cr-series-${g.slot + 1})`,
-      d: trace(points),
-    }))
+    crosshair(c, xs, groups, tops, buckets, tips)
+    if (!entered) c.svg.classList.add('enter')
+    entered = true
+    at.replaceChildren(c.svg)
   }
-
-  panel.append(p.frame)
-  crosshair(panel, p.canvas, groups, buckets)
-  const key = legend(groups)
+  const redraw = sized(at, draw)
+  const key = legend(groups, (i, on) => { shown[i] = on; redraw() })
   if (key) panel.append(key)
   return panel
 }
 
-/** Where bucket i sits, 0..1. A lone bucket goes in the middle rather than on
- *  the left edge, where it would read as the start of a series that is
- *  missing. */
-function xOf(i: number, count: number): number {
-  return count === 1 ? 0.5 : i / (count - 1)
+/** One series: its band or fade, its line, and its dots while they count. */
+function series(c: Cartesian, g: Group, pts: [number, number][], area: boolean,
+  floors: number[] | null, count: number, zero: number) {
+  const colour = hue(g.slot)
+  if (area) {
+    // Down to the stack below, or to nothing — which is the axis' floor
+    // unless the data runs below it.
+    const floor = floors
+      ? floors.map((v, i) => `L${n(pts[i]?.[0] ?? 0)} ${n(c.y(v))}`).reverse().join('')
+      : `L${n(pts[pts.length - 1]?.[0] ?? 0)} ${n(zero)}L${n(pts[0]?.[0] ?? 0)} ${n(zero)}`
+    const shade = svg('path', { class: floors ? 'area stacked' : 'area', part: 'area', d: `${trace(pts)}${floor}Z` })
+    if (floors) shade.style.fill = colour
+    else shade.style.fill = `url(#${fade(c, colour)})`
+    c.marks.append(shade)
+  }
+  const line = svg('path', { class: 'line', part: 'line', d: trace(pts), pathLength: 1 })
+  line.style.stroke = colour
+  c.marks.append(line)
+  if (count > MARKED) return
+  for (const [x, y] of pts) {
+    const dot = svg('circle', { class: 'point', cx: n(x), cy: n(y), r: 3.5 })
+    dot.style.fill = colour
+    c.marks.append(dot)
+  }
+}
+
+/** A vertical fade in a series' colour, from the line down to nothing. */
+function fade(c: Cartesian, colour: string): string {
+  const id = uid('fade')
+  const stop = (offset: number, opacity: number) => {
+    const s = svg('stop', { offset })
+    s.style.stopColor = colour
+    s.style.stopOpacity = String(opacity)
+    return s
+  }
+  c.svg.prepend(svg('defs', {}, svg('linearGradient', { id, x1: 0, y1: 0, x2: 0, y2: 1 }, stop(0, 0.28), stop(1, 0.02))))
+  return id
 }
 
 function trace(points: [number, number][]): string {
@@ -81,64 +99,44 @@ function trace(points: [number, number][]): string {
 }
 
 /**
- * Seals an area band: back along the band below it when stacked, or along the
- * baseline when not.
- */
-function close(base: [number, number][], p: ReturnType<typeof plot>, y: NonNullable<ChartBlock['yAxis']>,
-  count: number): string {
-  if (base.length > 0) {
-    return `${base.reverse().map(([x, v]) => `L${n(x)} ${n(v)}`).join('')}Z`
-  }
-  const [, floor] = p.at(0, on(y, Math.max(y.min, 0)))
-  return `L${n(PLOT_W * xOf(count - 1, count))} ${n(floor)}L${n(PLOT_W * xOf(0, count))} ${n(floor)}Z`
-}
-
-/** Evenly spaced bucket labels, thinned to what will fit. */
-function xTicks(buckets: Bar[]) {
-  // Every label on a 24-month series overlaps into an unreadable smear. Six is
-  // about what a panel's width holds, and showing a sixth of them beats
-  // showing all of them illegibly.
-  const every = Math.max(1, Math.ceil(buckets.length / 6))
-  return buckets
-    .map((bar, i) => ({ at: xOf(i, buckets.length), label: bar.label, i }))
-    .filter((t) => t.i % every === 0)
-}
-
-/**
- * A vertical rule that follows the pointer and reads every series at that
- * bucket at once.
+ * A vertical rule that follows the pointer to the nearest category, a dot on
+ * every series there, and a tooltip reading all of them beside their colours.
  *
- * One listener on the canvas rather than a hit target per point: a point on a
- * line has no area to hover, and giving each one an invisible 20px circle is
- * both more nodes and a worse target than the whole column.
+ * One target over the whole plot rather than one per point: a point on a line
+ * has no area to hover, and the question a line chart is asked is "what was
+ * every series then", not "what was this dot".
  */
-function crosshair(panel: HTMLElement, canvas: SVGSVGElement, groups: Group[], buckets: Bar[]) {
-  const tip = withTips(panel)
-  const rule = svg('line', { class: 'rule', y1: 0, y2: HEIGHT, x1: 0, x2: 0, hidden: '' })
-  canvas.append(rule)
-
-  const hit = svg('rect', {
-    x: 0, y: 0, width: PLOT_W, height: HEIGHT, fill: 'transparent', class: 'hit',
-  })
-  canvas.append(hit)
+function crosshair(c: Cartesian, xs: number[], groups: Group[], tops: number[][], buckets: Bar[], tips: Tips) {
+  const { x, y, w, h } = c.plot
+  const rule = svg('line', { class: 'rule', x1: 0, x2: 0, y1: y, y2: n(y + h), visibility: 'hidden' })
+  const focus = svg('g', { class: 'focus' })
+  const hit = svg('rect', { class: 'hit', x, y, width: n(w), height: n(h) })
+  c.svg.append(rule, focus, hit)
 
   hit.addEventListener('pointermove', (e) => {
-    const box = canvas.getBoundingClientRect()
-    const frac = (e.clientX - box.left) / box.width
-    const i = Math.max(0, Math.min(buckets.length - 1, Math.round(frac * (buckets.length - 1))))
-    const x = PLOT_W * xOf(i, buckets.length)
-    rule.setAttribute('x1', n(x))
-    rule.setAttribute('x2', n(x))
-    rule.removeAttribute('hidden')
-
-    // Every series at that bucket, which is the question a line chart is
-    // actually asked — and the reason this is one crosshair rather than a hit
-    // target per point.
-    const all = groups.map((g) => `${g.label}: ${g.bars[i]?.formatted ?? '—'}`).join(' · ')
-    tip.show(e, buckets[i]?.label ?? '', groups.length > 1 ? all : groups[0]?.bars[i]?.formatted)
+    const box = c.svg.getBoundingClientRect()
+    const px = e.clientX - box.left
+    let i = 0
+    xs.forEach((at, k) => { if (Math.abs(at - px) < Math.abs((xs[i] ?? 0) - px)) i = k })
+    const at = n(xs[i] ?? 0)
+    rule.setAttribute('x1', at)
+    rule.setAttribute('x2', at)
+    rule.setAttribute('visibility', 'visible')
+    focus.replaceChildren(...groups.flatMap((g, k) => {
+      const v = tops[k]?.[i]
+      if (v === undefined) return []
+      const dot = svg('circle', { class: 'point on', cx: at, cy: n(c.y(v)), r: 5 })
+      dot.style.fill = hue(g.slot)
+      return [dot]
+    }))
+    const rows = groups.flatMap((g, k) => (tops[k]?.length
+      ? [{ colour: hue(g.slot), label: g.label, value: g.bars[i]?.formatted ?? '—' }] : []))
+    tips.show(e, buckets[i]?.label ?? '', rows.length === 1 ? rows[0]?.value : undefined,
+      rows.length > 1 ? rows : undefined)
   })
   hit.addEventListener('pointerleave', () => {
-    rule.setAttribute('hidden', '')
-    tip.hide()
+    rule.setAttribute('visibility', 'hidden')
+    focus.replaceChildren()
+    tips.hide()
   })
 }

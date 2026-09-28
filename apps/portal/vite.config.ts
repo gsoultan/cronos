@@ -4,6 +4,7 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 import { mantineBase } from './plugins/mantine-base.ts'
+import { chartSheet } from '../../packages/charts/build/sheet.ts'
 
 export default defineConfig({
   /* The chart renderers, from source.
@@ -31,6 +32,7 @@ export default defineConfig({
     react(),
     tailwindcss(),
     mantineBase(),
+    chartSheet(),
     VitePWA({
       /* Prompt, not autoUpdate. A silent reload while somebody is halfway
          through building a report throws their work away; the banner lets them

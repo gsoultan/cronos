@@ -23,9 +23,17 @@ export interface Tips {
    */
   bind(target: Element, text: string, sub?: string | (() => string)): void
   /** Shows the tooltip at an event's position. For a mark with no element of
-   *  its own — a crosshair reading a column of a line chart. */
-  show(e: PointerEvent, text: string, sub?: string): void
+   *  its own — a crosshair reading a column of a line chart, whose rows are
+   *  every series at that point, each beside its colour. */
+  show(e: PointerEvent, text: string, sub?: string, rows?: TipRow[]): void
   hide(): void
+}
+
+/** One series in a tooltip that reads several at once. */
+export interface TipRow {
+  colour: string
+  label: string
+  value: string
 }
 
 export function withTips(panel: HTMLElement): Tips {
@@ -38,15 +46,17 @@ export function withTips(panel: HTMLElement): Tips {
   // that has moved out from under it.
   panel.addEventListener('scroll', hide, { passive: true })
 
-  const fill = (text: string, sub?: string) => {
-    tip.replaceChildren(el('b', {}, text), ...(sub ? [el('span', {}, sub)] : []))
+  const fill = (text: string, sub?: string, rows: TipRow[] = []) => {
+    tip.replaceChildren(el('b', {}, text), ...(sub ? [el('span', {}, sub)] : []),
+      ...rows.map((r) => el('span', { class: 'tip-row' },
+        el('i', { class: 'swatch', style: `background:${r.colour}` }), r.label, el('em', {}, r.value))))
     tip.removeAttribute('hidden')
   }
 
   return {
     hide,
-    show(e, text, sub) {
-      fill(text, sub)
+    show(e, text, sub, rows) {
+      fill(text, sub, rows)
       place(panel, tip, e.clientX, e.clientY)
     },
     bind(target, text, sub) {

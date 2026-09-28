@@ -944,3 +944,26 @@ func TestPrintedChartsCarryWhatPaperNeeds(t *testing.T) {
 		})
 	}
 }
+
+// A donut says its whole in its middle: the sum of the slices it draws, the
+// ones above nothing, formatted as they are.
+func TestAShareChartCarriesItsWhole(t *testing.T) {
+	blk := renderOne(t, depotsWith(t, `INSERT INTO depots VALUES
+  ('North', '', 0, 0, 0, 0, 'Aurora', 1200, 1, 'a', ''),
+  ('South', '', 0, 0, 0, 0, 'Aurora', 300.5, 1, 'b', ''),
+  ('Loss', '', 0, 0, 0, 0, 'Aurora', -50, 1, 'c', '');`), `- kind: chart
+  chart: donut
+  title: Share
+  x: {field: region}
+  y: {field: parcels, aggregate: sum}`)
+	if len(blk.Totals) != 1 || blk.Totals[0].Value != 1500.5 || blk.Totals[0].Formatted != "1,500.50" {
+		t.Fatalf("the whole is %+v, want 1,500.50 — the slices a donut can draw", blk.Totals)
+	}
+	raw, err := json.Marshal(blk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"totals":[{`) {
+		t.Errorf("the whole is not sent: %s", raw)
+	}
+}

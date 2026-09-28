@@ -1,4 +1,5 @@
 import { defineConfig } from 'vite'
+import { chartSheet } from '../charts/build/sheet'
 
 /*
  * One file, no chunks, no CSS asset.
@@ -9,6 +10,7 @@ import { defineConfig } from 'vite'
  * see styles.ts.
  */
 export default defineConfig({
+  plugins: [chartSheet()],
   build: {
     target: 'es2022',
     lib: {

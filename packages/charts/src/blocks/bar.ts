@@ -1,98 +1,143 @@
 import type { Bar, ChartBlock, Group } from '../types'
-import { el } from '../dom'
+import { svg, n } from '../svg'
+import { bar, canvas, fit, label, measure, sized, type Measure } from '../frame'
+import { chartPanel, host, hue, nothing } from '../chart'
 import { legend } from '../legend'
 import { withTips, type Tips } from '../tip'
 
+const LABEL_PX = 12
+
 /**
- * A horizontal bar chart, in divs.
+ * A horizontal bar chart: a category down the left, its bar, and its value
+ * at the bar's end.
  *
- * Not SVG: horizontal bars with a label column are a grid, and expressing a
- * grid in SVG means computing text widths in script — which costs more bytes
- * than the whole chart and gets it wrong once the host page's font loads late.
- * That argument holds for the stacked and grouped forms too, which are the
- * same grid with more cells.
+ * No value axis. The number beside each bar is the one the engine formatted,
+ * so a scale under the bars would only restate it less exactly; the bars rank
+ * and the labels state. Where the data goes below nothing, a line marks zero
+ * and those bars grow left from it — a bar drawn against the largest value
+ * only, as these were, drew a loss as a two-pixel sliver.
  *
- * Bars are drawn against the largest value rather than a zero-based axis
- * chosen by a scale library, because the label beside each bar carries the
- * real number. The bar ranks; the label states.
+ * Stacked, a bucket's parts sit end to end with the surface showing between
+ * them, positive parts to the right of zero and negative ones to the left;
+ * grouped, each series gets a thinner bar of its own under the bucket.
  */
 export function barBlock(b: ChartBlock): HTMLElement {
-  const panel = el('section', { class: 'panel wide', part: 'panel' }, el('h3', {}, b.title))
-  const tip = withTips(panel)
-  const groups = b.groups ?? []
+  const panel = chartPanel(b.title)
+  const groups: Group[] = b.groups ?? [{ label: b.title, slot: 0, bars: b.series ?? [] }]
+  const buckets = groups[0]?.bars ?? []
+  if (buckets.length === 0) return nothing(panel)
 
-  if (groups.length > 0) {
-    const rows = b.stacked ? stacked(groups, b.totals ?? [], tip) : grouped(groups, tip)
-    panel.append(el('div', { class: 'bars' }, ...rows))
-    const key = legend(groups)
-    if (key) panel.append(key)
-    return panel
-  }
-
-  /* `?? []` because a nil slice from an older server arrives as a missing
-     key, and the emptiest report is the one most likely to hit it. */
-  const series = b.series ?? []
-  const max = Math.max(...series.map((s) => s.value), 0)
-  panel.append(el('div', { class: 'bars' }, ...series.map((s) =>
-    el('div', { class: 'bar-row' },
-      el('span', {}, s.label),
-      el('div', { class: 'track' }, fill(s, max, 0, tip, s.label) ?? ''),
-      el('span', { class: 'v' }, s.formatted)))))
+  const tips = withTips(panel)
+  const at = host(panel)
+  const shown = groups.map(() => true)
+  let entered = false
+  const redraw = sized(at, (width) => {
+    const svgEl = draw(width, b, groups, shown, measure(at), tips)
+    if (!entered) svgEl.classList.add('enter')
+    entered = true
+    at.replaceChildren(svgEl)
+  })
+  const key = legend(groups, (i, on) => { shown[i] = on; redraw() })
+  if (key) panel.append(key)
   return panel
 }
 
-/**
- * One track per bucket, segments laid end to end.
- *
- * Every group covers every bucket because the server pads them, so a bucket's
- * segments can be read straight off the same index in each group without
- * reconciling which series were missing.
- */
-function stacked(groups: Group[], totals: Bar[], tip: Tips): HTMLElement[] {
+function draw(width: number, b: ChartBlock, groups: Group[], shown: boolean[], m: Measure,
+  tips: Tips): SVGSVGElement {
+  const live = groups.filter((_, i) => shown[i])
   const buckets = groups[0]?.bars ?? []
-  const max = Math.max(...totals.map((t) => t.value), 0)
+  const stacked = !!b.stacked && groups.length > 1
+  const lanes = stacked ? 1 : Math.max(live.length, 1)
+  const thick = lanes > 1 ? 12 : 20
+  const row = lanes * thick + (lanes - 1) * 3 + 12
+  const height = buckets.length * row + 4
 
-  return buckets.map((bucket, i) =>
-    el('div', { class: 'bar-row' },
-      el('span', {}, bucket.label),
-      el('div', { class: 'track stack' },
-        ...groups.map((g) => fill(g.bars[i], max, g.slot, tip, `${g.label} · ${bucket.label}`))
-          // A series with nothing in this bucket contributes no segment at
-          // all. A zero-width one would still show the 2px gap beside it,
-          // which reads as a sliver of data that is not there.
-          .filter((node): node is HTMLElement => node !== null)),
-      el('span', { class: 'v' }, totals[i]?.formatted ?? '—')))
-}
+  // Where nothing is, and how far a unit reaches, across the room left once
+  // the names and the numbers have theirs.
+  const ends = buckets.flatMap((_, i) => stacked ? stackEnds(live, i) : live.map((g) => g.bars[i]?.value ?? 0))
+  const lo = Math.min(0, ...ends)
+  const hi = Math.max(0, ...ends, lo === 0 ? 1e-9 : 0)
+  const values = stacked ? (b.totals ?? []).map((t) => t.formatted) : live.flatMap((g) => g.bars.map((x) => x.formatted))
+  const valueW = Math.ceil(Math.max(0, ...values.map((v) => m(v, LABEL_PX)))) + 8
+  const nameW = Math.min(Math.ceil(Math.max(0, ...buckets.map((x) => m(x.label, LABEL_PX)))), width * 0.36)
+  const x0 = nameW + 12 + (lo < 0 ? valueW : 0)
+  const span = Math.max(1, width - x0 - valueW)
+  const x = (v: number) => x0 + ((v - lo) / (hi - lo)) * span
 
-/** One mini-track per series, under a shared bucket label. */
-function grouped(groups: Group[], tip: Tips): HTMLElement[] {
-  const buckets = groups[0]?.bars ?? []
-  const max = Math.max(...groups.flatMap((g) => g.bars.map((x) => x.value)), 0)
+  const root = canvas(width, height)
+  const marks = svg('g', { class: 'marks' })
+  const text = svg('g', { class: 'labels' })
+  root.append(marks, text)
+  if (lo < 0) root.prepend(svg('line', { class: 'gridline zero', x1: n(x(0)), x2: n(x(0)), y1: 0, y2: height }))
 
-  return buckets.map((bucket, i) =>
-    el('div', { class: 'bar-group' },
-      el('span', { class: 'bucket' }, bucket.label),
-      el('div', { class: 'series' }, ...groups.map((g) =>
-        el('div', { class: 'bar-row thin' },
-          el('div', { class: 'track' },
-            fill(g.bars[i], max, g.slot, tip, `${g.label} · ${bucket.label}`) ?? ''),
-          el('span', { class: 'v' }, g.bars[i]?.formatted ?? '—'))))))
-}
-
-/**
- * One drawn bar.
- *
- * A zero-width bar reads as a missing row rather than a small one, so the CSS
- * keeps a 2px floor and this only sets the proportion.
- */
-function fill(bar: Bar | undefined, max: number, slot: number, tip: Tips,
-  label: string): HTMLElement | null {
-  if (!bar || bar.value === 0) return null
-  const node = el('div', {
-    class: 'fill',
-    part: 'bar',
-    style: `width: ${max > 0 ? (bar.value / max) * 100 : 0}%; background: var(--cr-series-${slot + 1})`,
+  buckets.forEach((bucket, i) => {
+    const top = i * row + 6
+    text.append(label(0, top + (row - 12) / 2 + 4, fit(bucket.label, nameW, LABEL_PX, m), 'name', 'start'))
+    if (stacked) {
+      stack(marks, live, i, top, thick, x, tips, bucket.label)
+      // Past whichever end the stack reaches on the total's side: parts
+      // either side of nothing can net to a value inside the stack.
+      const total = b.totals?.[i]
+      const [up, down] = stackEnds(live, i)
+      if (total) value(text, x, total.value < 0 ? (down ?? 0) : (up ?? 0), total.formatted, top + thick / 2)
+      return
+    }
+    live.forEach((g, k) => {
+      const v = g.bars[i]
+      if (!v) return
+      const y = top + k * (thick + 3)
+      mark(marks, x(Math.min(0, v.value)), y, Math.abs(x(v.value) - x(0)), thick, v.value, g.slot, tips,
+        live.length > 1 ? `${g.label} · ${bucket.label}` : bucket.label, v)
+      value(text, x, v.value, v.formatted, y + thick / 2)
+    })
   })
-  tip.bind(node, label, bar.formatted)
-  return node
+  return root
+}
+
+/** The ends a bucket's stack reaches, either side of nothing. */
+function stackEnds(groups: Group[], i: number): number[] {
+  let up = 0
+  let down = 0
+  for (const g of groups) {
+    const v = g.bars[i]?.value ?? 0
+    if (v >= 0) up += v
+    else down += v
+  }
+  return [up, down]
+}
+
+/** One bucket's parts, end to end outward from nothing. */
+function stack(into: SVGGElement, groups: Group[], i: number, top: number, thick: number,
+  x: (v: number) => number, tips: Tips, bucket: string) {
+  let up = 0
+  let down = 0
+  for (const g of groups) {
+    const v = g.bars[i]
+    if (!v || v.value === 0) continue
+    const from = v.value >= 0 ? up : down + v.value
+    if (v.value >= 0) up += v.value
+    else down += v.value
+    // Square between parts, with a pixel of surface either side: two fills
+    // that touch read as one fill.
+    const left = x(from) + 1
+    const w = Math.abs(x(from + Math.abs(v.value)) - x(from)) - 2
+    mark(into, left, top, w, thick, v.value, g.slot, tips, `${g.label} · ${bucket}`, v, 1)
+  }
+}
+
+function mark(into: SVGGElement, x: number, y: number, w: number, h: number, v: number, slot: number,
+  tips: Tips, name: string, datum: Bar, radius = 4) {
+  // A value of nothing still shows, as a sliver: a bar that is not there
+  // reads as a row that was filtered out.
+  const path = svg('path', { class: 'fill', part: 'bar', d: bar(x, y, Math.max(w, 2), h, v < 0 ? 'left' : 'right', radius) })
+  path.style.fill = hue(slot)
+  tips.bind(path, name, datum.formatted)
+  into.append(path)
+}
+
+/** A bar's number, just past its end: right of a gain, left of a loss. */
+function value(into: SVGGElement, x: (v: number) => number, v: number, text: string, mid: number) {
+  into.append(v < 0
+    ? label(x(v) - 6, mid + 4, text, 'value', 'end')
+    : label(x(v) + 6, mid + 4, text, 'value', 'start'))
 }
