@@ -272,6 +272,12 @@ export interface TileMap {
    *  of `midpoint` — zero unless set. */
   ramp?: string
   midpoint?: number
+  /** How far a radius layer's circles reach, in kilometres on the ground. */
+  radiusKm?: number
+  /** Names the regions and places on the map itself. */
+  labels?: boolean
+  /** Moves a flow layer's arcs from where each starts to where it lands. */
+  animate?: boolean
   /**
    * Other datasets drawn over this map — depots over the deliveries around
    * them — each a block of its own under `map.overlays`. Kept as read: the

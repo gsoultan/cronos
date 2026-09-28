@@ -77,6 +77,8 @@ func onPaper(c *document.Chart, m *GeoMap, at func(x, y float64) [2]float64) {
 			cellDots(c, m.Cells, at, layer, keyed)
 		case "flow":
 			flows(c, m.Arcs, at, keyed)
+		case "radius":
+			rings(c, m, at, keyed)
 		}
 	}
 }
@@ -230,6 +232,10 @@ func flows(c *document.Chart, arcs []Arc, at func(x, y float64) [2]float64, keye
 		}
 		c.Marks = append(c.Marks, document.Mark{Kind: document.LineMark, Points: pts,
 			Tone: colour, Label: a.Label, Value: a.Formatted})
+		// Which way it goes, as on screen: a head where it lands.
+		if head := arrowhead(ctl, q, 0.012); head != nil {
+			c.Marks = append(c.Marks, document.Mark{Kind: document.PolyMark, Points: head, Tone: colour})
+		}
 	}
 }
 

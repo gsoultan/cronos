@@ -4,7 +4,8 @@ import { Field } from '../form/Field'
 import { BasemapKeys } from './BasemapKeys'
 import {
   basemapChoice, colours, DEFAULT_KEY, defaultStyle, drawnLayers, excludedBy, MAX_HEX_KM,
-  readsPoints, readsShapes, relayer, shades, styleOptions, switchBasemap, takesSeries, type BasemapChoice,
+  MAX_RADIUS_KM, names, readsPoints, readsShapes, relayer, shades, styleOptions, switchBasemap, takesSeries,
+  type BasemapChoice,
 } from '../../lib/maps'
 import { CATEGORICAL, FOLDED, GRIDDED, METERED, MULTI_SERIES, PLOTS, STACKABLE } from '../../lib/types'
 import type {
@@ -44,6 +45,7 @@ const LAYERS = [
   { value: 'bubble', label: 'Bubbles' },
   { value: 'scatter', label: 'Dots' },
   { value: 'flow', label: 'Flows' },
+  { value: 'radius', label: 'Distance around each place' },
 ]
 
 /* Shown whenever the rule has disabled a layer, so a greyed-out option comes
@@ -519,7 +521,27 @@ function MapFields({ block, dimensions, onChange }: {
         </Field>
       )}
 
+      {drawn.includes('radius') && (
+        <Field label="Distance (km)" help="How far around each place, on the ground — a delivery area, a catchment.">
+          <NumberInput value={map.radiusKm ?? ''} min={0} max={MAX_RADIUS_KM} allowNegative={false}
+            placeholder="25" data-testid="radius-km"
+            onChange={(v) => set({ radiusKm: v === '' ? undefined : Number(v) })} />
+        </Field>
+      )}
+
       {shades(drawn) && <ShadeFields map={map} onChange={set} />}
+
+      {names(drawn) && (
+        <Checkbox label="Name the places on the map" data-testid="map-labels"
+          description="As many as fit without covering each other, the largest first."
+          checked={!!map.labels} onChange={(e) => set({ labels: e.currentTarget.checked || undefined })} />
+      )}
+
+      {drawn.includes('flow') && (
+        <Checkbox label="Move the flows" data-testid="map-animate"
+          description="From where each starts to where it lands. Still for a reader who asked for less motion."
+          checked={!!map.animate} onChange={(e) => set({ animate: e.currentTarget.checked || undefined })} />
+      )}
 
       {takesSeries(drawn) && (
         <Field label="Coloured by" required={false}

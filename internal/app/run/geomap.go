@@ -37,6 +37,12 @@ type GeoMap struct {
 	// of a midpoint — the legend's steps below it cool, from it up warm —
 	// and empty for the one-hue ramp every viewer already draws.
 	Ramp string `json:"ramp,omitempty"`
+	// RadiusKm is how far a radius layer reaches around each place, Labels
+	// whether the map names its regions and places on itself, and Animate
+	// whether its flows move — each as the author set it.
+	RadiusKm float64 `json:"radiusKm,omitempty"`
+	Labels   bool    `json:"labels,omitempty"`
+	Animate  bool    `json:"animate,omitempty"`
 
 	// Tiles is the basemap, when the author asked for one and it could be
 	// drawn.

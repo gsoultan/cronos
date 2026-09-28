@@ -26,11 +26,14 @@ const (
 	ScatterLayer MapLayer = "scatter"
 	// FlowLayer draws an arc from an origin to a destination.
 	FlowLayer MapLayer = "flow"
+	// RadiusLayer draws a circle of MapSpec.RadiusKm around each point — a
+	// delivery area, a catchment — measured on the ground.
+	RadiusLayer MapLayer = "radius"
 )
 
 var mapLayers = []MapLayer{
 	PolygonLayer, LineLayer, HexbinLayer, HeatLayer, ClusterLayer,
-	BubbleLayer, ScatterLayer, FlowLayer,
+	BubbleLayer, ScatterLayer, FlowLayer, RadiusLayer,
 }
 
 // Valid reports whether l is a layer the renderers implement.

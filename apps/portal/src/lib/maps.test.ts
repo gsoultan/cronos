@@ -102,7 +102,8 @@ test('a Studio style in the file is offered, so it shows and survives', () => {
 
   expect(styleOptions('mapbox', 'dark').filter((o) => o.value === 'dark')).toHaveLength(1)
   expect(styleOptions('openstreetmap').map((o) => o.value)).toEqual(['standard'])
-  expect(styleOptions('google').map((o) => o.value)).toEqual(['roadmap', 'satellite', 'terrain', 'hybrid'])
+  expect(styleOptions('google').map((o) => o.value))
+    .toEqual(['roadmap', 'satellite', 'terrain', 'hybrid', 'dark', 'auto'])
 })
 
 /*

@@ -22,6 +22,17 @@ needs a deployment to act says so under **Upgrading**.
 
 ## Unreleased
 
+**A map names its places, circles the ground they serve, and says which way a
+flow goes.** `labels: true` names regions and places on the map, as many as fit
+without covering each other, the largest first. A `radius` layer draws a circle
+of `radiusKm` around each place, measured on the ground. Every flow now ends in
+a head where it lands, and `animate: true` moves them — still for a reader who
+asks their system for less motion. A basemap with `style: auto` draws the
+provider's light map on a light page and its dark one on a dark page; Google
+Maps gains a `dark` style, its road map in night colours. The demo's parcel
+network names its zones and moves its transfers, and the fleet circles forty
+kilometres around each depot.
+
 **A map shades its values the way they fall.** `classify` splits the shaded
 layers' values among the six shades by `quantile` — as before, and still the
 default — `equal` intervals, `jenks` natural breaks, found exactly, or

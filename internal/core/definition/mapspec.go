@@ -65,7 +65,22 @@ type MapSpec struct {
 	// rise are never neighbours.
 	Ramp     Ramp     `json:"ramp,omitempty" yaml:"ramp,omitempty"`
 	Midpoint *float64 `json:"midpoint,omitempty" yaml:"midpoint,omitempty"`
+
+	// RadiusKm is how far a radius layer's circle reaches around each point,
+	// in kilometres on the ground.
+	RadiusKm float64 `json:"radiusKm,omitempty" yaml:"radiusKm,omitempty"`
+	// Labels names the regions and places on the map itself, as many as fit
+	// without overlapping — the largest first — rather than only in their
+	// tooltips.
+	Labels bool `json:"labels,omitempty" yaml:"labels,omitempty"`
+	// Animate moves a flow layer's arcs from where each starts to where it
+	// ends, for a reader whose system has not asked for less motion.
+	Animate bool `json:"animate,omitempty" yaml:"animate,omitempty"`
 }
+
+// MaxRadiusKm is as far as a radius layer's circles may reach: about a
+// continent, past which a circle is no longer an area anybody serves.
+const MaxRadiusKm = 2000
 
 // MaxOverlays is how many datasets a map may draw over its own. Each is a
 // query of its own, and a map of more than five things is a legend nobody
@@ -137,6 +152,9 @@ func (m MapSpec) Validate(output string, i int) error {
 		return err
 	}
 	if err := m.validateClasses(output, i); err != nil {
+		return err
+	}
+	if err := m.validateMarks(output, i); err != nil {
 		return err
 	}
 	if m.Basemap != nil {
