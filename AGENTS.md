@@ -82,6 +82,7 @@ internal/
     publish/             Validate, version, store                ✓
     burst/               One document per recipient, bounded     ✓
     schedule/            Cron loop, no catch-up, no overlap        ✓
+    vault/               A project's secrets, sealed, write-only   ✓
   adapter/             Port implementations.
     codec/yaml/          The file format authors write, read and written ✓
     codec/jrxml/         JasperReports in. The 80%, and what it refused ✓
@@ -135,12 +136,17 @@ Do not add a pattern that is not solving a problem named here.
 - Columnar batches (Arrow) on the data plane, not `[]map[string]any`.
 - Every datasource carries a statement timeout and a row cap. No unbounded query.
 - Burst fan-out is bounded by `concurrency`, with backpressure to the renderer.
-- There is one server-side cache and it is keyed by the token's subject — an
-  account id, which names one person in one tenant, so it is narrower than a
-  tenant key rather than missing one. The browser's cache is the one that carries
-  no principal at all; it is emptied when the session changes. This entry used to
-  say any cache key includes the tenant and the definition version, which was a
-  rule nothing followed and which the portal disproved.
+- A server-side cache is keyed by whoever may read what it holds. Three exist:
+  whether an account still stands, and its confinement, by the token's subject
+  — an account id, one person in one tenant, so narrower than a tenant key
+  rather than missing one; resolved
+  secrets by organisation, project and name, because a secret is the project's
+  and no response carries one (`vault.Cache`, bounded, and
+  `TestAnotherProjectReadsNoneOfIt` fails if the tenant leaves the key); and
+  Google tile sessions by a digest of the key. The browser's cache carries no
+  principal at all; it is emptied when the session changes. This entry once said
+  there was one cache, and before that that every key includes the tenant and
+  the definition version — neither was true for long; see docs/tenancy.md.
 
 ---
 

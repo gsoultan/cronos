@@ -10,7 +10,7 @@ import { LivePeople } from '../components/LivePeople'
 import { connected } from '../lib/api'
 import { ProjectForm } from '../forms/ProjectForm'
 import { useWorkspace } from '../lib/WorkspaceContext'
-import { effectiveRole, projects } from '../lib/workspace'
+import { canEdit, effectiveRole, projects } from '../lib/workspace'
 import {
   invitations as seedInvitations, people as seedPeople, peopleIn,
   type Invitation, type Person,
@@ -20,10 +20,13 @@ import { SecurityPolicy } from '../components/settings/SecurityPolicy'
 import { ChannelsPanel } from '../components/settings/ChannelsPanel'
 import { GroupsPanel } from '../components/settings/GroupsPanel'
 import { OrganizationPanel } from '../components/settings/OrganizationPanel'
+import { SecretsPanel } from '../components/settings/SecretsPanel'
 import { LivePlatform } from '../components/LivePlatform'
 import { ApiError, platformAdmins, policy, profile, setPolicy } from '../lib/api'
 
-type Tab = 'organization' | 'people' | 'groups' | 'projects' | 'security' | 'channels' | 'platform'
+type Tab =
+  | 'organization' | 'people' | 'groups' | 'projects' | 'security' | 'secrets' | 'channels'
+  | 'platform'
 type Panel = 'none' | 'invite' | 'new-project'
 
 const CARD = 'mb-4 overflow-hidden rounded-lg border border-line bg-surface shadow-card'
@@ -60,6 +63,7 @@ export function SettingsPage() {
   const { org, project } = useWorkspace()
   const canAdminOrg = org.role === 'owner' || org.role === 'admin'
   const canAdminProject = effectiveRole(org, project) === 'admin'
+  const editor = canEdit(org, project)
 
   const members = useMemo(() => {
     const all = peopleIn(org, directory)
@@ -91,7 +95,7 @@ export function SettingsPage() {
       <PageHeader title="Settings" description="Who can reach what, at both levels." />
 
       <div className="mb-4 flex gap-1 overflow-x-auto border-b border-line" role="tablist">
-        {(tabs(platform !== null)).map(([id, label]) => (
+        {(tabs(platform !== null, editor)).map(([id, label]) => (
           <button key={id} type="button" role="tab" aria-selected={tab === id}
             onClick={() => setTab(id)}
             className={`shrink-0 cursor-pointer border-b-2 px-3 py-2.5 text-small font-medium ${
@@ -209,6 +213,8 @@ export function SettingsPage() {
 
       {tab === 'channels' && <ChannelsPanel canAdmin={canAdminOrg} />}
 
+      {tab === 'secrets' && editor && <SecretsPanel />}
+
       {/* The policy panel is the designed shape of a feature the engine does
           not enforce: its switches are React state over the sample directory,
           so on a connected deployment an administrator would turn on "require
@@ -320,9 +326,14 @@ function LiveSecurity() {
  * Hidden rather than disabled: a tab that exists and refuses is a tab that says
  * there is a deployment-administration tier and this account is not in it,
  * which is exactly what the server's 404 declines to say.
+ *
+ * Secrets likewise, for anybody who cannot change a definition. The server
+ * refuses a viewer the list as well as the values — which passwords a project
+ * holds and what each one opens is a map of where to aim — so a tab would be
+ * a door that opens onto a refusal.
  */
-function tabs(isPlatformAdmin: boolean): (readonly [Tab, string])[] {
-  const always: (readonly [Tab, string])[] = [
+function tabs(isPlatformAdmin: boolean, isEditor: boolean): (readonly [Tab, string])[] {
+  const shown: (readonly [Tab, string])[] = [
     ['organization', 'Organization'],
     ['people', 'People'],
     // Beside People rather than under Security: a group is who somebody is,
@@ -331,9 +342,12 @@ function tabs(isPlatformAdmin: boolean): (readonly [Tab, string])[] {
     ['groups', 'Groups'],
     ['projects', 'Projects'],
     ['security', 'Security'],
+    // Beside Security, and apart from it: that tab is who may sign in, this
+    // one is what the project's definitions sign in to other things with.
+    ...(isEditor ? [['secrets', 'Secrets'] as const] : []),
     ['channels', 'Channels'],
   ]
-  return isPlatformAdmin ? [...always, ['platform', 'Deployment'] as const] : always
+  return isPlatformAdmin ? [...shown, ['platform', 'Deployment'] as const] : shown
 }
 
 /**

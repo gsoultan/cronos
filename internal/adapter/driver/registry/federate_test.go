@@ -15,8 +15,10 @@ import (
 	"github.com/gsoultan/cronos/internal/adapter/driver/registry"
 	"github.com/gsoultan/cronos/internal/core/definition"
 	"github.com/gsoultan/cronos/internal/core/principal"
+	"github.com/gsoultan/cronos/internal/platform/secret"
 
 	_ "github.com/marcboeker/go-duckdb/v2"
+	_ "modernc.org/sqlite"
 )
 
 // lake writes a real parquet partition and returns the directory holding it.
@@ -231,5 +233,87 @@ func TestFederationsAreCountedForTheMetric(t *testing.T) {
 	if got := registry.Federations() - before; got != 0 {
 		t.Errorf("closing left %d counted — the gauge climbs for the life of "+
 			"the process and the alert it exists for never fires", got)
+	}
+}
+
+/*
+A join over a database whose connection string is a secret.
+
+The single-database path resolved the reference into its pool and the federation
+mounted from the definition, so DuckDB was asked to ATTACH the literal text
+${secret:regions_db} — every source connected through the portal takes its
+password that way, and every one of them failed the moment a dataset joined it
+to anything else.
+*/
+func TestAJoinReadsADatabaseWhoseConnectionIsASecret(t *testing.T) {
+	ctx := context.Background()
+	dir := lake(t, "('EU', 100.0), ('US', 25.0), ('EU', 50.0)")
+
+	file := filepath.Join(t.TempDir(), "regions.db")
+	lite, err := sql.Open("sqlite", "file:"+file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{
+		`CREATE TABLE regions (code TEXT, name TEXT)`,
+		`INSERT INTO regions VALUES ('EU','Europe'),('US','United States')`,
+	} {
+		if _, err := lite.ExecContext(ctx, q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := lite.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	reg, err := registry.New([]definition.DataSource{
+		{Name: "events-lake", Driver: "object-store", URI: dir, Format: "parquet"},
+		{Name: "regions", Driver: "sqlite", DSN: "${secret:regions_db}"},
+	}, secret.Map{"regions_db": file}, quiet())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reg.Close()
+
+	ds := definition.Dataset{
+		Name: "named",
+		Sources: []definition.SourceRef{
+			{Ref: "events-lake", As: "events"}, {Ref: "regions"},
+		},
+		Query: "SELECT r.name AS region, SUM(e.amount) AS total FROM events e " +
+			"JOIN regions.regions r ON r.code = e.region GROUP BY r.name ORDER BY r.name",
+		Fields: []definition.Field{
+			{Name: "region", Type: "string", Role: definition.Dimension},
+			{Name: "total", Type: "number", Role: definition.Measure},
+		},
+	}
+	engine, err := reg.Engine(ctx, ds)
+	if err != nil {
+		t.Fatalf("a join over a secret-backed database got no engine: %v", err)
+	}
+	plan, err := engine.Builder.Build(ds, nil, principal.Principal{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, err := engine.Executor.Execute(ctx, plan)
+	if err != nil {
+		t.Fatalf("executing: %v", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	got := map[string]float64{}
+	for rows.Next() {
+		var region string
+		var total float64
+		if err := rows.Scan(&region, &total); err != nil {
+			t.Fatal(err)
+		}
+		got[region] = total
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if got["Europe"] != 150 || got["United States"] != 25 {
+		t.Errorf("joined totals = %v", got)
 	}
 }

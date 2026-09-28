@@ -227,9 +227,10 @@ export interface TileMap {
   style?: string
   /**
    * A `${secret:name}` reference to the provider's key, for a report that
-   * bills a different account from the deployment's. Never shown in a form
-   * and never asked for — a key typed into one lands in the file — but kept
-   * as read, because dropping it moves the bill.
+   * bills a different account from the deployment's. The reference is never
+   * edited in a form — a key typed into one would land in the file — but kept
+   * as read, because dropping it moves the bill. The value behind it is set
+   * from the builder and stored as that secret; see BasemapKeys.
    */
   key?: string
   /** Google only: the language its labels are drawn in. Kept as read. */
@@ -283,4 +284,58 @@ export interface Report {
   updatedBy: string
   outputs: ('interactive' | 'pdf' | 'xlsx')[]
   scheduled?: { cron: string; recipients: number }
+}
+
+/* -- Secrets -------------------------------------------------------------
+ *
+ * Not the file format: a definition only ever names a secret, as
+ * `${secret:name}`, and these are the server's answer about what stands
+ * behind each name. Here because they are the other half of that reference —
+ * see lib/secrets.ts for the rules a name follows.
+ */
+
+/**
+ * Where the value behind a name comes from today.
+ *
+ * `project` was stored in this project, through the portal or the API.
+ * `deployment` is the server's own environment or a mounted file, which the
+ * project cannot see into or change. `missing` is nothing at all — and
+ * whatever reads it is broken until something answers.
+ */
+export type SecretSource = 'project' | 'deployment' | 'missing'
+
+/** A definition that names a secret. */
+export interface SecretUse {
+  kind: 'DataSource' | 'Report'
+  name: string
+}
+
+/**
+ * One secret, as somebody managing them sees it.
+ *
+ * There is no value, and not because it was left out: no request returns one,
+ * to anybody. A secret is set, used and replaced; whoever needs to know what
+ * it is has it wherever they copied it from.
+ */
+export interface SecretEntry {
+  name: string
+  source: SecretSource
+  /** When a stored one was last set. Absent for the other two sources. */
+  updatedAt?: string
+  /** The account that set it — an id, not a name. */
+  updatedBy?: string
+  usedBy: SecretUse[]
+}
+
+export interface SecretList {
+  /**
+   * Whether this deployment can keep a secret at all.
+   *
+   * False on a server with no CRONOS_SECRETS_KEY. The list still answers,
+   * because what a project uses and where each value comes from are worth
+   * knowing whether or not anything can be stored.
+   */
+  store: boolean
+  /** Sorted by name: every one stored here, and every one a definition names. */
+  secrets: SecretEntry[]
 }

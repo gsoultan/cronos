@@ -695,7 +695,9 @@ and anything else is refused when the report is saved. Without that rule,
 `${secret:warehouse-password}` in a tile URL would send the database password to
 every reader. A deployment with no key for a provider draws the map without its
 basemap, says so under the map in words that name no setting, and logs which
-secret to set.
+secret to set. The builder shows whether a map's key is set and takes one on the
+spot, stored in the project like any other secret; Settings → Secrets lists
+every key the project's maps use.
 
 Google's terms forbid its maps **beside another provider's** on one screen
 (Maps Service Terms 3.2.3(e)), so an output that draws a Google basemap and any

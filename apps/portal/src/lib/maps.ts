@@ -1,3 +1,4 @@
+import { referenced, referencedNames } from './secrets'
 import type { BasemapProvider, Tile, TileMap } from './types'
 
 /**
@@ -169,4 +170,69 @@ export function styleOptions(provider: BasemapProvider, current?: string): Optio
   const named = STYLES[provider] ?? []
   if (!current || named.some((s) => s.value === current)) return named
   return [...named, { value: current, label: provider === 'mapbox' ? `${current} (Studio)` : current }]
+}
+
+/**
+ * The secret a provider reads its key from when a map names none —
+ * CRONOS_SECRET_MAPBOX_TOKEN and CRONOS_SECRET_GOOGLE_MAPS_KEY in an
+ * environment. One per provider, because a deployment has one Mapbox account
+ * far more often than it has several. basemapprovider.go's DefaultKey.
+ */
+export const DEFAULT_KEY: Partial<Record<BasemapProvider, string>> = {
+  mapbox: 'mapbox-token',
+  google: 'google-maps-key',
+}
+
+/** How the secret behind a tile url's key has to be named. */
+export const TILE_KEY_PREFIX = 'tiles-'
+
+/** A secret a basemap sends to every reader's browser. */
+export interface BasemapKey {
+  /** The secret's name — or, when the file's key is not one reference, the key as written. */
+  name: string
+  /** What the name has to start with for the server to send it anywhere. */
+  prefix: string
+  /** Whether it does: one whole reference, with that prefix. */
+  sendable: boolean
+}
+
+/**
+ * The secrets a basemap reads, and whether the server will send each one.
+ *
+ * A tile key is public by construction — it is in every tile request, and a
+ * reader who opens the network tab has it — so the server sends a secret to a
+ * browser only when its name says it is a key: `mapbox-…`, `google-…`, or
+ * `tiles-…` in a url. Without that rule `${secret:warehouse-password}` in a
+ * tile url would send the database password to every reader. The server
+ * refuses the rest on save and again at render; the builder refuses to store
+ * a value under them, which is the one place it could otherwise help leak one.
+ */
+export function basemapKeys(map: TileMap): BasemapKey[] {
+  const fallback = map.provider ? DEFAULT_KEY[map.provider] : undefined
+  if (map.provider && fallback) {
+    const prefix = `${map.provider}-`
+    const name = map.key ? referenced(map.key) : fallback
+    return [{ name: name ?? map.key ?? '', prefix, sendable: !!name?.startsWith(prefix) }]
+  }
+  if (map.provider || !map.basemap) return []
+  return referencedNames(map.basemap).map((name) => ({
+    name, prefix: TILE_KEY_PREFIX, sendable: name.startsWith(TILE_KEY_PREFIX),
+  }))
+}
+
+/**
+ * Why a value cannot be a map's key, before it is stored.
+ *
+ * Mapbox issues two kinds of token and only one belongs in a browser: a secret
+ * token (sk.) can change the account. The server will not send one — the map
+ * draws without its basemap and the log says why — so storing one would be a
+ * key that looks set and never works, and a secret token sitting in a place
+ * made for public ones.
+ */
+export function keyValueProblem(secretName: string, value: string): string | undefined {
+  if (secretName.startsWith('mapbox-') && value.trim().startsWith('sk.')) {
+    return 'That is a Mapbox secret token (sk.), which can change the account — and a map key '
+      + 'reaches every reader’s browser. Use a public token (pk.) with the styles:tiles scope.'
+  }
+  return undefined
 }

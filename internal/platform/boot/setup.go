@@ -247,7 +247,7 @@ secrets and this reaches a browser.
 func environmentAlready() []string {
 	var set []string
 	for _, name := range []string{
-		"CRONOS_SIGNING_KEY", "CRONOS_ORG", "CRONOS_PROJECT",
+		"CRONOS_SIGNING_KEY", "CRONOS_SECRETS_KEY", "CRONOS_ORG", "CRONOS_PROJECT",
 		"CRONOS_STORE_DSN", "CRONOS_DSN", "CRONOS_ADDR", "CRONOS_ORIGINS",
 	} {
 		if os.Getenv(name) != "" {

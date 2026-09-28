@@ -188,11 +188,20 @@ func Serve(log *slog.Logger) error {
 		return err
 	}
 
+	// Before any connection is opened, because connections are opened with
+	// what this unseals. A weak key is refused here, like a weak signing key.
+	sealer, kept, err := keepSecrets(ctx, cfg, records, log)
+	if err != nil {
+		return err
+	}
+
 	// One for every project: a Google session is good for anybody using the
 	// same key, and minting one per project would be a round trip to Google
-	// per project per restart for the same answer.
+	// per project per restart for the same answer. Each project reads its own
+	// keys through it — see basemap.Resolver.For.
 	maps := basemap.New(secrets(cfg), log)
 	for _, rt := range runtimes {
+		rt.vault = keeping(cfg, rt, records, sealer, kept, several, log)
 		if err := finish(ctx, cfg, rt, defs, records, maps, log); err != nil {
 			return err
 		}
@@ -242,6 +251,7 @@ func Serve(log *slog.Logger) error {
 	   remembering the one it was born with.
 	*/
 	projects := projectsFor(runtimes, several)
+	defer follow(projects, runtimes)()
 
 	stopSchedulers, err := startSchedulers(cfg, runtimes, records, metrics, projects, log)
 	defer stopSchedulers()
@@ -282,6 +292,7 @@ func Serve(log *slog.Logger) error {
 		OrgProjects: orgProjects(records),
 		Memberships: memberships(records),
 		Policies:    policies(records),
+		Secrets:     secretsFor(records, sealer, projects, runtimes),
 		Accounts:    accounts(records),
 		Invitations: invitations(records),
 		Post:        postman(cfg, log),

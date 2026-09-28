@@ -15,6 +15,32 @@ type Server struct {
 	// and Kubernetes projected volumes produce. Empty means the environment
 	// alone.
 	SecretsDir string
+	/*
+	   SecretsKey seals the secrets people store through the portal — a Mapbox
+	   token, a warehouse password. The store holds only what it sealed, so a
+	   backup of the database is not a backup of the passwords in it.
+
+	   No default and never generated on its own: a key that appeared by itself
+	   on one boot would be a different key on the next, and every stored
+	   secret would be unreadable. First-run setup writes one down. Without one
+	   the portal says where to set it and stores nothing.
+	*/
+	SecretsKey []byte
+	// PreviousSecretsKeys open what they sealed and seal nothing. Startup seals
+	// those values again under SecretsKey, so a retired key can be removed
+	// once one boot has run with both.
+	PreviousSecretsKeys [][]byte
+	/*
+	   SharedSecrets are the deployment secrets every project may read, when
+	   this process serves several.
+
+	   Only these. The environment and the secrets directory are the
+	   deployment's, and a project naming one of them is otherwise a way for one
+	   customer's editor to send another customer's password to a host of their
+	   choosing — see secret.Only. A single-project deployment is unaffected:
+	   there is nobody else's to read.
+	*/
+	SharedSecrets []string
 	// Audit is "log" or "off".
 	Audit string
 	// BehindProxy trusts X-Forwarded-For for rate limiting.
@@ -144,6 +170,11 @@ func Load() (Server, error) {
 		// given, because a mounted file is not visible in /proc to everything
 		// running as the same user and does not appear in a crash dump.
 		SecretsDir: os.Getenv("CRONOS_SECRETS_DIR"),
+		// What seals the secrets stored in the portal, and the keys it is
+		// rotating away from. Comma-separated, like the signing key's.
+		SecretsKey:          []byte(os.Getenv("CRONOS_SECRETS_KEY")),
+		PreviousSecretsKeys: keys(os.Getenv("CRONOS_SECRETS_KEY_PREVIOUS")),
+		SharedSecrets:       names(os.Getenv("CRONOS_SHARED_SECRETS")),
 		// Where the audit trail goes. "log" by default rather than off: a
 		// product whose claim is governed access to somebody else's customers'
 		// data, shipping with nothing recorded unless it is switched on, has
@@ -228,6 +259,17 @@ func keys(raw string) [][]byte {
 	for _, k := range strings.Split(raw, ",") {
 		if k = strings.TrimSpace(k); k != "" {
 			out = append(out, []byte(k))
+		}
+	}
+	return out
+}
+
+// names splits a comma-separated list of secret names, dropping empties.
+func names(raw string) []string {
+	var out []string
+	for _, n := range strings.Split(raw, ",") {
+		if n = strings.TrimSpace(n); n != "" {
+			out = append(out, n)
 		}
 	}
 	return out

@@ -22,6 +22,7 @@ import (
 	"github.com/gsoultan/cronos/internal/app/schedule"
 	"github.com/gsoultan/cronos/internal/app/send"
 	"github.com/gsoultan/cronos/internal/app/share"
+	"github.com/gsoultan/cronos/internal/app/vault"
 	"github.com/gsoultan/cronos/internal/core/definition"
 	"github.com/gsoultan/cronos/internal/core/principal"
 	"github.com/gsoultan/cronos/internal/extension"
@@ -654,4 +655,9 @@ var (
 	_ api.Administering = (*sqlstore.Store)(nil)
 	_ api.Confining     = (*sqlstore.Store)(nil)
 	_ api.Standing      = (*sqlstore.Store)(nil)
+	// And the secrets store, whose failure would be quieter still: a vault
+	// with no store resolves only the environment, and every secret set in
+	// the portal would look saved and never be read.
+	_ vault.Store     = (*sqlstore.Store)(nil)
+	_ vault.Resealing = (*sqlstore.Store)(nil)
 )

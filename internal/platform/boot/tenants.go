@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gsoultan/cronos/internal/adapter/api"
+	"github.com/gsoultan/cronos/internal/adapter/basemap"
 	"github.com/gsoultan/cronos/internal/adapter/driver/registry"
 	"github.com/gsoultan/cronos/internal/adapter/store/file"
 	sqlstore "github.com/gsoultan/cronos/internal/adapter/store/sql"
@@ -19,6 +20,7 @@ import (
 	"github.com/gsoultan/cronos/internal/app/schedule"
 	"github.com/gsoultan/cronos/internal/app/send"
 	"github.com/gsoultan/cronos/internal/app/share"
+	"github.com/gsoultan/cronos/internal/app/vault"
 	"github.com/gsoultan/cronos/internal/core/principal"
 	"github.com/gsoultan/cronos/internal/platform/config"
 	"github.com/gsoultan/cronos/internal/platform/token"
@@ -96,6 +98,21 @@ type runtime struct {
 	repo    *file.Repository
 	publish *publish.Service
 	close   func() error
+	// vault is the project's secrets, and the resolver its connections and
+	// its maps' tile keys are read through.
+	vault *vault.Service
+	// serve is who this runtime answers as, where a first run can change that
+	// while it runs — api.One's answer, set once the projects are assembled.
+	// Nil means the tenant it was loaded as.
+	serve func() (string, string)
+}
+
+// serving is the tenancy this runtime answers for now.
+func (rt *runtime) serving() (string, string) {
+	if rt.serve != nil {
+		return rt.serve()
+	}
+	return rt.tenant.org, rt.tenant.project
 }
 
 /*
@@ -127,7 +144,7 @@ The same sequence the single-tenant boot ran, per project. Nothing is shared
 between two of these except the store, which scopes every statement itself.
 */
 func finish(ctx context.Context, cfg config.Server, rt *runtime,
-	defs publish.Store, records *sqlstore.Store, maps run.Basemaps, log *slog.Logger) error {
+	defs publish.Store, records *sqlstore.Store, maps *basemap.Resolver, log *slog.Logger) error {
 
 	// Before the connections are opened, because the store decides which
 	// sources exist: building engines from the directory and then adopting a
@@ -138,19 +155,22 @@ func finish(ctx context.Context, cfg config.Server, rt *runtime,
 		}
 	}
 
-	engines, closeEngines, err := datasources(cfg, rt.repo, log)
+	engines, closeEngines, err := datasources(cfg, rt.repo, rt.vault, log)
 	if err != nil {
 		return fmt.Errorf("%s: %w", rt.tenant, err)
 	}
 
 	rt.project = &api.Project{
-		Reports:     rt.repo,
-		Runner:      run.New(rt.repo, engines).WithBasemaps(maps),
+		Reports: rt.repo,
+		// The project's own tile keys, through the deployment's sessions.
+		Runner:      run.New(rt.repo, engines).WithBasemaps(maps.For(rt.tenant.String(), rt.vault)),
 		Definitions: rt.repo,
 		Probes:      engines.probes(),
 	}
 	rt.publish = publishing(defs, rt.repo, records, engines, channelNames(cfg, log), log)
 	rt.close = closeEngines
+	// After the registry exists: a secret that changes reopens what read it.
+	rt.vault.OnChange(reopen(rt, log))
 	return nil
 }
 

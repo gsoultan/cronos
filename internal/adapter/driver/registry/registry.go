@@ -183,9 +183,10 @@ func open(def definition.DataSource, secrets secret.Resolver) (*source, error) {
 	}
 
 	// The password arrives here and goes no further. It is resolved from the
-	// reference the definition carries, handed to the driver, and never
-	// stored, returned or logged — the definition on disk still says
-	// ${secret:name}, which is the only version anything else ever sees.
+	// reference the definition carries, handed to the driver and to a
+	// federation's mount, and never returned or logged — the definition on
+	// disk still says ${secret:name}, which is the only version anything
+	// outside this package ever sees.
 	dsn, err := secret.Resolve(def.DSN, secrets)
 	if err != nil {
 		return nil, fmt.Errorf("datasource %q: %w", def.Name, err)
@@ -256,6 +257,17 @@ func open(def definition.DataSource, secrets secret.Resolver) (*source, error) {
 			db.SetMaxIdleConns(1)
 		}
 	}
+	/*
+	   Kept resolved, as an object store's URI and credentials already are.
+
+	   A federation mounts from this definition rather than from the pool, so
+	   keeping the reference meant DuckDB was asked to ATTACH the literal text
+	   ${secret:…}: a source connected through the portal answered a report
+	   over one database and failed the moment a dataset joined it to another.
+	   The definition goes no further than this registry and the mount, which
+	   is where the resolved value was always going.
+	*/
+	def.DSN = dsn
 	return &source{def: def, db: db, dialect: dialect}, nil
 }
 

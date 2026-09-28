@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import {
-  basemapChoice, drawnLayers, excludedBy, readsPoints, readsShapes, relayer, styleOptions,
-  switchBasemap, takesSeries,
+  basemapChoice, basemapKeys, drawnLayers, excludedBy, keyValueProblem, readsPoints, readsShapes,
+  relayer, styleOptions, switchBasemap, takesSeries,
 } from './maps'
 import type { TileMap } from './types'
 
@@ -103,4 +103,54 @@ test('a Studio style in the file is offered, so it shows and survives', () => {
   expect(styleOptions('mapbox', 'dark').filter((o) => o.value === 'dark')).toHaveLength(1)
   expect(styleOptions('openstreetmap').map((o) => o.value)).toEqual(['standard'])
   expect(styleOptions('google').map((o) => o.value)).toEqual(['roadmap', 'satellite', 'terrain', 'hybrid'])
+})
+
+/*
+ * Which secret a map's key is, so the builder can say whether it is set and
+ * store one. A provider with no key named in the file reads its default — the
+ * name somebody opening Settings has to be told is missing.
+ */
+test('a map reads its provider’s default key unless the file names one', () => {
+  expect(basemapKeys({ provider: 'mapbox' })).toEqual([
+    { name: 'mapbox-token', prefix: 'mapbox-', sendable: true },
+  ])
+  expect(basemapKeys({ provider: 'google', key: '${secret:google-maps-acme}' })).toEqual([
+    { name: 'google-maps-acme', prefix: 'google-', sendable: true },
+  ])
+  // OpenStreetMap takes no key, and a map with no basemap asks nobody.
+  expect(basemapKeys({ provider: 'openstreetmap' })).toEqual([])
+  expect(basemapKeys({})).toEqual([])
+})
+
+/* A tile key reaches every reader's browser, so only a secret whose name says
+   it is one may be sent. Anything else is refused here before a value could be
+   stored under it — `${secret:warehouse-password}` in a tile url would
+   otherwise send the database password to everybody. */
+test('only a key named for its provider is sent to a browser', () => {
+  expect(basemapKeys({ provider: 'mapbox', key: '${secret:warehouse-password}' })[0])
+    .toMatchObject({ name: 'warehouse-password', sendable: false })
+  // A key that is not one whole reference is not a secret at all.
+  expect(basemapKeys({ provider: 'mapbox', key: 'pk.${secret:mapbox-x}' })[0]?.sendable).toBe(false)
+  // Google's prefix is google-, and a Mapbox name is not it.
+  expect(basemapKeys({ provider: 'google', key: '${secret:mapbox-token}' })[0]?.sendable).toBe(false)
+})
+
+test('a tile url’s keys are every secret it names, tiles- or refused', () => {
+  const url = 'https://t.example/{z}/{x}/{y}.png?key=${secret:tiles-acme}&db=${secret:warehouse_password}'
+  expect(basemapKeys({ basemap: url })).toEqual([
+    { name: 'tiles-acme', prefix: 'tiles-', sendable: true },
+    { name: 'warehouse_password', prefix: 'tiles-', sendable: false },
+  ])
+  expect(basemapKeys({ basemap: 'https://t.example/{z}/{x}/{y}.png' })).toEqual([])
+})
+
+/* The server will not send a Mapbox secret token, so one stored as a map key
+   looks set and never works — and is a token that can change the account,
+   sitting in a place made for public ones. */
+test('a Mapbox secret token is refused as a map key', () => {
+  expect(keyValueProblem('mapbox-token', 'sk.eyJ1Ijoi')).toBeDefined()
+  expect(keyValueProblem('mapbox-token', '  sk.eyJ1Ijoi')).toBeDefined()
+  expect(keyValueProblem('mapbox-token', 'pk.eyJ1Ijoi')).toBeUndefined()
+  // Not a Mapbox key, so not Mapbox's rule.
+  expect(keyValueProblem('google-maps-key', 'sk.whatever')).toBeUndefined()
 })

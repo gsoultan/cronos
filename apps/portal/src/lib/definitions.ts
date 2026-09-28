@@ -1,4 +1,5 @@
 import { carryOver, document, fromYaml, toYaml, unmodelled, type Yaml } from './yaml'
+import { reference, referenced, sourceSecret } from './secrets'
 import type { BasemapProvider, Field, Param, TileMap } from './types'
 
 /**
@@ -57,11 +58,80 @@ export interface SourceInput {
    * out of it produces a connection string to nowhere.
    */
   dsn?: string
+  /**
+   * The secret the connection string reads its password from.
+   *
+   * Read out of a stored one, so that a connection string rebuilt from its
+   * parts names the same secret: a source whose file says
+   * `${secret:warehouse-password}` keeps reading that when its host changes,
+   * rather than switching to a name nothing has stored. Absent, the secret is
+   * named after the source — see passwordSecret.
+   */
+  passwordSecret?: string
+  /**
+   * Whether the stored string reads that secret `|url` — encoded for the URL
+   * it sits in. Kept, so a string rebuilt from new parts reads the stored value
+   * the way the old one did: a password somebody encoded by hand, to survive a
+   * URL before the server could do it, would otherwise be encoded twice.
+   */
+  passwordInUrl?: boolean
+  /**
+   * The stored connection string's options — `?sslmode=require` — read back so
+   * that a string rebuilt from new parts keeps them. A move to a new host is
+   * not a decision to stop encrypting the connection.
+   */
+  dsnOptions?: string
   /* The limits, kept as read. The form does not ask for them, and defaulting
      an existing source back to a million rows would raise a ceiling somebody
      lowered deliberately. */
   maxRows?: number
   statementTimeout?: string
+}
+
+/**
+ * Where a source's password is stored: the secret its connection string
+ * already reads, or `<name>_password` for one that reads none yet.
+ *
+ * One function for the two halves that have to agree — the reference written
+ * into the definition and the name the wizard stores the typed password under.
+ * They were one line apart in intent and never connected: the file named a
+ * secret, the form threw the password away, and every database connected
+ * through the portal named a password that nothing held.
+ */
+export function passwordSecret(input: Pick<SourceInput, 'slug' | 'passwordSecret'>): string {
+  return input.passwordSecret ?? sourceSecret(input.slug, 'password')
+}
+
+/**
+ * The connection string a save writes: the one typed, the one stored, or —
+ * undefined — one built from the parts.
+ *
+ * Typed where the form shows one: a SQLite path, or a driver this build has no
+ * screen for. Otherwise the stored one while nothing about where it connects
+ * has changed, because not every DSN decomposes into host and database and
+ * user, and rebuilding one that was only ever displayed would replace a
+ * working connection with a guess.
+ *
+ * A new password changes nothing about the string when it already names a
+ * secret: the password is stored under that name and the string goes on
+ * reading it. It is rebuilt when it names none, because then it has to be
+ * made to.
+ *
+ * This decided `form.dsn || …` inside the form, and the form seeds that field
+ * with the stored string for every kind of source — so for a database the
+ * stored string always won, and a source moved to a new host went on
+ * connecting to the old one.
+ */
+export function connectionFor(
+  shape: string,
+  form: { dsn: string; host: string; port: number; database: string; user: string; password: string },
+  stored?: SourceInput,
+): string | undefined {
+  if (shape === 'dsn') return form.dsn || undefined
+  if (!stored?.dsn) return undefined
+  const untouched = form.host === (stored.host ?? '') && form.port === (stored.port ?? 5432)
+    && form.database === (stored.database ?? '') && form.user === (stored.user ?? '')
+  return untouched && (form.password === '' || !!stored.passwordSecret) ? stored.dsn : undefined
 }
 
 /**
@@ -96,17 +166,50 @@ export function dataSource(input: SourceInput): string {
 }
 
 /**
- * A connection string with the password left as a reference.
+ * A connection string with the password left as a reference, in the form the
+ * driver reads.
  *
  * Written out rather than assembled from the parts at read time, because the
  * format takes one DSN and an operator reading the file should see the shape
  * of what will be connected to.
+ *
+ * Each in its driver's own form, because they are three different grammars and
+ * this wrote one URL for all of them. MySQL's driver reads
+ * `user:password@tcp(host:port)/db` and nothing else — a URL is a parse error —
+ * and takes the password as written. SQL Server's reads a URL but takes its path
+ * for the instance name, so the database is `?database=`. Postgres is the URL it
+ * always was. Where the password sits in a URL it is referenced `|url`, and the
+ * server encodes it there.
  */
 function dsn(driver: string, input: SourceInput): string {
   const user = input.user || 'cronos'
   const host = input.host || 'localhost'
-  const port = input.port ? `:${input.port}` : ''
-  return `${driver}://${user}:\${secret:${input.slug}_password}@${host}${port}/${input.database ?? ''}`
+  const secret = passwordSecret(input)
+  const db = input.database ?? ''
+  // New strings encode; a stored one keeps the form it had — see passwordInUrl.
+  const inUrl = input.passwordSecret ? input.passwordInUrl === true : true
+  switch (driver) {
+    case 'mysql':
+      return `${user}:${reference(secret)}@tcp(${host}:${input.port || 3306})/${db}`
+        + (input.dsnOptions ?? '?parseTime=true')
+    case 'sqlserver':
+      return `sqlserver://${user}:${reference(secret, inUrl)}@${host}${input.port ? `:${input.port}` : ''}`
+        + withDatabase(input.dsnOptions, db)
+    default:
+      return `${driver}://${user}:${reference(secret, inUrl)}@${host}${input.port ? `:${input.port}` : ''}`
+        + `/${db}${input.dsnOptions ?? ''}`
+  }
+}
+
+/** A SQL Server query string with the database first, keeping whatever else
+ *  the stored one said — `encrypt=disable` is somebody's decision. */
+function withDatabase(options: string | undefined, database: string): string {
+  const rest = new URLSearchParams((options ?? '').replace(/^\?/, ''))
+  rest.delete('database')
+  const q = new URLSearchParams(database ? { database } : {})
+  for (const [k, v] of rest) q.append(k, v)
+  const out = q.toString()
+  return out ? `?${out}` : ''
 }
 
 export interface DatasetInput {
@@ -667,6 +770,7 @@ export function readDataSource(text: string): Loaded<SourceInput> {
       // Before the parsed parts, which never include a dsn and so cannot
       // overwrite it.
       dsn: connection || undefined,
+      ...passwordReference(connection),
       maxRows: num(limits.maxRows),
       statementTimeout: str(limits.statementTimeout) || undefined,
       ...parseDsn(connection),
@@ -674,16 +778,53 @@ export function readDataSource(text: string): Loaded<SourceInput> {
   }, dataSource)
 }
 
-/** Pulls the pieces back out of a connection string, password included or not. */
+/**
+ * The secret a connection string's password names, when it names one.
+ *
+ * `postgres://reader:${secret:warehouse-password}@db/analytics` answers
+ * `warehouse-password`. A literal password, or none, answers nothing — and
+ * then a password typed on edit is stored under the source's own name and the
+ * string is rebuilt to read it, because keeping one that reads no secret
+ * would store a password nothing opens.
+ */
+function passwordReference(connection: string): Pick<SourceInput, 'passwordSecret' | 'passwordInUrl'> {
+  const m = /^(?:[a-z][a-z0-9+.-]*:\/\/)?[^:@/]*:(.*)@(?:tcp\(|[^@]*$)/i.exec(connection)
+  const name = m ? referenced(m[1]) : undefined
+  if (!name) return {}
+  return { passwordSecret: name, passwordInUrl: /\|url\}\s*$/.test(m?.[1] ?? '') }
+}
+
+/**
+ * Pulls the pieces back out of a connection string, password included or not:
+ * a URL, or MySQL's own `user:password@tcp(host:port)/db`. SQL Server's
+ * database is read from `?database=`, where its driver reads it, and the rest
+ * of the query kept.
+ */
 function parseDsn(connection: string): Partial<SourceInput> {
-  const m = /^[a-z0-9-]+:\/\/(?:([^:@/]*)(?::[^@]*)?@)?([^:/?]*)(?::(\d+))?(?:\/([^?]*))?/.exec(connection)
-  if (!m) return {}
-  return {
-    user: m[1] || undefined,
-    host: m[2] || undefined,
-    port: m[3] ? Number(m[3]) : undefined,
-    database: m[4] || undefined,
+  const mysql = /^([^:@/]*)(?::.*)?@tcp\(([^:)]*)(?::(\d+))?\)\/([^?]*)(\?.*)?$/.exec(connection)
+  if (mysql) {
+    return {
+      user: mysql[1] || undefined, host: mysql[2] || undefined,
+      port: mysql[3] ? Number(mysql[3]) : undefined,
+      database: mysql[4] || undefined, dsnOptions: mysql[5] || undefined,
+    }
   }
+  const m = /^([a-z0-9-]+):\/\/(?:([^:@/]*)(?::.*)?@)?([^:/?@]*)(?::(\d+))?(?:\/([^?]*))?(\?.*)?$/.exec(connection)
+  if (!m) return {}
+  const out: Partial<SourceInput> = {
+    user: m[2] || undefined,
+    host: m[3] || undefined,
+    port: m[4] ? Number(m[4]) : undefined,
+    database: m[5] || undefined,
+    dsnOptions: m[6] || undefined,
+  }
+  if (m[1] === 'sqlserver') {
+    const q = new URLSearchParams((m[6] ?? '').replace(/^\?/, ''))
+    out.database = q.get('database') ?? out.database
+    q.delete('database')
+    out.dsnOptions = q.toString() ? `?${q.toString()}` : undefined
+  }
+  return out
 }
 
 /** A dataset. */

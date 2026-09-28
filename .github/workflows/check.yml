@@ -203,7 +203,10 @@ jobs:
       - name: test
         env:
           CRONOS_POSTGRES_DSN: postgres://cronos:cronos@localhost:5432/cronos?sslmode=disable
-        run: go test -tags duckdb ./internal/adapter/driver/duckdb/
+        # The registry too: its federation tests carry the same tag, and a
+        # join over a database whose password is a secret was broken for as
+        # long as nothing here ran them.
+        run: go test -tags duckdb ./internal/adapter/driver/duckdb/ ./internal/adapter/driver/registry/
 
   live:
     name: live checks

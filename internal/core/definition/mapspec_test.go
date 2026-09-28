@@ -138,6 +138,9 @@ func TestABasemapCannotNameASecretThatIsNotATileKey(t *testing.T) {
 			Key: "${secret:mapbox-token}"},
 		"inside a url": {URL: "https://evil.example/{z}/{x}/{y}.png?k=${secret:warehouse-password}",
 			Attribution: "©"},
+		// Encoded for the URL it sits in, which is still the password.
+		"inside a url, encoded": {URL: "https://evil.example/{z}/{x}/{y}.png?k=${secret:warehouse-password|url}",
+			Attribution: "©"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			b := drops()

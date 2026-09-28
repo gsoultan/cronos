@@ -45,6 +45,7 @@ const DefaultPath = "/var/lib/cronos/config.yaml"
 type File struct {
 	Addr        string   `yaml:"addr,omitempty"`
 	SigningKey  string   `yaml:"signingKey,omitempty"`
+	SecretsKey  string   `yaml:"secretsKey,omitempty"`
 	AdminKey    string   `yaml:"adminKey,omitempty"`
 	Org         string   `yaml:"org,omitempty"`
 	Project     string   `yaml:"project,omitempty"`
@@ -169,6 +170,9 @@ func (f File) fill(s *Server) {
 	if len(s.SigningKey) == 0 && f.SigningKey != "" {
 		s.SigningKey = []byte(f.SigningKey)
 	}
+	if len(s.SecretsKey) == 0 && f.SecretsKey != "" {
+		s.SecretsKey = []byte(f.SecretsKey)
+	}
 	if len(s.AdminKey) == 0 && f.AdminKey != "" {
 		s.AdminKey = []byte(f.AdminKey)
 	}
@@ -276,7 +280,11 @@ const header = `# cronos configuration, written by first-run setup.
 # Every setting here can also be an environment variable, and the environment
 # wins where both are set — see "What has to be set" in docs/deploying.md.
 #
-# This file holds the signing key. It is mode 0600 and cronos refuses to start
-# if that is widened, because a signing key every account on the host can read
-# is one that has been published.
+# This file holds the signing key and the key that seals stored secrets. It is
+# mode 0600 and cronos refuses to start if that is widened, because a key every
+# account on the host can read is one that has been published.
+#
+# Back it up, and not beside the database's backups. The database holds secrets
+# sealed with secretsKey: losing the key loses them, and keeping the two
+# together unseals them.
 `

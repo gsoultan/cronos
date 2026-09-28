@@ -1,9 +1,10 @@
 import type { ReactNode } from 'react'
 import { Checkbox, MultiSelect, NumberInput, Select, TextInput } from '@mantine/core'
 import { Field } from '../form/Field'
+import { BasemapKeys } from './BasemapKeys'
 import {
-  basemapChoice, colours, defaultStyle, drawnLayers, excludedBy, MAX_HEX_KM, readsPoints,
-  readsShapes, relayer, styleOptions, switchBasemap, takesSeries, type BasemapChoice,
+  basemapChoice, colours, DEFAULT_KEY, defaultStyle, drawnLayers, excludedBy, MAX_HEX_KM,
+  readsPoints, readsShapes, relayer, styleOptions, switchBasemap, takesSeries, type BasemapChoice,
 } from '../../lib/maps'
 import { CATEGORICAL, FOLDED, GRIDDED, METERED, MULTI_SERIES, PLOTS, STACKABLE } from '../../lib/types'
 import type {
@@ -550,10 +551,11 @@ function MapFields({ block, dimensions, onChange }: {
  * is a request from each reader's browser to a third party we would have
  * chosen for them, and it tells that party roughly where the data is.
  *
- * The key is never asked for. One typed here would be written into a file
- * somebody commits; the server reads each provider's key from its own
- * secrets, and a report that bills a different account names a secret in the
- * file, which this keeps without showing an input for it.
+ * The key is asked for, and never written into the file. What the file holds
+ * is a reference — the provider's default secret, or a `${secret:…}` a report
+ * that bills a different account names, which this keeps without showing an
+ * input for it — and BasemapKeys stores the value behind that reference on the
+ * server. A key typed into the file itself would be in its history for ever.
  */
 function BasemapFields({ map, onChange }: {
   map: TileMap
@@ -597,6 +599,8 @@ function BasemapFields({ map, onChange }: {
           </Field>
         </>
       )}
+
+      <BasemapKeys map={map} />
     </>
   )
 }
@@ -607,10 +611,11 @@ function BasemapFields({ map, onChange }: {
  */
 function basemapHelp(map: TileMap): ReactNode {
   // A key in the file is a report billing another account, and it is the one
-  // worth naming. The default is what every deployment is told to set.
+  // worth naming. The default is the secret every map naming none reads — in
+  // this project's secrets, or the server's environment behind them.
   const from = (secret: string) => (map.key
     ? <><code className="font-mono text-caption">{map.key}</code>, named in the file</>
-    : <>the server secret <code className="font-mono text-caption">{secret}</code></>)
+    : <>the secret <code className="font-mono text-caption">{secret}</code></>)
 
   switch (map.provider) {
     case 'openstreetmap':
@@ -619,7 +624,7 @@ function basemapHelp(map: TileMap): ReactNode {
     case 'mapbox':
       return (
         <>
-          Reads its token from {from('CRONOS_SECRET_MAPBOX_TOKEN')}. Every reader’s browser
+          Reads its token from {from(DEFAULT_KEY.mapbox ?? '')}. Every reader’s browser
           receives it, so it has to be a public{' '}
           <code className="font-mono text-caption">pk.</code> token.
         </>
@@ -627,14 +632,21 @@ function basemapHelp(map: TileMap): ReactNode {
     case 'google':
       return (
         <>
-          Reads its key from {from('CRONOS_SECRET_GOOGLE_MAPS_KEY')}, which every reader’s
+          Reads its key from {from(DEFAULT_KEY.google ?? '')}, which every reader’s
           browser receives — restrict it to the Map Tiles API. Google’s terms forbid its map
           beside another provider’s, so every map in this report has to use Google Maps or
           none; saving refuses a mix.
         </>
       )
   }
-  if (map.basemap !== undefined) return 'Any XYZ tile server — your own, or one not named here.'
+  if (map.basemap !== undefined) {
+    return (
+      <>
+        Any XYZ tile server — your own, or one not named here. A key goes in the url as{' '}
+        <code className="font-mono text-caption">{'${secret:tiles-…}'}</code>, never as itself.
+      </>
+    )
+  }
   return 'None draws the data on its own. Anything else has each reader’s browser ask a '
     + 'third party for tiles, which tells it roughly where the data is.'
 }

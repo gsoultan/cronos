@@ -486,6 +486,32 @@ CREATE TABLE IF NOT EXISTS cronos_memberships (
 INSERT INTO cronos_memberships (user_id, org, project, role, granted_at, granted_by)
 SELECT id, org, project, role, created_at, 'upgrade' FROM cronos_users;`,
 	},
+	{
+		ID:   14,
+		Name: "project secrets",
+		/*
+		   The secrets a project's people store through the portal: a Mapbox
+		   token, a warehouse password.
+
+		   Sealed before they arrive — see secret.Sealer — so this table holds
+		   ciphertext bound to its own org, project and name, and a dump of it is
+		   a dump of nothing without CRONOS_SECRETS_KEY. There is deliberately no
+		   column a value could be read back from in the clear, and no API that
+		   returns one: a secret is written, used and replaced, never shown.
+		*/
+		SQL: `
+CREATE TABLE IF NOT EXISTS cronos_secrets (
+  org        TEXT NOT NULL,
+  project    TEXT NOT NULL,
+  name       TEXT NOT NULL,
+  sealed     {{bytes}} NOT NULL,
+  updated_at TEXT NOT NULL,
+  -- Who set it. The value is not an audit trail; who changed a password and
+  -- when is.
+  updated_by TEXT NOT NULL,
+  PRIMARY KEY (org, project, name)
+);`,
+	},
 }
 
 // migrationTable records what has run. Created outside the ordered list,

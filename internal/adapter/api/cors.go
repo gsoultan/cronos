@@ -20,8 +20,10 @@ type CORS struct {
 //
 // Kept as one string rather than assembled from the mux, because the mux
 // registers patterns and not methods — each handler decides for itself, in a
-// switch, and there is nothing to enumerate.
-const allowedMethods = "GET, POST, PATCH, DELETE, OPTIONS"
+// switch, and there is nothing to enumerate at run time. There is in the
+// source, and cors_methods_test.go reads it: PUT was answered by two handlers
+// and missing from here.
+const allowedMethods = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
 
 // NewCORS wraps next, permitting exactly these origins.
 func NewCORS(origins []string, next http.Handler) *CORS {
@@ -36,12 +38,13 @@ func (c *CORS) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// cache that misses this serves one customer's headers to another.
 		w.Header().Add("Vary", "Origin")
 		w.Header().Set("Access-Control-Allow-Headers", "authorization, content-type")
-		// Every method the API answers. Twice now a method has been added to a
-		// handler and not to this line, and the failure is the same both
-		// times: the browser refuses the request before sending it, and the
-		// caller sees a network error from a server that would have answered.
-		// Nothing in the type system connects the two, so the list is named
-		// once and asserted against in cors_test.go.
+		// Every method the API answers. Three times now a method has been
+		// added to a handler and not to this line, and the failure is the same
+		// each time: the browser refuses the request before sending it, and
+		// the caller sees a network error from a server that would have
+		// answered. Nothing in the type system connects the two, so the list
+		// is named once and checked against the handlers' own source in
+		// cors_methods_test.go.
 		w.Header().Set("Access-Control-Allow-Methods", allowedMethods)
 		w.Header().Set("Access-Control-Max-Age", "600")
 	}
