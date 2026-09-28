@@ -1,6 +1,9 @@
 package definition
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // Filter is one control on a report's filter bar.
 //
@@ -50,7 +53,7 @@ func (f Filter) Validate() error {
 	case !identifier.MatchString(f.Name):
 		return fmt.Errorf("%w: filter %q must be lowercase letters, digits and underscores",
 			ErrInvalid, f.Name)
-	case !f.Type.Valid():
+	case !f.Type.Valid() && f.Type != Area:
 		return fmt.Errorf("%w: filter %q has unknown type %q", ErrInvalid, f.Name, f.Type)
 	case f.Type == Enum && len(f.Values) == 0:
 		return fmt.Errorf("%w: enum filter %q lists no values", ErrInvalid, f.Name)
@@ -71,6 +74,13 @@ func (f Filter) validateBindings() error {
 			return fmt.Errorf("%w: filter %q binds to %q, which is not a dataset name",
 				ErrInvalid, f.Name, dataset)
 		}
+		if f.Type == Area {
+			if _, _, ok := f.Coordinates(dataset); !ok {
+				return fmt.Errorf("%w: area filter %q binds %s to %q — an area narrows two "+
+					"fields, written \"lat,lon\"", ErrInvalid, f.Name, dataset, field)
+			}
+			continue
+		}
 		// The field reaches SQL as text rather than as an argument, so it is
 		// constrained to something that cannot be anything else.
 		if !identifier.MatchString(field) {
@@ -79,4 +89,20 @@ func (f Filter) validateBindings() error {
 		}
 	}
 	return nil
+}
+
+// Coordinates are the two fields an area filter narrows in a dataset —
+// "lat,lon" in its bind map — each held to the grammar a field name reaches
+// SQL under.
+func (f Filter) Coordinates(dataset string) (lat, lon string, ok bool) {
+	field, bound := f.Binds(dataset)
+	if !bound || f.Type != Area {
+		return "", "", false
+	}
+	lat, lon, found := strings.Cut(field, ",")
+	lat, lon = strings.TrimSpace(lat), strings.TrimSpace(lon)
+	if !found || !identifier.MatchString(lat) || !identifier.MatchString(lon) {
+		return "", "", false
+	}
+	return lat, lon, true
 }

@@ -52,7 +52,8 @@ export function withTips(panel: HTMLElement): Tips {
       // keyboard reader gets the same numbers rather than a chart they can
       // see and not interrogate.
       target.setAttribute('tabindex', '0')
-      target.setAttribute('role', 'img')
+      // A mark that does something when clicked has said so already.
+      if (!target.hasAttribute('role')) target.setAttribute('role', 'img')
       target.setAttribute('aria-label', sub ? `${text}, ${sub}` : text)
 
       const at = (e: Event) => {

@@ -33,7 +33,7 @@ func (s *Service) MapView(ctx context.Context, r definition.Report, req ViewRequ
 	if err != nil {
 		return nil, err
 	}
-	blk, err := viewedBlock(out, req.Block)
+	blk, err := viewedBlock(out, req.Block, req.Overlay, r.Dataset)
 	if err != nil {
 		return nil, err
 	}
@@ -46,6 +46,9 @@ func (s *Service) MapView(ctx context.Context, r definition.Report, req ViewRequ
 		return nil, err
 	}
 	filters := query.Filters{Defs: r.Filters, Values: req.Filters}
+	if req.Overlay == 0 {
+		filters = s.control(ctx, r, out, blk, filters)
+	}
 	q, err := s.bigMapFor(ctx, r, blk, params, filters, pr)
 	if err != nil {
 		return nil, err
@@ -61,13 +64,22 @@ func (s *Service) MapView(ctx context.Context, r definition.Report, req ViewRequ
 	return m, nil
 }
 
-// viewedBlock is the map a view names, and only a map with places.
-func viewedBlock(out definition.Output, at int) (definition.Block, error) {
+// viewedBlock is the map a view names — a block, or a dataset drawn over one —
+// and only a map with places.
+func viewedBlock(out definition.Output, at, overlay int, reportDefault string) (definition.Block, error) {
 	if at < 0 || at >= len(out.Layout) {
 		return definition.Block{}, fmt.Errorf("%w: output %q has no block %d", ErrNotAMap, out.Name, at)
 	}
 	blk := out.Layout[at]
-	if blk.Kind != definition.ChartBlock || blk.Map == nil || !pointed(blk.Map) {
+	if overlay > 0 {
+		ovs := blk.OverlaysFor(reportDefault)
+		if overlay > len(ovs) {
+			return definition.Block{}, fmt.Errorf("%w: block %d of output %q has no overlay %d",
+				ErrNotAMap, at, out.Name, overlay)
+		}
+		blk = ovs[overlay-1]
+	}
+	if blk.Kind != definition.ChartBlock || blk.Map == nil || !pointed(blk.Map) || overlay < 0 {
 		return definition.Block{}, fmt.Errorf("%w: block %d of output %q", ErrNotAMap, at, out.Name)
 	}
 	return blk, nil

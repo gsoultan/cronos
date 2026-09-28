@@ -252,7 +252,15 @@ function ServerReport({ name, filters, onFilter, query }: {
       <ReportFilters filters={query.data.filters ?? []} value={filters} onApply={onFilter} />
 
       <LiveReport view={query.data} applied={Object.keys(filters)}
-        mapView={(ask, signal) => mapView(name, ask, filters, signal)} />
+        mapView={(ask, signal) => mapView(name, ask, filters, signal)}
+        filter={(key, v) => {
+          // A region clicked, or a map's view: applied as the filter bar
+          // would apply it, which re-runs the report.
+          const next = { ...filters }
+          if (v) next[key] = v as RunFilters[string]
+          else delete next[key]
+          onFilter(next)
+        }} />
     </>
   )
 }

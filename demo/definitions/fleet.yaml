@@ -4,7 +4,7 @@ metadata:
   name: fleet
   title: Vans on the road
   folder: Operations
-  description: Two hundred thousand positions on three maps — more than any browser can hold one by one, and every one of them counted.
+  description: Two hundred thousand positions on four maps — more than any browser can hold one by one, and every one of them counted. Click a depot to see its vans, or narrow the report to the part of the map in view.
 spec:
   dataset: pings
 
@@ -16,12 +16,31 @@ spec:
       values: [Northline, Harbour Express, Swift Parcel]
       bind:
         pings: carrier
+        depots: carrier
     - name: region
       label: Region
       type: enum
       values: [Benelux, Baltic, UK & IE]
       bind:
         pings: region
+        depots: region
+    # Set by clicking a depot on the depots map, which stays whole so another
+    # can be clicked; everything else narrows to that depot's vans.
+    - name: depot
+      label: Depot
+      type: enum
+      values: [Amsterdam, Antwerp, Bristol, Dublin, Gdansk, Hamburg, London, Manchester, Riga, Rotterdam, Tallinn]
+      bind:
+        pings: city
+        depots: city
+    # Set from a map rather than typed: "Filter to this view" on any map over
+    # these coordinates narrows the report to the part of the world in view.
+    - name: where
+      label: Area
+      type: area
+      bind:
+        pings: "lat,lon"
+        depots: "lat,lon"
 
   outputs:
     - name: interactive
@@ -31,9 +50,25 @@ spec:
           label: Positions
           value: {field: id, aggregate: count}
 
+        # Every depot, sized by what it can take. A click on one narrows the
+        # rest of the report to its vans; the map itself stays whole, with
+        # the one picked marked, so the next can be clicked straight away.
+        - kind: chart
+          chart: map
+          title: Depots
+          dataset: depots
+          x: {field: city}
+          y: {field: capacity, aggregate: sum}
+          map:
+            layers: [bubble]
+            lat: lat
+            lon: lon
+            basemap: {provider: openstreetmap}
+
         # Too many places to send one by one, so the database gathers them
         # into cells a few pixels wide and the map asks again as a reader
         # zooms: from a density across Europe to single vans on one street.
+        # The depots are drawn over it, from their own dataset.
         - kind: chart
           chart: map
           title: Where the vans are
@@ -44,6 +79,12 @@ spec:
             lat: lat
             lon: lon
             basemap: {provider: openstreetmap}
+            overlays:
+              - dataset: depots
+                title: Depots
+                x: {field: city}
+                y: {field: capacity, aggregate: sum}
+                map: {layers: [scatter], lat: lat, lon: lon}
 
         # Counted circles that split as the reader zooms, each van coloured
         # by who runs it. Every count is over all two hundred thousand.

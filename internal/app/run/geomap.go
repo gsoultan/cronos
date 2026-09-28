@@ -58,6 +58,16 @@ type GeoMap struct {
 	// Detail is how a viewer asks for the part of a large map in view, at
 	// the depth it is looking at. Nil for a map that fits.
 	Detail *Detail `json:"detail,omitempty"`
+	// Pick and Area are the report filters this map can set — a click on a
+	// region, and the view it is zoomed to. Nil where the report has none.
+	Pick *MapPick `json:"pick,omitempty"`
+	Area *MapArea `json:"area,omitempty"`
+
+	// Overlays are other datasets drawn over this map, bottom to top, each a
+	// map of its own — its layers, its legend, its own large-map detail —
+	// and Title is what an overlay's legend is headed with.
+	Overlays []*GeoMap `json:"overlays,omitempty"`
+	Title    string    `json:"title,omitempty"`
 
 	// cut is whether the map's own query had more rows than a map holds,
 	// which is the moment it is asked again as a large one.

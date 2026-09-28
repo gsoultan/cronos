@@ -22,6 +22,33 @@ needs a deployment to act says so under **Upgrading**.
 
 ## Unreleased
 
+**A map filters the report it is on.** A click on a region or a place narrows
+the report to it — the `string` or `enum` filter bound to the field the map
+labels by — and a click on it again lets it go; the map stays whole, with the
+place picked marked. "Filter to this view" narrows the report to the part of
+the world in view through a new filter type, `area`, bound to a pair of fields
+(`bind: {drops: "lat,lon"}`) and compiled to a box or a distance on the sphere
+with every number bound. Nothing is declared on the map: a filter bound to the
+right field is enough. The embed announces each as a `cronos:filter` event,
+and `@cronos/react` as `onFilter` — a host that holds `filters` in state should
+take them from it, or its next change of `filters` puts back the ones the reader
+replaced. See "Maps that filter" in [docs/report-format.md](docs/report-format.md).
+
+**One map draws several datasets.** `map.overlays` lists up to four more, each
+a map block with its own dataset and query — depots over the deliveries around
+them — drawn in a colour of its own and named under the map. The demo's `fleet`
+report draws its depots over the vans, and a map of depots that narrows the
+report to one depot's vans when clicked.
+
+**The filter bar sends what it shows.** A number filter — whose default control
+is a range, From and To — sent `eq` with the lower end, so 100 to 500 asked for
+exactly 100. An enum shown as checkboxes sent the first box ticked and dropped
+the rest, and unticking a box did not untick it. The upper end of a date range
+set alone came back in the lower box once applied. Each now sends and shows what
+the reader set. The report builder keeps a filter's `control` and a map's
+`overlays` when it saves, and offers "A place on a map" as a filter type, bound
+to a latitude and a longitude.
+
 **A map draws any number of places.** It read at most 5,000 and, past that,
 drew the first 5,000 in whatever order the query returned them — with every
 total folded from them, a hexagon's or a region's, counting only those. A map

@@ -931,3 +931,66 @@ test('a half-finished filter is written out, not quietly dropped', () => {
   })
   expect(yaml).toContain('name: half')
 })
+
+/*
+ * What a map, a filter and the filter bar carry that the builder only keeps.
+ *
+ * A map's overlays sit inside outputs[].layout[], which the builder rewrites
+ * wholesale, and a filter's control inside spec.filters[], which it rewrites
+ * too: neither reaches carry-over, so a key not read here is deleted by the
+ * next save.
+ */
+test('a map keeps the datasets drawn over it', () => {
+  const back = readReport(storedMap(
+    'layers: [heat]',
+    'lat: lat',
+    'lon: lon',
+    'overlays:',
+    '  - dataset: depots',
+    '    title: Depots',
+    '    x: {field: name}',
+    '    y: {field: capacity, aggregate: sum}',
+    '    map:',
+    '      layers: [scatter]',
+    '      lat: lat',
+    '      lon: lon',
+  ))
+  expect(back.drops).toEqual([])
+  const resaved = report(back.input)
+  expect(resaved).toContain('overlays:')
+  expect(resaved).toContain('dataset: depots')
+  expect(readReport(resaved).input.blocks).toEqual(back.input.blocks)
+})
+
+test('a filter keeps the control its author chose', () => {
+  const stored = `apiVersion: cronos.dev/v1
+kind: Report
+metadata: {name: r, title: R}
+spec:
+  dataset: drops
+  filters:
+    - name: depot
+      type: enum
+      values: [North, South]
+      control: checkboxes
+      bind: {drops: depot}
+    - name: where
+      type: area
+      bind: {drops: "lat,lon"}
+  outputs:
+    - name: interactive
+      renderer: interactive
+      layout:
+        - kind: stat
+          label: Parcels
+          value: {field: parcels, aggregate: sum}
+`
+  const back = readReport(stored)
+  expect(back.drops).toEqual([])
+  expect(back.input.filters?.[0]?.control).toBe('checkboxes')
+  // An area narrows by a pair of fields, and the pair is what goes back.
+  expect(back.input.filters?.[1]?.bind).toEqual({ drops: 'lat,lon' })
+  const resaved = report(back.input)
+  expect(resaved).toContain('control: checkboxes')
+  expect(resaved).toContain('drops: lat,lon')
+})

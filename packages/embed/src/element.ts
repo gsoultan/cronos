@@ -135,7 +135,12 @@ export class CronosReport extends Base {
      three renderers of this payload and the portal's drew one chart type out
      of fourteen; two implementations of the same switch is how that happens. */
   #block(b: Block, filters: FilterDef[]): HTMLElement {
-    const node = drawBlock(b, { mapView: (ask, signal) => this.#mapView(ask, signal) })
+    const node = drawBlock(b, {
+      mapView: (ask, signal) => this.#mapView(ask, signal),
+      // A region clicked, or a map's view: set as if the filter bar had set
+      // it, and told to the host page, which may keep its own controls.
+      filter: (name, value) => this.#setFilter(name, value),
+    })
     const note = unaffectedNote(b.coverage, filters)
     if (note) node.append(note)
     return node
@@ -151,6 +156,14 @@ export class CronosReport extends Base {
     const report = this.getAttribute('report')
     if (!endpoint || !token || !report) return Promise.reject(new Error('Not configured'))
     return new Client(endpoint, token).mapView(report, ask, this.#filters, signal)
+  }
+
+  #setFilter(name: string, value: FilterValues[string] | null) {
+    const next = { ...this.#filters }
+    if (value) next[name] = value
+    else delete next[name]
+    this.filters = next
+    this.dispatchEvent(new CustomEvent('cronos:filter', { detail: { name, value, filters: next } }))
   }
 
   #say(text: string, isError: boolean) {

@@ -121,7 +121,9 @@ function drag(stage: HTMLElement, port: Viewport, moving: () => void, hide: () =
   stage.addEventListener('click', (e) => {
     if (!dragging) return
     dragging = false
-    e.stopPropagation()
+    // Immediate: a painted place is picked by a click listener on the stage
+    // itself, which stopPropagation leaves running.
+    e.stopImmediatePropagation()
   }, true)
 }
 

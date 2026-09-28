@@ -85,26 +85,18 @@ func (s *Service) Render(ctx context.Context, r definition.Report, req Request,
 	}
 	filters := query.Filters{Defs: r.Filters, Values: req.Filters}
 
-	// Only a browser draws a basemap. A PDF prints the data without one, so
-	// resolving tiles for it would be a Google session minted per statement
-	// of a five-thousand-recipient burst, for nothing.
-	drawn := out.Renderer == definition.Interactive
-
 	view := View{Title: r.Heading(), Description: r.Description, Filters: filterViews(r)}
 	for i, blk := range out.Layout {
-		b, err := s.block(ctx, r, blk, params, filters, pr)
+		own := s.control(ctx, r, out, blk, filters)
+		b, err := s.block(ctx, r, blk, params, own, pr)
 		if err != nil {
 			return View{}, err
 		}
-		// More places than a map holds: asked again, gathered, rather than
-		// drawn from the first five thousand — see large.
-		if b.Map != nil && b.Map.cut && pointed(blk.Map) {
-			if b.Map, err = s.large(ctx, r, out, i, params, filters, pr); err != nil {
+		if b.Map != nil {
+			at := mapAt{out: out, i: i, params: params, filters: filters, own: own, values: req.Filters}
+			if b.Map, err = s.mapped(ctx, r, at, b.Map, pr); err != nil {
 				return View{}, err
 			}
-		}
-		if drawn && b.Map != nil && blk.Map.Basemap != nil {
-			b.Map.Tiles, b.Map.Note = s.tiles(ctx, *blk.Map.Basemap, b.Map.Bounds)
 		}
 		view.Blocks = append(view.Blocks, b)
 	}

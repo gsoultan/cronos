@@ -31,11 +31,14 @@ const (
 	Search Control = "search"
 	// Slider drags a number between the ends the data has.
 	Slider Control = "slider"
+	// MapArea is set on a map — the view a reader has zoomed to, or a
+	// distance around a place — and shown in the filter bar to be cleared.
+	MapArea Control = "map"
 )
 
 // controls is every control, in the order an error message should list them.
 var controls = []Control{
-	Calendar, Range, Presets, Dropdown, Radio, Checkboxes, Search, Slider,
+	Calendar, Range, Presets, Dropdown, Radio, Checkboxes, Search, Slider, MapArea,
 }
 
 // Valid reports whether c is a control every renderer implements.
@@ -60,6 +63,7 @@ var suits = map[ParamType][]Control{
 	Enum:   {Dropdown, Radio, Checkboxes},
 	Bool:   {Dropdown, Radio},
 	String: {Search},
+	Area:   {MapArea},
 }
 
 // ControlFor is the control to render: the author's, or the type's default.

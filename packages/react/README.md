@@ -122,7 +122,13 @@ would see doubled API usage and reasonably blame the widget.
 | `filters` | `{ status: { op: 'in', values: ['overdue'] } }` — compared by value |
 | `onLoad` | `({ report }) => void` |
 | `onError` | `({ message }) => void` — the message is safe to show a person |
+| `onFilter` | `({ name, value, filters }) => void` — a reader set a filter from inside the report |
 | `className`, `style` | applied to the host element |
+
+A map can set the report's filters: a click on a region, or "Filter to this
+view". The element applies them itself. A host that holds `filters` in state
+should take them from `onFilter` — `onFilter={(e) => setFilters(e.filters)}` —
+or its next change of `filters` puts back the ones the reader replaced.
 
 Theming is CSS custom properties on the element — see
 [`@cronos/embed`](../embed/README.md). React props are for behaviour; CSS is

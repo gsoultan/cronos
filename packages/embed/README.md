@@ -180,6 +180,13 @@ moved, and will trust the ones that did not.
 | `filters` | **property** — `{ status: { op: 'in', values: ['overdue'] } }`; assigning reloads |
 | `cronos:load` | event — a render completed |
 | `cronos:error` | event — `detail.message` is safe to show a person |
+| `cronos:filter` | event — a reader set a filter from inside the report; `detail` is `{ name, value, filters }`, and `value` is `null` when they let it go |
+
+A map sets filters too — a click on a region sets the filter bound to the
+field the map labels its places by, and "Filter to this view" sets an area
+filter bound to its coordinates. The element applies them and reloads, as it
+would for any change; `cronos:filter` tells a host that keeps the filters
+itself, so its copy does not fall behind.
 
 Filters are a property rather than an attribute because they are structured,
 and serialising them through an attribute would invite a host page to build

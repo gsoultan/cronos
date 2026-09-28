@@ -298,7 +298,37 @@ func (b Block) validateMap(output string, i int) error {
 	if err := b.validateFold(output, i); err != nil {
 		return err
 	}
-	return b.Map.Validate(output, i)
+	if err := b.Map.Validate(output, i); err != nil {
+		return err
+	}
+	return b.validateOverlays(output, i)
+}
+
+// validateOverlays checks each dataset drawn over the map as the map it is.
+func (b Block) validateOverlays(output string, i int) error {
+	if len(b.Map.Overlays) > MaxOverlays {
+		return fmt.Errorf("%w: %s map %d draws %d overlays, and a map holds %d",
+			ErrInvalid, output, i, len(b.Map.Overlays), MaxOverlays)
+	}
+	for j, ov := range b.OverlaysFor("") {
+		where := fmt.Sprintf("%s map %d overlay", output, i)
+		switch {
+		case ov.Map == nil:
+			return fmt.Errorf("%w: %s %d has no map: block saying what geography it reads",
+				ErrInvalid, where, j)
+		case ov.Map.Basemap != nil:
+			return fmt.Errorf("%w: %s %d sets a basemap — an overlay is drawn over the "+
+				"map's own, and two basemaps on one map is one hidden under the other",
+				ErrInvalid, where, j)
+		case len(ov.Map.Overlays) > 0:
+			return fmt.Errorf("%w: %s %d has overlays of its own — list them all on the map",
+				ErrInvalid, where, j)
+		}
+		if err := ov.validateMap(where, j); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // validateMapSeries checks that colouring points by category leaves colour

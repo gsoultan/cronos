@@ -85,12 +85,13 @@ export function drawChart(b: ChartBlock, opts: DrawOptions = {}): HTMLElement {
 }
 
 export { filterBar } from './filters'
+export { describeArea } from './map/sets'
 export { unaffectedNote } from './coverage'
 export { el, fill } from './dom'
 export { css, documentCss, LAYER } from './styles'
 export type {
   Arc, Axis, Bar, Block, Bounds, Cell, Cells, ChartBlock, Coverage, Credit, Delta, DrawOptions,
-  FilterDef, FilterValues, Gauge, GeoMap, Group, LegendStop, MapDetail, MapKey, MapViewAsk,
-  MapViewer, Marker, Point, Rect, ReportPayload, Shape, Stage, StatBlock, Step, TableBlock,
+  FilterDef, FilterValues, Gauge, GeoMap, Group, LegendStop, MapArea, MapDetail, MapKey, MapPick,
+  MapViewAsk, MapViewer, Marker, Point, Rect, ReportPayload, Shape, Stage, StatBlock, Step, TableBlock,
   TextBlock, Tick, Tiles, Track,
 } from './types'

@@ -38,6 +38,13 @@ export interface CronosReportProps {
   filters?: FilterValues
   onLoad?: (detail: { report: string }) => void
   onError?: (detail: { message: string }) => void
+  /**
+   * A reader set a filter from inside the report — a region clicked on a map,
+   * the view it was moved to — and these are the filters now. A host holding
+   * `filters` in state sets them from here, or its next change puts back the
+   * ones the reader just replaced.
+   */
+  onFilter?: (detail: { name: string; value: FilterValues[string] | null; filters: FilterValues }) => void
   className?: string
   style?: CSSProperties
 }
@@ -61,7 +68,7 @@ export interface CronosReportProps {
  * case nobody has would only make this harder to read.
  */
 export function CronosReport({
-  endpoint, token, report, filters, onLoad, onError, className, style,
+  endpoint, token, report, filters, onLoad, onError, onFilter, className, style,
 }: CronosReportProps) {
   const ref = useRef<ReportElement | null>(null)
 
@@ -84,13 +91,16 @@ export function CronosReport({
 
     const loaded = (e: Event) => onLoad?.((e as CustomEvent).detail)
     const failed = (e: Event) => onError?.((e as CustomEvent).detail)
+    const filtered = (e: Event) => onFilter?.((e as CustomEvent).detail)
     node.addEventListener('cronos:load', loaded)
     node.addEventListener('cronos:error', failed)
+    node.addEventListener('cronos:filter', filtered)
     return () => {
       node.removeEventListener('cronos:load', loaded)
       node.removeEventListener('cronos:error', failed)
+      node.removeEventListener('cronos:filter', filtered)
     }
-  }, [onLoad, onError])
+  }, [onLoad, onError, onFilter])
 
   return (
     <cronos-report

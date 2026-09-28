@@ -268,6 +268,36 @@ const largeView = (ask) => {
 }
 const viewAsks = []
 
+/* A map that sets the report's filters — a region a click picks, the area its
+   view sets — with a second dataset drawn over it. The answer echoes what was
+   asked for, as the server's does, so the check can see the map mark what is
+   applied. */
+const pickBodies = []
+const pickMap = (body) => {
+  const sent = JSON.parse(body || '{}').filters ?? {}
+  const world = { minX: 0.49, minY: 0.32, maxX: 0.5, maxY: 0.34 }
+  return {
+    title: 'Map filters',
+    blocks: [{
+      kind: 'chart', chart: 'map', title: 'Regions', series: [],
+      map: {
+        bounds: world, layers: ['polygon'], markers: [], arcs: [],
+        legend: [{ step: 1, from: '300', to: '300' }, { step: 5, from: '1,500', to: '1,500' }],
+        shapes: [
+          { label: 'England', path: 'M0.49 0.32L0.495 0.32L0.495 0.34L0.49 0.34Z', value: 1500, formatted: '1,500', step: 5 },
+          { label: 'Wales', path: 'M0.495 0.32L0.5 0.32L0.5 0.34L0.495 0.34Z', value: 300, formatted: '300', step: 1 },
+        ],
+        pick: { filter: 'region', values: sent.region?.values ?? [] },
+        area: sent.where ? { filter: 'where', op: sent.where.op, values: sent.where.values } : { filter: 'where' },
+        overlays: [{
+          title: 'Warehouses', layers: ['scatter'], bounds: world, shapes: [], arcs: [], legend: [],
+          markers: [{ label: 'Hub', x: 0.4975, y: 0.325, value: 1, formatted: '1', weight: 1 }],
+        }],
+      },
+    }],
+  }
+}
+
 const server = createServer((req, res) => {
   if (req.url === '/' || req.url === '') {
     res.writeHead(200, { 'content-type': 'text/html' })
@@ -293,6 +323,19 @@ const server = createServer((req, res) => {
       viewAsks.push(ask)
       res.writeHead(200, { 'content-type': 'application/json' })
       res.end(JSON.stringify(largeView(ask)))
+    })
+  }
+  if (req.url === '/picks') {
+    res.writeHead(200, { 'content-type': 'text/html' })
+    return res.end(HOST.replace('report="monthly"', 'report="map-filters"'))
+  }
+  if (req.url === '/v1/embed/reports/map-filters') {
+    let body = ''
+    req.on('data', (c) => (body += c))
+    return req.on('end', () => {
+      pickBodies.push(body)
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify(pickMap(body)))
     })
   }
   if (req.url === '/v1/embed/reports/large-map') {
@@ -732,6 +775,90 @@ ok('zooming in asks for a smaller part of the world',
   viewAsks.length > asked && deeper.view[2] - deeper.view[0] < first.view[2] - first.view[0])
 ok('nothing was thrown drawing a large map', bigErrors.length === 0)
 await big.close()
+
+/* -- A map sets the report's filters -------------------------------------- */
+
+/*
+ * A click on a region narrows the report to it, and "Filter to this view" to
+ * the part of the world in view. The element applies both, as it applies any
+ * change of filters — the request is the report again, with them — and says
+ * so to a host that keeps the filters itself. A dataset drawn over the map is
+ * drawn, in its own colour, and named under it.
+ */
+const picks = await browser.newPage()
+const pickErrors = []
+picks.on('pageerror', (e) => pickErrors.push(String(e)))
+await picks.goto(`${base}/picks`, { waitUntil: 'domcontentloaded' })
+await picks.evaluate((b) => {
+  const r = document.querySelector('#r')
+  window.__set = []
+  r.addEventListener('cronos:filter', (e) => window.__set.push(e.detail))
+  r.setAttribute('endpoint', b)
+}, base)
+const regions = picks.locator('#r').locator('.panel', { hasText: 'Regions' })
+await regions.locator('.shapes path').first().waitFor()
+const reloaded = async (n) => {
+  for (let i = 0; i < 50 && pickBodies.length < n; i++) await picks.waitForTimeout(40)
+  await regions.locator('.shapes path').first().waitFor()
+}
+const sentFilters = () => JSON.parse(pickBodies.at(-1) || '{}').filters ?? {}
+
+ok('a region a click filters by says so to the pointer',
+  await regions.locator('.shapes path.pickable').count() === 2)
+let sent0 = pickBodies.length
+await regions.locator('.shapes path').first().dispatchEvent('click')
+await reloaded(sent0 + 1)
+const sets = await picks.evaluate(() => window.__set)
+ok('a click on a region sets the filter the map is bound to',
+  sets.length === 1 && sets[0].name === 'region'
+  && JSON.stringify(sets[0].value) === '{"op":"in","values":["England"]}')
+ok('and the report is asked for again with it',
+  JSON.stringify(sentFilters().region) === '{"op":"in","values":["England"]}')
+ok('the region the report is narrowed to is marked on the map',
+  await regions.locator('.shapes path.picked').count() === 1)
+
+sent0 = pickBodies.length
+await regions.locator('.shapes path.picked').dispatchEvent('click')
+await reloaded(sent0 + 1)
+ok('a click on the picked region lets it go',
+  sentFilters().region === undefined && await regions.locator('.shapes path.picked').count() === 0)
+
+sent0 = pickBodies.length
+await regions.getByRole('button', { name: 'Filter to this view' }).click()
+await reloaded(sent0 + 1)
+const area = sentFilters().where
+ok('"Filter to this view" narrows the report to the box in view',
+  area?.op === 'within' && area.values.length === 4 && area.values.every(Number.isFinite)
+  && area.values[0] < area.values[2] && area.values[1] < area.values[3])
+ok('which is drawn on the map, with the way back',
+  await regions.locator('[part=map-area]').count() === 1
+  && await regions.getByRole('button', { name: 'Show everywhere' }).count() === 1)
+sent0 = pickBodies.length
+await regions.getByRole('button', { name: 'Show everywhere' }).click()
+await reloaded(sent0 + 1)
+ok('"Show everywhere" lets it go', sentFilters().where === undefined)
+
+const hub = regions.locator('svg.geo-above circle.pin')
+ok('a dataset drawn over the map is drawn, above anything the map paints', await hub.count() === 1)
+// Against a pin of the map's own, in the same SVG: both are computed colours,
+// so the comparison is the one a reader's eye makes.
+const fills = await hub.evaluate((c) => {
+  const own = document.createElementNS('http://www.w3.org/2000/svg', 'circle')
+  own.setAttribute('class', 'pin')
+  c.ownerSVGElement.append(own)
+  const out = [getComputedStyle(c).fill, getComputedStyle(own).fill]
+  own.remove()
+  return out
+})
+ok('in a colour of its own, not the map\'s pin colour',
+  fills[1].startsWith('rgb') && fills[0].startsWith('rgb') && fills[0] !== fills[1])
+ok('and named under the map', (await regions.locator('[part~=overlay-key]').innerText()).includes('Warehouses'))
+sent0 = pickBodies.length
+await hub.dispatchEvent('click')
+await picks.waitForTimeout(200)
+ok('a click on a place drawn over the map sets nothing', pickBodies.length === sent0)
+ok('nothing was thrown by a map that filters', pickErrors.length === 0)
+await picks.close()
 
 /* -- Removal -------------------------------------------------------------- */
 await page.evaluate(() => document.querySelector('#r').remove())

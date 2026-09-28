@@ -281,8 +281,8 @@ not narrowing anything yet. Only a missing binding makes a block unaffected, and
 only that is what the interface should announce.
 
 Values are compared through a fixed set of operators — `eq` `ne` `lt` `lte` `gt`
-`gte` `in` `between` `contains` `isNull` `notNull` — because the operator arrives
-with the request. A caller chooses among comparisons; a caller never supplies
+`gte` `in` `between` `contains` `isNull` `notNull`, and `within` and `near` for an
+area — because the operator arrives with the request. A caller chooses among comparisons; a caller never supplies
 one. The bound field comes from `bind:` and is the only part of a filter
 predicate that reaches SQL as text rather than as an argument, so it is checked
 against the dataset's published fields on save and again at compile.
@@ -343,6 +343,7 @@ knows which:
 | `enum` | `dropdown`, `radio`, `checkboxes` | `dropdown` |
 | `bool` | `dropdown`, `radio` | `dropdown` |
 | `string` | `search` | `search` |
+| `area` | `map` | `map` |
 
 A control that cannot operate its type is refused when the report is stored — a
 calendar on an enum is nonsense, and a renderer handed one would have to choose
@@ -362,6 +363,25 @@ already has its own controls sets `controls="none"` on the element and keeps
 driving the `filters` property. The bar used to be described here and drawn
 nowhere, so every host built one and reimplemented which operator a date range
 sends.
+
+An **`area`** filter narrows by place. It binds a pair of fields in each
+dataset, the latitude and the longitude, and is set from a map rather than typed
+— see "Maps that filter" below:
+
+```yaml
+- name: where
+  label: Area
+  type: area
+  bind: {drops: "lat,lon", depots: "lat,lon"}
+```
+
+It takes two operators. `within` is a box — south, west, north and east, in
+degrees; a west greater than its east is a box across the antimeridian, which
+is what a view over the Pacific is. `near` is a distance — a latitude, a
+longitude and kilometres — measured on the sphere, exactly: the database keeps
+a place 9.99 km away and leaves out one 10.01 km away, over a box that lets it
+use an index on the coordinates first. Every number is bound, checked finite
+and on the globe, and refused with a sentence otherwise.
 
 `rowLevelSecurity` predicates are appended to every read of the dataset — the
 builder preview, an embedded chart, a CSV export, a scheduled burst. There is no
@@ -713,6 +733,65 @@ then mailed to five thousand people. A ring inside another is a hole, on paper
 and on screen alike, whichever way the data wound it; an island in a lake, and
 one region's exclave in another's hole, are drawn after the hole they sit in.
 
+#### Maps that filter
+
+A map is also a control. Where the report has a filter a map can set, the map
+sets it, and the rest of the report follows:
+
+- **Click a place to narrow the report to it.** A map whose places are labelled
+  by a text field — `x`, or `map.region` — sets the `string` or `enum` filter
+  bound to that same field in its dataset. A click narrows to that place, and a
+  click on it again lets it go. The map itself stays whole, with the place
+  picked marked, the way a dropdown lists every value rather than only the
+  chosen one: narrowed by its own pick it would show a single place, and no way
+  to choose another without letting go of the first. On paper, where nothing
+  can be clicked, it is narrowed like everything else.
+- **Filter to this view.** A map whose `lat` and `lon` are the fields an `area`
+  filter binds in its dataset offers to narrow the report to the part of the
+  world in view, and outlines the area applied — a box, or a circle for `near`
+  — with the way back, "Show everywhere".
+
+Nothing is declared on the map for either: the filters and their bindings say
+it already. The filter bar shows what a map set, and applying the bar for
+something else keeps it — a picked region stays `in`, rather than becoming the
+`contains` a text box would send. An embedding host hears of it as a
+`cronos:filter` event (`onFilter` in React), so a host that keeps the filters
+itself does not fall behind.
+
+A filter a map sets is a reader's choice and never a constraint on them: a host
+pins parameters, not filters, and row-level security is applied under every
+query whatever its filters. A map left unnarrowed by its own pick shows no row
+its reader could not already see.
+
+#### One dataset over another
+
+`overlays` draws other datasets over a map — depots over the deliveries around
+them, stores over the catchments they serve. Each is a map block of its own,
+without `kind` and `chart`, reading its own dataset (the map's when it names
+none) through its own query; filters and row-level security apply to each as
+they do to any block:
+
+```yaml
+map:
+  layers: [heat]
+  lat: lat
+  lon: lon
+  overlays:
+    - dataset: depots
+      title: Depots
+      x: {field: city}
+      y: {field: capacity, aggregate: sum}
+      map: {layers: [scatter], lat: lat, lon: lon}
+```
+
+Up to four, drawn over the map in the order listed, and the map opens on a box
+that holds all of them. Places with no category are drawn in a colour of their
+own and named under the map beside it; places coloured by category, or shapes
+shaded, are named over their own legend. An overlay has no basemap — it is
+drawn over the map's — and no overlays of its own. A large one is gathered and
+refined as the reader zooms, like any map; it never sets the report's filters,
+which is the map's to do.
+
 #### A million places
 
 A map with more places than a browser can hold is not cut short. Up to 5,000
@@ -760,7 +839,8 @@ family of reason: both shade from the ramp, one from rows and one from folded
 points, and one legend cannot explain two scales. Split the layers across two
 blocks if you need both. Two tables become one map by joining them in the
 dataset's query — the demo's `zones` dataset puts a zone's outline and its
-depot's position in one row.
+depot's position in one row — or by drawing one over the other with
+`overlays`, each at its own grain.
 
 ## Schedule
 

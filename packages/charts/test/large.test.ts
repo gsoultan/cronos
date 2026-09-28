@@ -26,7 +26,7 @@ const cells: Cells = {
 
 describe('a cell of a large map', () => {
   test('of one place is that place', () => {
-    expect(say(cells, 0)).toEqual({ label: 'Depot 7', sub: '7' })
+    expect(say(cells, 0)).toEqual({ label: 'Depot 7', sub: '7', place: 'Depot 7' })
   })
   test('of several says how many, and what its value is', () => {
     expect(say(cells, 1)).toEqual({ label: '40 locations', sub: '812' })

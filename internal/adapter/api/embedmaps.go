@@ -54,8 +54,9 @@ func (e *Embed) view(w http.ResponseWriter, r *http.Request, pr principal.Princi
 	}
 	m, err := project.Runner.MapView(r.Context(), report, run.ViewRequest{
 		Request: run.Request{Output: req.Output, Params: merge(pinned, req.Params), Filters: req.Filters},
-		Block:   req.Block, Width: req.Width, Height: req.Height, Categories: req.Categories,
-		View: run.Bounds{MinX: req.View[0], MinY: req.View[1], MaxX: req.View[2], MaxY: req.View[3]},
+		Block:   req.Block, Overlay: req.Overlay, Width: req.Width, Height: req.Height,
+		Categories: req.Categories,
+		View:       run.Bounds{MinX: req.View[0], MinY: req.View[1], MaxX: req.View[2], MaxY: req.View[3]},
 	}, pr)
 	detail := scopeOf(pr)
 	detail["view"] = "map"

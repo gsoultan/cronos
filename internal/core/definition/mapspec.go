@@ -37,6 +37,13 @@ type MapSpec struct {
 	// coastline through a browser, so it is spelled rather than defaulted.
 	Simplify float64 `json:"simplify,omitempty" yaml:"simplify,omitempty"`
 
+	// Overlays draw other datasets on the same map, over this one's layers:
+	// the depots over the deliveries they serve, the zones under both. Each
+	// is a map block of its own — a dataset, a label, a measure and layers —
+	// without a basemap, which the map under it already has, or overlays of
+	// its own.
+	Overlays []Block `json:"overlays,omitempty" yaml:"overlays,omitempty"`
+
 	// HexKm is how wide a hexbin layer's hexagons are, flat side to flat
 	// side, in kilometres — to within a few percent, see run.hexRadius. Zero
 	// sizes them to the data, about two dozen across. A width in kilometres
@@ -46,6 +53,11 @@ type MapSpec struct {
 	// with the one before it.
 	HexKm float64 `json:"hexKm,omitempty" yaml:"hexKm,omitempty"`
 }
+
+// MaxOverlays is how many datasets a map may draw over its own. Each is a
+// query of its own, and a map of more than five things is a legend nobody
+// can read.
+const MaxOverlays = 4
 
 // MaxHexKm is as wide as a hexagon may be. Wider than a continent is a map
 // with one hexagon on it, which is a stat tile drawn expensively.
@@ -262,4 +274,25 @@ func (b Block) Grouped() bool {
 // to its own results, which an average does not.
 func (b Block) Folds() bool {
 	return b.Grouped() || (b.Map != nil && b.Map.Draws(HexbinLayer))
+}
+
+/*
+OverlaysFor is the block's overlays as blocks a renderer can run: each a map
+chart, reading the dataset it names or, naming none, the one the map under it
+reads — an overlay of the same rows drawn another way needs no dataset of its
+own.
+*/
+func (b Block) OverlaysFor(reportDefault string) []Block {
+	if b.Map == nil || len(b.Map.Overlays) == 0 {
+		return nil
+	}
+	out := make([]Block, len(b.Map.Overlays))
+	for i, ov := range b.Map.Overlays {
+		ov.Kind, ov.Chart = ChartBlock, MapChart
+		if ov.Dataset == "" {
+			ov.Dataset = b.DatasetFor(reportDefault)
+		}
+		out[i] = ov
+	}
+	return out
 }

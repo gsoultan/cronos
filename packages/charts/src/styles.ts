@@ -287,7 +287,8 @@ tr:last-child td { border-bottom: 0 }
   stroke-width: 1.2;
   vector-effect: non-scaling-stroke;
 }
-.dot:focus-visible, .pin:focus-visible, .geo path:focus-visible, .routes g:focus-visible {
+.dot:focus-visible, .pin:focus-visible, .geo path:focus-visible, .geo-above path:focus-visible,
+.routes g:focus-visible {
   outline: 2px solid var(--cr-accent);
   outline-offset: 2px;
 }
@@ -331,6 +332,14 @@ tr:last-child td { border-bottom: 0 }
    of the planet. Every heat disc drew it, and the density layer painted as a
    grey sheet over the whole map. */
 .geo { position: absolute; inset: 0; display: block; width: 100%; height: 100%; stroke: none }
+/* What is drawn over a map — other datasets, the area the report is narrowed
+   to — above the painted places, which would otherwise cover it. The pointer
+   passes through everywhere but the marks. */
+.geo-above {
+  position: absolute; inset: 0; display: block; width: 100%; height: 100%;
+  stroke: none; pointer-events: none;
+}
+.geo-above > g { pointer-events: visiblePainted }
 /* The hairline between two shaded areas. Areas only: written as ".geo path"
    it outranked the flow and route rules and drew both in the surface colour
    at 0.6px — a white line on a white map. */
@@ -345,13 +354,50 @@ tr:last-child td { border-bottom: 0 }
 .tiled .hexes path { fill-opacity: 0.8 }
 .tiles, .tile-level { position: absolute; inset: 0; pointer-events: none }
 .tiles img { position: absolute; display: block; max-width: none; user-select: none; -webkit-user-drag: none }
-.pin { fill: var(--cr-series-2) }
+/* A dataset drawn over a map sets --cr-pin on its layers, so its places are
+   not the map's own colour. */
+.pin { fill: var(--cr-pin, var(--cr-series-2)) }
 .flow { fill: none; stroke-opacity: 0.8; stroke-linecap: round; vector-effect: non-scaling-stroke }
 .routes path { fill: none; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke }
 .routes .casing { stroke: var(--cr-surface); stroke-width: 7; stroke-opacity: 0.9 }
 .routes .route { stroke-width: 3.5 }
 .routes g:hover .route, .routes g:focus-visible .route { stroke-width: 5.5 }
 .heat { pointer-events: none }
+/* A region or place that sets the report's filter when clicked, and the one
+   it is set to. */
+.pickable { cursor: pointer }
+.shapes path.picked, .pin.picked {
+  stroke: var(--cr-accent);
+  stroke-width: 2.5;
+  vector-effect: non-scaling-stroke;
+}
+/* The part of the world the report is narrowed to. Not .area, which is a
+   line chart's fill, and in the same sheet. */
+.geo-area {
+  fill: none;
+  stroke: var(--cr-accent);
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+.geo-tools { position: absolute; top: 8px; left: 8px; display: flex; gap: 6px }
+.geo-tools button {
+  padding: 5px 10px;
+  border: 0;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--cr-ink);
+  background: var(--cr-surface);
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.2);
+  cursor: pointer;
+}
+.geo-tools button:hover { background: color-mix(in srgb, var(--cr-line) 50%, var(--cr-surface)) }
+.geo-tools button:focus-visible { outline: 2px solid var(--cr-accent); outline-offset: 2px }
+.legend-title { margin: 10px 0 0; font-size: 12px; font-weight: 600; color: var(--cr-ink-secondary) }
+.area-none { font-size: 12px; color: var(--cr-ink-muted) }
+.area-said { font-size: 12px; font-variant-numeric: tabular-nums; color: var(--cr-ink) }
 /* A large map's places, painted over the shapes. The pointer passes through
    to the map and the shapes; the painted marks answer it by position. */
 .geo-canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none }

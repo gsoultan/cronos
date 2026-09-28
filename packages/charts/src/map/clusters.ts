@@ -4,7 +4,8 @@ import { svg } from '../svg'
 import type { Tips } from '../tip'
 import { cluster, count, placesIn, type Cluster } from './cluster'
 import { g } from './geo'
-import { radii, series, type Layer } from './layers'
+import { pickable, radii, series, type Layer } from './layers'
+import type { Pick } from './sets'
 
 /** How close two points may be on screen, in CSS px, before they are one.
  *  Wider than the widest circle, so two clusters never overlap. */
@@ -25,7 +26,7 @@ const CELL = 72
  * sixty times a second.
  */
 export function clusters(first: Marker[], tips: Tips, keyed: boolean, overlay: HTMLElement,
-  show: (c: Cluster) => boolean): Layer & { swap(markers: Marker[]): void } {
+  show: (c: Cluster) => boolean, pick?: Pick): Layer & { swap(markers: Marker[]): void } {
 
   let markers = first
 
@@ -46,7 +47,7 @@ export function clusters(first: Marker[], tips: Tips, keyed: boolean, overlay: H
       if (placesIn(c) === 1 && one) {
         const mark = svg('circle', { cx: g(one.x), cy: g(one.y), r: '0', class: 'pin', part: 'marker' })
         if (keyed) mark.style.fill = series(one.slot)
-        tips.bind(mark, one.label, one.formatted)
+        tips.bind(mark, one.label, pickable(mark, one.label, one.formatted, pick))
         node.append(mark)
         drawn.push([mark, 4.5])
         continue

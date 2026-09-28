@@ -149,6 +149,8 @@ export interface Cells {
 export interface MapDetail {
   output: string
   block: number
+  /** Which dataset drawn over the map, from one; absent is the map itself. */
+  overlay?: number
   categories?: string[]
 }
 
@@ -157,6 +159,7 @@ export interface MapDetail {
 export interface MapViewAsk {
   output: string
   block: number
+  overlay?: number
   view: [number, number, number, number]
   width: number
   height: number
@@ -172,6 +175,27 @@ export interface DrawOptions {
   /** Asks for the part of a large map in view. Without it a large map is
    *  drawn from the cells it opened with, at every zoom. */
   mapView?: MapViewer
+  /**
+   * Sets one of the report's filters — a region clicked, a map's view — or,
+   * with null, lets it go. The host owns the filters and re-renders with
+   * them; without this a map offers nothing to click.
+   */
+  filter?: (name: string, value: { op: string; values: unknown[] } | null) => void
+}
+
+/** The report filter a click on a map sets — see run.MapPick — and what it
+ *  holds now. */
+export interface MapPick {
+  filter: string
+  values?: string[]
+}
+
+/** The area filter a map sets from its view — see run.MapArea — and, when
+ *  set, the box (south, west, north, east) or the place and distance it holds. */
+export interface MapArea {
+  filter: string
+  op?: 'within' | 'near'
+  values?: number[]
 }
 
 /** One flow, from somewhere to somewhere else. */
@@ -255,6 +279,13 @@ export interface GeoMap {
   places?: number
   /** How to ask for more of a large map; absent on one that fits. */
   detail?: MapDetail
+  /** The report filters this map sets: a click on a region, and its view. */
+  pick?: MapPick
+  area?: MapArea
+  /** Other datasets drawn over this map, bottom to top — each a map of its
+   *  own — and, on an overlay, what its legend is headed with. */
+  overlays?: GeoMap[]
+  title?: string
 }
 
 /** One measure of a combo chart, and how it is drawn. */

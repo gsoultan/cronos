@@ -14,9 +14,14 @@ const (
 	Bool   ParamType = "bool"
 	Date   ParamType = "date"
 	Enum   ParamType = "enum"
+	// Area is a filter's type and never a parameter's: a part of the world —
+	// a box, or a distance around a point — set from a map. It narrows a
+	// dataset by two fields at once, bound as "lat,lon".
+	Area ParamType = "area"
 )
 
-// Valid reports whether t is a type the engine knows how to bind.
+// Valid reports whether t is a type the engine knows how to bind as a
+// parameter. Area is not one: it is a filter's alone — see Filter.Validate.
 func (t ParamType) Valid() bool {
 	switch t {
 	case String, Number, Bool, Date, Enum:

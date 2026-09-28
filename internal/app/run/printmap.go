@@ -41,8 +41,22 @@ func printMap(c *document.Chart, m *GeoMap) {
 	}
 	c.Aspect = w / h
 	at := func(x, y float64) [2]float64 { return [2]float64{(x - b.MinX) / w, (y - b.MinY) / h} }
-	keyed := len(m.Keys) > 0
+	onPaper(c, m, at)
+	// The datasets drawn over it, in order, on the same box.
+	for _, ov := range m.Overlays {
+		onPaper(c, ov, at)
+	}
+	c.Keys = mapKeys(m)
+	for _, ov := range m.Overlays {
+		c.Keys = append(c.Keys, mapKeys(ov)...)
+	}
+	// On paper as on screen: a map drawn from part of its data says so.
+	c.Note = m.Partial
+}
 
+// onPaper draws one map's layers as marks, in the order its author listed them.
+func onPaper(c *document.Chart, m *GeoMap, at func(x, y float64) [2]float64) {
+	keyed := len(m.Keys) > 0
 	for _, layer := range m.Layers {
 		switch layer {
 		case "polygon":
@@ -65,9 +79,6 @@ func printMap(c *document.Chart, m *GeoMap) {
 			flows(c, m.Arcs, at, keyed)
 		}
 	}
-	c.Keys = mapKeys(m)
-	// On paper as on screen: a map drawn from part of its data says so.
-	c.Note = m.Partial
 }
 
 // areas fills polygons, each ring a poly mark and each hole cut back out.

@@ -303,12 +303,15 @@ function field(f: Field): Yaml {
 export interface ReportFilterInput {
   name: string
   label?: string
-  /** string, number, bool, date or enum. */
+  /** string, number, bool, date, enum or area. */
   type: string
   /** The permitted values. Enum only, and required there. */
   values?: string[]
-  /** Dataset name to the field this filter narrows in it. */
+  /** Dataset name to the field this filter narrows in it — for an area, the
+   *  pair of fields, `lat,lon`. */
   bind: Record<string, string>
+  /** The control the filter bar draws. Undefined is the type's default. */
+  control?: string
 }
 
 export interface ReportInput {
@@ -452,6 +455,7 @@ function reportFilters(filters: ReportInput['filters']): Yaml {
       values: f.type === 'enum' && f.values?.length ? f.values : undefined,
       bind: Object.fromEntries(
         Object.entries(f.bind ?? {}).filter(([reads, narrows]) => reads && narrows)),
+      control: f.control || undefined,
     }))
 }
 
@@ -560,6 +564,7 @@ function mapSpec(m: ReportBlockInput['map']): Yaml {
     hexKm: m.hexKm || undefined,
     simplify: m.simplify || undefined,
     basemap: basemapOf(m),
+    overlays: m.overlays?.length ? m.overlays : undefined,
   }
 }
 
@@ -900,6 +905,7 @@ function readFilter(v: Yaml): ReportFilterInput {
     values: asList(f.values).map(str),
     bind: Object.fromEntries(
       Object.entries(asMap(f.bind)).map(([reads, narrows]) => [reads, str(narrows)])),
+    control: str(f.control) || undefined,
   }
 }
 
@@ -993,6 +999,9 @@ function readMap(m: Doc): TileMap {
     maxZoom: num(basemap.maxZoom),
     basemap: str(basemap.url) || undefined,
     attribution: str(basemap.attribution) || undefined,
+    // Whole, as the file has them: each is a block the server checks, and
+    // nothing here edits one.
+    overlays: asList(m.overlays).length ? asList(m.overlays) : undefined,
   }
 }
 

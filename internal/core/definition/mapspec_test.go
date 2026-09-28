@@ -213,3 +213,59 @@ func TestAURLTemplateHasARetinaTwinOnlyWhenItSaysSo(t *testing.T) {
 		t.Errorf("a template with no {r} was given a retina twin: %q", two)
 	}
 }
+
+// depotsOver is an overlay of depots, drawn over whatever map holds it.
+func depotsOver() Block {
+	return Block{Dataset: "depots", Title: "Depots", X: DimensionRef{Field: "city"},
+		Y:   MeasureRef{Field: "capacity", Aggregate: "sum"},
+		Map: &MapSpec{Layers: []MapLayer{BubbleLayer}, Lat: "lat", Lon: "lon"}}
+}
+
+// An overlay is a map of its own, read from its own dataset — and the report
+// reads that dataset, so a publish checks it exists.
+func TestAMapCarriesOverlays(t *testing.T) {
+	b := drops()
+	b.Map.Overlays = []Block{depotsOver()}
+	r := mapReport(b)
+	if err := r.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if got := r.Datasets(); len(got) != 2 || got[1] != "depots" {
+		t.Errorf("the report reads %v, want the overlay's dataset too", got)
+	}
+	ovs := b.OverlaysFor("drops")
+	if ovs[0].Kind != ChartBlock || ovs[0].Chart != MapChart {
+		t.Errorf("an overlay runs as %s/%s, want a map chart", ovs[0].Kind, ovs[0].Chart)
+	}
+	same := depotsOver()
+	same.Dataset = ""
+	b.Map.Overlays = []Block{same}
+	if got := b.OverlaysFor("drops")[0].Dataset; got != "drops" {
+		t.Errorf("an overlay naming no dataset reads %q, want the map's", got)
+	}
+}
+
+func TestAnOverlayIsRefusedWhatAMapUnderItAlreadyHas(t *testing.T) {
+	for name, edit := range map[string]func(*Block){
+		"a basemap of its own": func(o *Block) { o.Map.Basemap = &Basemap{Provider: OpenStreetMap} },
+		"overlays of its own":  func(o *Block) { o.Map.Overlays = []Block{depotsOver()} },
+		"no geography":         func(o *Block) { o.Map = nil },
+		"no measure":           func(o *Block) { o.Y = MeasureRef{} },
+	} {
+		t.Run(name, func(t *testing.T) {
+			b, ov := drops(), depotsOver()
+			edit(&ov)
+			b.Map.Overlays = []Block{ov}
+			if err := mapReport(b).Validate(); err == nil || !errors.Is(err, ErrInvalid) {
+				t.Errorf("accepted: %v", err)
+			}
+		})
+	}
+	b := drops()
+	for range MaxOverlays + 1 {
+		b.Map.Overlays = append(b.Map.Overlays, depotsOver())
+	}
+	if err := mapReport(b).Validate(); err == nil || !strings.Contains(err.Error(), "overlays") {
+		t.Errorf("%d overlays: %v", MaxOverlays+1, err)
+	}
+}
