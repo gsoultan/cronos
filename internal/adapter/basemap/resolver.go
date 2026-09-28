@@ -2,6 +2,7 @@ package basemap
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -54,6 +55,17 @@ func (r *Resolver) For(project string, secrets secret.Resolver) *Resolver {
 
 // Tiles resolves b.
 func (r *Resolver) Tiles(ctx context.Context, b definition.Basemap, around run.Bounds) (*run.Tiles, error) {
+	if b.Styled() == definition.AutoStyle {
+		return r.themed(ctx, b, around)
+	}
+	return r.resolve(ctx, b, around, true)
+}
+
+// resolve is Tiles for one style. With wait false a Google session still
+// being minted is an error rather than a wait — see themed.
+func (r *Resolver) resolve(ctx context.Context, b definition.Basemap, around run.Bounds,
+	wait bool) (*run.Tiles, error) {
+
 	switch b.Provider {
 	case "":
 		return r.template(b)
@@ -76,7 +88,10 @@ func (r *Resolver) Tiles(ctx context.Context, b definition.Basemap, around run.B
 		}
 		return mapbox(b, key), nil
 	case definition.GoogleMaps:
-		t, err := r.google.tiles(ctx, b, key, around)
+		t, err := r.google.tiles(ctx, b, key, around, wait)
+		if errors.Is(err, errPending) {
+			return nil, err
+		}
 		if err != nil {
 			r.warn("google:"+b.Styled(), "basemap unavailable", "provider", b.Provider, "err", err)
 			return nil, run.Unavailable{Reason: "Google Maps could not be reached, so the " +
@@ -85,6 +100,37 @@ func (r *Resolver) Tiles(ctx context.Context, b definition.Basemap, around run.B
 		return t, nil
 	}
 	return nil, unavailable(b.Provider)
+}
+
+/*
+themed resolves a basemap that follows the page's theme: the provider's light
+map, carrying its dark one for a dark page. The light one is the map — a viewer
+that predates themes draws it everywhere — so it is the one whose failure is
+the map's; a dark one that cannot be had leaves the light one under both.
+*/
+func (r *Resolver) themed(ctx context.Context, b definition.Basemap, around run.Bounds) (*run.Tiles, error) {
+	light, dark := b.Provider.Themes()
+	b.Style = light
+	t, err := r.resolve(ctx, b, around, true)
+	if err != nil {
+		return nil, err
+	}
+	// Minted behind the reader, as the sharper tiles are: waiting for it put a
+	// second round trip to Google ahead of the first map anybody opened. The
+	// first render after a restart draws the light map under both themes, and
+	// the next has the dark one.
+	b.Style = dark
+	d, err := r.resolve(ctx, b, around, false)
+	if err != nil {
+		return t, nil
+	}
+	if d.Attribution == "" {
+		// The same map data, the same credit: the dark session's own line is
+		// asked for by the viewer as the reader pans.
+		d.Attribution, d.Credits = t.Attribution, t.Credits
+	}
+	t.Dark = d
+	return t, nil
 }
 
 // key resolves the provider's key, which is only ever a secret named as one.

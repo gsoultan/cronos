@@ -285,12 +285,30 @@ const changes = (world) => ({
     ],
   },
 })
+/* Two depots, a lorry between them and the ground each serves — named on the
+   map, the lorry moving, and a basemap that follows the page's theme. */
+const catchments = (world) => ({
+  kind: 'chart', chart: 'map', title: 'Catchments', series: [],
+  map: {
+    bounds: world, layers: ['radius', 'scatter', 'flow'], shapes: [], legend: [],
+    radiusKm: 25, labels: true, animate: true,
+    markers: [
+      { label: 'West depot', x: 0.492, y: 0.33, value: 4, formatted: '4', weight: 1 },
+      { label: 'East depot', x: 0.498, y: 0.33, value: 2, formatted: '2', weight: 0.5 },
+    ],
+    arcs: [{ label: 'West → East', x1: 0.492, y1: 0.33, x2: 0.498, y2: 0.33, value: 9, formatted: '9', weight: 1 }],
+    tiles: {
+      url: 'L/{z}/{x}/{y}.png', attribution: '© Light', maxZoom: 19, tileSize: 256,
+      dark: { url: 'D/{z}/{x}/{y}.png', attribution: '© Dark', maxZoom: 19, tileSize: 256 },
+    },
+  },
+})
 const pickMap = (body) => {
   const sent = JSON.parse(body || '{}').filters ?? {}
   const world = { minX: 0.49, minY: 0.32, maxX: 0.5, maxY: 0.34 }
   return {
     title: 'Map filters',
-    blocks: [changes(world), {
+    blocks: [changes(world), catchments(world), {
       kind: 'chart', chart: 'map', title: 'Regions', series: [],
       map: {
         bounds: world, layers: ['polygon'], markers: [], arcs: [],
@@ -815,6 +833,8 @@ picks.on('pageerror', (e) => pickErrors.push(String(e)))
 await picks.goto(`${base}/picks`, { waitUntil: 'domcontentloaded' })
 await picks.evaluate((b) => {
   const r = document.querySelector('#r')
+  // A host on a dark page says so on the element; see the basemap below.
+  r.setAttribute('data-theme', 'dark')
   window.__set = []
   r.addEventListener('cronos:filter', (e) => window.__set.push(e.detail))
   r.setAttribute('endpoint', b)
@@ -905,6 +925,34 @@ ok('a diverging map shades a fall and a rise in two hues',
 ok('and its legend says which is which, in the same two',
   JSON.stringify(await shaded.locator('.legend.ramp .swatch').evaluateAll((s) =>
     s.map((i) => getComputedStyle(i).backgroundColor))) === JSON.stringify(hues.want))
+/* A flow says which way it goes, a radius is the ground around each place,
+   and the places are named on the map — none over another. */
+const reach = picks.locator('#r').locator('.panel', { hasText: 'Catchments' })
+await reach.locator('[part=flow-head]').first().waitFor()
+ok('a flow ends in a head where it lands', await reach.locator('[part=flow-head]').count() === 1)
+ok('a radius is drawn around each place', await reach.locator('[part=radius]').count() === 2)
+const boxes = await reach.locator('.geo-label').evaluateAll((ls) => ls.map((l) => {
+  const b = l.getBoundingClientRect()
+  return [b.left, b.top, b.right, b.bottom, l.textContent]
+}))
+ok('the places are named on the map', boxes.length === 2 && boxes.some((b) => b[4] === 'West depot'))
+ok('and no name sits on another', boxes.every((a, i) => boxes.every((b, j) =>
+  i === j || a[2] <= b[0] || b[2] <= a[0] || a[3] <= b[1] || b[3] <= a[1])))
+ok('a moving flow moves',
+  await reach.locator('.flow').first().evaluate((f) => getComputedStyle(f).animationName) === 'cr-flow')
+await picks.emulateMedia({ reducedMotion: 'reduce' })
+ok('and holds still for a reader who asked for less motion',
+  await reach.locator('.flow').first().evaluate((f) => getComputedStyle(f).animationName) === 'none')
+await picks.emulateMedia({ reducedMotion: 'no-preference' })
+
+/* A basemap that follows the page draws the provider's dark tiles on a dark
+   page, and its light ones once the page is light again. */
+const srcs = () => reach.locator('.tiles img').evaluateAll((is) => [...new Set(is.map((i) => i.getAttribute('src')[0]))])
+ok('a basemap on a dark page is the dark one', JSON.stringify(await srcs()) === '["D"]')
+await picks.evaluate(() => document.querySelector('#r').setAttribute('data-theme', 'light'))
+await reach.getByRole('button', { name: 'Zoom in', exact: true }).click()
+await picks.waitForTimeout(300)
+ok('and the light one once the page is light', JSON.stringify(await srcs()) === '["L"]')
 ok('nothing was thrown by a map that filters', pickErrors.length === 0)
 await picks.close()
 

@@ -37,4 +37,9 @@ type Tiles struct {
 	// it, so a viewer that assumed 256 asks for one level too deep — more
 	// requests for the same picture, which is why it is sent.
 	TileSize int `json:"tileSize,omitempty"`
+	// Dark is the same provider's tiles for a dark page, when the author asked
+	// for a basemap that follows the page's theme (style: auto). A viewer
+	// draws these under a dark theme and the ones above under a light one; a
+	// viewer that predates this field draws the light ones everywhere.
+	Dark *Tiles `json:"dark,omitempty"`
 }

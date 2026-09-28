@@ -66,6 +66,8 @@ spec:
             geometry: shape
             lat: lat
             lon: lon
+            # Each depot named beside itself, as many as fit.
+            labels: true
             basemap: {provider: openstreetmap}
 
         # Against a target, either side of it: the zones that beat 95% in the
@@ -103,7 +105,9 @@ spec:
             layers: [cluster]
             lat: lat
             lon: lon
-            basemap: {provider: mapbox, style: streets}
+            # Mapbox's light map on a light page and its dark one on a dark
+            # page, following the reader's theme.
+            basemap: {provider: mapbox, style: auto}
 
         # Where deliveries fail, as a density field with the failures on top.
         - kind: chart
@@ -161,6 +165,9 @@ spec:
             lon: from_lon
             toLat: to_lat
             toLon: to_lon
+            # Moving from where each transfer starts to where it lands — and
+            # still for a reader whose system asks for less motion.
+            animate: true
 
         - kind: table
           dataset: depots

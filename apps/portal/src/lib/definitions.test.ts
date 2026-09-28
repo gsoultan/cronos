@@ -1029,3 +1029,22 @@ test('a map with nothing shaded keeps no classes', () => {
   expect(moved.map?.ramp).toBeUndefined()
   expect(moved.map?.midpoint).toBeUndefined()
 })
+
+// What a map adds to its marks is read and written whole, for the same reason
+// its shades are: a save that dropped a radius would refuse to store, and one
+// that dropped labels would quietly unname a map.
+test('a map keeps its radius, its names and its moving flows', () => {
+  const back = readReport(storedMap(
+    'layers: [radius, scatter, flow]',
+    'lat: lat',
+    'lon: lon',
+    'toLat: to_lat',
+    'toLon: to_lon',
+    'radiusKm: 25',
+    'labels: true',
+    'animate: true',
+  ))
+  expect(back.drops).toEqual([])
+  expect(back.input.blocks[0]?.map).toMatchObject({ radiusKm: 25, labels: true, animate: true })
+  expect(readReport(report(back.input)).input.blocks).toEqual(back.input.blocks)
+})

@@ -2,10 +2,11 @@ import type { Arc, Marker, Shape } from '../types'
 import { svg } from '../svg'
 import type { Tips } from '../tip'
 import { PLOT_PALETTE_SIZE, RAMP_STEPS, slotOf } from '../palette'
-import { g } from './geo'
+import { g, latitude, longitude } from './geo'
 import type { View } from './view'
-import type { Pick } from './sets'
+import { geodesic, pathOf, type Pick } from './sets'
 import { glyphMark, glyphOf, type GlyphMark } from './glyphs'
+import { grouped } from './format'
 
 /**
  * One layer of a map, drawn in world units.
@@ -181,22 +182,36 @@ export function radii(drawn: Sized[]): NonNullable<Layer['update']> {
  *
  * Two depots that trade in both directions produce two segments on exactly the
  * same line, and one hides the other. Bowing each one to the left of its own
- * direction of travel separates them, and makes the direction readable without
- * an arrowhead at every scale. The width is pixels, set once: a non-scaling
- * stroke keeps it so at every zoom.
+ * direction of travel separates them. A head where each lands says which way
+ * it goes, sized in pixels like the stroke — which is a non-scaling one, so
+ * both stay the same at every zoom. Moving, when the author asks, the dashes
+ * run from where a flow starts to where it lands; see styles.ts for the
+ * reader who has asked their system for less motion.
  */
-export function flows(arcs: Arc[], tips: Tips, keyed: boolean): Layer & { swap(arcs: Arc[]): void } {
-  const node = svg('g', { class: 'flows' })
+export function flows(arcs: Arc[], tips: Tips, keyed: boolean, moving = false): Layer & { swap(arcs: Arc[]): void } {
+  const node = svg('g', { class: moving ? 'flows moving' : 'flows' })
+  let heads: ((scale: number) => void)[] = []
+  let last = 0
   const lay = (list: Arc[]) => {
     node.replaceChildren()
-    for (const a of list) node.append(arc(a, tips, keyed))
+    heads = list.map((a) => arc(a, tips, keyed, node))
+    last = 0
   }
   lay(arcs)
   // The routes of a view a large map's reader moved to.
-  return { node, swap: lay }
+  return {
+    node,
+    swap: lay,
+    update(_view, scale) {
+      if (scale === last || !(scale > 0)) return
+      last = scale
+      for (const h of heads) h(scale)
+    },
+  }
 }
 
-function arc(a: Arc, tips: Tips, keyed: boolean): SVGElement {
+/** One flow and its head, drawn into node. Returns how to size the head. */
+function arc(a: Arc, tips: Tips, keyed: boolean, node: SVGElement): (scale: number) => void {
   const dx = a.x2 - a.x1
   const dy = a.y2 - a.y1
   const bow = 0.18
@@ -206,8 +221,54 @@ function arc(a: Arc, tips: Tips, keyed: boolean): SVGElement {
     d: `M${g(a.x1)} ${g(a.y1)}Q${g(cx)} ${g(cy)} ${g(a.x2)} ${g(a.y2)}`,
     class: 'flow', part: 'flow',
   })
-  path.style.strokeWidth = `${Math.round((1.5 + a.weight * 4.5) * 10) / 10}px`
-  path.style.stroke = keyed ? series(a.slot) : 'var(--cr-series-1)'
+  const width = Math.round((1.5 + a.weight * 4.5) * 10) / 10
+  const colour = keyed ? series(a.slot) : 'var(--cr-series-1)'
+  path.style.strokeWidth = `${width}px`
+  path.style.stroke = colour
   tips.bind(path, a.label, a.formatted)
-  return path
+  const head = svg('polygon', { class: 'flow-head', part: 'flow-head' })
+  head.style.fill = colour
+  node.append(path, head)
+
+  // The way the arc is heading as it lands: from its control point to its end.
+  const l = Math.hypot(a.x2 - cx, a.y2 - cy) || 1
+  const ux = (a.x2 - cx) / l
+  const uy = (a.y2 - cy) / l
+  return (scale) => {
+    // Past the end by half the stroke, so the line's round cap is under the
+    // head rather than poking out of its point.
+    const tip = (width / 2) / scale
+    const length = (5 + width * 1.2) / scale
+    const half = length / 2
+    const tx = a.x2 + ux * tip
+    const ty = a.y2 + uy * tip
+    const bx = tx - ux * length
+    const by = ty - uy * length
+    head.setAttribute('points',
+      `${g(tx)},${g(ty)} ${g(bx - uy * half)},${g(by + ux * half)} ${g(bx + uy * half)},${g(by - ux * half)}`)
+  }
+}
+
+/**
+ * A circle of the map's radius around each place — a delivery area, a
+ * catchment — measured on the ground, so one far north is taller on the map
+ * than one at the equator, as the ground it covers is. Translucent, so where
+ * two overlap reads as overlap.
+ */
+export function rings(places: Marker[], km: number, tips: Tips, keyed: boolean): Layer & { swap(places: Marker[]): void } {
+  const node = svg('g', { class: 'rings' })
+  const lay = (list: Marker[]) => {
+    node.replaceChildren()
+    // Fewer sides for a crowd: still round at the size each is drawn, and a
+    // few thousand circles of sixty-four points is a document, not a map.
+    const sides = list.length > 500 ? 24 : 64
+    for (const p of list) {
+      const ring = svg('path', { d: pathOf(geodesic(latitude(p.y), longitude(p.x), km, sides)), class: 'ring', part: 'radius' })
+      if (keyed) ring.style.setProperty('--cr-pin', series(p.slot))
+      tips.bind(ring, p.label, `within ${grouped(km)} km`)
+      node.append(ring)
+    }
+  }
+  lay(places)
+  return { node, swap: lay }
 }

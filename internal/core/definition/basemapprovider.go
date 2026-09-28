@@ -30,9 +30,27 @@ var providerStyles = map[BasemapProvider][]string{
 	OpenStreetMap: {"standard"},
 	Mapbox: {
 		"streets", "outdoors", "light", "dark", "satellite", "satellite-streets",
-		"navigation-day", "navigation-night",
+		"navigation-day", "navigation-night", AutoStyle,
 	},
-	GoogleMaps: {"roadmap", "satellite", "terrain", "hybrid"},
+	// dark is the roadmap in night colours: Google draws no dark map of its
+	// own, and a styled session is how its tiles take one.
+	GoogleMaps: {"roadmap", "satellite", "terrain", "hybrid", "dark", AutoStyle},
+}
+
+// AutoStyle follows the theme a map is drawn in: the provider's light map
+// under a light page and its dark one under a dark page. A provider with no
+// dark map — OpenStreetMap's tile servers draw one look — has no auto.
+const AutoStyle = "auto"
+
+// Themes are the styles auto chooses between: light first, then dark.
+func (p BasemapProvider) Themes() (light, dark string) {
+	switch p {
+	case Mapbox:
+		return "light", "dark"
+	case GoogleMaps:
+		return "roadmap", "dark"
+	}
+	return "", ""
 }
 
 // studioStyle is a Mapbox Studio style id, owner/style.

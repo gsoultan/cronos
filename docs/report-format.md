@@ -611,7 +611,8 @@ authors ask, and a type per combination is a list nobody can hold.
 | `cluster` | `lat`, `lon` | Points that would overlap drawn as one counted circle, separating as the reader zooms in |
 | `bubble` | `lat`, `lon` | A circle per point, sized by `y` |
 | `scatter` | `lat`, `lon` | A dot per point |
-| `flow` | `lat`, `lon`, `toLat`, `toLon` | An arc from each origin to its destination |
+| `flow` | `lat`, `lon`, `toLat`, `toLon` | An arc from each origin to its destination, with a head where it lands |
+| `radius` | `lat`, `lon`, `radiusKm` | A circle of `radiusKm` around each point, measured on the ground — a delivery area, a catchment |
 
 `x` names what each row is, in its tooltip — the region a polygon shades, the
 depot a dot marks. `map.region` overrides it, so a block can group by a code and
@@ -636,6 +637,16 @@ Web Mercator, which stretches a kilometre further from the equator, so the width
 holds to within two and a half percent: it is set by the stretch at the middle
 of the data rounded to a step of five percent, and a filter leaves the grid
 exactly where it was unless it moves the data far enough to change that.
+
+`labels: true` names the regions and places on the map itself — a region in
+its middle, a place beside its mark — as many as fit without one covering
+another, the largest first, so a continent names its biggest few and a street
+names everything. `animate: true` moves a flow layer's arcs from where each
+starts to where it lands; it holds still for a reader whose system asks for
+less motion. A `radius` layer's circles are measured on the ground, so one far
+north is taller on the map than one at the equator, as the ground it covers
+is; a large map circles its places once the reader has zoomed to them one by
+one, since a circle around a crowd is an area nobody serves.
 
 **Shades.** The polygon, line and hexbin layers shade each mark from a ramp
 of six. `classify` says how the values are split among them:
@@ -720,8 +731,8 @@ the providers cronos knows the terms of, or give a URL for anything else:
 | `provider` | `style` | Key |
 | :--- | :--- | :--- |
 | `openstreetmap` | `standard` | None. The OpenStreetMap Foundation's [tile usage policy](https://operations.osmfoundation.org/policies/tiles/) forbids heavy use: right for a demo or a low-traffic internal report, wrong for an embedded product at volume. |
-| `mapbox` | `streets` (default), `outdoors`, `light`, `dark`, `satellite`, `satellite-streets`, `navigation-day`, `navigation-night`, or a Mapbox Studio style as `owner/style` | A **public** token (`pk.`) with the `styles:tiles` scope, from `${secret:mapbox-token}`. A secret `sk.` token is refused rather than sent to every reader's browser. |
-| `google` | `roadmap` (default), `satellite`, `terrain`, `hybrid`; `language` and `region` localise the labels | A key with the Map Tiles API enabled, from `${secret:google-maps-key}`. |
+| `mapbox` | `streets` (default), `outdoors`, `light`, `dark`, `satellite`, `satellite-streets`, `navigation-day`, `navigation-night`, `auto`, or a Mapbox Studio style as `owner/style` | A **public** token (`pk.`) with the `styles:tiles` scope, from `${secret:mapbox-token}`. A secret `sk.` token is refused rather than sent to every reader's browser. |
+| `google` | `roadmap` (default), `satellite`, `terrain`, `hybrid`, `dark` (the road map in night colours), `auto`; `language` and `region` localise the labels | A key with the Map Tiles API enabled, from `${secret:google-maps-key}`. |
 
 ```yaml
 basemap: {provider: openstreetmap}
@@ -733,6 +744,13 @@ basemap:
   attribution: © Example Maps
   maxZoom: 18
 ```
+
+`style: auto` follows the page the map is drawn on: the provider's light map
+on a light page and its dark one on a dark page — Mapbox's `light` and `dark`,
+Google's `roadmap` and `dark`. The theme is the one a `data-theme` attribute on
+the page or the embedded element names, and otherwise the reader's system
+setting; a reader who switches it gets the other map the next time the map
+moves. OpenStreetMap's tiles have one look, so it has no `auto`.
 
 A provider brings its own credit line and logo, in its own wording and with the
 links its terms want, and cronos draws them; `attribution` is refused beside a

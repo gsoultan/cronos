@@ -29,6 +29,15 @@ const COLOURED = new Set(['polygon', 'line', 'hexbin', 'heat'])
 /** The layers shaded from the ramp, which classes and a diverging ramp colour. */
 const SHADED = new Set(['polygon', 'line', 'hexbin'])
 
+/** The layers whose marks have one name each: a region, a place. */
+const NAMED = new Set(['polygon', 'scatter', 'bubble', 'cluster', 'radius'])
+
+/** Whether any layer draws a mark a label can name. */
+export const names = (layers: string[]) => layers.some((l) => NAMED.has(l))
+
+/** As far as a radius layer's circles may reach, in kilometres. */
+export const MAX_RADIUS_KM = 2000
+
 /** Whether any layer is shaded from the ramp. */
 export const shades = (layers: string[]) => layers.some((l) => SHADED.has(l))
 
@@ -105,6 +114,10 @@ export function relayer(
   if (!shades(drawnLayers(map))) {
     map.classify = map.breaks = map.ramp = map.midpoint = undefined
   }
+  // Each goes with the layer it belongs to, which the server insists on.
+  if (!layers.includes('radius')) map.radiusKm = undefined
+  if (!layers.includes('flow')) map.animate = undefined
+  if (!names(drawnLayers(map))) map.labels = undefined
   return { map, series: takesSeries(drawnLayers(map)) ? block.series : undefined }
 }
 
@@ -155,12 +168,15 @@ const STYLES: Record<BasemapProvider, Option[]> = {
     { value: 'satellite-streets', label: 'Satellite with streets' },
     { value: 'navigation-day', label: 'Navigation, day' },
     { value: 'navigation-night', label: 'Navigation, night' },
+    { value: 'auto', label: 'Light or dark, as the page is' },
   ],
   google: [
     { value: 'roadmap', label: 'Road map' },
     { value: 'satellite', label: 'Satellite' },
     { value: 'terrain', label: 'Terrain' },
     { value: 'hybrid', label: 'Satellite with labels' },
+    { value: 'dark', label: 'Road map, dark' },
+    { value: 'auto', label: 'Light or dark, as the page is' },
   ],
 }
 

@@ -179,6 +179,7 @@ func emptyMap(blk definition.Block) *GeoMap {
 	return &GeoMap{
 		Layers: layerNames(blk.Map), Shapes: []Shape{}, Markers: []Marker{},
 		Arcs: []Arc{}, Legend: []Legend{},
+		RadiusKm: blk.Map.RadiusKm, Labels: blk.Map.Labels, Animate: blk.Map.Animate,
 	}
 }
 

@@ -496,3 +496,63 @@ func TestASaturatedCacheDoesNotGrowPastItsCeiling(t *testing.T) {
 			len(g.sessions), maxSessions)
 	}
 }
+
+// A basemap that follows the page carries both of the provider's maps: the
+// light one, which is the map — a viewer that predates themes draws it
+// everywhere — and the dark one for a dark page.
+func TestAMapboxMapThatFollowsThePageCarriesBothLooks(t *testing.T) {
+	r, _ := resolver(secrets{"mapbox-token": "pk.test"})
+	tiles, err := r.Tiles(context.Background(),
+		definition.Basemap{Provider: definition.Mapbox, Style: definition.AutoStyle}, around)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(tiles.URL, "/light-") || tiles.Dark == nil || !strings.Contains(tiles.Dark.URL, "/dark-") {
+		t.Fatalf("light %q, dark %+v", tiles.URL, tiles.Dark)
+	}
+	if tiles.Dark.Attribution == "" || tiles.Dark.Logo == "" {
+		t.Error("the dark tiles lost the credit and the logo the terms require")
+	}
+}
+
+// Google has no dark map of its own: the dark look is its roadmap in night
+// colours, a session of its own — minted behind the reader, so the first
+// render after a restart is not held up by a second round trip.
+func TestAGoogleMapThatFollowsThePageIsNotKeptWaitingForTheDarkLook(t *testing.T) {
+	g := &google{}
+	now := time.Date(2026, 9, 27, 12, 0, 0, 0, time.UTC)
+	r, _ := googleResolver(t, g, &now)
+	auto := definition.Basemap{Provider: definition.GoogleMaps, Style: definition.AutoStyle}
+	first, err := r.Tiles(context.Background(), auto, around)
+	if err != nil || first.Dark != nil {
+		t.Fatalf("the first render: %v, dark %+v — it should not have waited for the dark look", err, first.Dark)
+	}
+	minted(t, g, 3)
+	time.Sleep(20 * time.Millisecond)
+	again, err := r.Tiles(context.Background(), auto, around)
+	if err != nil || again.Dark == nil {
+		t.Fatalf("the next render: %v, dark %+v", err, again.Dark)
+	}
+	if again.Dark.URL == again.URL || again.Dark.Attribution != again.Attribution {
+		t.Errorf("the dark look is its own session with the same credit: %q / %q", again.URL, again.Dark.URL)
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	// Night colours on the dark look's sessions, and on nothing else: the
+	// light map is Google's own. (The dark look's sharper session may or may
+	// not have been minted by now, so styled ones are counted, not fixed.)
+	styled, plain := 0, 0
+	for _, body := range g.seen {
+		if s, ok := body["styles"].([]any); ok && len(s) > 0 {
+			styled++
+			if body["mapType"] != "roadmap" {
+				t.Errorf("night colours on a %v session", body["mapType"])
+			}
+		} else {
+			plain++
+		}
+	}
+	if styled < 1 || plain != 2 {
+		t.Errorf("%d styled and %d plain sessions, want the dark look styled and the light one's two plain", styled, plain)
+	}
+}

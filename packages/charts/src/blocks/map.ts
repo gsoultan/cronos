@@ -5,8 +5,8 @@ import { rampLegend } from '../legend'
 import { withTips, type Tips } from '../tip'
 import { PLOT_PALETTE_SIZE, slotOf } from '../palette'
 import { viewport, type Viewport } from '../map/view'
-import { tileLayer } from '../map/tiles'
-import { areas, dots, flows, heat, routes, type Layer } from '../map/layers'
+import { themedTiles } from '../map/theme'
+import { areas, dots, flows, heat, rings, routes, type Layer } from '../map/layers'
 import { clusters } from '../map/clusters'
 import { controls } from '../map/controls'
 import { credits } from '../map/credits'
@@ -16,6 +16,7 @@ import { density, markersOf, type Density } from '../map/density'
 import { refiner, type Refiner } from '../map/detail'
 import { grouped } from '../map/format'
 import { bubbleValues, diverge, keyLegend, SHADED, sizeLegend } from '../map/keys'
+import { labeller, namesOf } from '../map/labels'
 import { areaTools, pickOf, type Pick } from '../map/sets'
 
 /** How deep a map with no basemap may be zoomed: a street, about. */
@@ -69,7 +70,13 @@ export function mapBlock(b: ChartBlock, opts: DrawOptions = {}): HTMLElement {
     style: `--geo-aspect:${aspectOf(m)}`,
   })
 
-  const basemap = tiles ? tileLayer(tiles) : null
+  // Made first, so a basemap that follows the page can change it with its tiles.
+  const logo = tiles?.logo
+    ? el('img', { class: 'geo-logo', part: 'logo', src: tiles.logo, alt: tiles.logoAlt ?? '' })
+    : null
+  const basemap = tiles
+    ? themedTiles(tiles, stage, (now) => { if (logo && now.logo) logo.src = now.logo })
+    : null
   if (basemap) stage.append(basemap.element)
   stage.append(canvas)
   // The map and whatever it draws over itself, bottom to top.
@@ -83,9 +90,7 @@ export function mapBlock(b: ChartBlock, opts: DrawOptions = {}): HTMLElement {
     : null
   if (above) stage.append(above)
   stage.append(overlay)
-  if (tiles?.logo) {
-    stage.append(el('img', { class: 'geo-logo', part: 'logo', src: tiles.logo, alt: tiles.logoAlt ?? '' }))
-  }
+  if (logo) stage.append(logo)
 
   // Frames a cluster's members, and says whether that got any closer.
   const show = (c: { members: { x: number; y: number }[] }) => {
@@ -116,12 +121,18 @@ export function mapBlock(b: ChartBlock, opts: DrawOptions = {}): HTMLElement {
     if (x.detail && opts.mapView) {
       refiners.push(refiner(x.detail, opts.mapView, stage, (got) => {
         for (const l of own) l.take?.(got)
-        if (k === 0) sizes.replaceChildren(sizeLegend(bubbleValues({ ...x, ...got })) ?? '')
+        if (k === 0) {
+          sizes.replaceChildren(sizeLegend(bubbleValues({ ...x, ...got })) ?? '')
+          // A view carries places; the regions stay the map's own.
+          names?.swap(namesOf({ ...x, cells: got.cells ?? x.cells }))
+        }
         redraw(true)
       }))
     }
   }
   sizes.replaceChildren(sizeLegend(bubbleValues(m)) ?? '')
+  // The map's own names; what it draws over itself is named in its tooltips.
+  const names = m.labels ? labeller(overlay, namesOf(m)) : null
   areaTools(stage, above ?? canvas, port, m.area, opts.filter)
 
   const line = credits(tiles, m.note)
@@ -137,6 +148,7 @@ export function mapBlock(b: ChartBlock, opts: DrawOptions = {}): HTMLElement {
     above?.setAttribute('viewBox', viewBox(view))
     for (const l of layers) l.update?.(view, scale, settled)
     painted?.paint(view, scale, stage.clientWidth, stage.clientHeight, settled)
+    names?.update(view, scale, settled, stage.clientWidth, stage.clientHeight)
     if (basemap) basemap.lay(view, stage.clientWidth, stage.clientHeight)
     if (settled) {
       line.follow(view, basemap?.zoom() ?? -1)
@@ -268,14 +280,25 @@ function draw(layer: string, m: GeoMap, s: Scene): Drawn | undefined {
     case 'scatter':
       return dots(m.markers, s.tips, false, keyed, s.pick)
     case 'flow': {
-      const f = flows(m.arcs, s.tips, keyed)
+      const f = flows(m.arcs, s.tips, keyed, m.animate)
       return { ...f, take: (got) => f.swap(got.arcs) }
+    }
+    case 'radius': {
+      const r = rings(ringed(m), m.radiusKm ?? 0, s.tips, keyed)
+      return { ...r, take: (got) => r.swap(ringed(got)) }
     }
   }
   // A layer this build has never heard of is a normal condition — the server
   // and the viewer ship separately. Drawing the layers it does know beats
   // refusing the whole map.
   return undefined
+}
+
+/** The places a radius layer circles: a map's own or, on a large map, the
+ *  cells that are one place each — a circle around a crowd is an area nobody
+ *  serves, and the places come as the reader zooms in to them. */
+function ringed(m: GeoMap) {
+  return m.cells ? markersOf(m.cells).filter((p) => (p.n ?? 1) === 1) : m.markers
 }
 
 /** A painted layer, as a layer: its node is an empty group so the SVG keeps

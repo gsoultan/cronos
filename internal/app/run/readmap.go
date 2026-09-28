@@ -22,13 +22,7 @@ func readMap(blk definition.Block, ds definition.Dataset, rows Rows) (*GeoMap, e
 		at[c] = i
 	}
 
-	out := &GeoMap{
-		Layers:  layerNames(blk.Map),
-		Shapes:  []Shape{},
-		Markers: []Marker{},
-		Arcs:    []Arc{},
-		Legend:  []Legend{},
-	}
+	out := emptyMap(blk)
 	r := &mapReader{
 		blk: blk, at: at, box: newBounds(), points: newBounds(),
 		fold: foldOf(blk, ds), regions: map[string]int{},
@@ -333,7 +327,7 @@ func categoryKeys(categories []string, slot map[string]int) []MapKey {
 // markersDrawn reports whether any layer draws the points themselves.
 func markersDrawn(m *definition.MapSpec) bool {
 	for _, l := range []definition.MapLayer{definition.HeatLayer, definition.ClusterLayer,
-		definition.BubbleLayer, definition.ScatterLayer} {
+		definition.BubbleLayer, definition.ScatterLayer, definition.RadiusLayer} {
 		if m.Draws(l) {
 			return true
 		}

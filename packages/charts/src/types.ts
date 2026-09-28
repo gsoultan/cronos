@@ -250,6 +250,9 @@ export interface Tiles {
   /** Where to ask for the credit line of what is in view, with the view
    *  appended — Google's copyright depends on the imagery on screen. */
   viewport?: string
+  /** The same provider's tiles for a dark page, when the map follows the
+   *  page's theme; drawn under a dark theme in place of these. */
+  dark?: Tiles
 }
 
 export interface GeoMap {
@@ -270,6 +273,12 @@ export interface GeoMap {
   /** 'diverging' when the shaded layers take two hues either side of a
    *  midpoint — steps below the middle cool, from it up warm. */
   ramp?: 'diverging'
+  /** How far a radius layer's circles reach, in kilometres on the ground. */
+  radiusKm?: number
+  /** Whether the map names its regions and places on itself. */
+  labels?: boolean
+  /** Whether its flows move from where each starts to where it lands. */
+  animate?: boolean
   tiles?: Tiles
   /** Why a basemap the author asked for is not under the data. */
   note?: string

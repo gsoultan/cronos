@@ -43,12 +43,16 @@ var errPending = errors.New("a session is being minted")
 
 // sessionRequest is createSession's body.
 type sessionRequest struct {
-	MapType    string   `json:"mapType"`
-	Language   string   `json:"language"`
-	Region     string   `json:"region"`
-	LayerTypes []string `json:"layerTypes,omitempty"`
-	Scale      string   `json:"scale,omitempty"`
-	HighDPI    bool     `json:"highDpi,omitempty"`
+	MapType    string          `json:"mapType"`
+	Language   string          `json:"language"`
+	Region     string          `json:"region"`
+	LayerTypes []string        `json:"layerTypes,omitempty"`
+	Styles     json.RawMessage `json:"styles,omitempty"`
+	Scale      string          `json:"scale,omitempty"`
+	HighDPI    bool            `json:"highDpi,omitempty"`
+	// look names the styles, for the cache: two sessions of one map type in
+	// different colours are two sessions.
+	look string
 }
 
 // sessionKey is what one session serves. The API key is held as a digest: the
@@ -58,6 +62,7 @@ type sessionKey struct {
 	key      [sha256.Size]byte
 	mapType  string
 	layers   string
+	look     string
 	language string
 	region   string
 	scale    string
@@ -90,7 +95,7 @@ func (g *googleTiles) session(ctx context.Context, key string, req sessionReques
 
 	k := sessionKey{
 		key: sha256.Sum256([]byte(key)), mapType: req.MapType, layers: fmt.Sprint(req.LayerTypes),
-		language: req.Language, region: req.Region, scale: req.Scale,
+		look: req.look, language: req.Language, region: req.Region, scale: req.Scale,
 	}
 	// Found once and held: an entry evicted while this caller waits is still
 	// the one its mint writes into.

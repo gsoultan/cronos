@@ -32,6 +32,8 @@ func TestAMapReportValidates(t *testing.T) {
 		"by carrier":     func(b *Block) { b.Series = DimensionRef{Field: "carrier"} },
 		"openstreetmap":  func(b *Block) { b.Map.Basemap = &Basemap{Provider: OpenStreetMap} },
 		"mapbox dark":    func(b *Block) { b.Map.Basemap = &Basemap{Provider: Mapbox, Style: "dark"} },
+		"google dark":    func(b *Block) { b.Map.Basemap = &Basemap{Provider: GoogleMaps, Style: "dark"} },
+		"the page's own": func(b *Block) { b.Map.Basemap = &Basemap{Provider: Mapbox, Style: AutoStyle} },
 		"a studio style": func(b *Block) { b.Map.Basemap = &Basemap{Provider: Mapbox, Style: "acme/ckx1y2z3"} },
 		"a billed key": func(b *Block) {
 			b.Map.Basemap = &Basemap{Provider: Mapbox, Key: "${secret:mapbox-acme}"}
@@ -91,8 +93,11 @@ func TestAMapReportIsRefused(t *testing.T) {
 		{"a provider nobody built", func(b *Block) { b.Map.Basemap = &Basemap{Provider: "bing"} },
 			"want one of"},
 		{"a style the provider lacks", func(b *Block) {
-			b.Map.Basemap = &Basemap{Provider: GoogleMaps, Style: "dark"}
-		}, `style "dark"`},
+			b.Map.Basemap = &Basemap{Provider: GoogleMaps, Style: "outdoors"}
+		}, `style "outdoors"`},
+		{"a theme for tiles that have one look", func(b *Block) {
+			b.Map.Basemap = &Basemap{Provider: OpenStreetMap, Style: AutoStyle}
+		}, `style "auto"`},
 		{"a credit line for a provider", func(b *Block) {
 			b.Map.Basemap = &Basemap{Provider: Mapbox, Attribution: "© me"}
 		}, "set by its terms"},

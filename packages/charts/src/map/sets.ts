@@ -88,16 +88,26 @@ function shapeOf(a: MapArea): SVGElement | null {
   }
   if (a.op === 'near' && v.length === 3) {
     const [lat = 0, lon = 0, km = 0] = v
-    const pts = Array.from({ length: 65 }, (_, i) => {
-      const [la, lo] = destination(lat, lon, km, (i / 64) * 360)
-      // On the centre's side of the antimeridian, so a circle over it is a
-      // circle rather than a line across the world.
-      return world(la, lo + 360 * Math.round((lon - lo) / 360))
-    })
-    return svg('path', { class: 'geo-area', part: 'map-area',
-      d: `M${pts.map(([x, y]) => `${g(x)} ${g(y)}`).join('L')}Z` })
+    return svg('path', { class: 'geo-area', part: 'map-area', d: pathOf(geodesic(lat, lon, km, 64)) })
   }
   return null
+}
+
+/**
+ * The circle of km around a place on the ground, in world units — n points,
+ * kept on the centre's side of the antimeridian so a circle over it is a
+ * circle rather than a line across the world.
+ */
+export function geodesic(lat: number, lon: number, km: number, n: number): [number, number][] {
+  return Array.from({ length: n }, (_, i) => {
+    const [la, lo] = destination(lat, lon, km, (i / n) * 360)
+    return world(la, lo + 360 * Math.round((lon - lo) / 360))
+  })
+}
+
+/** A closed path through points. */
+export function pathOf(pts: [number, number][]): string {
+  return `M${pts.map(([x, y]) => `${g(x)} ${g(y)}`).join('L')}Z`
 }
 
 /**

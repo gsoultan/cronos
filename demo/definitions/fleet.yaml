@@ -60,7 +60,11 @@ spec:
           x: {field: city}
           y: {field: capacity, aggregate: sum}
           map:
-            layers: [bubble]
+            # The ground each depot's vans cover, forty kilometres around it
+            # on the ground, under the depot itself, named.
+            layers: [radius, bubble]
+            radiusKm: 40
+            labels: true
             lat: lat
             lon: lon
             basemap: {provider: openstreetmap}

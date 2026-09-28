@@ -364,12 +364,48 @@ tr:last-child td { border-bottom: 0 }
    nothing under it to see. */
 .tiled .shapes path { fill-opacity: 0.62 }
 .tiled .hexes path { fill-opacity: 0.8 }
-.tiles, .tile-level { position: absolute; inset: 0; pointer-events: none }
+.tiles, .tile-level, .tiles-theme { position: absolute; inset: 0; pointer-events: none }
 .tiles img { position: absolute; display: block; max-width: none; user-select: none; -webkit-user-drag: none }
 /* A dataset drawn over a map sets --cr-pin on its layers, so its places are
    not the map's own colour. */
 .pin { fill: var(--cr-pin, var(--cr-series-2)) }
 .flow { fill: none; stroke-opacity: 0.8; stroke-linecap: round; vector-effect: non-scaling-stroke }
+/* A flow's head, the flow's own colour; it says which way, and takes no
+   pointer from the line it ends. */
+.flow-head { fill-opacity: 0.9; pointer-events: none }
+/* Flows that move, from where each starts to where it lands, when the author
+   asks — and still for a reader who has asked their system for less motion. */
+.flows.moving .flow { stroke-dasharray: 8 6; animation: cr-flow 1s linear infinite }
+@keyframes cr-flow { to { stroke-dashoffset: -14 } }
+@media (prefers-reduced-motion: reduce) {
+  .flows.moving .flow { animation: none; stroke-dasharray: none }
+}
+/* A radius around a place, as a wash under its edge: where two catchments
+   overlap reads as overlap. The pin colour, so an overlay's tint and a
+   category's colour reach it as they reach the places. */
+.ring {
+  fill: var(--cr-pin, var(--cr-series-2));
+  fill-opacity: 0.12;
+  stroke: var(--cr-pin, var(--cr-series-2));
+  stroke-opacity: 0.55;
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+/* Names on the map, over everything drawn on it and under the tools. A halo
+   in the surface colour keeps a name readable over any street or shade. */
+.geo-labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden }
+.geo-label {
+  position: absolute;
+  left: 0;
+  top: -7px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 14px;
+  white-space: nowrap;
+  color: var(--cr-ink);
+  text-shadow: 0 0 2px var(--cr-surface), 0 0 2px var(--cr-surface), 0 0 3px var(--cr-surface);
+}
+.geo-label:not(.beside) { translate: -50% 0 }
 .routes path { fill: none; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke }
 .routes .casing { stroke: var(--cr-surface); stroke-width: 7; stroke-opacity: 0.9 }
 .routes .route { stroke-width: 3.5 }

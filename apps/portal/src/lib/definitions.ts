@@ -570,6 +570,9 @@ function mapSpec(m: ReportBlockInput['map']): Yaml {
     ramp: m.ramp || undefined,
     // Zero is a midpoint, and the default one: written only when it is not.
     midpoint: m.ramp === 'diverging' && m.midpoint ? m.midpoint : undefined,
+    radiusKm: m.radiusKm || undefined,
+    labels: m.labels || undefined,
+    animate: m.animate || undefined,
     basemap: basemapOf(m),
     overlays: m.overlays?.length ? m.overlays : undefined,
   }
@@ -999,6 +1002,9 @@ function readMap(m: Doc): TileMap {
     breaks: asList(m.breaks).length ? asList(m.breaks).map(Number) : undefined,
     ramp: str(m.ramp) || undefined,
     midpoint: num(m.midpoint),
+    radiusKm: num(m.radiusKm),
+    labels: m.labels === true || undefined,
+    animate: m.animate === true || undefined,
     // Cast rather than checked. The server refuses a provider it has no code
     // for, so a stored one is one of these; a check here would be a second
     // list to keep in step with that one.

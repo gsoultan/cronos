@@ -175,7 +175,7 @@ that needs a wrapper.
 | Stack | React 19.2+, Mantine 9, TanStack Router/Query/Form | Web component, framework-agnostic |
 | PWA / service worker | Yes | No |
 | Builder UI | Yes | **Never** |
-| Budget | See below | ≲40 KB gzip (**27.8 KB** today, gated by `bun run size`; the interactive map took it from 14.8, painting a large one's cells from 20.8, maps that filter and draw overlays from 24.4, and shading, glyphs and size keys from 26.5) |
+| Budget | See below | ≲40 KB gzip (**30.1 KB** today, gated by `bun run size`; the interactive map took it from 14.8, painting a large one's cells from 20.8, maps that filter and draw overlays from 24.4, shading, glyphs and size keys from 26.5, and labels, radii, flow heads and themed basemaps from 27.8) |
 
 ### Toolchain
 
