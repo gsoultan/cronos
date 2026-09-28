@@ -84,6 +84,38 @@ function shape(kind: TileKind) {
           </g>
         ))
 
+    case 'sankey':
+      return (
+        <>
+          {[[10, 6, 30], [10, 38, 20]].map(([x = 0, y = 0, h = 0], i) => (
+            <rect key={`l${i}`} x={x} y={y} width="5" height={h} fill={s(i + 1)} />
+          ))}
+          {[[105, 6, 36], [105, 46, 14]].map(([x = 0, y = 0, h = 0], i) => (
+            <rect key={`r${i}`} x={x} y={y} width="5" height={h} fill="var(--color-ink-muted)" />
+          ))}
+          <path d="M15 6 C60 6 60 6 105 6 L105 30 C60 30 60 30 15 30 Z" fill={s(1)} opacity="0.35" />
+          <path d="M15 30 C60 30 60 46 105 46 L105 52 C60 52 60 36 15 36 Z" fill={s(1)} opacity="0.35" />
+          <path d="M15 38 C60 38 60 30 105 30 L105 42 C60 42 60 58 15 58 Z" fill={s(2)} opacity="0.35" />
+        </>
+      )
+
+    case 'sunburst':
+      return (
+        <>
+          <circle cx="60" cy="36" r="17" fill="none" stroke={s(1)} strokeWidth="12"
+            strokeDasharray={`${2 * Math.PI * 17 * 0.64} 999`} transform="rotate(-90 60 36)" />
+          <circle cx="60" cy="36" r="17" fill="none" stroke={s(2)} strokeWidth="12"
+            strokeDasharray={`${2 * Math.PI * 17 * 0.36} 999`}
+            strokeDashoffset={`${-2 * Math.PI * 17 * 0.64}`} transform="rotate(-90 60 36)" />
+          <circle cx="60" cy="36" r="28" fill="none" stroke={s(1)} strokeOpacity="0.55" strokeWidth="9"
+            strokeDasharray={`${2 * Math.PI * 28 * 0.44} 3 ${2 * Math.PI * 28 * 0.19} 999`}
+            transform="rotate(-90 60 36)" />
+          <circle cx="60" cy="36" r="28" fill="none" stroke={s(2)} strokeOpacity="0.55" strokeWidth="9"
+            strokeDasharray={`${2 * Math.PI * 28 * 0.36} 999`}
+            strokeDashoffset={`${-2 * Math.PI * 28 * 0.64}`} transform="rotate(-90 60 36)" />
+        </>
+      )
+
     case 'bullet':
       return [0.86, 0.52, 0.7].map((v, i) => (
         <g key={i}>

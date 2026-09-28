@@ -156,9 +156,12 @@
 #let tone-of(name) = {
   let base = name
   let wash = name.ends-with("-wash")
-  if wash { base = name.slice(0, -5) }
+  // Softer than a tone and firmer than a wash: a sankey's bands, a
+  // sunburst's outer ring — the colour of what they belong to, lighter.
+  let soft = name.ends-with("-soft")
+  if wash or soft { base = name.slice(0, -5) }
   let c = palette.at(base, default: palette.at("series-1"))
-  if wash { c.transparentize(84%) } else { c }
+  if wash { c.transparentize(84%) } else if soft { c.transparentize(55%) } else { c }
 }
 
 #let chart-box = 46mm

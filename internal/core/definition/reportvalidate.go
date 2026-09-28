@@ -174,11 +174,12 @@ func (b Block) validateChart(output string, i int) error {
 	if b.X.Field == "" || b.Y.Field == "" {
 		return fmt.Errorf("%w: %s chart %d needs both x and y", ErrInvalid, output, i)
 	}
-	if b.Chart.Gridded() && b.Series.Field == "" {
+	if b.Chart.Paired() && b.Series.Field == "" {
 		// The second dimension is the other axis of the grid, not an optional
-		// split: a heatmap with one dimension is a bar chart wearing squares.
-		return fmt.Errorf("%w: %s chart %d is a heatmap, which needs series for its "+
-			"second axis", ErrInvalid, output, i)
+		// split: a heatmap with one dimension is a bar chart wearing squares,
+		// a sankey with one flows nowhere, and a sunburst with one is a donut.
+		return fmt.Errorf("%w: %s chart %d is a %s, which needs series for its second "+
+			"dimension", ErrInvalid, output, i, b.Chart)
 	}
 	return nil
 }

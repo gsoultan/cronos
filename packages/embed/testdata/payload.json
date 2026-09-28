@@ -1743,6 +1743,141 @@
       }
     },
     {
+      "chart": "sankey",
+      "coverage": {
+        "applied": [
+          "carrier",
+          "parcels_over"
+        ]
+      },
+      "kind": "chart",
+      "sankey": {
+        "nodes": [
+          {
+            "label": "England",
+            "side": 0,
+            "y": 5.551115123125783e-17,
+            "h": 0.6647727272727272,
+            "value": 1500,
+            "formatted": "1,500",
+            "slot": 0
+          },
+          {
+            "label": "Scotland",
+            "side": 0,
+            "y": 0.6897727272727272,
+            "h": 0.3102272727272727,
+            "value": 700,
+            "formatted": "700",
+            "slot": 1
+          },
+          {
+            "label": "Aurora",
+            "side": 1,
+            "y": 5.551115123125783e-17,
+            "h": 0.8420454545454545,
+            "value": 1900,
+            "formatted": "1,900",
+            "slot": 0
+          },
+          {
+            "label": "Baltic",
+            "side": 1,
+            "y": 0.8670454545454545,
+            "h": 0.13295454545454544,
+            "value": 300,
+            "formatted": "300",
+            "slot": 1
+          }
+        ],
+        "links": [
+          {
+            "from": 0,
+            "to": 2,
+            "y0": 5.551115123125783e-17,
+            "y1": 5.551115123125783e-17,
+            "h": 0.5318181818181817,
+            "value": 1200,
+            "formatted": "1,200"
+          },
+          {
+            "from": 0,
+            "to": 3,
+            "y0": 0.5318181818181817,
+            "y1": 0.8670454545454545,
+            "h": 0.13295454545454544,
+            "value": 300,
+            "formatted": "300"
+          },
+          {
+            "from": 1,
+            "to": 2,
+            "y0": 0.6897727272727272,
+            "y1": 0.5318181818181817,
+            "h": 0.3102272727272727,
+            "value": 700,
+            "formatted": "700"
+          }
+        ]
+      },
+      "series": [],
+      "title": "Sankey"
+    },
+    {
+      "chart": "sunburst",
+      "coverage": {
+        "applied": [
+          "carrier",
+          "parcels_over"
+        ]
+      },
+      "groups": [
+        {
+          "label": "England",
+          "slot": 0,
+          "bars": [
+            {
+              "label": "Aurora",
+              "value": 1200,
+              "formatted": "1,200"
+            },
+            {
+              "label": "Baltic",
+              "value": 300,
+              "formatted": "300"
+            }
+          ]
+        },
+        {
+          "label": "Scotland",
+          "slot": 1,
+          "bars": [
+            {
+              "label": "Aurora",
+              "value": 700,
+              "formatted": "700"
+            },
+            {
+              "label": "Baltic",
+              "value": 0,
+              "formatted": "0"
+            }
+          ]
+        }
+      ],
+      "kind": "chart",
+      "series": [],
+      "stacked": false,
+      "title": "Sunburst",
+      "totals": [
+        {
+          "label": "Total",
+          "value": 2200,
+          "formatted": "2,200"
+        }
+      ]
+    },
+    {
       "columns": [
         {
           "label": "Region"

@@ -155,6 +155,21 @@ spec:
           x: {field: status}
           y: {field: total}
 
+        # Where each customer's billing stands, and the same as rings.
+        - kind: chart
+          chart: sankey
+          title: Customers to status
+          x: {field: customer_name}
+          series: {field: status}
+          y: {field: total, aggregate: sum}
+
+        - kind: chart
+          chart: sunburst
+          title: Status, then customer
+          x: {field: customer_name}
+          series: {field: status}
+          y: {field: total, aggregate: sum}
+
         - kind: table
           title: Invoices
           columns: [issued_at, customer_name, status, total]

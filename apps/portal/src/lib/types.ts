@@ -76,11 +76,12 @@ export type TileKind =
   | 'bar' | 'column' | 'line' | 'area' | 'pie' | 'donut'
   | 'scatter' | 'bubble' | 'map'
   | 'combo' | 'funnel' | 'waterfall' | 'heatmap' | 'gauge' | 'treemap'
-  | 'radar' | 'bullet' | 'histogram' | 'boxplot'
+  | 'radar' | 'bullet' | 'histogram' | 'boxplot' | 'sankey' | 'sunburst'
 
 /** The tiles that bucket a dimension and fold a measure. */
 export const CATEGORICAL: TileKind[] = [
   'bar', 'column', 'line', 'area', 'pie', 'donut', 'waterfall', 'heatmap', 'treemap', 'radar',
+  'sankey', 'sunburst',
 ]
 
 /** The tiles that read a list of measures rather than one. */
@@ -88,6 +89,11 @@ export const METERED: TileKind[] = ['combo', 'funnel']
 
 /** The tiles that need a second dimension to place a value. */
 export const GRIDDED: TileKind[] = ['heatmap']
+
+/** The tiles whose series is a second dimension rather than an optional
+ *  split: a heatmap's other axis, where a sankey's flows go, and the ring a
+ *  sunburst's parts sit in. */
+export const PAIRED: TileKind[] = ['heatmap', 'sankey', 'sunburst']
 
 /** The tiles that fold the whole set to one number. */
 export const FOLDED: TileKind[] = ['gauge']
@@ -105,6 +111,7 @@ export const PLOTS: TileKind[] = ['scatter', 'bubble']
 /** The tiles that can draw more than one series at once. */
 export const MULTI_SERIES: TileKind[] = [
   'bar', 'column', 'line', 'area', 'scatter', 'bubble', 'heatmap', 'treemap', 'radar',
+  'sankey', 'sunburst',
 ]
 
 /** The tiles a series dimension stacks on rather than drawing beside. */

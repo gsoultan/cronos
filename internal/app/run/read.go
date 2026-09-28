@@ -71,17 +71,51 @@ func readChart(out *Block, blk definition.Block, ds definition.Dataset, rows Row
 		err = out.readGrid(blk, rows)
 	case blk.Chart == definition.TreemapChart:
 		out.Rects, err = readTreemap(blk, rows)
+	case blk.Chart == definition.SankeyChart:
+		err = out.readSankey(blk, rows)
+	case blk.Chart == definition.SunburstChart:
+		err = out.readSunburst(blk, rows)
 	case blk.Series.Field != "":
-		out.Stacked, out.Percent = blk.Stacked.On(), blk.Stacked.Shares()
-		out.Groups, err = readGroups(rows, blk.X.Grain)
-		if out.Stacked {
-			out.Totals = totals(out.Groups)
-		}
+		err = out.readSplit(blk, rows)
 	default:
 		err = out.readShares(blk, rows)
 	}
 	if err == nil {
 		out.scaleFor(blk.Chart)
+	}
+	return err
+}
+
+// readSplit reads a chart split by series: a group per series, dense over the
+// buckets, and each stack's total where the series stack.
+func (out *Block) readSplit(blk definition.Block, rows Rows) error {
+	var err error
+	out.Stacked, out.Percent = blk.Stacked.On(), blk.Stacked.Shares()
+	out.Groups, err = readGroups(rows, blk.X.Grain)
+	if err == nil && out.Stacked {
+		out.Totals = totals(out.Groups)
+	}
+	return err
+}
+
+// readSunburst reads a sunburst's parts as a grouped chart does, and the whole
+// they make, formatted with them, for its middle.
+func (out *Block) readSunburst(blk definition.Block, rows Rows) error {
+	var err error
+	out.Groups, err = readGroups(rows, blk.X.Grain)
+	var parts []Bar
+	for _, g := range out.Groups {
+		parts = append(parts, g.Bars...)
+	}
+	out.Totals = []Bar{sumOf(parts)}
+	return err
+}
+
+// readSankey reads a sankey's pairs as a grouped chart does, and lays it out.
+func (out *Block) readSankey(blk definition.Block, rows Rows) error {
+	pairs, err := readGroups(rows, blk.X.Grain)
+	if err == nil {
+		out.Sankey = layoutSankey(pairs)
 	}
 	return err
 }

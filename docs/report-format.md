@@ -487,6 +487,8 @@ The type is a closed set, checked when the report is stored:
 | `bullet` | `y` measure, plus `target:`; `x` optional | A bar per category against its target |
 | `histogram` | `x` number; `y` measure optional; `bins:` | How a number's rows spread across its range |
 | `boxplot` | `y` number; `x` dimension optional | Each category's quartiles, median and whiskers |
+| `sankey` | `x` + `series` dimensions, `y` | A band from each category of `x` to each of `series` |
+| `sunburst` | `x` + `series` dimensions, `y` | `series` as an inner ring, its parts of `x` around it |
 
 `series:` names a second dimension to split by, and `stacked: true` stacks the
 result — on `bar`, `column` and `area` only, because a stacked line has a top
@@ -525,6 +527,24 @@ aggregate: the spread of sums is not the spread of anything. Quartiles are
 nearest-rank and the median is the mean of the middle two, the same in every
 database cronos reads, because they are worked out from row ranks rather than
 from a percentile function only some of them have.
+
+A `sankey` draws where a measure goes: each category of `x` a node down the
+left, each of `series` a node down the right, and a band between every pair
+that carries anything, as thick as its share of the whole. The server lays it
+out — the bands meet their nodes edge to edge, and no two cross inside a node —
+so a page and a screen draw the same picture. Each side draws its twelve
+largest nodes and folds the rest into "Other". A `sunburst` is a treemap's
+nesting as rings: `series` around the middle and each one's categories of `x`
+around it, largest first, with the whole in the middle. Both need `series`.
+
+```yaml
+- kind: chart
+  chart: sankey
+  title: Where billing stands, by customer
+  x: {field: customer_name}
+  series: {field: status}
+  y: {field: total, aggregate: sum}
+```
 
 ```yaml
 - kind: chart

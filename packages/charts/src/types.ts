@@ -109,6 +109,33 @@ export interface Box {
   said: [string, string, string, string, string]
 }
 
+/** A sankey, laid out by the server in fractions of the box: nodes down the
+ *  left (side 0) and the right (side 1), and a band from source to target. */
+export interface SankeyNode {
+  label: string
+  side: number
+  y: number
+  h: number
+  value: number
+  formatted: string
+  slot: number
+}
+
+export interface SankeyLink {
+  from: number
+  to: number
+  y0: number
+  y1: number
+  h: number
+  value: number
+  formatted: string
+}
+
+export interface Sankey {
+  nodes: SankeyNode[]
+  links: SankeyLink[]
+}
+
 /** One row of a bullet chart: a category's value and the target it is read
  *  against, each formatted by the engine that knew the unit. */
 export interface Bullet {
@@ -492,6 +519,7 @@ export interface ChartBlock {
    *  category, read against `yAxis`. */
   bins?: Bin[]
   boxes?: Box[]
+  sankey?: Sankey
   coverage?: Coverage
 }
 

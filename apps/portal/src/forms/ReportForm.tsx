@@ -13,7 +13,7 @@ import { LayoutCanvas } from '../components/builder/LayoutCanvas'
 import { BlockInspector } from '../components/builder/BlockInspector'
 import { OutputPicker } from './OutputPicker'
 import { useDatasets } from '../lib/useDatasets'
-import { GRIDDED, METERED, PLOTS } from '../lib/types'
+import { METERED, PAIRED, PLOTS } from '../lib/types'
 import type { Dataset, ReportFilter, Tile, TileKind } from '../lib/types'
 import type { Template } from '../lib/templates'
 import { required, slug, toSlug } from '../lib/validators'
@@ -208,7 +208,7 @@ export function ReportForm({ onDone, onCancel, initial }: Props) {
           : undefined,
       // A heatmap's second dimension is the other axis of the grid, not an
       // optional split, so it is seeded rather than left for the inspector.
-      series: GRIDDED.includes(kind)
+      series: PAIRED.includes(kind)
         ? visible.filter((f) => f.role === 'dimension')[1]?.name
           ?? visible.find((f) => f.role === 'dimension')?.name
         : undefined,

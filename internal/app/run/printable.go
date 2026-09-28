@@ -64,6 +64,8 @@ func drawOn(c *document.Chart, b Block) {
 		printBins(c, b)
 	case b.Boxes != nil:
 		printBoxes(c, b)
+	case b.Sankey != nil:
+		printSankey(c, b.Sankey)
 	case b.Rects != nil:
 		treemap(c, b.Rects)
 	case b.Stages != nil:
@@ -80,6 +82,9 @@ func drawOn(c *document.Chart, b Block) {
 		line(c, b)
 	case b.Chart == "column":
 		columns(c, b)
+	case b.Chart == "sunburst":
+		sunburst(c, b)
+		c.Square = true
 	case b.Chart == "radar":
 		// A square of its own size rather than the one a pie takes: a web's
 		// names sit around it, and at a pie's size they crowd its rings.

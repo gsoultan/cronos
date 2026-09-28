@@ -22,6 +22,15 @@ needs a deployment to act says so under **Upgrading**.
 
 ## Unreleased
 
+**Sankeys and sunbursts.** `chart: sankey` draws a band from each category of
+`x` to each of `series`, as thick as what it carries, laid out by the server so
+the page and the screen agree and folding each side past twelve nodes into
+"Other"; `chart: sunburst` draws `series` as an inner ring and each one's parts
+of `x` around it, with the whole in the middle. They draw in the viewer, the
+portal and a PDF, the builder offers them, and the demo's billing report shows
+each; see "Charts" in [docs/report-format.md](docs/report-format.md). The
+embed is 35.5 KB.
+
 **Histograms and box plots.** `chart: histogram` cuts a number's range into
 about twelve bins on round numbers (`bins:` for more or fewer) and counts the
 rows in each; `chart: boxplot` draws each category's quartiles, median and
