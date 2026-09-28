@@ -23,6 +23,7 @@ export const PALETTE: { kind: TileKind; label: string; hint: string; icon: strin
   { kind: 'boxplot', label: 'Box plot', hint: 'Its spread, by category', icon: '⧈' },
   { kind: 'sankey', label: 'Sankey', hint: 'Where it flows', icon: '⫘' },
   { kind: 'sunburst', label: 'Sunburst', hint: 'Parts within parts, as rings', icon: '◉' },
+  { kind: 'calendar', label: 'Calendar', hint: 'Day by day, a year at a time', icon: '▣' },
   { kind: 'table', label: 'Table', hint: 'Every row', icon: '▤' },
 ]
 

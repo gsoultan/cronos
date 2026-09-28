@@ -12,6 +12,10 @@ type Block struct {
 
 	// Stat.
 	Value string `json:"value,omitempty"`
+	// Trend is a stat's measure per period, oldest first, and Delta its last
+	// period against the one before.
+	Trend []Bar  `json:"trend,omitempty"`
+	Delta *Delta `json:"delta,omitempty"`
 
 	// Chart. Kind stays "chart" and the type travels beside it, so a line
 	// chart later is a new value here rather than a new kind every renderer
@@ -78,6 +82,8 @@ type Block struct {
 	Boxes []Box `json:"boxes,omitempty"`
 	// Sankey is a flow chart, laid out.
 	Sankey *Sankey `json:"sankey,omitempty"`
+	// Days are a calendar's, in date order.
+	Days []Day `json:"days,omitempty"`
 
 	// Table. Also never omitempty, for the same reason.
 	Columns []Column   `json:"columns"`

@@ -125,10 +125,16 @@ func (b Block) validate(output string, i int, reportDefault string) error {
 // field renders a blank tile rather than failing, which is the worst outcome:
 // it looks like an answer.
 func (b Block) validateShape(output string, i int) error {
+	if b.Trend != nil && b.Kind != StatBlock {
+		return fmt.Errorf("%w: %s %s %d has a trend, which only a stat draws", ErrInvalid, output, b.Kind, i)
+	}
 	switch b.Kind {
 	case StatBlock:
 		if b.Value.Field == "" {
 			return fmt.Errorf("%w: %s stat %d measures no field", ErrInvalid, output, i)
+		}
+		if b.Trend != nil {
+			return b.Trend.validate(output, i)
 		}
 	case ChartBlock:
 		return b.validateChart(output, i)
@@ -173,6 +179,12 @@ func (b Block) validateChart(output string, i int) error {
 	}
 	if b.X.Field == "" || b.Y.Field == "" {
 		return fmt.Errorf("%w: %s chart %d needs both x and y", ErrInvalid, output, i)
+	}
+	if b.Chart == CalendarChart && b.X.Grain != "" && b.X.Grain != "day" {
+		// A calendar's cells are days: a week or a month of them is a column
+		// chart's bucket, drawn as one square among thirty.
+		return fmt.Errorf("%w: %s calendar %d buckets %q by %s — a calendar draws days",
+			ErrInvalid, output, i, b.X.Field, b.X.Grain)
 	}
 	if b.Chart.Paired() && b.Series.Field == "" {
 		// The second dimension is the other axis of the grid, not an optional

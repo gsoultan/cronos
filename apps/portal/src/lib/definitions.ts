@@ -372,6 +372,8 @@ export interface ReportBlockInput {
   bands?: number[]
   /** About how many bins a histogram cuts. */
   bins?: number
+  /** A stat's number over time. */
+  trend?: { field: string; grain?: string; better?: string }
   series?: string
   stacked?: boolean | 'percent'
   /** A plot's horizontal measure. */
@@ -400,7 +402,7 @@ export function blockInput(b: Tile): ReportBlockInput {
     field: b.field, groupBy: b.groupBy, aggregate: b.aggregate,
     series: b.series, stacked: b.stacked,
     xField: b.xField, sizeField: b.sizeField, map: b.map,
-    metrics: b.metrics, target: b.target, bands: b.bands, bins: b.bins,
+    metrics: b.metrics, target: b.target, bands: b.bands, bins: b.bins, trend: b.trend,
     columns: b.columns, filter: b.filter, sort: b.sort,
   }
 }
@@ -454,7 +456,7 @@ const CHARTS: Record<string, string> = {
   combo: 'combo', funnel: 'funnel', waterfall: 'waterfall',
   heatmap: 'heatmap', gauge: 'gauge', treemap: 'treemap',
   radar: 'radar', bullet: 'bullet', histogram: 'histogram', boxplot: 'boxplot',
-  sankey: 'sankey', sunburst: 'sunburst',
+  sankey: 'sankey', sunburst: 'sunburst', calendar: 'calendar',
 }
 
 /** The chart types whose horizontal axis is a measure rather than a bucket. */
@@ -508,6 +510,9 @@ function block(b: ReportBlockInput): Yaml {
     return narrowed({
       kind: 'stat', dataset: reads, label: b.title,
       value: { field: b.field, aggregate: b.aggregate ?? 'sum' },
+      trend: b.trend?.field
+        ? { field: b.trend.field, grain: b.trend.grain ?? 'month', better: b.trend.better || undefined }
+        : undefined,
     })
   }
   if (b.kind === 'table') {
@@ -556,7 +561,8 @@ function xOf(chart: string, b: ReportBlockInput): Yaml {
   if ((chart === 'funnel' && (b.metrics?.length ?? 0) > 0) || chart === 'gauge' || !b.groupBy) {
     return undefined
   }
-  return { field: b.groupBy, grain: PLOTTED.has(chart) ? undefined : b.grain || undefined }
+  // A calendar's cells are days whatever its x says, so it says nothing.
+  return { field: b.groupBy, grain: PLOTTED.has(chart) || chart === 'calendar' ? undefined : b.grain || undefined }
 }
 
 /**
@@ -999,6 +1005,12 @@ function readBlock(v: Yaml): ReportBlockInput {
       ...narrowing,
       kind, title: str(b.label) || str(b.title), dataset: str(b.dataset) || undefined,
       field: str(value.field), aggregate: str(value.aggregate) || undefined,
+      trend: str(asMap(b.trend).field)
+        ? {
+            field: str(asMap(b.trend).field), grain: str(asMap(b.trend).grain) || undefined,
+            better: str(asMap(b.trend).better) || undefined,
+          }
+        : undefined,
     }
   }
   if (kind === 'table') {

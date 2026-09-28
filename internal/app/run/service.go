@@ -205,9 +205,19 @@ func (s *Service) block(ctx context.Context, r definition.Report, blk definition
 	if err != nil {
 		return Block{}, err
 	}
-	if blk.Chart == definition.HistogramChart {
+	switch {
+	case blk.Chart == definition.HistogramChart:
 		return s.histogram(ctx, blk, ds, engine, params, filters, pr)
+	case blk.Kind == definition.StatBlock && blk.Trend != nil:
+		return s.trended(ctx, blk, ds, engine, params, filters, pr)
 	}
+	return s.run(ctx, blk, ds, engine, params, filters, pr)
+}
+
+// run compiles one block, runs it once, and reads what came back.
+func (s *Service) run(ctx context.Context, blk definition.Block, ds definition.Dataset,
+	engine Engine, params map[string]any, filters query.Filters, pr principal.Principal) (Block, error) {
+
 	plan, cov, err := engine.Builder.BuildBlock(ds, blk, params, filters, pr)
 	if err != nil {
 		return Block{}, err

@@ -1167,3 +1167,20 @@ test('a sankey and a sunburst keep both their dimensions', () => {
   expect(back.map((b) => [b.kind, b.groupBy, b.series])).toEqual([
     ['sankey', 'status', 'region'], ['sunburst', 'customer_name', 'status']])
 })
+
+test('a stat keeps its trend, and a calendar writes no grain', () => {
+  const yaml = report({
+    name: 'R', slug: 'r', dataset: 'invoices',
+    blocks: [
+      { kind: 'stat', title: 'Billed', field: 'total', trend: { field: 'issued_at', grain: 'week', better: 'lower' } },
+      { kind: 'calendar', title: 'By day', field: 'total', groupBy: 'issued_at', grain: 'month' },
+    ],
+  })
+  expect(yaml).toContain('trend:')
+  expect(yaml).toContain('better: lower')
+  expect(yaml).not.toContain('grain: month')
+  const back = readReport(yaml).input.blocks
+  expect(back[0]?.trend).toEqual({ field: 'issued_at', grain: 'week', better: 'lower' })
+  expect([back[1]?.kind, back[1]?.groupBy]).toEqual(['calendar', 'issued_at'])
+  expect(report({ ...readReport(yaml).input, name: 'R', slug: 'r', dataset: 'invoices' })).toBe(yaml)
+})

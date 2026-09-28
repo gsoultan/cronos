@@ -22,6 +22,10 @@ type Block struct {
 	// Stat.
 	Label string     `json:"label,omitempty" yaml:"label,omitempty"`
 	Value MeasureRef `json:"value,omitzero" yaml:"value,omitempty"`
+	// Trend draws a stat's number over time under it, and reports its last
+	// period against the one before. A stat's alone.
+	Trend *Trend `json:"trend,omitempty" yaml:"trend,omitempty"`
+
 	// Filter narrows this block alone — "of which, overdue".
 	Filter string `json:"filter,omitempty" yaml:"filter,omitempty"`
 

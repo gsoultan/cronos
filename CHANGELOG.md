@@ -22,6 +22,15 @@ needs a deployment to act says so under **Upgrading**.
 
 ## Unreleased
 
+**Calendars, and stats with a trend.** `chart: calendar` draws a measure per
+day, a year a block of weeks with each day shaded; a `stat` with `trend:` draws
+its number over the periods of a date under the figure and reports its last
+period against the one before — `better: lower` for a measure whose rise is bad
+news. The stat's change was a pill the viewer could draw and the server never
+sent. Both draw in the viewer and the portal, the calendar in a PDF too, the
+builder offers them, and the demo's billing report shows each; see "Charts" in
+[docs/report-format.md](docs/report-format.md). The embed is 36.4 KB.
+
 **Sankeys and sunbursts.** `chart: sankey` draws a band from each category of
 `x` to each of `series`, as thick as what it carries, laid out by the server so
 the page and the screen agree and folding each side past twelve nodes into

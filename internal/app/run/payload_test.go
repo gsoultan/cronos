@@ -42,7 +42,7 @@ spec:
     - name: interactive
       renderer: interactive
       layout:
-        - {kind: stat, label: Parcels, value: {field: parcels, aggregate: sum}}
+        - {kind: stat, label: Parcels, value: {field: parcels, aggregate: sum}, trend: {field: day, grain: day}}
         - kind: chart
           chart: bar
           title: Parcels by region
@@ -211,6 +211,11 @@ spec:
           x: {field: carrier}
           series: {field: region}
           y: {field: parcels, aggregate: sum}
+        - kind: chart
+          chart: calendar
+          title: Calendar
+          x: {field: day}
+          y: {field: parcels, aggregate: sum}
         - kind: table
           title: Depots
           columns: [region, carrier, parcels]
@@ -235,7 +240,7 @@ func TestPayloadForEveryChartType(t *testing.T) {
 
 	// Every chart type, one block each, plus a stat and a table — and the
 	// layers a map draws beyond the first, a map each.
-	if len(view.Blocks) != 29 {
+	if len(view.Blocks) != 30 {
 		t.Fatalf("want a block per chart type, got %d", len(view.Blocks))
 	}
 	if len(view.Filters) != 2 {
@@ -257,8 +262,8 @@ func TestPayloadForEveryChartType(t *testing.T) {
 		`"chart": "funnel"`, `"chart": "waterfall"`, `"chart": "heatmap"`,
 		`"chart": "gauge"`, `"chart": "treemap"`, `"chart": "column"`,
 		`"chart": "radar"`, `"chart": "bullet"`, `"chart": "histogram"`, `"chart": "boxplot"`,
-		`"chart": "sankey"`, `"chart": "sunburst"`,
-		`"groups"`, `"totals"`, `"points"`, `"tracks"`, `"stages"`, `"percent"`, `"bullets"`, `"bands"`, `"bins"`, `"boxes"`, `"sankey"`,
+		`"chart": "sankey"`, `"chart": "sunburst"`, `"chart": "calendar"`,
+		`"groups"`, `"totals"`, `"points"`, `"tracks"`, `"stages"`, `"percent"`, `"bullets"`, `"bands"`, `"bins"`, `"boxes"`, `"sankey"`, `"days"`, `"trend"`, `"delta"`,
 		`"steps"`, `"cells"`, `"rects"`, `"gauge"`, `"shapes"`, `"markers"`, `"arcs"`,
 		`"frames"`, `"frameLegend"`,
 	} {
@@ -313,10 +318,10 @@ func TestEveryChartTypeReachesAPDF(t *testing.T) {
 	if !bytes.HasPrefix(res.Document, []byte("%PDF-")) {
 		t.Fatalf("output is not a PDF: %q", res.Document[:min(8, len(res.Document))])
 	}
-	// Twenty-one chart types of vector marks is a materially larger document
+	// Twenty-two chart types of vector marks is a materially larger document
 	// than the table alone; a PDF this size is one the marks never reached.
 	if len(res.Document) < 8000 {
-		t.Errorf("the PDF is %d bytes — too small to carry twenty-one chart types", len(res.Document))
+		t.Errorf("the PDF is %d bytes — too small to carry twenty-two chart types", len(res.Document))
 	}
 	if out := os.Getenv("CRONOS_PDF_OUT"); out != "" {
 		if err := os.WriteFile(out, res.Document, 0o600); err != nil {

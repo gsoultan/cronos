@@ -358,6 +358,17 @@ tr:last-child td { border-bottom: 0 }
 .tracing .flow-band:not(.on) { fill-opacity: 0.08 }
 .flow-node { fill: var(--cr-ink-muted) }
 
+/* A stat's line: its shape under the figure, washed, each period's point
+   there to be pointed at and seen only then, the latest one always. */
+.spark { margin-top: 8px; max-width: 100% }
+/* A chart wider than its panel at the smallest it can be drawn — a year of
+   days — scrolls sideways rather than shrinking its squares to specks. */
+.chart-host.scrolls { overflow-x: auto }
+.spark .area { fill-opacity: 0.12 }
+.spark .line { stroke-width: 1.75 }
+.spark .point.quiet { opacity: 0 }
+.spark .point.quiet:hover, .spark .point.quiet:focus-visible { opacity: 1 }
+
 /* A sunburst's outer ring is its inner ring's colour, softened, so its names
    are set in ink where the inner ring's are set in white. */
 .slice.child { fill-opacity: 0.58 }

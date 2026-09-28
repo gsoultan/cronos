@@ -78,14 +78,17 @@ function grid(width: number, rows: string[], columns: string[], byKey: Map<strin
   return root
 }
 
+/** Anything drawn in a shade of the ramp: a heatmap's cell, a calendar's day. */
+type Shaded = Pick<Cell, 'step' | 'value' | 'formatted'> & { empty?: boolean }
+
 /**
  * What each shade spans, from the cells themselves: the lowest and highest
  * value drawn in it. A shade with no cell in it is left out of the key rather
  * than given a range nothing on the grid has.
  */
-export function stops(cells: Cell[]): LegendStop[] {
-  const lo = new Map<number, Cell>()
-  const hi = new Map<number, Cell>()
+export function stops(cells: Shaded[]): LegendStop[] {
+  const lo = new Map<number, Shaded>()
+  const hi = new Map<number, Shaded>()
   for (const c of cells) {
     if (c.empty) continue
     const s = Math.min(c.step, RAMP_STEPS - 1)

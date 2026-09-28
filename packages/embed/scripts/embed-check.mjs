@@ -838,7 +838,7 @@ await real.evaluate((b) => document.querySelector('#r').setAttribute('endpoint',
 const live = real.locator('#r')
 await live.locator('.panel').first().waitFor()
 
-ok('every block of a real render draws', await live.locator('.panel').count() === 29)
+ok('every block of a real render draws', await live.locator('.panel').count() === 30)
 ok('and none of them fell through to "needs a newer viewer"',
   await live.locator('.unaffected', { hasText: 'newer viewer' }).count() === 0)
 ok('nothing was thrown drawing it', realErrors.length === 0)
@@ -874,6 +874,7 @@ for (const [title, selector] of [
   ['Box plot', '[part=box]'],
   ['Sankey', '[part=flow]'],
   ['Sunburst', '[part=slice]'],
+  ['Calendar', '[part=day]'],
 ]) {
   const panel = live.locator('.panel').filter({ hasText: new RegExp(`^${title}`) })
   ok(`${title} draws its marks from the server's payload`,
@@ -922,6 +923,19 @@ ok('a sankey draws a band per pair that flows, and a node each side of it',
 ok("a sunburst draws each part within its whole, and the server's whole in its middle",
   await panelOf('Sunburst').locator('[part=slice]').count() === 5 &&
   (await panelOf('Sunburst').locator('text.centre').textContent()) === '2,200')
+// A year of days, two of which the depots delivered on: the rest are
+// outlines, because a day with nothing in it is not a light day.
+ok('a calendar draws every day of the year, shading the ones with rows',
+  await panelOf('Calendar').locator('[part=day]').count() === 365 &&
+  await panelOf('Calendar').locator('[part=day]:not(.none)').count() === 2)
+{
+  // The report's first block, and its only stat.
+  const stat = live.locator('.panel').first()
+  ok("a stat with a trend draws its line, and says how the server says it moved",
+    await stat.locator('[part=trend]').count() === 1 &&
+    (await stat.locator('.pill').textContent())?.includes('-84.2%') === true &&
+    await stat.locator('.pill.down').count() === 1)
+}
 ok("a donut says the server's whole in its middle",
   (await live.locator('.panel').filter({ hasText: /^Donut/ }).locator('text.centre').textContent()) === '2,200')
 

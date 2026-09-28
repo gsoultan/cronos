@@ -37,6 +37,10 @@ func (b Builder) chartSQL(ds definition.Dataset, blk definition.Block, inner str
 		return b.rangeSQL(ds, blk, inner)
 	case blk.Chart == definition.BoxplotChart:
 		return b.boxSQL(ds, blk, inner)
+	case blk.Chart == definition.CalendarChart:
+		// A calendar's cells are days, whether or not its x says so.
+		blk.X.Grain = "day"
+		return b.seriesSQL(ds, blk, inner)
 	case len(blk.Metrics) > 0:
 		return b.metricSQL(ds, blk, inner)
 	}

@@ -50,6 +50,10 @@ const (
 	// SunburstChart draws parts within parts as rings: series around the
 	// middle, and each one's categories of x around it.
 	SunburstChart ChartType = "sunburst"
+	// CalendarChart draws a measure per day of a date, a year a row of weeks:
+	// the shape of a working week and a season, which a line of the same
+	// days smooths away.
+	CalendarChart ChartType = "calendar"
 )
 
 // chartTypes is every type, in the order an error message should list them.
@@ -58,6 +62,7 @@ var chartTypes = []ChartType{
 	ScatterChart, BubbleChart, MapChart,
 	ComboChart, FunnelChart, WaterfallChart, HeatmapChart, GaugeChart, TreemapChart,
 	RadarChart, BulletChart, HistogramChart, BoxplotChart, SankeyChart, SunburstChart,
+	CalendarChart,
 }
 
 // Valid reports whether c is a type every renderer knows how to refuse or draw.
@@ -75,7 +80,8 @@ func (c ChartType) Valid() bool {
 func (c ChartType) Categorical() bool {
 	switch c {
 	case BarChart, ColumnChart, LineChart, AreaChart, PieChart, DonutChart,
-		WaterfallChart, TreemapChart, HeatmapChart, RadarChart, SankeyChart, SunburstChart:
+		WaterfallChart, TreemapChart, HeatmapChart, RadarChart, SankeyChart, SunburstChart,
+		CalendarChart:
 		return true
 	}
 	return false

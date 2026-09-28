@@ -89,6 +89,7 @@ function tiles(blocks: ReportInput['blocks']): Tile[] {
       target: b.target as Tile['target'],
       bands: b.bands,
       bins: b.bins,
+      trend: b.trend as Tile['trend'],
       columns: b.columns,
       filter: b.filter,
       sort: b.sort?.map((k) => ({ field: k.field, dir: k.dir as 'asc' | 'desc' | undefined })),
