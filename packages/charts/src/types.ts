@@ -101,6 +101,9 @@ export interface Shape {
   formatted: string
   /** Which stop of the sequential ramp shades it, from 0 for the lightest. */
   step: number
+  /** The region in each period of a map that plays through time — see
+   *  GeoMap.frames. The fields above are every period together. */
+  frames?: Frames
 }
 
 /** One point on a map — a dot, a bubble, a member of a cluster, or a
@@ -119,6 +122,30 @@ export interface Marker {
   /** How many places this marker stands for: a cell of a large map gathers
    *  several. One when absent. */
   n?: number
+  /** The place in each period of a map that plays through time. */
+  frames?: Frames
+}
+
+/**
+ * A mark in each period of a map that plays through time that it had rows in,
+ * keyed by the period's place in GeoMap.frames. Keyed rather than listed, so
+ * a place seen in one period of sixty is not fifty-nine nulls.
+ */
+export type Frames = Record<number, FrameMark>
+
+/** A mark's value in one period. One-letter keys: a timed map sends one of
+ *  these per mark per period it had rows in. */
+export interface FrameMark {
+  v: number
+  /** The value as a reader reads it. */
+  f: string
+  /** The ramp step, for a shaded mark; 0 when absent. */
+  s?: number
+  /** The value scaled 0..1 against every period, for a sized mark; 0 when
+   *  absent. */
+  w?: number
+  /** A place's size measure in the period. */
+  z?: string
 }
 
 /**
@@ -209,6 +236,8 @@ export interface Arc {
   formatted: string
   weight: number
   slot?: number
+  /** The flow in each period of a map that plays through time. */
+  frames?: Frames
 }
 
 /** One entry of a map's categorical legend. */
@@ -279,6 +308,13 @@ export interface GeoMap {
   labels?: boolean
   /** Whether its flows move from where each starts to where it lands. */
   animate?: boolean
+  /** The periods a map that plays through time plays, earliest first, as a
+   *  reader reads them. Its marks as sent are every period together; each
+   *  one's `frames` is its value in each. */
+  frames?: string[]
+  /** What a period's shades mean: one set for every period, so a colour
+   *  means one value in all of them. */
+  frameLegend?: LegendStop[]
   tiles?: Tiles
   /** Why a basemap the author asked for is not under the data. */
   note?: string

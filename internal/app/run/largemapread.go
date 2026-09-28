@@ -52,7 +52,7 @@ func (q *bigMap) regions(ctx context.Context, m *GeoMap, box *Bounds) error {
 	// The small path's reader, over a query shaped like the start of its own:
 	// a label, an outline and a value.
 	r := &mapReader{
-		blk: q.blk, box: box, points: newBounds(), fold: foldOf(q.blk, q.ds), regions: map[string]int{},
+		blk: q.blk, box: box, points: newBounds(), fold: foldOf(q.blk.Y, q.ds), regions: map[string]int{},
 		at: map[definition.MapColumn]int{definition.RegionCol: 0, definition.GeometryCol: 1, definition.ValueCol: 2},
 	}
 	cut, err := q.each(ctx, p, query.ChartLimit, func(row row) error {
@@ -122,7 +122,7 @@ func (q *bigMap) cells(ctx context.Context, g query.MapGrid, slot map[string]int
 	if err != nil {
 		return nil, err
 	}
-	c := &Cells{Size: 1 / float64(g.Cells), Mean: foldOf(q.blk, q.ds) == definition.Unfoldable}
+	c := &Cells{Size: 1 / float64(g.Cells), Mean: foldOf(q.blk.Y, q.ds) == definition.Unfoldable}
 	keyed, sized, labelled := q.blk.Series.Field != "", q.blk.Size.Field != "", q.blk.Labels() != ""
 	cut, err := q.each(ctx, p, query.MaxCells, func(r row) error {
 		c.X, c.Y = append(c.X, r.num("x")), append(c.Y, r.num("y"))

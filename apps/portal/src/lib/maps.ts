@@ -67,6 +67,15 @@ export const readsShapes = (layers: string[]) => layers.some((l) => SHAPED.inclu
 export const readsPoints = (layers: string[], cells?: string) =>
   layers.some((l) => !SHAPED.includes(l) && !(l === 'h3' && cells))
 
+/** The periods a map can play through, and what one unset means. */
+export const TIME_GRAINS = ['day', 'week', 'month', 'quarter', 'year']
+export const DEFAULT_TIME_GRAIN = 'month'
+
+/** Whether a map can play through time: anything but hexagons and H3 cells,
+ *  which are folded from every place at once. */
+export const plays = (layers: string[]) =>
+  layers.length > 0 && !layers.includes('hexbin') && !layers.includes('h3')
+
 /** Whether a layer shows the value by its colour. */
 export const colours = (layer: string) => COLOURED.has(layer)
 
@@ -121,6 +130,7 @@ export function relayer(
   if (!layers.includes('radius')) map.radiusKm = undefined
   if (!layers.includes('h3')) map.h3 = map.h3Resolution = undefined
   if (!layers.includes('flow')) map.animate = undefined
+  if (!plays(drawnLayers(map))) map.time = map.timeGrain = undefined
   if (!names(drawnLayers(map))) map.labels = undefined
   return { map, series: takesSeries(drawnLayers(map)) ? block.series : undefined }
 }

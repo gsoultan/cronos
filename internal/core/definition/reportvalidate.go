@@ -323,6 +323,9 @@ func (b Block) validateOverlays(output string, i int) error {
 		case len(ov.Map.Overlays) > 0:
 			return fmt.Errorf("%w: %s %d has overlays of its own — list them all on the map",
 				ErrInvalid, where, j)
+		case ov.Map.Time != nil:
+			return fmt.Errorf("%w: %s %d plays through time, and an overlay is drawn over "+
+				"the map as it is — give it a block of its own", ErrInvalid, where, j)
 		}
 		if err := ov.validateMap(where, j); err != nil {
 			return err
@@ -365,12 +368,17 @@ func (b Block) validateMapSeries(output string, i int) error {
 // this check with both in hand. Catching it at authoring time is still worth
 // the duplication: the author who typed `avg` is the one who can pick.
 func (b Block) validateFold(output string, i int) error {
-	if !b.Folds() || Foldable(b.Y.Aggregate) != Unfoldable {
+	if !b.Folds() {
 		return nil
 	}
-	return fmt.Errorf("%w: %s map %d %s — which an average cannot survive. "+
-		"Use sum, count, min or max, or split the layers across two blocks",
-		ErrInvalid, output, i, b.FoldReason())
+	for _, m := range b.FoldedMeasures() {
+		if Foldable(m.Aggregate) == Unfoldable {
+			return fmt.Errorf("%w: %s map %d %s — which an average cannot survive. "+
+				"Use sum, count, min or max, or split the layers across two blocks",
+				ErrInvalid, output, i, b.FoldReason())
+		}
+	}
+	return nil
 }
 
 // FoldReason says why a block's measure is applied twice, for the sentence
@@ -382,6 +390,9 @@ func (b Block) FoldReason() string {
 	}
 	if b.Map != nil && b.foldsH3() {
 		return "draws H3 cells, and adds each one up from the places or finer cells inside it"
+	}
+	if b.Map != nil && b.Map.Time != nil {
+		return "plays through periods, and adds each place up across them for the map as it opens"
 	}
 	return "draws hexagons, and adds each one up from the points inside it"
 }

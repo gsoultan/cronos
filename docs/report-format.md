@@ -869,6 +869,39 @@ drawn over the map's — and no overlays of its own. A large one is gathered and
 refined as the reader zooms, like any map; it never sets the report's filters,
 which is the map's to do.
 
+#### Maps that play through time
+
+`time` plays a map through the periods of a date — each day's deliveries, a
+region's revenue month by month — a period at a time:
+
+```yaml
+map:
+  layers: [bubble]
+  lat: lat
+  lon: lon
+  time: {field: dropped_on, grain: day}
+```
+
+The grain is `day`, `week`, `month`, `quarter` or `year`, and every period is
+played, however many there are. The map opens on every period together, as
+paper prints it, with a slider under it: play, drag, or step through the
+periods with the arrow keys, and "All periods" goes back. In a period each
+place is its value then, sized against the busiest place of any period, and
+each region is shaded from one set of shades for all of them — so a colour or a
+bubble means the same number in the first period and the last, and the legend
+says what the shades mean while a period is shown. A region with nothing in a
+period is drawn empty and says so; a place or a flow with nothing in it is not
+drawn at all. A row with no date counts in the map as it opens, and in no
+period.
+
+The map as it opens adds each place up across its periods, and a `size`
+measure with it, so `time` refuses `avg` as a map that folds regions from
+points does. It is refused beside `hexbin` and `h3`, which fold every place at
+once — give them a block of their own — and on an overlay, which is drawn over
+the map as it is. A place in each of its periods is a row, so the 5,000 rows a
+map holds are places *and* periods: a busy map by day can say it is partial
+where the same map by week would not.
+
 #### A million places
 
 A map with more places than a browser can hold is not cut short. Up to 5,000

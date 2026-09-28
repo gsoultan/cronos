@@ -13,4 +13,7 @@ type Arc struct {
 	Weight float64 `json:"weight"`
 	// Slot is the colour of the flow's category, as Marker.Slot.
 	Slot int `json:"slot,omitempty"`
+	// Frames are the mark in each period of a timed map it had rows in; the
+	// fields above are every period together.
+	Frames Frames `json:"frames,omitempty"`
 }

@@ -153,6 +153,22 @@ spec:
             h3Resolution: 6
             basemap: {provider: openstreetmap}
 
+        # The same month a day at a time. The map opens on all of August, as
+        # the paper copy prints it; play it, or drag through it, and each day
+        # is that day's deliveries, sized against the busiest drop of any day
+        # so a bubble means the same number on the first and the thirty-first.
+        - kind: chart
+          chart: map
+          title: Deliveries, day by day in August
+          x: {field: city}
+          y: {field: parcels, aggregate: sum}
+          map:
+            layers: [bubble]
+            lat: lat
+            lon: lon
+            time: {field: dropped_on, grain: day}
+            basemap: {provider: openstreetmap}
+
         # Lines from a GeoJSON field: roads, and the ferries that break them.
         - kind: chart
           chart: map

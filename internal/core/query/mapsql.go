@@ -72,6 +72,13 @@ func (b Builder) mapColumn(ds definition.Dataset, blk definition.Block,
 	case definition.H3Col:
 		col, err := column(ds, m.H3)
 		return col, true, err
+	case definition.TimeCol:
+		col, err := column(ds, m.Time.Field)
+		if err != nil {
+			return "", false, err
+		}
+		expr, err := b.dialect.Bucket(m.Time.Grain, col)
+		return expr, true, err
 	case definition.ValueCol:
 		expr, err := b.measure(ds, blk.Y)
 		return expr, false, err
@@ -92,19 +99,21 @@ func foldable(ds definition.Dataset, blk definition.Block) error {
 	if !blk.Folds() {
 		return nil
 	}
-	name := blk.Y.Aggregate
-	if name == "" {
-		f, ok := ds.Field(blk.Y.Field)
-		if !ok {
-			return fmt.Errorf("%w: %q is not a field of dataset %q",
-				ErrBadTemplate, blk.Y.Field, ds.Name)
+	for _, m := range blk.FoldedMeasures() {
+		name := m.Aggregate
+		if name == "" {
+			f, ok := ds.Field(m.Field)
+			if !ok {
+				return fmt.Errorf("%w: %q is not a field of dataset %q",
+					ErrBadTemplate, m.Field, ds.Name)
+			}
+			name = f.Aggregate
 		}
-		name = f.Aggregate
-	}
-	if definition.Foldable(name) == definition.Unfoldable {
-		return fmt.Errorf("%w: map block %s — which %q cannot survive. "+
-			"Use sum, count, min or max, or split the layers across two blocks",
-			ErrBadTemplate, blk.FoldReason(), name)
+		if definition.Foldable(name) == definition.Unfoldable {
+			return fmt.Errorf("%w: map block %s — which %q cannot survive. "+
+				"Use sum, count, min or max, or split the layers across two blocks",
+				ErrBadTemplate, blk.FoldReason(), name)
+		}
 	}
 	return nil
 }

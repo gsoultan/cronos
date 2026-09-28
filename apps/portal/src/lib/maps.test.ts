@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import {
   basemapChoice, basemapKeys, drawnLayers, excludedBy, keyValueProblem, readsPoints, readsShapes,
-  relayer, styleOptions, switchBasemap, takesSeries,
+  plays, relayer, styleOptions, switchBasemap, takesSeries,
 } from './maps'
 import type { TileMap } from './types'
 
@@ -59,6 +59,20 @@ test('a layer that colours by value drops the series in the same change', () => 
   // No layers and a shapes field is shaded regions, which colour by value too.
   const cleared = relayer({ map: { layers: ['scatter'], geometry: 'shape' }, series: 'carrier' }, [])
   expect(cleared.series).toBeUndefined()
+})
+
+// The server refuses a map that plays through time beside hexagons or H3
+// cells, and the control has gone from the screen by then.
+test('playing through time goes when hexagons or cells arrive', () => {
+  const timed: TileMap = { layers: ['scatter'], lat: 'lat', lon: 'lon', time: 'day', timeGrain: 'week' }
+  for (const folded of ['hexbin', 'h3']) {
+    const next = relayer({ map: timed }, ['scatter', folded]).map
+    expect(next?.time).toBeUndefined()
+    expect(next?.timeGrain).toBeUndefined()
+  }
+  expect(relayer({ map: timed }, ['scatter', 'heat']).map).toMatchObject({ time: 'day', timeGrain: 'week' })
+  expect(plays(['polygon', 'line', 'flow'])).toBe(true)
+  expect(plays([])).toBe(false)
 })
 
 test('a hexagon width goes with the last hexbin layer', () => {

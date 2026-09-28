@@ -27,7 +27,7 @@ func (q *bigMap) h3(ctx context.Context, m *GeoMap, sv survey) error {
 	if err != nil {
 		return err
 	}
-	cells := newH3Cells(q.blk.Map, foldOf(q.blk, q.ds))
+	cells := newH3Cells(q.blk.Map, foldOf(q.blk.Y, q.ds))
 	if cells.binned {
 		cells.sizeTo(sv.points)
 	}

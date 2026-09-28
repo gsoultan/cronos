@@ -142,9 +142,25 @@ await maps.route(/tile\.openstreetmap\.org|api\.mapbox\.com|tile\.googleapis\.co
 await maps.goto(`${B}/reports/parcel-network`, { waitUntil: 'domcontentloaded' })
 await maps.locator('[data-testid=live-report] .geo-stage').first().waitFor({ timeout: 20000 })
 ok('every map of the parcel network draws in the portal',
-  await maps.locator('[data-testid=live-report] .geo-stage').count() === 8)
+  await maps.locator('[data-testid=live-report] .geo-stage').count() === 9)
 ok('the deliveries are drawn in H3 cells',
   await maps.getByTestId('chart').filter({ hasText: 'Parcels per H3 cell' }).locator('.hexes path').count() > 5)
+/* A map that plays through time opens on the whole month; a day is that
+   day's deliveries, playing moves on through them, and all periods goes
+   back to the month. */
+const played = maps.getByTestId('chart').filter({ hasText: 'Deliveries, day by day in August' })
+const month = await played.locator('.dots .pin').count()
+await played.getByRole('slider', { name: 'Period' }).fill('4')
+const day = await played.locator('.dots .pin').count()
+ok('a map that plays through time shows a day of its month',
+  day > 0 && day < month && (await played.locator('[part=period]').innerText()).includes('Aug'))
+await played.getByRole('button', { name: 'Play through the periods' }).click()
+await maps.waitForTimeout(2300)
+const later = await played.locator('[part=period]').innerText()
+await played.getByRole('button', { name: 'Pause' }).click()
+ok('and plays on through the days', later !== '5 Aug' && later.includes('Aug'))
+await played.getByRole('button', { name: 'All periods' }).click()
+ok('and goes back to all of them', await played.locator('.dots .pin').count() === month)
 /* The zones on time against the target, in two hues either side of it: the
    server classes each side apart and says so, and the map reads the second
    ramp through the first one's names. */

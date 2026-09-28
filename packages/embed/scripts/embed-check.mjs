@@ -722,7 +722,7 @@ await real.evaluate((b) => document.querySelector('#r').setAttribute('endpoint',
 const live = real.locator('#r')
 await live.locator('.panel').first().waitFor()
 
-ok('every block of a real render draws', await live.locator('.panel').count() === 20)
+ok('every block of a real render draws', await live.locator('.panel').count() === 21)
 ok('and none of them fell through to "needs a newer viewer"',
   await live.locator('.unaffected', { hasText: 'newer viewer' }).count() === 0)
 ok('nothing was thrown drawing it', realErrors.length === 0)
@@ -743,6 +743,7 @@ for (const [title, selector] of [
   ['Routes', '.routes path.route'],
   ['Hexagons', '.hexes path'],
   ['Clusters', 'circle.pin, .cluster'],
+  ['By day', '.shapes path'],
   ['Combo', 'rect.col'],
   ['Funnel', '.band'],
   ['Waterfall', 'rect.col'],
@@ -754,6 +755,21 @@ for (const [title, selector] of [
   ok(`${title} draws its marks from the server's payload`,
     await panel.locator(selector).count() > 0)
 }
+
+// A map that plays through time, as the server sends it: a day is that day's
+// places and shades, a region with nothing in it drawn empty and saying so,
+// and all periods is the whole again.
+const byDay = live.locator('.panel').filter({ hasText: /^By day/ })
+const wholeMap = await byDay.locator('[part=marker]').count()
+await byDay.getByRole('slider', { name: 'Period' }).fill('1')
+ok('a map that plays through time shows a day of it',
+  (await byDay.locator('[part=period]').innerText()) === '2 Aug'
+  && await byDay.locator('[part=marker]').count() === 1)
+ok('and a region with nothing that day drawn empty, and saying so',
+  (await byDay.locator('.shapes path.void').getAttribute('aria-label')) === 'Scotland, Nothing in 2 Aug')
+await byDay.getByRole('button', { name: 'All periods' }).click()
+ok('and every period together again',
+  await byDay.locator('[part=marker]').count() === wholeMap && await byDay.locator('.shapes path.void').count() === 0)
 
 ok('the filter bar is built from the report definition',
   await live.locator('.filters .filter').count() === 2)

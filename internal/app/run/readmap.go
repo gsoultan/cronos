@@ -25,10 +25,13 @@ func readMap(blk definition.Block, ds definition.Dataset, rows Rows) (*GeoMap, e
 	out := emptyMap(blk)
 	r := &mapReader{
 		blk: blk, at: at, box: newBounds(), points: newBounds(),
-		fold: foldOf(blk, ds), regions: map[string]int{},
+		fold: foldOf(blk.Y, ds), regions: map[string]int{},
 	}
 	if blk.Map.Draws(definition.H3Layer) {
 		r.cells = newH3Cells(blk.Map, r.fold)
+	}
+	if blk.Map.Time != nil {
+		r.timed = newTimeline(blk.Map.Time, foldOf(blk.Size, ds))
 	}
 	if err := r.scan(rows, len(cols), out); err != nil {
 		return nil, err
@@ -61,6 +64,10 @@ type mapReader struct {
 	cut bool
 	// cells gathers an h3 layer's cells; nil for a map without one.
 	cells *h3Cells
+	// timed gathers a timed map's periods, and now is the row's; nil and -1
+	// for a map that does not play through time.
+	timed *timeline
+	now   int
 }
 
 func (r *mapReader) scan(rows Rows, width int, out *GeoMap) error {
@@ -91,10 +98,17 @@ func (r *mapReader) scan(rows Rows, width int, out *GeoMap) error {
 func (r *mapReader) row(cells []any, out *GeoMap) error {
 	label := r.text(cells, definition.RegionCol)
 	value, _ := number(r.get(cells, definition.ValueCol))
+	r.now = -1
+	if r.timed != nil {
+		r.now = r.timed.period(r.get(cells, definition.TimeCol))
+	}
 
 	if _, ok := r.at[definition.GeometryCol]; ok {
 		if err := r.shape(cells, out, label, value); err != nil {
 			return err
+		}
+		if r.timed != nil {
+			r.timed.region(label, r.now, value, r.fold)
 		}
 	}
 	if _, ok := r.at[definition.LatCol]; ok {
@@ -176,31 +190,85 @@ func (r *mapReader) point(cells []any, out *GeoMap, label string, value float64)
 		r.cells.place(lat, lon, value)
 	}
 
+	at := r.marker(cells, out, label, value, x, y)
+	if _, ok := r.at[definition.ToLatCol]; ok {
+		r.arc(cells, out, label, value, at)
+	}
+}
+
+// marker adds a place's marker, or — on a timed map, where a place arrives
+// once for each period — folds a period into the one it already has. Returns
+// the marker's index.
+func (r *mapReader) marker(cells []any, out *GeoMap, label string, value, x, y float64) int {
+	series := ""
+	if _, ok := r.at[definition.SeriesCol]; ok {
+		series = r.text(cells, definition.SeriesCol)
+	}
+	size, sized := r.sizeOf(cells)
+	if r.timed != nil {
+		key := placeKey{label, series, x, y}
+		if i, seen := r.timed.places[key]; seen {
+			r.again(&out.Markers[i], i, value, size, sized)
+			return i
+		}
+		r.timed.place(key, len(out.Markers), r.now, value, size, sized)
+	}
 	m := Marker{Label: label, X: x, Y: y, Value: value, Formatted: compact(value)}
-	if i, ok := r.at[definition.SizeCol]; ok {
-		s, _ := number(cells[i])
-		m.Size = compact(s)
+	if sized {
+		m.Size = compact(size)
 	}
 	out.Markers = append(out.Markers, m)
 	r.weights = append(r.weights, value)
 	if _, ok := r.at[definition.SeriesCol]; ok {
-		r.categories = append(r.categories, r.text(cells, definition.SeriesCol))
+		r.categories = append(r.categories, series)
 	}
+	return len(out.Markers) - 1
+}
 
-	if _, ok := r.at[definition.ToLatCol]; ok {
-		r.arc(cells, out, label, value, x, y)
+// sizeOf is a row's size measure, when the map has one.
+func (r *mapReader) sizeOf(cells []any) (float64, bool) {
+	i, ok := r.at[definition.SizeCol]
+	if !ok {
+		return 0, false
+	}
+	s, _ := number(cells[i])
+	return s, true
+}
+
+// again folds a timed place's row in another period into its marker: into
+// what the map says as it opens, and into that period.
+func (r *mapReader) again(m *Marker, i int, value, size float64, sized bool) {
+	m.Value = refold(r.fold, m.Value, value)
+	m.Formatted, r.weights[i] = compact(m.Value), m.Value
+	addPeriod(r.timed.marker[i], r.now, value, r.fold)
+	if sized {
+		m.Size = compact(r.timed.sized(i, r.now, size))
 	}
 }
 
-func (r *mapReader) arc(cells []any, out *GeoMap, label string, value, x, y float64) {
+// arc adds the flow leaving a marker, folding a timed map's periods into one.
+func (r *mapReader) arc(cells []any, out *GeoMap, label string, value float64, from int) {
 	lon, okLon := number(r.get(cells, definition.ToLonCol))
 	lat, okLat := number(r.get(cells, definition.ToLatCol))
 	if !okLon || !okLat || !finite(lon, lat) {
 		return
 	}
+	x, y := out.Markers[from].X, out.Markers[from].Y
 	x2, y2 := project(lon, lat)
 	r.box.add(x2, y2)
-	r.arcAt = append(r.arcAt, len(out.Markers)-1)
+	if r.timed != nil {
+		key := routeKey{label, r.text(cells, definition.SeriesCol), x, y, x2, y2}
+		if i, seen := r.timed.routes[key]; seen {
+			a := &out.Arcs[i]
+			a.Value = refold(r.fold, a.Value, value)
+			a.Formatted = compact(a.Value)
+			addPeriod(r.timed.arc[i], r.now, value, r.fold)
+			return
+		}
+		r.timed.routes[key] = len(out.Arcs)
+		r.timed.arc = append(r.timed.arc, map[int]float64{r.now: value})
+	}
+	r.arcAt = append(r.arcAt, from)
 	out.Arcs = append(out.Arcs, Arc{
 		Label: label, X1: x, Y1: y, X2: x2, Y2: y2,
 		Value: value, Formatted: compact(value),
@@ -230,6 +298,9 @@ func (r *mapReader) finish(out *GeoMap) {
 	for i := range out.Arcs {
 		out.Arcs[i].Weight = weight(out.Arcs[i].Value, lo, hi)
 	}
+	if r.timed != nil {
+		r.timed.finish(out, m)
+	}
 	if !markersDrawn(m) {
 		// Read for the hexagons or the flows and drawn by nothing. Sending
 		// them anyway was up to five thousand points of payload that every
@@ -244,6 +315,10 @@ func (r *mapReader) finish(out *GeoMap) {
 
 // partial is the sentence under a map drawn from the first rows of more.
 func partial(blk definition.Block) string {
+	if blk.Map != nil && blk.Map.Time != nil {
+		return fmt.Sprintf("This map plays the first %s places and periods of more — narrow the "+
+			"filters, or play it by a longer period, to see them all.", group(query.ChartLimit, 0))
+	}
 	first := fmt.Sprintf("This map shows the first %s places of more", group(query.ChartLimit, 0))
 	if blk.Folds() {
 		return first + ", and its totals count only those — narrow the filters to count them all."
@@ -377,10 +452,10 @@ func refold(f definition.Fold, a, b float64) float64 {
 }
 
 // foldOf resolves the aggregate, preferring the block's over the field's.
-func foldOf(blk definition.Block, ds definition.Dataset) definition.Fold {
-	name := blk.Y.Aggregate
+func foldOf(m definition.MeasureRef, ds definition.Dataset) definition.Fold {
+	name := m.Aggregate
 	if name == "" {
-		if f, ok := ds.Field(blk.Y.Field); ok {
+		if f, ok := ds.Field(m.Field); ok {
 			name = f.Aggregate
 		}
 	}

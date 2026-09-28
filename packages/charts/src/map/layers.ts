@@ -1,6 +1,6 @@
 import type { Arc, Marker, Shape } from '../types'
 import { svg } from '../svg'
-import type { Tips } from '../tip'
+import { say, type Tips } from '../tip'
 import { PLOT_PALETTE_SIZE, RAMP_STEPS, slotOf } from '../palette'
 import { g, latitude, longitude } from './geo'
 import type { View } from './view'
@@ -31,24 +31,45 @@ export const ramp = (step: number) =>
  *  folding again here keeps a newer server's wider cap from painting past it. */
 export const series = (slot = 0) => `var(--cr-series-${slotOf(slot, PLOT_PALETTE_SIZE)})`
 
-/** Filled areas from the ramp: regions, or hexagons. */
-export function areas(shapes: Shape[], tips: Tips, kind: 'shapes' | 'hexes', pick?: Pick): Layer {
+/**
+ * Filled areas from the ramp: regions, or hexagons.
+ *
+ * `shade` shades the same areas with other values — a period of a map that
+ * plays through time — in place: a region's outline is the heavy part, and
+ * it is the same in every period. One with a step below zero had nothing in
+ * the period, and is drawn empty rather than left off the map it is still on.
+ */
+export function areas(shapes: Shape[], tips: Tips, kind: 'shapes' | 'hexes', pick?: Pick): Layer & { shade(shapes: Shape[]): void } {
   const node = svg('g', { class: kind })
-  for (const s of shapes) {
-    const path = svg('path', { d: s.path, part: kind === 'shapes' ? 'region' : 'hexagon', fill: ramp(s.step) })
-    tips.bind(path, s.label, pickable(path, s.label, s.formatted, kind === 'shapes' ? pick : undefined))
+  let now = shapes
+  const drawn = shapes.map((s, i) => {
+    const path = svg('path', { d: s.path, part: kind === 'shapes' ? 'region' : 'hexagon' })
+    const says = pickable(path, s.label, kind === 'shapes' ? pick : undefined)
+    tips.bind(path, s.label, () => says(now[i]?.formatted ?? ''))
     node.append(path)
+    return { path, says }
+  })
+  const shade = (list: Shape[]) => {
+    now = list
+    for (const [i, { path, says }] of drawn.entries()) {
+      const s = list[i]
+      if (!s) continue
+      path.setAttribute('fill', ramp(s.step))
+      path.classList.toggle('void', s.step < 0)
+      say(path, s.label, says(s.formatted))
+    }
   }
-  return { node }
+  shade(shapes)
+  return { node, shade }
 }
 
 /**
  * Makes a mark set the report's filter to its label, when the map sets one:
  * a click or Enter picks it, and picks it again to let go. Returns what the
- * tooltip says under the value — what a click would do.
+ * tooltip says under a value — what a click would do.
  */
-export function pickable(mark: Element, label: string, value: string, pick?: Pick): string {
-  if (!pick) return value
+export function pickable(mark: Element, label: string, pick?: Pick): (value: string) => string {
+  if (!pick) return (value) => value
   const on = pick.picked(label)
   mark.classList.add('pickable')
   if (on) mark.classList.add('picked')
@@ -63,7 +84,8 @@ export function pickable(mark: Element, label: string, value: string, pick?: Pic
     e.preventDefault()
     pick.toggle(label)
   })
-  return `${value} · ${on ? 'click to show everything again' : 'click to filter the report to it'}`
+  const does = on ? 'click to show everything again' : 'click to filter the report to it'
+  return (value) => `${value} · ${does}`
 }
 
 /**
@@ -74,19 +96,31 @@ export function pickable(mark: Element, label: string, value: string, pick?: Pic
  * casing is also what the pointer catches — a three-pixel line is a hard
  * thing to hover.
  */
-export function routes(lines: Shape[], tips: Tips): Layer {
+export function routes(lines: Shape[], tips: Tips): Layer & { shade(lines: Shape[]): void } {
   const node = svg('g', { class: 'routes' })
-  for (const l of lines) {
+  let now = lines
+  const drawn = lines.map((l, i) => {
     const route = svg('path', { d: l.path, class: 'route' })
-    // A style and not a stroke attribute: an attribute is the weakest thing
-    // in the cascade, and any rule that styles a path — ours drew every route
-    // in the surface colour — wins over it without a word.
-    route.style.stroke = ramp(l.step)
     const one = svg('g', { part: 'route' }, svg('path', { d: l.path, class: 'casing' }), route)
-    tips.bind(one, l.label, l.formatted)
+    tips.bind(one, l.label, () => now[i]?.formatted ?? '')
     node.append(one)
+    return { one, route }
+  })
+  // Recoloured in place for a period, as areas are.
+  const shade = (list: Shape[]) => {
+    now = list
+    for (const [i, { one, route }] of drawn.entries()) {
+      const l = list[i]
+      if (!l) continue
+      // A style and not a stroke attribute: an attribute is the weakest
+      // thing in the cascade, and any rule that styles a path — ours drew
+      // every route in the surface colour — wins over it without a word.
+      route.style.stroke = l.step < 0 ? 'var(--cr-line)' : ramp(l.step)
+      say(one, l.label, l.formatted)
+    }
   }
-  return { node }
+  shade(lines)
+  return { node, shade }
 }
 
 let gradients = 0
@@ -103,26 +137,35 @@ let gradients = 0
  * The radius is pixels, so a hot spot is the same size on screen at every zoom
  * and the field sharpens into its points as the reader zooms in.
  */
-export function heat(markers: Marker[]): Layer {
+export function heat(markers: Marker[]): Layer & { swap(markers: Marker[]): void } {
   const id = `cr-heat-${++gradients}`
   const colour = `var(--cr-ramp-${RAMP_STEPS})`
-  const circles = markers.map((p) => svg('circle', {
-    cx: g(p.x), cy: g(p.y), r: '0', fill: `url(#${id})`,
-    // Opacity and not radius carries the weight. A radius that shrank with
-    // the value would say a quiet place is a small place, and the two are
-    // different claims.
-    opacity: String(Math.round((0.18 + p.weight * 0.6) * 1000) / 1000),
-  }))
+  const field = svg('g', { class: 'heat' })
   const node = svg('g', {},
     svg('radialGradient', { id },
       svg('stop', { offset: '0', 'stop-color': colour, 'stop-opacity': '0.85' }),
       svg('stop', { offset: '0.5', 'stop-color': colour, 'stop-opacity': '0.35' }),
       svg('stop', { offset: '1', 'stop-color': colour, 'stop-opacity': '0' })),
-    svg('g', { class: 'heat' }, ...circles))
+    field)
 
+  let circles: SVGElement[] = []
   let last = 0
+  // The places of a period of a map that plays through time.
+  const swap = (list: Marker[]) => {
+    circles = list.map((p) => svg('circle', {
+      cx: g(p.x), cy: g(p.y), r: '0', fill: `url(#${id})`,
+      // Opacity and not radius carries the weight. A radius that shrank with
+      // the value would say a quiet place is a small place, and the two are
+      // different claims.
+      opacity: String(Math.round((0.18 + p.weight * 0.6) * 1000) / 1000),
+    }))
+    field.replaceChildren(...circles)
+    last = 0
+  }
+  swap(markers)
   return {
     node,
+    swap,
     update(_view, scale) {
       if (scale === last || !(scale > 0)) return
       last = scale
@@ -140,14 +183,17 @@ export function heat(markers: Marker[]): Layer {
  * indistinguishable from a row that was filtered away. Bubbles are drawn
  * largest first, so a small one is never hidden under a large neighbour.
  */
-export function dots(markers: Marker[], tips: Tips, sized: boolean, keyed: boolean, pick?: Pick): Layer {
+export function dots(markers: Marker[], tips: Tips, sized: boolean, keyed: boolean, pick?: Pick): Layer & { swap(markers: Marker[]): void } {
   const node = svg('g', { class: 'dots' })
-  const order = sized ? [...markers].sort((a, b) => b.weight - a.weight) : markers
-  const drawn: Sized[] = []
-  for (const p of order) {
-    drawn.push([pin(node, p, tips, keyed, pick), sized ? bubbleRadius(p.weight) : 4.5])
+  let size = radii([])
+  // The places of a period of a map that plays through time.
+  const swap = (list: Marker[]) => {
+    node.replaceChildren()
+    const order = sized ? [...list].sort((a, b) => b.weight - a.weight) : list
+    size = radii(order.map((p) => [pin(node, p, tips, keyed, pick), sized ? bubbleRadius(p.weight) : 4.5]))
   }
-  return { node, update: radii(drawn) }
+  swap(markers)
+  return { node, swap, update: (view, scale, settled) => size(view, scale, settled) }
 }
 
 /** A bubble's radius in pixels for a weight: area, not radius, carries the
@@ -159,7 +205,7 @@ export const bubbleRadius = (weight: number) => 4 + Math.sqrt(Math.max(weight, 0
 export function pin(node: SVGElement, p: Marker, tips: Tips, keyed: boolean, pick?: Pick): GlyphMark['size'] {
   const mark = glyphMark(keyed ? glyphOf(p.slot) : 'circle', p.x, p.y, { class: 'pin', part: 'marker' })
   if (keyed) mark.el.style.fill = series(p.slot)
-  tips.bind(mark.el, p.label, pickable(mark.el, p.label, p.size ? `${p.formatted} · ${p.size}` : p.formatted, pick))
+  tips.bind(mark.el, p.label, pickable(mark.el, p.label, pick)(p.size ? `${p.formatted} · ${p.size}` : p.formatted))
   node.append(mark.el)
   return mark.size
 }

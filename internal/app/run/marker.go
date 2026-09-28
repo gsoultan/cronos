@@ -18,6 +18,9 @@ type Marker struct {
 	// Slot is the colour of the marker's category, when the block colours by
 	// one — see GeoMap.Keys.
 	Slot int `json:"slot,omitempty"`
+	// Frames are the mark in each period of a timed map it had rows in; the
+	// fields above are every period together.
+	Frames Frames `json:"frames,omitempty"`
 }
 
 // A marker's colour is its category's or nothing. A map never colours points

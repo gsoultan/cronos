@@ -62,6 +62,10 @@ func (s *Service) whole(ctx context.Context, r definition.Report, blk definition
 	switch {
 	case !m.cut:
 		return m, nil
+	case blk.Map.Time != nil:
+		// Gathered, a map would lose its periods; it plays what it read, and
+		// says under itself that that is not all of it.
+		return m, nil
 	case pointed(blk.Map):
 		return s.large(ctx, r, blk, detail, paper, params, f, pr)
 	case blk.Map.Draws(definition.H3Layer):

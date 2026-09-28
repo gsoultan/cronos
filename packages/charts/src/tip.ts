@@ -17,9 +17,11 @@ export interface Tips {
   /**
    * Makes target say text when hovered or focused. Call once per mark: it
    * registers listeners, so calling it per pointermove would add a set each
-   * time and never remove them.
+   * time and never remove them. A mark whose value changes under it — a
+   * region of a map playing through time — passes sub as a function, read
+   * each time the tooltip opens, and says it again with `say`.
    */
-  bind(target: Element, text: string, sub?: string): void
+  bind(target: Element, text: string, sub?: string | (() => string)): void
   /** Shows the tooltip at an event's position. For a mark with no element of
    *  its own — a crosshair reading a column of a line chart. */
   show(e: PointerEvent, text: string, sub?: string): void
@@ -48,16 +50,17 @@ export function withTips(panel: HTMLElement): Tips {
       place(panel, tip, e.clientX, e.clientY)
     },
     bind(target, text, sub) {
+      const now = typeof sub === 'function' ? sub : () => sub
       // Focus as well as hover, and a tabindex to make it reachable: a
       // keyboard reader gets the same numbers rather than a chart they can
       // see and not interrogate.
       target.setAttribute('tabindex', '0')
       // A mark that does something when clicked has said so already.
       if (!target.hasAttribute('role')) target.setAttribute('role', 'img')
-      target.setAttribute('aria-label', sub ? `${text}, ${sub}` : text)
+      say(target, text, now())
 
       const at = (e: Event) => {
-        fill(text, sub)
+        fill(text, now())
         const p = e as PointerEvent
         // A focus event carries no coordinates. Falling back to the target's
         // own box is what puts the tooltip beside a mark reached by keyboard.
@@ -73,6 +76,12 @@ export function withTips(panel: HTMLElement): Tips {
       target.addEventListener('blur', hide)
     },
   }
+}
+
+/** What a mark says to a screen reader: its name, and what the tooltip says
+ *  under it. */
+export function say(target: Element, text: string, sub?: string) {
+  target.setAttribute('aria-label', sub ? `${text}, ${sub}` : text)
 }
 
 /**
