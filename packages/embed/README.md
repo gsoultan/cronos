@@ -19,6 +19,12 @@ bun run embed    # drive it in a real browser against a stub API
 bun run check    # typecheck + lint + build + budget
 ```
 
+`bun run embed` drives Chrome. `BROWSER=webkit` and `BROWSER=firefox` run every
+check in Safari's engine and in Firefox's — CI runs all three, because this is
+the artifact that lives in somebody else's page, in whichever browser their
+customer has. Two fingers on a phone are driven in Chrome alone: the other
+engines' drivers have no second finger to put down.
+
 ## What it is not
 
 No builder, no React, no service worker. `apps/portal` is for the people who

@@ -430,10 +430,13 @@ jobs:
       # Two directories because there are two resolutions: apps/portal keeps its
       # own install, packages/* are the root workspace. They agree today, and the
       # second command is a no-op while they do.
+      #
+      # WebKit and Firefox for the embed alone: it is the one artifact that
+      # runs in somebody else's page, in whichever browser their customer has.
       - name: install chrome and chromium
         run: |
           (cd apps/portal    && bunx playwright install --with-deps chrome chromium)
-          (cd packages/embed && bunx playwright install --with-deps chrome chromium)
+          (cd packages/embed && bunx playwright install --with-deps chrome chromium webkit firefox)
 
       - name: install typst
         run: |
@@ -452,9 +455,14 @@ jobs:
           npx --yes wait-on http://localhost:5173 --timeout 60000
           bun run verify
 
+      # The embed in Safari's engine and Firefox's as well as Chrome: a shadow
+      # root, a pointer event, a canvas read back and an adopted stylesheet are
+      # where engines still differ.
       - name: embed and its wrappers
         run: |
           cd packages/embed && bun run build && bun run embed && bun run vue
+          BROWSER=webkit bun run embed
+          BROWSER=firefox bun run embed
           cd ../react && bun run react
 
       # The seam nothing else covers: the component and the portal against a

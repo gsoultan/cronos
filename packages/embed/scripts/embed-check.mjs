@@ -7,7 +7,7 @@
  */
 import { createServer } from 'node:http'
 import { readFileSync } from 'node:fs'
-import { chromium } from 'playwright'
+import { chromium, firefox, webkit } from 'playwright'
 
 /* A customer name straight from our customer's database — which is to say,
    from whoever signed up. This is the string that decides whether the package
@@ -267,6 +267,12 @@ const largeView = (ask) => {
   }
 }
 const viewAsks = []
+/* Views are answered once the map as it opened has been looked at. A view is
+   a few places where the opening was a thousand cells, and whether one had
+   landed by the time the canvas was read was up to the engine: Chrome was
+   slower to ask than Firefox was to answer. */
+let answerViews
+const viewsAnswered = new Promise((r) => { answerViews = r })
 
 /* A map that sets the report's filters — a region a click picks, the area its
    view sets — with a second dataset drawn over it. The answer echoes what was
@@ -348,9 +354,10 @@ const server = createServer((req, res) => {
   if (req.url === '/v1/embed/reports/large-map/map') {
     let body = ''
     req.on('data', (c) => (body += c))
-    return req.on('end', () => {
+    return req.on('end', async () => {
       const ask = JSON.parse(body)
       viewAsks.push(ask)
+      await viewsAnswered
       res.writeHead(200, { 'content-type': 'application/json' })
       res.end(JSON.stringify(largeView(ask)))
     })
@@ -408,7 +415,15 @@ const server = createServer((req, res) => {
 await new Promise((r) => server.listen(0, r))
 const base = `http://localhost:${server.address().port}`
 
-const browser = await chromium.launch({ channel: 'chrome', args: ['--no-sandbox'] })
+/* Chrome by default, the browser a person would use; BROWSER=webkit or
+   BROWSER=firefox runs every check below in Safari's engine or Firefox's —
+   an ISV's customers use all three, and a shadow root, a pointer event or an
+   adopted stylesheet is where engines still differ. */
+const engine = process.env.BROWSER ?? 'chrome'
+const browser = engine === 'chrome'
+  ? await chromium.launch({ channel: 'chrome', args: ['--no-sandbox'] })
+  : await { webkit, firefox, chromium }[engine].launch()
+console.log(`  in ${engine}`)
 const page = await browser.newPage()
 let fails = 0
 const ok = (name, cond) => { console.log(`  ${cond ? 'ok  ' : 'FAIL'} ${name}`); if (!cond) fails++ }
@@ -634,6 +649,54 @@ await map.locator('.shapes path').first().hover()
 ok('a mark answers when hovered',
   (await map.locator('.tip').innerText()).includes('1,500'))
 
+/* -- Fingers --------------------------------------------------------------- */
+
+/*
+ * On a phone one finger scrolls the page past the map and two move it: a map
+ * that took one finger would trap somebody scrolling down our customer's page
+ * inside it. Driven through Chrome's own input pipeline, as fingers arrive
+ * from a screen. The other engines' drivers have no second finger to put
+ * down, so this runs in Chrome's.
+ */
+if (engine === 'chrome' || engine === 'chromium') {
+  const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true })
+  const hand = await phone.newPage()
+  await hand.goto(base, { waitUntil: 'domcontentloaded' })
+  await hand.evaluate((b) => document.querySelector('#r').setAttribute('endpoint', b), base)
+  const touched = hand.locator('#r').locator('.panel', { hasText: 'Depots' })
+  await touched.locator('svg.geo').waitFor()
+  await touched.locator('.geo-stage').scrollIntoViewIfNeeded()
+  const seen = () => touched.locator('svg.geo').getAttribute('viewBox').then((v) => v.split(' ').map(Number))
+  const cdp = await phone.newCDPSession(hand)
+  // Each gesture from wherever the map is now: one finger may have scrolled it.
+  const gesture = async (from, to) => {
+    const at = await touched.locator('.geo-stage').boundingBox()
+    const place = (points) => points.map(([x, y], id) => ({ x: at.x + at.width / 2 + x, y: at.y + at.height / 2 + y, id }))
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: place(from) })
+    for (let i = 1; i <= 6; i++) {
+      const step = from.map(([x, y], k) => [x + (to[k][0] - x) * i / 6, y + (to[k][1] - y) * i / 6])
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: place(step) })
+    }
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+    await hand.waitForTimeout(150)
+  }
+
+  const still = await seen()
+  await gesture([[0, 0]], [[0, -90]])
+  ok('one finger leaves the map where it was', JSON.stringify(await seen()) === JSON.stringify(still))
+  ok('and says two are what move it', (await touched.locator('.geo-hint').innerText()).includes('two fingers'))
+
+  await gesture([[-30, 0], [30, 0]], [[-90, 0], [90, 0]])
+  const pinched = await seen()
+  ok('two fingers spread apart zoom it in', pinched[2] < still[2] * 0.6)
+
+  await gesture([[-40, 0], [40, 0]], [[-100, -30], [-20, -30]])
+  const moved = await seen()
+  ok('and moved together, move it the way they went',
+    moved[0] > pinched[0] && moved[1] > pinched[1] && Math.abs(moved[2] - pinched[2]) < pinched[2] * 0.01)
+  await phone.close()
+}
+
 /* -- The report format's promise ------------------------------------------ */
 const shipments = report.locator('.panel', { hasText: 'Open shipments' })
 ok('a block says which filter does not reach it',
@@ -802,8 +865,12 @@ const painted = () => big.evaluate(() => {
   for (let i = 3; i < d.length; i += 4) if (d[i] > 0) n++
   return n
 })
+// Painted once the stage has a size, which is a frame or two after it is in
+// the page: read before then, a canvas is empty in any engine.
+for (let i = 0; i < 40 && await painted() === 0; i++) await big.waitForTimeout(50)
 ok('a large map paints its cells rather than building an element each',
   await painted() > 500 && await bigMap.locator('[part=marker]').count() === 0)
+answerViews()
 ok('and says how many places it holds',
   (await bigMap.locator('[part=places]').innerText()).includes('1,000,000 places'))
 
