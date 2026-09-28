@@ -52,6 +52,19 @@ type MapSpec struct {
 	// when somebody filters by carrier is a number that cannot be compared
 	// with the one before it.
 	HexKm float64 `json:"hexKm,omitempty" yaml:"hexKm,omitempty"`
+
+	// Classify is how the shaded layers' values are split into the ramp's
+	// six shades — quantile unless set; see Classify. Breaks are the upper
+	// bounds of custom classes, ascending, at most five: a value on a break
+	// is in the shade below it.
+	Classify Classify  `json:"classify,omitempty" yaml:"classify,omitempty"`
+	Breaks   []float64 `json:"breaks,omitempty" yaml:"breaks,omitempty"`
+	// Ramp is sequential unless set: one hue, darker for more. Diverging is
+	// two, either side of Midpoint — zero unless set — with the three shades
+	// below it and the three above classed apart, so a small fall and a small
+	// rise are never neighbours.
+	Ramp     Ramp     `json:"ramp,omitempty" yaml:"ramp,omitempty"`
+	Midpoint *float64 `json:"midpoint,omitempty" yaml:"midpoint,omitempty"`
 }
 
 // MaxOverlays is how many datasets a map may draw over its own. Each is a
@@ -121,6 +134,9 @@ func (m MapSpec) Validate(output string, i int) error {
 		}
 	}
 	if err := m.validateHexes(output, i); err != nil {
+		return err
+	}
+	if err := m.validateClasses(output, i); err != nil {
 		return err
 	}
 	if m.Basemap != nil {

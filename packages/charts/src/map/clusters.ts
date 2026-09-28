@@ -3,8 +3,7 @@ import { el } from '../dom'
 import { svg } from '../svg'
 import type { Tips } from '../tip'
 import { cluster, count, placesIn, type Cluster } from './cluster'
-import { g } from './geo'
-import { pickable, radii, series, type Layer } from './layers'
+import { pin, radii, type Layer, type Sized } from './layers'
 import type { Pick } from './sets'
 
 /** How close two points may be on screen, in CSS px, before they are one.
@@ -37,7 +36,7 @@ export function clusters(first: Marker[], tips: Tips, keyed: boolean, overlay: H
 
   const regroup = (scale: number) => {
     groupedAt = scale
-    const drawn: [SVGCircleElement, number][] = []
+    const drawn: Sized[] = []
     node.replaceChildren()
     for (const [b] of bubbles) b.remove()
     bubbles = []
@@ -45,11 +44,7 @@ export function clusters(first: Marker[], tips: Tips, keyed: boolean, overlay: H
     for (const c of cluster(markers, CELL / scale)) {
       const one = c.members[0]
       if (placesIn(c) === 1 && one) {
-        const mark = svg('circle', { cx: g(one.x), cy: g(one.y), r: '0', class: 'pin', part: 'marker' })
-        if (keyed) mark.style.fill = series(one.slot)
-        tips.bind(mark, one.label, pickable(mark, one.label, one.formatted, pick))
-        node.append(mark)
-        drawn.push([mark, 4.5])
+        drawn.push([pin(node, { ...one, size: undefined }, tips, keyed, pick), 4.5])
         continue
       }
       bubbles.push([bubble(c, tips, show), c])

@@ -70,6 +70,24 @@ func charted() document.Document {
 			},
 			Keys: []document.Key{{Tone: "ramp-4", Label: "1,200–1,500"}},
 		},
+		{
+			// A diverging ramp's tones, and a category's glyphs: a mark or a
+			// key this template cannot read is a burst with no output.
+			Title: "Changes, by carrier", Kind: "map", Aspect: 1.6,
+			Marks: []document.Mark{
+				{Kind: document.PolyMark, Tone: "div-2", Points: [][2]float64{{0.1, 0.1}, {0.5, 0.1}, {0.5, 0.9}, {0.1, 0.9}}},
+				{Kind: document.PolyMark, Tone: "div-5", Points: [][2]float64{{0.5, 0.1}, {0.9, 0.1}, {0.9, 0.9}, {0.5, 0.9}}},
+				{Kind: document.DotMark, Tone: "series-1", X: 0.2, Y: 0.5, W: 0.02, Shape: document.CircleShape},
+				{Kind: document.DotMark, Tone: "series-2", X: 0.5, Y: 0.5, W: 0.02, Shape: document.SquareShape},
+				{Kind: document.DotMark, Tone: "series-3", X: 0.8, Y: 0.5, W: 0.02, Shape: document.TriangleShape},
+			},
+			Keys: []document.Key{
+				{Tone: "div-2", Label: "-10–0"}, {Tone: "div-5", Label: "0–20"},
+				{Tone: "series-1", Label: "Northline", Shape: document.CircleShape},
+				{Tone: "series-2", Label: "Harbour", Shape: document.SquareShape},
+				{Tone: "series-3", Label: "Swift", Shape: document.TriangleShape},
+			},
+		},
 	}
 	return doc
 }

@@ -33,6 +33,10 @@ type GeoMap struct {
 	Hexes []Shape `json:"hexes,omitempty"`
 	// Keys name the colours when points are coloured by category.
 	Keys []MapKey `json:"keys,omitempty"`
+	// Ramp is "diverging" when the shaded layers take two hues either side
+	// of a midpoint — the legend's steps below it cool, from it up warm —
+	// and empty for the one-hue ramp every viewer already draws.
+	Ramp string `json:"ramp,omitempty"`
 
 	// Tiles is the basemap, when the author asked for one and it could be
 	// drawn.

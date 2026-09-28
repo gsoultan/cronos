@@ -273,12 +273,24 @@ const viewAsks = []
    asked for, as the server's does, so the check can see the map mark what is
    applied. */
 const pickBodies = []
+/* A diverging map: a fall and a rise either side of zero, in two hues. */
+const changes = (world) => ({
+  kind: 'chart', chart: 'map', title: 'Change on last month', series: [],
+  map: {
+    bounds: world, layers: ['polygon'], markers: [], arcs: [], ramp: 'diverging',
+    legend: [{ step: 2, from: '-8', to: '0' }, { step: 3, from: '0', to: '12' }],
+    shapes: [
+      { label: 'Down', path: 'M0.49 0.32L0.495 0.32L0.495 0.34L0.49 0.34Z', value: -8, formatted: '-8', step: 2 },
+      { label: 'Up', path: 'M0.495 0.32L0.5 0.32L0.5 0.34L0.495 0.34Z', value: 12, formatted: '12', step: 3 },
+    ],
+  },
+})
 const pickMap = (body) => {
   const sent = JSON.parse(body || '{}').filters ?? {}
   const world = { minX: 0.49, minY: 0.32, maxX: 0.5, maxY: 0.34 }
   return {
     title: 'Map filters',
-    blocks: [{
+    blocks: [changes(world), {
       kind: 'chart', chart: 'map', title: 'Regions', series: [],
       map: {
         bounds: world, layers: ['polygon'], markers: [], arcs: [],
@@ -575,17 +587,29 @@ const nearby = report.locator('.panel', { hasText: 'Nearby drops' })
 await nearby.locator('.cluster').first().waitFor()
 ok('points a street apart are one circle with their count',
   await nearby.locator('.cluster').count() === 1 && (await nearby.locator('.cluster').innerText()) === '6')
-ok('and the point across the county stands alone', await nearby.locator('svg.geo circle.pin').count() === 1)
+ok('and the point across the county stands alone', await nearby.locator('svg.geo .pin').count() === 1)
 await nearby.locator('.cluster').click()
 await page.waitForTimeout(200)
 ok('a click on the count zooms in until they separate',
-  await nearby.locator('.cluster').count() === 0 && await nearby.locator('svg.geo circle.pin').count() >= 6)
+  await nearby.locator('.cluster').count() === 0 && await nearby.locator('svg.geo .pin').count() >= 6)
 ok('coloured by the category the legend names',
   await nearby.locator('.legend .key').count() === 2)
+/* Colour alone leaves a reader who cannot tell two hues apart with a map of
+   identical dots. Each category is drawn in a shape of its own too, and the
+   key shows it. */
+ok('and shaped by it, on the map and in the key',
+  await nearby.locator('svg.geo circle.pin').count() >= 1 && await nearby.locator('svg.geo rect.pin').count() >= 1
+  && await nearby.locator('.legend .swatch.circle').count() === 1
+  && await nearby.locator('.legend .swatch.square').count() === 1)
 ok('and a basemap that could not be drawn says why, under the map',
   (await nearby.locator('.credit .note').innerText()).includes('not set up'))
 ok('a map drawn from part of its data says so',
   (await nearby.locator('[part=partial]').innerText()).includes('first 5,000'))
+
+/* A bubble's size is a value, and says which: rings drawn to the bubbles'
+   own rule, at round numbers up to the biggest on the map (1,200 here). */
+ok('a bubble map keys its sizes',
+  JSON.stringify(await map.locator('.legend.sizes .key').allInnerTexts()) === '["1,000","200","50"]')
 
 /* A mark that says nothing when pointed at reads as broken. */
 await map.locator('.shapes path').first().hover()
@@ -857,6 +881,30 @@ sent0 = pickBodies.length
 await hub.dispatchEvent('click')
 await picks.waitForTimeout(200)
 ok('a click on a place drawn over the map sets nothing', pickBodies.length === sent0)
+/* A diverging ramp is two hues, the palest either side of the middle: the
+   fall in the cool one, the rise in the warm — in the shapes and the legend
+   alike, measured against the theme's own values for them. */
+const shaded = picks.locator('#r').locator('.panel', { hasText: 'Change on last month' })
+const hues = await shaded.locator('.shapes path').evaluateAll((paths) => {
+  const probe = (v) => {
+    const i = document.createElement('i')
+    i.style.color = `var(${v})`
+    paths[0].closest('.panel').append(i)
+    const c = getComputedStyle(i).color
+    i.remove()
+    return c
+  }
+  return {
+    fills: paths.map((p) => getComputedStyle(p).fill),
+    want: [probe('--cr-div-3'), probe('--cr-div-4')],
+    ramp: probe('--cr-ramp-3'),
+  }
+})
+ok('a diverging map shades a fall and a rise in two hues',
+  JSON.stringify(hues.fills) === JSON.stringify(hues.want) && hues.fills[0] !== hues.ramp)
+ok('and its legend says which is which, in the same two',
+  JSON.stringify(await shaded.locator('.legend.ramp .swatch').evaluateAll((s) =>
+    s.map((i) => getComputedStyle(i).backgroundColor))) === JSON.stringify(hues.want))
 ok('nothing was thrown by a map that filters', pickErrors.length === 0)
 await picks.close()
 

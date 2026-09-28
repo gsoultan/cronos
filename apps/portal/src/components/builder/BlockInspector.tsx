@@ -1,10 +1,10 @@
 import type { ReactNode } from 'react'
-import { Checkbox, MultiSelect, NumberInput, Select, TextInput } from '@mantine/core'
+import { Checkbox, MultiSelect, NumberInput, Select, TagsInput, TextInput } from '@mantine/core'
 import { Field } from '../form/Field'
 import { BasemapKeys } from './BasemapKeys'
 import {
   basemapChoice, colours, DEFAULT_KEY, defaultStyle, drawnLayers, excludedBy, MAX_HEX_KM,
-  readsPoints, readsShapes, relayer, styleOptions, switchBasemap, takesSeries, type BasemapChoice,
+  readsPoints, readsShapes, relayer, shades, styleOptions, switchBasemap, takesSeries, type BasemapChoice,
 } from '../../lib/maps'
 import { CATEGORICAL, FOLDED, GRIDDED, METERED, MULTI_SERIES, PLOTS, STACKABLE } from '../../lib/types'
 import type {
@@ -519,6 +519,8 @@ function MapFields({ block, dimensions, onChange }: {
         </Field>
       )}
 
+      {shades(drawn) && <ShadeFields map={map} onChange={set} />}
+
       {takesSeries(drawn) && (
         <Field label="Coloured by" required={false}
           help="One colour per value, on every dot, bubble, cluster and flow.">
@@ -542,6 +544,73 @@ function MapFields({ block, dimensions, onChange }: {
       <BasemapFields map={map} onChange={set} />
     </>
   )
+}
+
+const CLASSES = [
+  { value: 'quantile', label: 'The same number of places in each' },
+  { value: 'equal', label: 'Equal steps of value' },
+  { value: 'jenks', label: 'Where the values gap' },
+  { value: 'custom', label: 'Breaks of my own' },
+]
+
+const RAMPS = [
+  { value: 'sequential', label: 'One colour, darker for more' },
+  { value: 'diverging', label: 'Two colours, either side of a middle' },
+]
+
+/**
+ * How a shaded map's values become its six shades, and what the colours say.
+ *
+ * Quantile until changed, which suits the skewed measures maps mostly shade.
+ * Custom breaks are somebody else's numbers — a regulator's thresholds, last
+ * year's bands — so they are typed rather than dragged. Each control clears
+ * what only it reads when it moves off, because the server refuses breaks
+ * without custom classes, and a middle without two colours, rather than
+ * ignoring them.
+ */
+function ShadeFields({ map, onChange }: {
+  map: TileMap
+  onChange: (patch: Partial<TileMap>) => void
+}) {
+  return (
+    <>
+      <Field label="Shades split" required={false} help="How the values are divided among the six shades.">
+        <Select data={CLASSES} value={map.classify ?? 'quantile'} allowDeselect={false}
+          data-testid="map-classify"
+          onChange={(v) => onChange({
+            classify: v && v !== 'quantile' ? v : undefined,
+            breaks: v === 'custom' ? map.breaks : undefined,
+          })} />
+      </Field>
+      {map.classify === 'custom' && (
+        <Field label="Breaks" help="The top of each shade but the last. Up to five.">
+          <TagsInput value={(map.breaks ?? []).map(String)} placeholder="Add a number"
+            data-testid="map-breaks" onChange={(v) => onChange({ breaks: ascending(v) })} />
+        </Field>
+      )}
+      <Field label="Colours" required={false}>
+        <Select data={RAMPS} value={map.ramp ?? 'sequential'} allowDeselect={false}
+          data-testid="map-ramp"
+          onChange={(v) => onChange({
+            ramp: v === 'diverging' ? v : undefined,
+            midpoint: v === 'diverging' ? map.midpoint : undefined,
+          })} />
+      </Field>
+      {map.ramp === 'diverging' && (
+        <Field label="Middle" required={false} help="Where the two colours meet: a target, last year, zero.">
+          <NumberInput value={map.midpoint ?? ''} placeholder="0" data-testid="map-midpoint"
+            onChange={(v) => onChange({ midpoint: v === '' ? undefined : Number(v) })} />
+        </Field>
+      )}
+    </>
+  )
+}
+
+/** Typed breaks as the numbers the format takes: ascending, distinct, and no
+ *  more than there are shades to put between. */
+function ascending(typed: string[]): number[] {
+  const n = typed.map((t) => Number(t.replace(/,/g, ''))).filter(Number.isFinite)
+  return [...new Set(n)].sort((a, b) => a - b).slice(0, 5)
 }
 
 /**

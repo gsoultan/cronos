@@ -3,15 +3,13 @@ package run
 import (
 	"math"
 	"sort"
+
+	"github.com/gsoultan/cronos/internal/core/definition"
 )
 
-// RampSteps is how many shades a choropleth uses.
-//
-// Six, not a continuous gradient. A reader answers "which of these regions is
-// in the same band" far better than "is this blue slightly darker than that
-// one", and six is about where a legend stops being readable at the size a
-// report gives it.
-const RampSteps = 6
+// RampSteps is how many shades a choropleth uses — see definition.RampShades,
+// which the format validates custom breaks against.
+const RampSteps = definition.RampShades
 
 // CategorySlots is how many series get their own colour.
 //
@@ -37,6 +35,12 @@ const PlotSlots = 3
 // others, and equal intervals paint thirty-nine of them the lightest shade and
 // call it a map. Quantiles spend the ramp where the data is.
 func steps(values []float64) []float64 {
+	return quantiles(values, RampSteps)
+}
+
+// quantiles are the breaks splitting values into k classes of as near the
+// same count as ties allow.
+func quantiles(values []float64, k int) []float64 {
 	if len(values) == 0 {
 		return nil
 	}
@@ -46,13 +50,10 @@ func steps(values []float64) []float64 {
 	top := sorted[len(sorted)-1]
 	// Whole things are counted in whole numbers: a break between 12 trucks
 	// and 14 read "13.30", which is a truck and a third.
-	whole := true
-	for _, v := range sorted {
-		whole = whole && v == math.Trunc(v)
-	}
-	breaks := make([]float64, 0, RampSteps-1)
-	for i := 1; i < RampSteps; i++ {
-		at := float64(i) / RampSteps * float64(len(sorted)-1)
+	whole := allWhole(sorted)
+	breaks := make([]float64, 0, k-1)
+	for i := 1; i < k; i++ {
+		at := float64(i) / float64(k) * float64(len(sorted)-1)
 		lo := int(at)
 		frac := at - float64(lo)
 		v, next := sorted[lo], sorted[lo]
@@ -78,6 +79,16 @@ func steps(values []float64) []float64 {
 		breaks = append(breaks, v)
 	}
 	return breaks
+}
+
+// allWhole reports whether every value is a whole number.
+func allWhole(values []float64) bool {
+	for _, v := range values {
+		if v != math.Trunc(v) {
+			return false
+		}
+	}
+	return true
 }
 
 // round3 is v to three significant figures.

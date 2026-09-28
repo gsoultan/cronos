@@ -4,6 +4,7 @@ import {
   readReport, readSchedule, report, schedule, withCarry, type SourceInput,
 } from './definitions'
 import type { Field, Param } from './types'
+import { relayer } from './maps'
 
 const fields: Field[] = [
   { name: 'id', type: 'string', role: 'dimension', hidden: true },
@@ -993,4 +994,38 @@ spec:
   const resaved = report(back.input)
   expect(resaved).toContain('control: checkboxes')
   expect(resaved).toContain('drops: lat,lon')
+})
+
+// How a map shades is read and written whole: a builder save that dropped a
+// diverging ramp would repaint a map of changes in one hue, and nothing on
+// screen would say the colours had stopped meaning what they did.
+test('a map keeps how its shades are classed and coloured', () => {
+  const back = readReport(storedMap(
+    'layers: [polygon]',
+    'geometry: shape',
+    'classify: custom',
+    'breaks: [90, 95, 98]',
+    'ramp: diverging',
+    'midpoint: 95',
+  ))
+  expect(back.drops).toEqual([])
+  expect(back.input.blocks[0]?.map).toMatchObject({
+    classify: 'custom', breaks: [90, 95, 98], ramp: 'diverging', midpoint: 95,
+  })
+  const resaved = report(back.input)
+  expect(resaved).toContain('classify: custom')
+  expect(resaved).toContain('ramp: diverging')
+  expect(resaved).toContain('midpoint: 95')
+  expect(readReport(resaved).input.blocks).toEqual(back.input.blocks)
+})
+
+// Moved off the layers that are shaded, how the shades were classed goes with
+// them: the server refuses it on a map with nothing to shade.
+test('a map with nothing shaded keeps no classes', () => {
+  const moved = relayer({
+    map: { layers: ['polygon'], geometry: 'shape', classify: 'jenks', ramp: 'diverging', midpoint: 5 },
+  }, ['scatter'])
+  expect(moved.map?.classify).toBeUndefined()
+  expect(moved.map?.ramp).toBeUndefined()
+  expect(moved.map?.midpoint).toBeUndefined()
 })

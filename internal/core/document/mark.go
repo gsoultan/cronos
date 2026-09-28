@@ -33,7 +33,19 @@ type Mark struct {
 	// Label and Value are drawn beside the mark where there is room for them.
 	Label string `json:"label,omitempty"`
 	Value string `json:"value,omitempty"`
+	// Shape is a dot's glyph — square or triangle, a circle when empty — so a
+	// category reads on a page printed in grey, or by a reader who cannot
+	// tell its colour from the next one's. Each at the circle's area.
+	Shape string `json:"shape,omitempty"`
 }
+
+// Dot shapes. A dot naming none is a circle; a key naming none is the
+// rounded square every chart's key is, so a map's round key says so.
+const (
+	CircleShape   = "circle"
+	SquareShape   = "square"
+	TriangleShape = "triangle"
+)
 
 // Mark kinds.
 const (

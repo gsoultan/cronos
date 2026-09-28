@@ -262,6 +262,17 @@ export interface TileMap {
   basemap?: string
   attribution?: string
   /**
+   * How the shaded layers' values are split into the ramp's six shades:
+   * quantile (the default), equal, jenks or custom — the last with `breaks`,
+   * the upper bounds of its classes, ascending.
+   */
+  classify?: string
+  breaks?: number[]
+  /** sequential (the default) or diverging, which takes two hues either side
+   *  of `midpoint` — zero unless set. */
+  ramp?: string
+  midpoint?: number
+  /**
    * Other datasets drawn over this map — depots over the deliveries around
    * them — each a block of its own under `map.overlays`. Kept as read: the
    * builder has no control for them yet, and a map rewritten without them

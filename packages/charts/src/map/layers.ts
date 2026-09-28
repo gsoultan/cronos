@@ -5,6 +5,7 @@ import { PLOT_PALETTE_SIZE, RAMP_STEPS, slotOf } from '../palette'
 import { g } from './geo'
 import type { View } from './view'
 import type { Pick } from './sets'
+import { glyphMark, glyphOf, type GlyphMark } from './glyphs'
 
 /**
  * One layer of a map, drawn in world units.
@@ -141,24 +142,37 @@ export function heat(markers: Marker[]): Layer {
 export function dots(markers: Marker[], tips: Tips, sized: boolean, keyed: boolean, pick?: Pick): Layer {
   const node = svg('g', { class: 'dots' })
   const order = sized ? [...markers].sort((a, b) => b.weight - a.weight) : markers
-  const drawn: [SVGCircleElement, number][] = []
+  const drawn: Sized[] = []
   for (const p of order) {
-    const mark = svg('circle', { cx: g(p.x), cy: g(p.y), r: '0', class: 'pin', part: 'marker' })
-    if (keyed) mark.style.fill = series(p.slot)
-    tips.bind(mark, p.label, pickable(mark, p.label, p.size ? `${p.formatted} · ${p.size}` : p.formatted, pick))
-    node.append(mark)
-    drawn.push([mark, sized ? 4 + Math.sqrt(Math.max(p.weight, 0)) * 14 : 4.5])
+    drawn.push([pin(node, p, tips, keyed, pick), sized ? bubbleRadius(p.weight) : 4.5])
   }
   return { node, update: radii(drawn) }
 }
 
-/** Keeps circles their size in pixels as the scale changes. */
-export function radii(drawn: [SVGCircleElement, number][]): NonNullable<Layer['update']> {
+/** A bubble's radius in pixels for a weight: area, not radius, carries the
+ *  value, over a floor that keeps a near-zero one visible. */
+export const bubbleRadius = (weight: number) => 4 + Math.sqrt(Math.max(weight, 0)) * 14
+
+/** A place's mark: a circle, or its category's glyph when the map colours by
+ *  one — see glyphs.ts. Returns how to size it. */
+export function pin(node: SVGElement, p: Marker, tips: Tips, keyed: boolean, pick?: Pick): GlyphMark['size'] {
+  const mark = glyphMark(keyed ? glyphOf(p.slot) : 'circle', p.x, p.y, { class: 'pin', part: 'marker' })
+  if (keyed) mark.el.style.fill = series(p.slot)
+  tips.bind(mark.el, p.label, pickable(mark.el, p.label, p.size ? `${p.formatted} · ${p.size}` : p.formatted, pick))
+  node.append(mark.el)
+  return mark.size
+}
+
+/** A mark and its size in pixels. */
+export type Sized = [GlyphMark['size'], number]
+
+/** Keeps marks their size in pixels as the scale changes. */
+export function radii(drawn: Sized[]): NonNullable<Layer['update']> {
   let last = 0
   return (_view, scale) => {
     if (scale === last || !(scale > 0)) return
     last = scale
-    for (const [c, px] of drawn) c.setAttribute('r', g(px / scale))
+    for (const [size, px] of drawn) size(px / scale)
   }
 }
 

@@ -26,7 +26,7 @@ func TestABreakStaysInsideTheValuesItWasTakenFrom(t *testing.T) {
 		if stepOf(lo, breaks) == stepOf(hi, breaks) {
 			t.Errorf("%v: the smallest and the largest share a band (breaks %v)", values, breaks)
 		}
-		for _, l := range legendOf(values, breaks) {
+		for _, l := range shadesFor(nil, values).legend(values) {
 			if figure(l.From) > figure(l.To) {
 				t.Errorf("%v: a band reads backwards, %s–%s", values, l.From, l.To)
 			}

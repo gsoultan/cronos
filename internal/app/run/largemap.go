@@ -102,7 +102,7 @@ func (s *Service) large(ctx context.Context, r definition.Report, blk definition
 	if err := q.view(ctx, m, grid, slot); err != nil {
 		return nil, err
 	}
-	shade(m)
+	shade(m, blk.Map)
 	// Only a map whose places are drawn as places has more to show up close:
 	// a hexagon is the same hexagon at every zoom, and asking again would be
 	// a query per pan for the answer already on screen.

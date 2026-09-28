@@ -60,11 +60,11 @@ func onPaper(c *document.Chart, m *GeoMap, at func(x, y float64) [2]float64) {
 	for _, layer := range m.Layers {
 		switch layer {
 		case "polygon":
-			areas(c, m.Shapes, at)
+			areas(c, m.Shapes, at, rampTones(m))
 		case "hexbin":
-			areas(c, m.Hexes, at)
+			areas(c, m.Hexes, at, rampTones(m))
 		case "line":
-			strokes(c, m.Lines, at)
+			strokes(c, m.Lines, at, rampTones(m))
 		case "heat":
 			for _, p := range m.Markers {
 				xy := at(p.X, p.Y)
@@ -91,7 +91,7 @@ func onPaper(c *document.Chart, m *GeoMap, at func(x, y float64) [2]float64) {
 // fills, and shapes largest first, whited out both the island and the exclave.
 // Whether a ring is a hole is its own shape's question; how deep it sits is
 // everybody's.
-func areas(c *document.Chart, shapes []Shape, at func(x, y float64) [2]float64) {
+func areas(c *document.Chart, shapes []Shape, at func(x, y float64) [2]float64, tones string) {
 	type ring struct {
 		pts   [][2]float64
 		shape int
@@ -129,15 +129,28 @@ func areas(c *document.Chart, shapes []Shape, at func(x, y float64) [2]float64) 
 		}
 		s := shapes[r.shape]
 		c.Marks = append(c.Marks, document.Mark{Kind: document.PolyMark, Points: r.pts,
-			Tone:  fmt.Sprintf("ramp-%d", min(max(s.Step, 0), RampSteps-1)+1),
-			Label: s.Label, Value: s.Formatted})
+			Tone: shadeTone(tones, s.Step), Label: s.Label, Value: s.Formatted})
 	}
 }
 
+// rampTones is the family of tones a map's shades are printed in: the
+// sequential ramp's, or a diverging ramp's two hues.
+func rampTones(m *GeoMap) string {
+	if m.Ramp == "diverging" {
+		return "div"
+	}
+	return "ramp"
+}
+
+// shadeTone is the tone for one shade of a ramp.
+func shadeTone(tones string, step int) string {
+	return fmt.Sprintf("%s-%d", tones, min(max(step, 0), RampSteps-1)+1)
+}
+
 // strokes draws each line of the line layer, every leg its own mark.
-func strokes(c *document.Chart, lines []Shape, at func(x, y float64) [2]float64) {
+func strokes(c *document.Chart, lines []Shape, at func(x, y float64) [2]float64, tones string) {
 	for _, l := range lines {
-		colour := fmt.Sprintf("ramp-%d", min(max(l.Step, 0), RampSteps-1)+1)
+		colour := shadeTone(tones, l.Step)
 		for _, leg := range legsOf(l.Path, at) {
 			c.Marks = append(c.Marks, document.Mark{Kind: document.LineMark, Points: leg,
 				Tone: colour, Label: l.Label, Value: l.Formatted})
@@ -155,12 +168,12 @@ func pins(c *document.Chart, markers []Marker, at func(x, y float64) [2]float64,
 		if sized {
 			r = 0.006 + sqrt(p.Weight)*0.02
 		}
-		colour := "series-2"
+		colour, shape := "series-2", ""
 		if keyed {
-			colour = tone(p.Slot)
+			colour, shape = tone(p.Slot), glyph(p.Slot)
 		}
 		c.Marks = append(c.Marks, document.Mark{Kind: document.DotMark, X: xy[0], Y: xy[1],
-			W: r, Tone: colour, Label: p.Label, Value: p.Formatted})
+			W: r, Tone: colour, Shape: shape, Label: p.Label, Value: p.Formatted})
 	}
 }
 
@@ -191,7 +204,7 @@ func cellDots(c *document.Chart, cells *Cells, at func(x, y float64) [2]float64,
 		case layer == "heat":
 			mark.W, mark.Tone = 0.01+share*0.03, "ramp-6-wash"
 		case keyed && i < len(cells.S):
-			mark.Tone = tone(cells.S[i])
+			mark.Tone, mark.Shape = tone(cells.S[i]), glyph(cells.S[i])
 		}
 		c.Marks = append(c.Marks, mark)
 	}
@@ -229,13 +242,42 @@ func mapKeys(m *GeoMap) []document.Key {
 			if l.To != l.From {
 				label += "–" + l.To
 			}
-			out = append(out, document.Key{Tone: fmt.Sprintf("ramp-%d", l.Step+1), Label: label})
+			out = append(out, document.Key{Tone: shadeTone(rampTones(m), l.Step), Label: label})
 		}
 	}
+	placed := printsPlaces(m)
 	for _, k := range m.Keys {
-		out = append(out, document.Key{Tone: tone(k.Slot), Label: k.Label})
+		key := document.Key{Tone: tone(k.Slot), Label: k.Label}
+		if placed {
+			key.Shape = glyph(k.Slot)
+		}
+		out = append(out, key)
 	}
 	return out
+}
+
+// glyph is the shape a category's places are printed in, beside its tone:
+// a circle, a square, a triangle, folding past them as the tones fold — the
+// viewer's glyphs.ts, on paper.
+func glyph(slot int) string {
+	switch min(max(slot, 0), PlotSlots-1) {
+	case 1:
+		return document.SquareShape
+	case 2:
+		return document.TriangleShape
+	}
+	return document.CircleShape
+}
+
+// printsPlaces reports whether a map prints places, which a category's glyph
+// is drawn on — rather than only flows, which are lines.
+func printsPlaces(m *GeoMap) bool {
+	for _, l := range m.Layers {
+		if l == "scatter" || l == "bubble" || l == "cluster" {
+			return true
+		}
+	}
+	return false
 }
 
 // ringsOf reads the closed subpaths of a path back into rings, projected into

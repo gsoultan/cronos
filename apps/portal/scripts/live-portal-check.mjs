@@ -142,7 +142,16 @@ await maps.route(/tile\.openstreetmap\.org|api\.mapbox\.com|tile\.googleapis\.co
 await maps.goto(`${B}/reports/parcel-network`, { waitUntil: 'domcontentloaded' })
 await maps.locator('[data-testid=live-report] .geo-stage').first().waitFor({ timeout: 20000 })
 ok('every map of the parcel network draws in the portal',
-  await maps.locator('[data-testid=live-report] .geo-stage').count() === 6)
+  await maps.locator('[data-testid=live-report] .geo-stage').count() === 7)
+/* The zones on time against the target, in two hues either side of it: the
+   server classes each side apart and says so, and the map reads the second
+   ramp through the first one's names. */
+const target = maps.getByTestId('chart').filter({ hasText: 'On time against the 95% target' })
+ok('a diverging map is shaded in two hues, cool below the target and warm above',
+  await target.locator('.shapes path').evaluateAll((paths) => {
+    const hue = (c) => { const [r, , b] = c.match(/\d+/g).map(Number); return b > r ? 'cool' : 'warm' }
+    return new Set(paths.map((p) => hue(getComputedStyle(p).fill))).size === 2
+  }))
 ok('and a map is as tall as its proportions make it',
   ((await maps.locator('.geo-stage').first().boundingBox())?.height ?? 0) > 200)
 ok('an OpenStreetMap basemap is laid under the data',

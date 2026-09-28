@@ -132,6 +132,10 @@
   "step-4": rgb("#1c5cab"), "step-5": rgb("#104281"),
   "ramp-1": rgb("#cde2fb"), "ramp-2": rgb("#9ec5f4"), "ramp-3": rgb("#6da7ec"),
   "ramp-4": rgb("#3987e5"), "ramp-5": rgb("#256abf"), "ramp-6": rgb("#104281"),
+  // A diverging map's two hues, darkest furthest from its midpoint: the ramp's
+  // blue below it, the palette's orange above.
+  "div-1": rgb("#104281"), "div-2": rgb("#3987e5"), "div-3": rgb("#9ec5f4"),
+  "div-4": rgb("#f7c6ab"), "div-5": rgb("#eb7f4c"), "div-6": rgb("#a33f12"),
   "up": rgb("#2a78d6"), "down": rgb("#e34948"), "neutral": rgb("#8c8981"),
   "line": rgb("#e1e0d9"),
   // The page itself, for cutting a hole back out of a printed region — a
@@ -161,9 +165,21 @@
         fill: c, stroke: none, radius: 0.6pt))
   } else if m.kind == "dot" {
     // w carries the radius for a dot, so it stays round whatever the box is.
+    // A glyph is drawn at the circle's area: no category looks like more.
     let r = m.at("w", default: 0.01) * w
-    place(dx: m.at("x", default: 0.0) * w - r, dy: m.at("y", default: 0.0) * h - r,
-      circle(radius: r, fill: c, stroke: 0.5pt + white))
+    let (x, y) = (m.at("x", default: 0.0) * w, m.at("y", default: 0.0) * h)
+    let shape = m.at("shape", default: "")
+    if shape == "square" {
+      let s = r * 1.7725
+      place(dx: x - s / 2, dy: y - s / 2, rect(width: s, height: s, fill: c, stroke: 0.5pt + white))
+    } else if shape == "triangle" {
+      let a = r * 2.6935
+      let t = a * 0.8660
+      place(polygon(fill: c, stroke: 0.5pt + white,
+        (x, y - t * 2 / 3), (x - a / 2, y + t / 3), (x + a / 2, y + t / 3)))
+    } else {
+      place(dx: x - r, dy: y - r, circle(radius: r, fill: c, stroke: 0.5pt + white))
+    }
   } else if m.kind == "line" {
     // `curve`, not `path`: Typst 0.15 turned `path` into the SVG-data element
     // and an array of points is no longer what it takes.
@@ -195,7 +211,13 @@
   v(3pt)
   grid(columns: keys.len() * (auto,), column-gutter: 8pt,
     ..keys.map(k => [
-      #box(width: 5pt, height: 5pt, radius: 1pt, fill: tone-of(k.tone))
+      #let shape = k.at("shape", default: "")
+      #if shape == "triangle" {
+        box(width: 5pt, height: 5pt, polygon(fill: tone-of(k.tone), (2.5pt, 0pt), (5pt, 5pt), (0pt, 5pt)))
+      } else {
+        box(width: 5pt, height: 5pt, fill: tone-of(k.tone),
+          radius: if shape == "circle" { 2.5pt } else if shape == "square" { 0pt } else { 1pt })
+      }
       #h(3pt)
       #text(size: 6.5pt, fill: luma(90))[#k.label]
     ]))
