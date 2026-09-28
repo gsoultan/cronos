@@ -102,6 +102,7 @@ internal/
   platform/
     token/               Embed tokens — not JWT, see its doc.go ✓
     config/              Environment                            ✓
+    h3/                  H3 cells, ported from Uber's C (Apache 2.0) ✓
   extension/           License seams. See ee/doc.go.            ✓
 
 ✓ = built and under test. The rest is named so the shape is agreed before
@@ -137,7 +138,10 @@ Do not add a pattern that is not solving a problem named here.
   read into Go: cells a few pixels wide (`query.BuildMapCells`), hexagons and
   regions over every row, a view at a time as the reader zooms. 0.13 Go
   allocations per source row at a million — `BenchmarkLargeMapOpens` — because
-  the rows never cross the wire; what does is bounded by `query.MaxCells`.
+  the rows never cross the wire; what does is bounded by `query.MaxCells`. The
+  one exception is an `h3` layer, because H3 has no SQL form in most
+  warehouses: it streams at most `run.h3Most` (200,000) places or indexed cells
+  through Go, keeping the cells and never the rows, and says so past that.
 - Columnar batches (Arrow) on the data plane, not `[]map[string]any`.
 - Every datasource carries a statement timeout and a row cap. No unbounded query.
 - Burst fan-out is bounded by `concurrency`, with backpressure to the renderer.

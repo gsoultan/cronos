@@ -137,6 +137,22 @@ spec:
             hexKm: 10
             basemap: {provider: mapbox, style: light}
 
+        # The same deliveries in Uber's H3 grid, the cells a warehouse can
+        # index its own rows by and join to anything else indexed the same way.
+        # Here the places are binned at resolution 6, cells about seven
+        # kilometres across; with a column of cell ids, map.h3 draws those.
+        - kind: chart
+          chart: map
+          title: Parcels per H3 cell
+          x: {field: city}
+          y: {field: parcels, aggregate: sum}
+          map:
+            layers: [h3]
+            lat: lat
+            lon: lon
+            h3Resolution: 6
+            basemap: {provider: openstreetmap}
+
         # Lines from a GeoJSON field: roads, and the ferries that break them.
         - kind: chart
           chart: map

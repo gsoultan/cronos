@@ -338,8 +338,12 @@ func TestASessionIsRenewedBeforeItLapsesAndNotAfter(t *testing.T) {
 	if ask() != first {
 		t.Error("the reader waited for a renewal the old session could still serve")
 	}
+	// Waiting on what a reader is handed, not on Google being asked: the fake
+	// counts a mint as it arrives, and the resolver keeps the new session only
+	// once it has read the answer — waiting on the count failed about once in
+	// a hundred and fifty runs.
 	deadline := time.Now().Add(2 * time.Second)
-	for g.sessions.Load() < 4 && time.Now().Before(deadline) {
+	for ask() == first && time.Now().Before(deadline) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	if ask() == first {

@@ -278,6 +278,12 @@ export interface TileMap {
   labels?: boolean
   /** Moves a flow layer's arcs from where each starts to where it lands. */
   animate?: boolean
+  /** A field of H3 cell ids for an h3 layer to shade; without it the layer
+   *  bins the places at lat and lon. */
+  h3?: string
+  /** How fine an h3 layer's cells are, 1 to 15. Unset sizes binned cells to
+   *  the data, and draws indexed ones as they are. */
+  h3Resolution?: number
   /**
    * Other datasets drawn over this map — depots over the deliveries around
    * them — each a block of its own under `map.overlays`. Kept as read: the

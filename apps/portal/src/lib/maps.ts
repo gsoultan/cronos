@@ -24,10 +24,10 @@ const SHAPED = ['polygon', 'line']
  * The layers that already spend colour on the value: the three shaded from
  * the ramp, and a heat field, whose intensity is the value.
  */
-const COLOURED = new Set(['polygon', 'line', 'hexbin', 'heat'])
+const COLOURED = new Set(['polygon', 'line', 'hexbin', 'heat', 'h3'])
 
 /** The layers shaded from the ramp, which classes and a diverging ramp colour. */
-const SHADED = new Set(['polygon', 'line', 'hexbin'])
+const SHADED = new Set(['polygon', 'line', 'hexbin', 'h3'])
 
 /** The layers whose marks have one name each: a region, a place. */
 const NAMED = new Set(['polygon', 'scatter', 'bubble', 'cluster', 'radius'])
@@ -62,8 +62,10 @@ export function drawnLayers(map: TileMap): string[] {
 export const readsShapes = (layers: string[]) => layers.some((l) => SHAPED.includes(l))
 
 /** Whether any layer reads a latitude and a longitude. Hexagons and clusters
- *  do, because both are made of the points inside them. */
-export const readsPoints = (layers: string[]) => layers.some((l) => !SHAPED.includes(l))
+ *  do, because both are made of the points inside them — and H3 cells, unless
+ *  the map reads cells a warehouse already indexed its rows by. */
+export const readsPoints = (layers: string[], cells?: string) =>
+  layers.some((l) => !SHAPED.includes(l) && !(l === 'h3' && cells))
 
 /** Whether a layer shows the value by its colour. */
 export const colours = (layer: string) => COLOURED.has(layer)
@@ -88,8 +90,9 @@ export function takesSeries(layers: string[]): boolean {
  * scales.
  */
 export function excludedBy(layers: string[]): string[] {
-  if (layers.includes('hexbin')) return SHAPED
-  return readsShapes(layers) ? ['hexbin'] : []
+  if (layers.includes('hexbin')) return [...SHAPED, 'h3']
+  if (layers.includes('h3')) return [...SHAPED, 'hexbin']
+  return readsShapes(layers) ? ['hexbin', 'h3'] : []
 }
 
 /**
@@ -116,6 +119,7 @@ export function relayer(
   }
   // Each goes with the layer it belongs to, which the server insists on.
   if (!layers.includes('radius')) map.radiusKm = undefined
+  if (!layers.includes('h3')) map.h3 = map.h3Resolution = undefined
   if (!layers.includes('flow')) map.animate = undefined
   if (!names(drawnLayers(map))) map.labels = undefined
   return { map, series: takesSeries(drawnLayers(map)) ? block.series : undefined }

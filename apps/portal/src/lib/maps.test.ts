@@ -17,9 +17,11 @@ test('only a map that leaves colour free takes a series', () => {
 })
 
 test('hexagons and shapes exclude each other, either way round', () => {
-  expect(excludedBy(['hexbin', 'scatter'])).toEqual(['polygon', 'line'])
-  expect(excludedBy(['polygon'])).toEqual(['hexbin'])
-  expect(excludedBy(['line', 'flow'])).toEqual(['hexbin'])
+  expect(excludedBy(['hexbin', 'scatter'])).toEqual(['polygon', 'line', 'h3'])
+  expect(excludedBy(['polygon'])).toEqual(['hexbin', 'h3'])
+  expect(excludedBy(['line', 'flow'])).toEqual(['hexbin', 'h3'])
+  // H3 cells shade from the ramp too, from rows of their own: alone, as hexagons are.
+  expect(excludedBy(['h3', 'scatter'])).toEqual(['polygon', 'line', 'hexbin'])
   expect(excludedBy(['heat', 'cluster'])).toEqual([])
 })
 
@@ -37,6 +39,9 @@ test('hexagons and clusters read coordinates, regions and routes read shapes', (
   expect(readsPoints(['hexbin'])).toBe(true)
   expect(readsPoints(['cluster'])).toBe(true)
   expect(readsPoints(['polygon', 'line'])).toBe(false)
+  // H3 cells bin places, unless they are a warehouse's own cells.
+  expect(readsPoints(['h3'])).toBe(true)
+  expect(readsPoints(['h3'], 'cell')).toBe(false)
   expect(readsShapes(['line'])).toBe(true)
   expect(readsShapes(['hexbin', 'heat'])).toBe(false)
 })

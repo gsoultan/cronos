@@ -59,10 +59,16 @@ func (s *Service) whole(ctx context.Context, r definition.Report, blk definition
 	detail Detail, paper bool, params map[string]any, f query.Filters,
 	pr principal.Principal) (*GeoMap, error) {
 
-	if !m.cut || !pointed(blk.Map) {
+	switch {
+	case !m.cut:
 		return m, nil
+	case pointed(blk.Map):
+		return s.large(ctx, r, blk, detail, paper, params, f, pr)
+	case blk.Map.Draws(definition.H3Layer):
+		// Cells a warehouse indexed, more of them than a map's query holds.
+		return s.largeCells(ctx, r, blk, params, f, pr)
 	}
-	return s.large(ctx, r, blk, detail, paper, params, f, pr)
+	return m, nil
 }
 
 /*

@@ -613,6 +613,7 @@ authors ask, and a type per combination is a list nobody can hold.
 | `scatter` | `lat`, `lon` | A dot per point |
 | `flow` | `lat`, `lon`, `toLat`, `toLon` | An arc from each origin to its destination, with a head where it lands |
 | `radius` | `lat`, `lon`, `radiusKm` | A circle of `radiusKm` around each point, measured on the ground — a delivery area, a catchment |
+| `h3` | `h3`, or `lat` and `lon` | Uber's H3 cells, each shaded by the total in it: a column of cell ids, or the places binned |
 
 `x` names what each row is, in its tooltip — the region a polygon shades, the
 depot a dot marks. `map.region` overrides it, so a block can group by a code and
@@ -627,6 +628,23 @@ MultiLineStrings, so a column holding districts and the roads between them is
 one block. A geometry no requested layer draws — a line under a polygon layer —
 is refused with a sentence rather than drawn as nothing. Points belong in `lat`
 and `lon`: `ST_Y(geom) AS lat, ST_X(geom) AS lon` in the dataset's query.
+
+An `h3` layer draws the cells of [H3](https://h3geo.org), the hexagon grid a
+warehouse can index its rows by and join to anything else indexed the same way.
+Given `h3`, a field of cell ids — as text, `871969c9bffffff`, or as the integer
+some warehouses store — it shades each cell by its rows, as the warehouse
+grouped them; with `h3Resolution` coarser than the column it adds each cell up
+into its parent, as H3 itself rolls cells up. Without `h3` it bins the places
+at `lat` and `lon` into cells at `h3Resolution`, 1 to 15, or at the resolution
+about two dozen cells span the data. A value in the column that is not a cell
+is left out, as a place with no coordinates is.
+
+Every other layer of a large map is gathered in the database. H3 has no form in
+the SQL most warehouses speak, so an h3 layer over more rows than a map holds
+reads them — once, keeping the cells and never the rows — up to 200,000, and
+says so under the map past that; index the rows by cell in the warehouse to
+count them all. Adding cells up — binning places, rolling cells into parents,
+or a cell's rows under more than one label — refuses `avg`, as hexagons do.
 
 `hexbin` sizes its hexagons with `hexKm`, their width flat side to flat side in
 kilometres; without it about two dozen span the data. A width rather than a

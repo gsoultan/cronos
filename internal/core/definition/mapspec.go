@@ -76,6 +76,15 @@ type MapSpec struct {
 	// Animate moves a flow layer's arcs from where each starts to where it
 	// ends, for a reader whose system has not asked for less motion.
 	Animate bool `json:"animate,omitempty" yaml:"animate,omitempty"`
+
+	// H3 names a field of H3 cell ids — as text, 871969c9bffffff, or as the
+	// number some warehouses store — for an h3 layer to shade. Without it an
+	// h3 layer bins the places at lat and lon.
+	H3 string `json:"h3,omitempty" yaml:"h3,omitempty"`
+	// H3Resolution is how fine an h3 layer's cells are, 1 to 15: the cells
+	// places are binned into, or a coarser one indexed cells are added up to.
+	// Unset sizes cells binned from places to the data.
+	H3Resolution int `json:"h3Resolution,omitempty" yaml:"h3Resolution,omitempty"`
 }
 
 // MaxRadiusKm is as far as a radius layer's circles may reach: about a
@@ -174,6 +183,9 @@ func (m MapSpec) validateLayer(output string, i int, l MapLayer) error {
 	case l.Points() && (m.Lat == "" || m.Lon == ""):
 		return fmt.Errorf("%w: %s map %d draws a %s layer, which needs lat and lon",
 			ErrInvalid, output, i, l)
+	case l == H3Layer && m.H3 == "" && (m.Lat == "" || m.Lon == ""):
+		return fmt.Errorf("%w: %s map %d draws an h3 layer, which reads its cells from "+
+			"map.h3, or bins the places at lat and lon", ErrInvalid, output, i)
 	case l == FlowLayer && (m.ToLat == "" || m.ToLon == ""):
 		return fmt.Errorf("%w: %s map %d draws flows, which need toLat and toLon "+
 			"for where each one lands", ErrInvalid, output, i)
@@ -201,6 +213,23 @@ func (m MapSpec) validateHexes(output string, i int) error {
 		return fmt.Errorf("%w: %s map %d sets hexKm but draws no hexbin layer",
 			ErrInvalid, output, i)
 	}
+	return m.validateH3(output, i)
+}
+
+// validateH3 checks an h3 layer: alone among the shaded layers, for the reason
+// hexagons are, and with a resolution H3 has.
+func (m MapSpec) validateH3(output string, i int) error {
+	cells := m.Draws(H3Layer)
+	switch {
+	case cells && (m.geometric() || m.Draws(HexbinLayer)):
+		return fmt.Errorf("%w: %s map %d shades H3 cells and another layer from the ramp, "+
+			"and one legend cannot explain both — split them across two blocks", ErrInvalid, output, i)
+	case m.H3Resolution < 0 || m.H3Resolution > 15:
+		return fmt.Errorf("%w: %s map %d h3Resolution %d is outside 1–15", ErrInvalid, output, i, m.H3Resolution)
+	case !cells && (m.H3 != "" || m.H3Resolution != 0):
+		return fmt.Errorf("%w: %s map %d sets h3 or h3Resolution but draws no h3 layer",
+			ErrInvalid, output, i)
+	}
 	return nil
 }
 
@@ -214,6 +243,7 @@ const (
 	LonCol      MapColumn = "lon"
 	ToLatCol    MapColumn = "toLat"
 	ToLonCol    MapColumn = "toLon"
+	H3Col       MapColumn = "h3"
 	SeriesCol   MapColumn = "series"
 	ValueCol    MapColumn = "value"
 	SizeCol     MapColumn = "size"
@@ -247,6 +277,9 @@ func (b Block) MapColumns() []MapColumn {
 	if m.Draws(FlowLayer) {
 		out = append(out, ToLatCol, ToLonCol)
 	}
+	if m.Draws(H3Layer) && m.H3 != "" {
+		out = append(out, H3Col)
+	}
 	// The category a point is coloured by. Only on the layers that leave
 	// colour free for it — see validateMapSeries.
 	if b.Series.Field != "" {
@@ -273,7 +306,7 @@ func (b Block) Labels() string {
 // points reports whether any resolved layer reads a coordinate.
 func (m MapSpec) points() bool {
 	for _, l := range m.Resolved() {
-		if l.Points() {
+		if l.Points() || (l == H3Layer && m.H3 == "") {
 			return true
 		}
 	}
@@ -307,7 +340,16 @@ func (b Block) Grouped() bool {
 // the points inside it. Either way the aggregate has to survive being applied
 // to its own results, which an average does not.
 func (b Block) Folds() bool {
-	return b.Grouped() || (b.Map != nil && b.Map.Draws(HexbinLayer))
+	return b.Grouped() || (b.Map != nil && (b.Map.Draws(HexbinLayer) || b.foldsH3()))
+}
+
+// foldsH3 reports whether an h3 layer adds its cells up from rows inside
+// them: places, finer cells than the ones it draws, or a cell's rows under
+// more than one label — anything but a row per cell.
+func (b Block) foldsH3() bool {
+	m := b.Map
+	return m.Draws(H3Layer) &&
+		(m.H3 == "" || m.H3Resolution > 0 || (b.Labels() != "" && b.Labels() != m.H3))
 }
 
 /*
