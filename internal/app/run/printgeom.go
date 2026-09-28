@@ -127,11 +127,14 @@ func trackKeys(tracks []Track) []document.Key {
 	return out
 }
 
-func sliceKeys(series []Bar) []document.Key {
+// sliceKeys names each slice with its value and its share, as the screen's
+// list beside a pie does.
+func sliceKeys(series []Bar, total float64) []document.Key {
 	out := make([]document.Key, 0, len(series))
 	for i, s := range series {
 		if s.Value > 0 {
-			out = append(out, document.Key{Tone: tone(i), Label: s.Label + " " + s.Formatted})
+			out = append(out, document.Key{Tone: tone(i),
+				Label: s.Label + " " + s.Formatted + " · " + percent(s.Value/total)})
 		}
 	}
 	return out

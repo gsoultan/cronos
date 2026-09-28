@@ -61,3 +61,20 @@ func greatCircleKm(lat1, lon1, lat2, lon2 float64) float64 {
 		math.Cos(lat1*r)*math.Cos(lat2*r)*math.Pow(math.Sin((lon2-lon1)*r/2), 2)
 	return 2 * 6371 * math.Asin(math.Sqrt(h))
 }
+
+// A head on a map that is not square is the same triangle on the page:
+// worked out in the box's fractions, it came out squashed along the width.
+func TestAFlowsHeadKeepsItsShapeOnATallMap(t *testing.T) {
+	c := &document.Chart{Title: "Transfers", Aspect: 0.4}
+	at := func(x, y float64) [2]float64 { return [2]float64{x, y} }
+	flows(c, []Arc{{Label: "A → B", X1: 0.1, Y1: 0.5, X2: 0.9, Y2: 0.5}}, at, false)
+	// On the page, where a unit across is aspect of a unit down.
+	page := func(p [2]float64) [2]float64 { return [2]float64{p[0] * c.Aspect, p[1]} }
+	head := c.Marks[1].Points
+	q, a, b := page(head[0]), page(head[1]), page(head[2])
+	long := math.Hypot(q[0]-(a[0]+b[0])/2, q[1]-(a[1]+b[1])/2)
+	wide := math.Hypot(a[0]-b[0], a[1]-b[1])
+	if math.Abs(wide/long-1.1) > 0.02 {
+		t.Errorf("the head is %.4f long and %.4f wide on the page, want its own proportions", long, wide)
+	}
+}

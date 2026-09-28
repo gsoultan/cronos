@@ -137,7 +137,10 @@
   "div-1": rgb("#104281"), "div-2": rgb("#3987e5"), "div-3": rgb("#9ec5f4"),
   "div-4": rgb("#f7c6ab"), "div-5": rgb("#eb7f4c"), "div-6": rgb("#a33f12"),
   "up": rgb("#2a78d6"), "down": rgb("#e34948"), "neutral": rgb("#8c8981"),
+  "good": rgb("#15803d"),
   "line": rgb("#e1e0d9"),
+  // The ground a treemap's group is drawn on, under its name.
+  "frame": rgb("#f1f0ec"),
   // The page itself, for cutting a hole back out of a printed region — a
   // lake inside a district. Typst's polygon has no holes of its own.
   "paper": rgb("#ffffff"),
@@ -155,6 +158,34 @@
 }
 
 #let chart-box = 46mm
+
+// A label the server placed: its middle at the point, or the end its anchor
+// names, and centred on the point the other way — a box of no height with
+// the text aligned to its middle line, whatever size the text is set at.
+// The box is wide and aligned to the anchored end, so the text runs the right
+// way from the point whatever its length.
+#let draw-text(m, w, h) = {
+  let anchor = m.at("anchor", default: "")
+  let strong = m.at("strong", default: false) == true
+  let t = m.at("tone", default: "ink")
+  let fill = if t == "ink" { luma(35) } else if t == "muted" { luma(125) } else if t == "white" { white } else { tone-of(t) }
+  let size = m.at("size", default: 0.0)
+  if size == none or size <= 0 { size = if strong { 6.5 } else { 6.0 } }
+  let face(s) = text(size: s * 1pt, fill: fill, weight: if strong { "semibold" } else { "regular" })[#m.label]
+  // The widest it may run. A figure in a donut's hole is set smaller until
+  // it fits, rather than out over the ring.
+  let most = m.at("w", default: 0.0)
+  let body = if most != none and most > 0 {
+    context {
+      let natural = measure(face(size)).width
+      if natural > most * w { face(size * most * w / natural) } else { face(size) }
+    }
+  } else { face(size) }
+  let x = m.at("x", default: 0.0) * w
+  let span = 60mm
+  let (dx, al) = if anchor == "start" { (x, left) } else if anchor == "end" { (x - span, right) } else { (x - span / 2, center) }
+  place(dx: dx, dy: m.at("y", default: 0.0) * h, box(width: span, height: 0pt, align(al + horizon, body)))
+}
 
 // One mark, placed in a box of width w and height h.
 #let draw-mark(m, w, h) = {
@@ -184,25 +215,17 @@
     // `curve`, not `path`: Typst 0.15 turned `path` into the SVG-data element
     // and an array of points is no longer what it takes.
     let pts = m.points.map(p => (p.at(0) * w, p.at(1) * h))
-    place(curve(stroke: 1pt + c,
+    place(curve(stroke: m.at("stroke", default: 1.0) * 1pt + c,
       curve.move(pts.first()),
       ..pts.slice(1).map(p => curve.line(p))))
   } else if m.kind == "poly" {
-    place(polygon(fill: c, stroke: none,
+    // A stroke around a polygon is an edge of paper: the gap that keeps two
+    // slices of a pie from reading as one fill.
+    let edge = m.at("stroke", default: 0.0)
+    place(polygon(fill: c, stroke: if edge != none and edge > 0 { edge * 1pt + white } else { none },
       ..m.points.map(p => (p.at(0) * w, p.at(1) * h))))
-  }
-}
-
-// The labels beside a chart's marks.
-//
-// Selective, not one per mark: a label on every bar of a forty-bar chart is a
-// smear, and the marks that carry a name are the ones with room for it.
-#let mark-labels(marks, w, h) = {
-  for m in marks {
-    if m.kind == "rect" and "label" in m and m.h * h > 7pt and m.w * w > 14mm {
-      place(dx: m.x * w + 2pt, dy: m.y * h + (m.h * h - 7pt) / 2,
-        text(size: 6.5pt, fill: white)[#m.label])
-    }
+  } else if m.kind == "text" {
+    draw-text(m, w, h)
   }
 }
 
@@ -225,11 +248,11 @@
 
 // The scale down the left of a chart that has one. The labels are the server's
 // own, so a PDF and a browser round the same number the same way.
-#let chart-ticks(ticks, h) = {
+#let chart-ticks(ticks, h, fill: luma(130), side: right) = {
   box(width: 13mm, height: h, {
     for t in ticks {
-      place(dy: (1.0 - t.at) * h - 4pt, dx: 0pt,
-        box(width: 12mm, align(right, text(size: 6pt, fill: luma(130))[#t.label])))
+      place(dy: (1.0 - t.at) * h - 4pt, dx: if side == right { 0pt } else { 1mm },
+        box(width: 12mm, align(side, text(size: 6pt, fill: fill)[#t.label])))
     }
   })
 }
@@ -247,10 +270,22 @@
     text(size: 8pt, fill: luma(130), style: "italic")[#note]
   } else {
     let ticks = list-of(c.at("ticks", default: ()))
-    let w = if ticks.len() > 0 { 100% - 13mm } else { 100% }
-    grid(columns: if ticks.len() > 0 { (13mm, 1fr) } else { (1fr,) },
-      ..(if ticks.len() > 0 { (chart-ticks(ticks, chart-box),) } else { () }),
-      block(width: 100%, height: chart-box, {
+    // A chart of rows asks for the height its rows need; the rest take the
+    // box every chart used to.
+    let asked = c.at("height", default: 0.0)
+    let box-h = if asked != none and asked > 0 { asked * 1mm } else { chart-box }
+    // The scale along the bottom and a second one down the right, where the
+    // chart has them: without them a printed line chart was a line nobody
+    // could say the months of, and a combo's second measure was read against
+    // nothing.
+    let xticks = list-of(c.at("xTicks", default: ()))
+    let ticks2 = list-of(c.at("ticks2", default: ()))
+    let tone2 = c.at("tone2", default: "")
+    if tone2 == none { tone2 = "" }
+    let columns = (if ticks.len() > 0 { (13mm,) } else { () }) + (1fr,) + (if ticks2.len() > 0 { (13mm,) } else { () })
+    grid(columns: columns,
+      ..(if ticks.len() > 0 { (chart-ticks(ticks, box-h),) } else { () }),
+      block(width: 100%, {
         // `layout`, not `measure`. Every mark is a fraction of the box, and
         // the box is a fraction of whatever width the page and its margins
         // leave — which only `layout` knows. `measure` evaluates its content in
@@ -268,16 +303,28 @@
           let aspect = c.at("aspect", default: 0.0)
           if aspect == none { aspect = 0.0 }
           let bw = if square { chart-box } else if aspect > 0 {
-            calc.min(size.width, chart-box * aspect)
+            calc.min(size.width, box-h * aspect)
           } else { size.width }
-          let bh = if aspect > 0 { bw / aspect } else { chart-box }
+          let bh = if aspect > 0 { bw / aspect } else { box-h }
           let dx = if square { (size.width - chart-box) / 2 } else { (size.width - bw) / 2 }
-          place(dx: dx, {
+          // As tall as what is drawn: a wide map is shorter than the box it
+          // asked for, and the page should not keep the difference blank.
+          block(width: size.width, height: bh + (if xticks.len() > 0 { 11pt } else { 0pt }), place(dx: dx, {
+            // A faint rule at each tick, behind the marks, to measure against.
+            for t in ticks {
+              place(dy: (1.0 - t.at) * bh, line(length: bw, stroke: 0.3pt + luma(222)))
+            }
             for m in marks { draw-mark(m, bw, bh) }
-            mark-labels(marks, bw, bh)
-          })
+            for t in xticks {
+              place(dx: t.at * bw - 15mm, dy: bh + 3pt,
+                box(width: 30mm, align(center, text(size: 6pt, fill: luma(120))[#t.label])))
+            }
+          }))
         })
-      }))
+      }),
+      ..(if ticks2.len() > 0 {
+        (chart-ticks(ticks2, box-h, fill: if tone2 != "" { tone-of(tone2) } else { luma(130) }, side: left),)
+      } else { () }))
     chart-keys(list-of(c.at("keys", default: ())))
     if note != "" {
       v(2pt)

@@ -14,8 +14,17 @@ type Chart struct {
 	// debugging a wrong-looking page — can tell what it was meant to be.
 	Kind  string `json:"kind"`
 	Marks []Mark `json:"marks"`
-	// Ticks label the vertical scale, bottom to top, where the chart has one.
+	// Ticks label the vertical scale, bottom to top, where the chart has one;
+	// the template rules a faint line across the box at each.
 	Ticks []Tick `json:"ticks,omitempty"`
+	// XTicks label the horizontal one under the box, left to right: the
+	// categories of a line or a column chart, or a scatter's measure. A PDF
+	// without them was a line nobody could say the months of.
+	XTicks []Tick `json:"xTicks,omitempty"`
+	// Ticks2 label a second scale down the right, for a measure that asked for
+	// its own, set in Tone2 — its track's colour — as the screen sets it.
+	Ticks2 []Tick `json:"ticks2,omitempty"`
+	Tone2  string `json:"tone2,omitempty"`
 	// Keys name the colours, for the charts that use more than one meaning.
 	Keys []Key `json:"keys,omitempty"`
 	// Square asks for a box as tall as it is wide.
@@ -30,6 +39,13 @@ type Chart struct {
 	// has left is a country stretched sideways, and a reader measuring a
 	// distance on it would be measuring the stretch.
 	Aspect float64 `json:"aspect,omitempty"`
+	// Height asks for a box this many millimetres tall. A chart laid out in
+	// rows — bars, a funnel's stages, a heatmap's rows — asks for what its
+	// rows need, so a row is a row's height whether there are two or twenty:
+	// two bars stretched to the box every chart used to get were a centimetre
+	// thick each. A map or a treemap asks for the room its shapes need, and a
+	// map keeps its proportions within it.
+	Height float64 `json:"height,omitempty"`
 	// Note replaces the drawing when there is nothing to draw — an empty
 	// result, or a chart type this renderer does not print. A page that simply
 	// omits a block looks like a report that was never written that way.
@@ -60,6 +76,10 @@ func (c Chart) validate() error {
 	for _, m := range c.Marks {
 		switch m.Kind {
 		case RectMark, DotMark:
+		case TextMark:
+			if m.Label == "" {
+				return fmt.Errorf("%w: chart %q has a text mark with nothing to say", ErrInvalid, c.Title)
+			}
 		case LineMark, PolyMark:
 			if len(m.Points) < 2 {
 				return fmt.Errorf("%w: chart %q has a %s of %d points",

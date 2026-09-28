@@ -446,10 +446,16 @@ means nothing interactively).
 Charts are drawn by both. The paginated renderer typesets them as vector marks,
 so a PDF carries the same chart the browser does — the same palette, the same
 tick labels, and the same numbers, because the arrangement is worked out once on
-the server and both renderers place what they are given. A layout of charts and
-no table is a legitimate paginated output. A `map` prints too, in its own
-proportions and without its basemap — see "Maps" below. It used to print a line
-saying to open the report in a browser.
+the server and both renderers place what they are given. That includes the
+words: a bar's name beside it and its value at its end, the categories under a
+line or a column, a combo's second scale down the right in its measure's
+colour, a heatmap's figures in its cells, a donut's whole and a gauge's reading
+set large in the middle, a treemap's groups across the tops of their frames. A
+chart laid out in rows — bars, a funnel, a heatmap — is as tall as its rows, so
+two bars are two bars' height rather than stretched across a fixed box. A
+layout of charts and no table is a legitimate paginated output. A `map` prints
+too, in its own proportions and without its basemap — see "Maps" below. It used
+to print a line saying to open the report in a browser.
 
 This paragraph used to say a bar chart in a PDF rendered as a static image, which
 no code ever did — charts were dropped from a paginated output entirely, with
@@ -817,8 +823,10 @@ other basemap is refused; a map with no basemap is not somebody else's map. Give
 the Google maps a report of their own, as the demo's
 `parcel-network-google` does.
 
-On **paper** a map is drawn in its own proportions — polygons, lines, hexagons,
-dots and arcs as vector marks, with the legend — and without its basemap. The
+On **paper** a map is drawn in its own proportions, 90mm tall or as wide as
+the page allows — polygons, lines, hexagons, dots and arcs as vector marks, with
+the legend — and without its basemap. Its places are sized against its height,
+so a map of somewhere tall prints them as large as one of somewhere wide. The
 tiles are a third party's, requested by a reader's browser under that party's
 terms, and none of those terms is a server printing them into a document that is
 then mailed to five thousand people. A ring inside another is a hole, on paper
