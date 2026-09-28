@@ -3,9 +3,11 @@ package run_test
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -499,5 +501,47 @@ func TestAFlowMapNamesOnlyTheCategoriesItDraws(t *testing.T) {
   map: {layers: [flow], lat: lat, lon: lon, toLat: to_lat, toLon: to_lon}`)
 	if len(b.Map.Arcs) != 1 || len(b.Map.Keys) != 1 || b.Map.Keys[0].Label != "Aurora" {
 		t.Errorf("arcs = %d, keys = %+v; want Aurora's one flow and Aurora alone", len(b.Map.Arcs), b.Map.Keys)
+	}
+}
+
+// A place is sent to the precision its region's outline is, and its weight to
+// four decimals: seventeen digits of each were most of what a map of places
+// sent, and none of them moved a pixel.
+func TestAPlaceSendsNoDigitsAPixelCannotShow(t *testing.T) {
+	blk := renderOne(t, depotsWith(t, `INSERT INTO depots VALUES
+  ('A', '', 51.50735123456789, -0.12775812345678, 53.48075123456789, -2.24263412345678, 'Aurora', 7, 1, 'a', ''),
+  ('B', '', 55.95325123456789, -3.18826712345678, 51.50735123456789, -0.12775812345678, 'Baltic', 3, 1, 'b', '');`),
+		`- kind: chart
+  chart: map
+  title: Places
+  x: {field: depot}
+  y: {field: parcels, aggregate: sum}
+  map: {layers: [bubble, flow], lat: lat, lon: lon, toLat: to_lat, toLon: to_lon}`)
+	raw, err := json.Marshal(blk.Map)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range regexp.MustCompile(`"(x|y|x1|y1|x2|y2|weight)":(-?[0-9.]+)`).FindAllStringSubmatch(string(raw), -1) {
+		most := 8
+		if m[1] == "weight" {
+			most = 4
+		}
+		if _, frac, ok := strings.Cut(m[2], "."); ok && len(frac) > most {
+			t.Errorf("%s is sent as %s, %d decimals where %d show everything", m[1], m[2], len(frac), most)
+		}
+	}
+}
+
+// A large map's cells are sent on the same grid, and without the zeros a fixed
+// count pads with: nine decimals of every cell was a tenth of a pixel no
+// screen draws.
+func TestACellIsSentOnThePathGrid(t *testing.T) {
+	raw, err := json.Marshal(run.Cells{Size: 0.5, X: []float64{0.123456789123, 0.5}, Y: []float64{0.987654321987, 0.25},
+		N: []int{1, 1}, V: []float64{1, 2}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"x":[0.12345679,0.5]`) || !strings.Contains(string(raw), `"y":[0.98765432,0.25]`) {
+		t.Errorf("cells sent as %s", raw)
 	}
 }

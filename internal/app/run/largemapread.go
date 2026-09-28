@@ -162,7 +162,7 @@ func (q *bigMap) flows(ctx context.Context, m *GeoMap, g query.MapGrid, slot map
 			m.Places += n
 		}
 		a := Arc{Label: flowLabel(n, r.text("label")),
-			X1: r.num("x"), Y1: r.num("y"), X2: r.num("x2"), Y2: r.num("y2"),
+			X1: onGrid(r.num("x")), Y1: onGrid(r.num("y")), X2: onGrid(r.num("x2")), Y2: onGrid(r.num("y2")),
 			Value: v, Formatted: compact(v)}
 		if keyed {
 			a.Slot = slotFor(slot, r.text("series"))

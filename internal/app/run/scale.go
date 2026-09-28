@@ -133,6 +133,10 @@ func stepOf(v float64, breaks []float64) int {
 // Anchored at zero when the data is all positive, because a bubble's area
 // reads as a quantity: scaling 90–100 across the full radius draws the 90 as a
 // tenth of the 100, which is a nine-fold lie about a 10% difference.
+//
+// To four decimals: the fifth moves the largest bubble's edge by a hundredth
+// of a pixel, and the sixteen a float prints were a sixth of every place a
+// map sends.
 func weight(v, lo, hi float64) float64 {
 	if lo > 0 {
 		lo = 0
@@ -140,7 +144,7 @@ func weight(v, lo, hi float64) float64 {
 	if hi <= lo {
 		return 0
 	}
-	return math.Max(0, math.Min(1, (v-lo)/(hi-lo)))
+	return math.Round(math.Max(0, math.Min(1, (v-lo)/(hi-lo)))*1e4) / 1e4
 }
 
 // span is the smallest and largest of values, or 0,0 for none.

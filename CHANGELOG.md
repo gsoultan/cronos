@@ -22,6 +22,12 @@ needs a deployment to act says so under **Upgrading**.
 
 ## Unreleased
 
+**Maps send less.** A place's position is sent to the precision its region's
+outline already was, about forty centimetres on the ground, and its size to
+four decimals; a large map's cells go on the same grid. None of the dropped
+digits moved a pixel. The demo's parcel network sends 21% fewer bytes over the
+wire, and its maps of places 22% fewer before compression.
+
 **The builder draws a map as it will look.** A map block on the builder's
 canvas is drawn by the server from the report's own data, as it would be
 published, a moment after each change — and where the server would refuse it,
