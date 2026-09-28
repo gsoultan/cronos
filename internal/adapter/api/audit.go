@@ -13,7 +13,10 @@ import (
 // call sites, because an audit is queried by action and a typo makes one
 // action into two that nobody notices until the query returns half of it.
 const (
-	ActionRead      = "report.read"
+	ActionRead = "report.read"
+	// A draft drawn in the builder: rows read from a report nobody has
+	// published yet. Apart from report.read so a query for either is exact.
+	ActionPreview   = "report.preview"
 	ActionPublish   = "definition.publish"
 	ActionDelete    = "definition.delete"
 	ActionShare     = "share.create"

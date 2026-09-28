@@ -22,6 +22,15 @@ needs a deployment to act says so under **Upgrading**.
 
 ## Unreleased
 
+**The builder draws a map as it will look.** A map block on the builder's
+canvas is drawn by the server from the report's own data, as it would be
+published, a moment after each change — and where the server would refuse it,
+the canvas says why in the server's words. A new map block starts from the
+coordinates and geometry the dataset's field names give it. A Mapbox basemap
+takes a style made in Studio: paste the URL from Studio's Share menu, or type
+`owner/style`. `POST /v1/preview` is what draws it; see "Drawing a draft" in
+[docs/deploying.md](docs/deploying.md).
+
 **A map plays through time.** `time: {field, grain}` plays a map through the
 days, weeks, months, quarters or years of a date. It opens on every period
 together, as paper prints it, with a slider under it: play, drag or step

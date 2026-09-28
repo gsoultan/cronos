@@ -1,7 +1,7 @@
 import { carryOver, document, fromYaml, toYaml, unmodelled, type Yaml } from './yaml'
 import { reference, referenced, sourceSecret } from './secrets'
 import { DEFAULT_TIME_GRAIN } from './maps'
-import type { BasemapProvider, Field, Param, TileMap } from './types'
+import type { BasemapProvider, Field, Param, Tile, TileMap } from './types'
 
 /**
  * Form state to a definition document.
@@ -385,6 +385,29 @@ export interface ReportBlockInput {
   /** Narrows this block alone, as SQL the server compiles. */
   filter?: string
   sort?: { field: string; dir?: string }[]
+}
+
+/** A block of the builder's canvas, in the vocabulary a report is written
+ *  in — translated in one place, so a save and a preview cannot write the
+ *  same block two ways. */
+export function blockInput(b: Tile): ReportBlockInput {
+  return {
+    kind: b.kind, title: b.title, dataset: b.dataset,
+    field: b.field, groupBy: b.groupBy, aggregate: b.aggregate,
+    series: b.series, stacked: b.stacked,
+    xField: b.xField, sizeField: b.sizeField, map: b.map,
+    metrics: b.metrics, target: b.target,
+    columns: b.columns, filter: b.filter, sort: b.sort,
+  }
+}
+
+/**
+ * A report of one block, to draw it as it would be published — see
+ * previewReport. Only the block: the report's other blocks would each be a
+ * query nobody is looking at, and its filters bind nothing a preview sets.
+ */
+export function draftOf(tile: Tile, reads: string): string {
+  return report({ name: 'Preview', slug: 'preview', dataset: reads, blocks: [blockInput(tile)] })
 }
 
 /**

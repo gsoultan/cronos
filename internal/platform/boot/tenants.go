@@ -21,6 +21,7 @@ import (
 	"github.com/gsoultan/cronos/internal/app/send"
 	"github.com/gsoultan/cronos/internal/app/share"
 	"github.com/gsoultan/cronos/internal/app/vault"
+	"github.com/gsoultan/cronos/internal/core/definition"
 	"github.com/gsoultan/cronos/internal/core/principal"
 	"github.com/gsoultan/cronos/internal/platform/config"
 	"github.com/gsoultan/cronos/internal/platform/token"
@@ -454,6 +455,16 @@ func (p publishingFor) PublishIf(ctx context.Context, raw []byte,
 		return publish.Result{}, err
 	}
 	return svc.PublishIf(ctx, raw, pr, expect)
+}
+
+// Draft checks a report against the caller's own project, as publishing it
+// there would.
+func (p publishingFor) Draft(ctx context.Context, raw []byte, pr principal.Principal) (definition.Report, error) {
+	svc, err := p.of(ctx, pr)
+	if err != nil {
+		return definition.Report{}, err
+	}
+	return svc.Draft(ctx, raw, pr)
 }
 
 func (p publishingFor) Delete(ctx context.Context, pr principal.Principal, kind, name string) error {

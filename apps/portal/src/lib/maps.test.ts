@@ -1,9 +1,9 @@
 import { expect, test } from 'bun:test'
 import {
-  basemapChoice, basemapKeys, drawnLayers, excludedBy, keyValueProblem, readsPoints, readsShapes,
-  plays, relayer, styleOptions, switchBasemap, takesSeries,
+  basemapChoice, basemapKeys, detectMap, drawnLayers, excludedBy, keyValueProblem, readsPoints, readsShapes,
+  plays, relayer, studioStyle, styleOptions, switchBasemap, takesSeries,
 } from './maps'
-import type { TileMap } from './types'
+import type { Field, TileMap } from './types'
 
 /* Colour is one channel. The server refuses a series on a map that already
    spends it on the value, so the inspector must not offer one there. */
@@ -173,4 +173,52 @@ test('a Mapbox secret token is refused as a map key', () => {
   expect(keyValueProblem('mapbox-token', 'pk.eyJ1Ijoi')).toBeUndefined()
   // Not a Mapbox key, so not Mapbox's rule.
   expect(keyValueProblem('google-maps-key', 'sk.whatever')).toBeUndefined()
+})
+
+/* A new map starts from what the dataset's names say it holds, hidden fields
+   included — coordinates usually are hidden, being no use in a table. */
+const field = (name: string, type: Field['type'] = 'decimal', hidden = true): Field =>
+  ({ name, label: name, type, role: 'dimension', hidden })
+
+test('a new map reads the coordinates the names give', () => {
+  expect(detectMap([field('id', 'string', false), field('lat'), field('lon')]))
+    .toMatchObject({ layers: ['scatter'], lat: 'lat', lon: 'lon' })
+  expect(detectMap([field('depot_latitude'), field('depot_lng')]))
+    .toMatchObject({ layers: ['scatter'], lat: 'depot_latitude', lon: 'depot_lng' })
+})
+
+test('and where a flow lands, as a flow', () => {
+  const m = detectMap([field('to_lat'), field('to_lon'), field('from_lat'), field('from_lon')])
+  expect(m).toMatchObject({ layers: ['flow', 'scatter'], lat: 'from_lat', lon: 'from_lon', toLat: 'to_lat', toLon: 'to_lon' })
+})
+
+test('a geometry, as regions or as routes', () => {
+  expect(detectMap([field('shape', 'string')])).toMatchObject({ layers: ['polygon'], geometry: 'shape' })
+  expect(detectMap([field('path', 'string')])).toMatchObject({ layers: ['line'], geometry: 'path' })
+  // Regions with a place in each: a zone and its depot.
+  expect(detectMap([field('shape', 'string'), field('lat'), field('lon')]))
+    .toMatchObject({ layers: ['polygon', 'scatter'], geometry: 'shape', lat: 'lat', lon: 'lon' })
+})
+
+test('nothing recognisable is nothing guessed', () => {
+  const m = detectMap([field('region', 'string', false), field('parcels'), field('shape_area')])
+  expect(m.layers).toEqual(['scatter'])
+  expect(m.lat ?? m.lon ?? m.geometry).toBeUndefined()
+  // A latitude without a longitude is not a place.
+  expect(detectMap([field('lat')]).lat).toBeUndefined()
+  // A number named like a geometry is not one.
+  expect(detectMap([field('shape')]).geometry).toBeUndefined()
+})
+
+/* A Studio style as Studio hands it over — and never the token its share page
+   carries, which would be in the report's file for ever. */
+test('a Studio style is read from whatever Studio gave', () => {
+  for (const pasted of [
+    'mapbox://styles/acme-maps/clx7ab12c00ff01qs',
+    'https://api.mapbox.com/styles/v1/acme-maps/clx7ab12c00ff01qs.html?title=view&access_token=pk.eyJ1Ijoi#9/52.3/4.9',
+    'https://studio.mapbox.com/styles/acme-maps/clx7ab12c00ff01qs/edit/',
+    '  acme-maps/clx7ab12c00ff01qs ',
+  ]) expect(studioStyle(pasted)).toBe('acme-maps/clx7ab12c00ff01qs')
+  for (const wrong of ['light', 'acme-maps/', 'Acme/style', 'https://example.org/styles/v1/a/b', 'a/b/c'])
+    expect(studioStyle(wrong)).toBeUndefined()
 })
