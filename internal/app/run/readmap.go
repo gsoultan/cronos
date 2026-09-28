@@ -213,7 +213,7 @@ func (r *mapReader) marker(cells []any, out *GeoMap, label string, value, x, y f
 		}
 		r.timed.place(key, len(out.Markers), r.now, value, size, sized)
 	}
-	m := Marker{Label: label, X: x, Y: y, Value: value, Formatted: compact(value)}
+	m := Marker{Label: label, X: onGrid(x), Y: onGrid(y), Value: value, Formatted: compact(value)}
 	if sized {
 		m.Size = compact(size)
 	}
@@ -270,7 +270,7 @@ func (r *mapReader) arc(cells []any, out *GeoMap, label string, value float64, f
 	}
 	r.arcAt = append(r.arcAt, from)
 	out.Arcs = append(out.Arcs, Arc{
-		Label: label, X1: x, Y1: y, X2: x2, Y2: y2,
+		Label: label, X1: x, Y1: y, X2: onGrid(x2), Y2: onGrid(y2),
 		Value: value, Formatted: compact(value),
 	})
 }

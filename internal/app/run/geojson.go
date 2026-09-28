@@ -165,11 +165,18 @@ func appendPart(b *strings.Builder, part [][2]float64, kind geoKind, tolerance f
 // walks off its own streets by a dozen pixels.
 const coordScale = 1e8
 
+// onGrid is a world-unit coordinate on the grid a path's are rounded onto: a
+// place is sent to the precision its region's outline is, and its seventeen
+// digits were most of the bytes a map of places sent.
+func onGrid(v float64) float64 {
+	return math.Round(v*coordScale) / coordScale
+}
+
 // coord formats one world-unit coordinate, rounded and without trailing zeros.
 //
 // -1 precision after rounding rather than a fixed count: FormatFloat with a
 // fixed count pads "0.5" out to "0.50000000", and eight zeros per coordinate
 // across a continent's worth of vertices is a measurable part of the payload.
 func coord(v float64) string {
-	return strconv.FormatFloat(math.Round(v*coordScale)/coordScale, 'f', -1, 64)
+	return strconv.FormatFloat(onGrid(v), 'f', -1, 64)
 }

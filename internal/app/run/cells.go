@@ -77,8 +77,8 @@ func (c Cells) MarshalJSON() ([]byte, error) {
 	b := make([]byte, 0, 64+len(c.X)*40)
 	b = append(b, `{"size":`...)
 	b = strconv.AppendFloat(b, c.Size, 'g', -1, 64)
-	b = floats(append(b, `,"x":`...), c.X, 'f', 9)
-	b = floats(append(b, `,"y":`...), c.Y, 'f', 9)
+	b = coords(append(b, `,"x":`...), c.X)
+	b = coords(append(b, `,"y":`...), c.Y)
 	b = append(b, `,"n":[`...)
 	for i, n := range c.N {
 		if i > 0 {
@@ -116,9 +116,23 @@ func (c Cells) MarshalJSON() ([]byte, error) {
 	return append(b, '}'), nil
 }
 
-// floats appends a JSON array of numbers. Nine decimals of a world unit is a
-// few centimetres at the equator; seven significant figures of a measure is
-// more than any legend shows.
+// coords appends a JSON array of world-unit coordinates, on the grid a path's
+// are: under a pixel at the deepest zoom any tile source serves, and without
+// the zeros a fixed count pads a round one with. Nine fixed decimals was a
+// tenth of a pixel no screen draws, sent for every cell of a large map.
+func coords(b []byte, vs []float64) []byte {
+	b = append(b, '[')
+	for i, v := range vs {
+		if i > 0 {
+			b = append(b, ',')
+		}
+		b = strconv.AppendFloat(b, onGrid(v), 'f', -1, 64)
+	}
+	return append(b, ']')
+}
+
+// floats appends a JSON array of numbers. Seven significant figures of a
+// measure is more than any legend shows.
 func floats(b []byte, vs []float64, format byte, prec int) []byte {
 	b = append(b, '[')
 	for i, v := range vs {
