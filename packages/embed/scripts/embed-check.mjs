@@ -586,7 +586,8 @@ await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
 await page.mouse.down()
 await page.mouse.move(box.x + box.width / 2 - 60, box.y + box.height / 2 - 30, { steps: 6 })
 await page.mouse.up()
-await page.waitForTimeout(100)
+// Settled once the reader stops, a moment after the last move.
+for (let i = 0; i < 20 && JSON.stringify(await geo()) === JSON.stringify(zoomed); i++) await page.waitForTimeout(50)
 const dragged = await geo()
 const perPx = zoomed[2] / box.width
 ok('a drag moves the map by the length of the drag',

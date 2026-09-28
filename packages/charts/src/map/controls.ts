@@ -1,8 +1,9 @@
 import { el } from '../dom'
 import type { Viewport } from './view'
 
-/** How the map asks to be redrawn: `settled` once a gesture has stopped. */
-export type Redraw = (settled: boolean) => void
+/** How the map asks to be redrawn: `settled` once a gesture has stopped,
+ *  and `now` rather than at the next frame. */
+export type Redraw = (settled: boolean, now?: boolean) => void
 
 /** The zoom buttons, once they exist, so a redraw can disable the one at a
  *  limit. */
@@ -39,11 +40,16 @@ export function controls(stage: HTMLElement, port: Viewport, redraw: Redraw,
     hinted = setTimeout(() => hint.classList.remove('on'), 1600)
   }
 
+  /* Drawn at once when the reader stops, not at the next frame. A browser
+     that is not painting — WebKit headless on Linux, a throttled page — has
+     no next frame to give until something else repaints, and a map whose
+     settled draw waited for one sat where the drag had left it undrawn, and
+     a large one never asked for the part in view. */
   let settle: ReturnType<typeof setTimeout> | undefined
   const moving = () => {
     redraw(false)
     clearTimeout(settle)
-    settle = setTimeout(() => redraw(true), 140)
+    settle = setTimeout(() => redraw(true, true), 140)
   }
 
   const zoomIn = button('+', 'Zoom in', () => { port.zoom(STEP); redraw(true) })
