@@ -485,6 +485,8 @@ The type is a closed set, checked when the report is stored:
 | `treemap` | `x` dimension, `y` measure | Area within area |
 | `radar` | `x` dimension, `y` measure | A spoke per category, a shape per series |
 | `bullet` | `y` measure, plus `target:`; `x` optional | A bar per category against its target |
+| `histogram` | `x` number; `y` measure optional; `bins:` | How a number's rows spread across its range |
+| `boxplot` | `y` number; `x` dimension optional | Each category's quartiles, median and whiskers |
 
 `series:` names a second dimension to split by, and `stacked: true` stacks the
 result — on `bar`, `column` and `area` only, because a stacked line has a top
@@ -508,6 +510,35 @@ across it and "1,500 of 1,000 · 150%" beside it. Without `x` it is one bullet
 for the whole set. `bands:` are where the track's shade changes, as fractions
 of each row's target, ascending, at most two: `[0.6, 0.9]`, the default,
 shades below 60% darkest, then to 90%, then the rest.
+
+A `histogram` and a `boxplot` draw how a number spreads rather than what it
+sums to, so both read it row by row — in the database, which is where the rows
+stay: a histogram of four million invoices sends twelve bins, a box plot eight
+numbers a category. A `histogram` bins `x`, which must be a number, into about
+`bins:` bins (twelve unless it says, at most sixty) on round numbers — 500 to
+1,000 rather than 487.3 to 974.6 — and counts the rows in each, or folds `y`
+over them where it names one. A `boxplot` draws, for each category of `x` or
+once for every row, the middle half of `y` as a box, its median across it, and
+whiskers to the furthest rows inside one and a half interquartile ranges of
+the box; the rows beyond are counted in the tooltip. Its `y` takes no
+aggregate: the spread of sums is not the spread of anything. Quartiles are
+nearest-rank and the median is the mean of the middle two, the same in every
+database cronos reads, because they are worked out from row ranks rather than
+from a percentile function only some of them have.
+
+```yaml
+- kind: chart
+  chart: histogram
+  title: Invoice sizes
+  x: {field: total}
+  bins: 20
+
+- kind: chart
+  chart: boxplot
+  title: Invoice sizes by status
+  x: {field: status}
+  y: {field: total}
+```
 
 ```yaml
 - kind: chart

@@ -19,6 +19,8 @@ export const PALETTE: { kind: TileKind; label: string; hint: string; icon: strin
   { kind: 'treemap', label: 'Treemap', hint: 'Parts within parts', icon: '▧' },
   { kind: 'radar', label: 'Radar', hint: 'A profile across measures', icon: '✳' },
   { kind: 'bullet', label: 'Bullet', hint: 'Each against a target', icon: '⊢' },
+  { kind: 'histogram', label: 'Histogram', hint: 'How a number spreads', icon: '▙' },
+  { kind: 'boxplot', label: 'Box plot', hint: 'Its spread, by category', icon: '⧈' },
   { kind: 'table', label: 'Table', hint: 'Every row', icon: '▤' },
 ]
 

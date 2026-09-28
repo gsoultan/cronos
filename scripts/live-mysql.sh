@@ -168,6 +168,16 @@ spec:
           title: Billed by month
           x: {field: issued_at, grain: month}
           y: {field: total, aggregate: sum}
+        # FLOOR and CASE for the bins, and window functions for the ranks:
+        # the two statements a chart writes that bucketing does not.
+        - kind: chart
+          chart: histogram
+          title: Invoice sizes
+          x: {field: total}
+        - kind: chart
+          chart: boxplot
+          title: Their spread
+          y: {field: total}
 YAML
 
 env CRONOS_ADDR=":$PORT" CRONOS_DEFINITIONS="$work/defs" \
@@ -219,8 +229,18 @@ if len(months) != 3:
 jan = next((m for m in months if "Jan" in str(m.get("label"))), None)
 if jan is None or abs(float(jan["value"]) - 150.0) > 0.005:
     print("JANUARY", jan); raise SystemExit(1)
+
+# Every invoice in a bin, and a box whose quartiles are in order.
+hist = next((b for b in blocks if b.get("chart") == "histogram"), None)
+if not hist or round(sum(float(x["value"]) for x in hist["bins"])) != 5:
+    print("HISTOGRAM", hist); raise SystemExit(1)
+box = next((b for b in blocks if b.get("chart") == "boxplot"), None)
+if not box or box["boxes"][0]["n"] != 5 or not (
+        box["boxes"][0]["low"] <= box["boxes"][0]["median"] <= box["boxes"][0]["high"]):
+    print("BOXPLOT", box); raise SystemExit(1)
 print("ok")' >/dev/null || die "the report is wrong: $(printf %s "$body" | head -c 200)"
 ok "renders, and the five invoices total 450.00 across three months"
+ok "and they bin, and their quartiles rank, in MySQL's own SQL"
 
 # A DECIMAL that arrived as bytes prints as a list of character codes, which is
 # a number-shaped thing that is not the number.

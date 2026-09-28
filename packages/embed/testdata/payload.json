@@ -1558,6 +1558,191 @@
       }
     },
     {
+      "bins": [
+        {
+          "from": 300,
+          "to": 400,
+          "label": "300–400",
+          "value": 1,
+          "formatted": "1"
+        },
+        {
+          "from": 400,
+          "to": 500,
+          "label": "400–500",
+          "value": 0,
+          "formatted": "0"
+        },
+        {
+          "from": 500,
+          "to": 600,
+          "label": "500–600",
+          "value": 0,
+          "formatted": "0"
+        },
+        {
+          "from": 600,
+          "to": 700,
+          "label": "600–700",
+          "value": 0,
+          "formatted": "0"
+        },
+        {
+          "from": 700,
+          "to": 800,
+          "label": "700–800",
+          "value": 1,
+          "formatted": "1"
+        },
+        {
+          "from": 800,
+          "to": 900,
+          "label": "800–900",
+          "value": 0,
+          "formatted": "0"
+        },
+        {
+          "from": 900,
+          "to": 1000,
+          "label": "900–1,000",
+          "value": 0,
+          "formatted": "0"
+        },
+        {
+          "from": 1000,
+          "to": 1100,
+          "label": "1,000–1,100",
+          "value": 0,
+          "formatted": "0"
+        },
+        {
+          "from": 1100,
+          "to": 1200,
+          "label": "1,100–1,200",
+          "value": 1,
+          "formatted": "1"
+        }
+      ],
+      "chart": "histogram",
+      "coverage": {
+        "applied": [
+          "carrier",
+          "parcels_over"
+        ]
+      },
+      "kind": "chart",
+      "series": [],
+      "title": "Histogram",
+      "xAxis": {
+        "min": 300,
+        "max": 1200,
+        "ticks": [
+          {
+            "at": 0,
+            "label": "300"
+          },
+          {
+            "at": 0.2222222222222222,
+            "label": "500"
+          },
+          {
+            "at": 0.4444444444444444,
+            "label": "700"
+          },
+          {
+            "at": 0.6666666666666666,
+            "label": "900"
+          },
+          {
+            "at": 1,
+            "label": "1,200"
+          }
+        ]
+      },
+      "yAxis": {
+        "min": 0,
+        "max": 1,
+        "ticks": [
+          {
+            "at": 0,
+            "label": "0"
+          },
+          {
+            "at": 1,
+            "label": "1"
+          }
+        ]
+      }
+    },
+    {
+      "boxes": [
+        {
+          "label": "England",
+          "n": 2,
+          "low": 300,
+          "q1": 300,
+          "median": 750,
+          "q3": 1200,
+          "high": 1200,
+          "said": [
+            "300",
+            "300",
+            "750",
+            "1,200",
+            "1,200"
+          ]
+        },
+        {
+          "label": "Scotland",
+          "n": 1,
+          "low": 700,
+          "q1": 700,
+          "median": 700,
+          "q3": 700,
+          "high": 700,
+          "said": [
+            "700",
+            "700",
+            "700",
+            "700",
+            "700"
+          ]
+        }
+      ],
+      "chart": "boxplot",
+      "coverage": {
+        "applied": [
+          "carrier",
+          "parcels_over"
+        ]
+      },
+      "kind": "chart",
+      "series": [],
+      "title": "Box plot",
+      "yAxis": {
+        "min": 0,
+        "max": 1500,
+        "ticks": [
+          {
+            "at": 0,
+            "label": "0"
+          },
+          {
+            "at": 0.3333333333333333,
+            "label": "500"
+          },
+          {
+            "at": 0.6666666666666666,
+            "label": "1,000"
+          },
+          {
+            "at": 1,
+            "label": "1,500"
+          }
+        ]
+      }
+    },
+    {
       "columns": [
         {
           "label": "Region"

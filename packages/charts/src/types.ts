@@ -84,6 +84,31 @@ export interface Axis {
   ticks: Tick[]
 }
 
+/** One bin of a histogram: where it starts and stops along the number, named
+ *  as a range, and how many rows fell in it, formatted by the engine. */
+export interface Bin {
+  from: number
+  to: number
+  label: string
+  value: number
+  formatted: string
+}
+
+/** One category's spread in a box plot: the box from q1 to q3, the median,
+ *  and whiskers to the furthest rows inside Tukey's fences; outliers counts
+ *  the rows beyond them. `said` is the five formatted, low to high. */
+export interface Box {
+  label: string
+  n: number
+  low: number
+  q1: number
+  median: number
+  q3: number
+  high: number
+  outliers?: number
+  said: [string, string, string, string, string]
+}
+
 /** One row of a bullet chart: a category's value and the target it is read
  *  against, each formatted by the engine that knew the unit. */
 export interface Bullet {
@@ -463,6 +488,10 @@ export interface ChartBlock {
    *  row's target its track is shaded at. */
   bullets?: Bullet[]
   bands?: number[]
+  /** A histogram's bins, read along `xAxis`; a box plot's boxes, one a
+   *  category, read against `yAxis`. */
+  bins?: Bin[]
+  boxes?: Box[]
   coverage?: Coverage
 }
 

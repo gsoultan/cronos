@@ -3,6 +3,8 @@ import { barBlock } from './blocks/bar'
 import { columnBlock } from './blocks/column'
 import { radarBlock } from './blocks/radar'
 import { bulletBlock } from './blocks/bullet'
+import { histogramBlock } from './blocks/histogram'
+import { boxplotBlock } from './blocks/boxplot'
 import { lineBlock } from './blocks/line'
 import { pieBlock } from './blocks/pie'
 import { scatterBlock } from './blocks/scatter'
@@ -88,6 +90,10 @@ export function drawChart(b: ChartBlock, opts: DrawOptions = {}): HTMLElement {
       return radarBlock(b)
     case 'bullet':
       return bulletBlock(b)
+    case 'histogram':
+      return histogramBlock(b)
+    case 'boxplot':
+      return boxplotBlock(b)
     default:
       return unsupported(`${b.chart} charts need a newer viewer`)
   }
@@ -99,7 +105,7 @@ export { unaffectedNote } from './coverage'
 export { el, fill } from './dom'
 export { css, documentCss, LAYER } from './styles'
 export type {
-  Arc, Axis, Bar, Block, Bounds, Bullet, Cell, Cells, ChartBlock, Coverage, Credit, Delta, DrawOptions,
+  Arc, Axis, Bar, Bin, Block, Bounds, Box, Bullet, Cell, Cells, ChartBlock, Coverage, Credit, Delta, DrawOptions,
   FilterDef, FilterValues, FrameMark, Frames, Gauge, GeoMap, Group, LegendStop, MapArea, MapDetail, MapKey, MapPick,
   MapViewAsk, MapViewer, Marker, Point, Rect, ReportPayload, Shape, Stage, StatBlock, Step, TableBlock,
   TextBlock, Tick, Tiles, Track,

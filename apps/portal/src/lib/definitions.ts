@@ -370,6 +370,8 @@ export interface ReportBlockInput {
   target?: { field?: string; aggregate?: string; value?: number; label?: string }
   /** Where a bullet chart's track changes shade, as the file has them. */
   bands?: number[]
+  /** About how many bins a histogram cuts. */
+  bins?: number
   series?: string
   stacked?: boolean | 'percent'
   /** A plot's horizontal measure. */
@@ -398,7 +400,7 @@ export function blockInput(b: Tile): ReportBlockInput {
     field: b.field, groupBy: b.groupBy, aggregate: b.aggregate,
     series: b.series, stacked: b.stacked,
     xField: b.xField, sizeField: b.sizeField, map: b.map,
-    metrics: b.metrics, target: b.target, bands: b.bands,
+    metrics: b.metrics, target: b.target, bands: b.bands, bins: b.bins,
     columns: b.columns, filter: b.filter, sort: b.sort,
   }
 }
@@ -451,7 +453,7 @@ const CHARTS: Record<string, string> = {
   scatter: 'scatter', bubble: 'bubble', map: 'map',
   combo: 'combo', funnel: 'funnel', waterfall: 'waterfall',
   heatmap: 'heatmap', gauge: 'gauge', treemap: 'treemap',
-  radar: 'radar', bullet: 'bullet',
+  radar: 'radar', bullet: 'bullet', histogram: 'histogram', boxplot: 'boxplot',
 }
 
 /** The chart types whose horizontal axis is a measure rather than a bucket. */
@@ -517,26 +519,15 @@ function block(b: ReportBlockInput): Yaml {
     const chart = CHARTS[b.kind] ?? b.chart ?? 'bar'
     return narrowed({
       kind: 'chart', dataset: reads, title: b.title, chart,
-      // A plot's x names what each dot *is* and its xValue is where the dot
-      // sits. One field cannot be both a dimension and a measure, and letting
-      // it try is how a date grain ends up on a number.
-      // Nor does a gauge, which is one number: a grouping left on one — the
-      // canvas seeds one on every block it adds — was written, and the
-      // server refused the report for it. And nothing is written for no
-      // grouping at all, which a bullet chart may have: an empty field was,
-      // so saving one unchanged changed its file.
-      x: (chart === 'funnel' && (b.metrics?.length ?? 0) > 0) || chart === 'gauge' || !b.groupBy
-        ? undefined
-        : { field: b.groupBy, grain: PLOTTED.has(chart) ? undefined : b.grain || undefined },
+      x: xOf(chart, b),
       xValue: PLOTTED.has(chart) && b.xField
         ? { field: b.xField, aggregate: b.aggregate ?? 'sum' }
         : undefined,
-      // A metered chart's measures replace y rather than joining it — both
-      // would be two answers to what the chart measures.
-      y: METERED.has(chart) ? undefined : { field: b.field, aggregate: b.aggregate ?? 'sum' },
+      y: yOf(chart, b),
       metrics: METERED.has(chart) ? metrics(b.metrics) : undefined,
       target: TARGETED.has(chart) ? targetOf(b.target) : undefined,
       bands: chart === 'bullet' && b.bands?.length ? b.bands : undefined,
+      bins: chart === 'histogram' && b.bins ? b.bins : undefined,
       series: b.series ? { field: b.series } : undefined,
       stacked: b.stacked || undefined,
       size: chart === 'bubble' && b.sizeField
@@ -546,6 +537,38 @@ function block(b: ReportBlockInput): Yaml {
     })
   }
   return narrowed({ kind: b.kind, dataset: reads, title: b.title, text: b.title })
+}
+
+/**
+ * What a chart buckets by — or, for a histogram, the number it bins.
+ *
+ * A plot's x names what each dot *is* and its xValue is where the dot sits:
+ * one field cannot be both a dimension and a measure, and letting it try is
+ * how a date grain ends up on a number. A funnel of metrics and a gauge have
+ * none: a grouping left on a gauge — the canvas seeds one on every block it
+ * adds — was written, and the server refused the report for it. Nothing is
+ * written for no grouping at all, which a bullet chart or a box plot may
+ * have: an empty field was, so saving one unchanged changed its file.
+ */
+function xOf(chart: string, b: ReportBlockInput): Yaml {
+  if (chart === 'histogram') return b.xField ? { field: b.xField } : undefined
+  if ((chart === 'funnel' && (b.metrics?.length ?? 0) > 0) || chart === 'gauge' || !b.groupBy) {
+    return undefined
+  }
+  return { field: b.groupBy, grain: PLOTTED.has(chart) ? undefined : b.grain || undefined }
+}
+
+/**
+ * What a chart measures, folded — except where it is not. A metered chart's
+ * measures replace y rather than joining it; a box plot reads every row's
+ * value, so its y has no aggregate; and a histogram counts its rows unless it
+ * names a measure to fold over each bin.
+ */
+function yOf(chart: string, b: ReportBlockInput): Yaml {
+  if (METERED.has(chart)) return undefined
+  if (chart === 'boxplot') return { field: b.field }
+  if (chart === 'histogram' && !b.field) return undefined
+  return { field: b.field, aggregate: b.aggregate ?? 'sum' }
 }
 
 function metrics(list: ReportBlockInput['metrics']): Yaml {
@@ -994,11 +1017,14 @@ function readBlock(v: Yaml): ReportBlockInput {
       ...narrowing,
       kind: chart, chart,
       title: str(b.title), dataset: str(b.dataset) || undefined,
-      groupBy: str(x.field), grain: str(x.grain) || undefined,
+      // A histogram's x is the number it bins, which the builder keeps where
+      // it keeps a plot's horizontal measure; everything else's is a grouping.
+      groupBy: chart === 'histogram' ? undefined : str(x.field), grain: str(x.grain) || undefined,
       field: str(y.field), aggregate: str(y.aggregate) || undefined,
       series: str(asMap(b.series).field) || undefined,
       stacked: b.stacked === true ? true : b.stacked === 'percent' ? 'percent' : undefined,
-      xField: str(asMap(b.xValue).field) || undefined,
+      xField: (chart === 'histogram' ? str(x.field) : str(asMap(b.xValue).field)) || undefined,
+      bins: chart === 'histogram' ? num(b.bins) : undefined,
       sizeField: str(asMap(b.size).field) || undefined,
       metrics: asList(b.metrics).map((raw) => {
         const metric = asMap(raw)

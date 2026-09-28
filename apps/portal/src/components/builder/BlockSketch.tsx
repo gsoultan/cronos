@@ -66,6 +66,24 @@ function shape(kind: TileKind) {
         </>
       )
 
+    case 'histogram':
+      // Touching: the bins are one range, not a row of categories.
+      return [10, 22, 38, 50, 44, 30, 18, 8].map((h, i) => (
+        <rect key={i} x={8 + i * 13} y={62 - h} width="13" height={h} fill={s(1)}
+          stroke="var(--color-surface)" strokeWidth="1" />
+      ))
+
+    case 'boxplot':
+      return [[24, 18, 30, 40, 52, 58], [60, 10, 20, 28, 38, 46], [96, 22, 32, 36, 44, 54]].map(
+        ([x = 0, hi = 0, q3 = 0, med = 0, q1 = 0, lo = 0]) => (
+          <g key={x}>
+            <line x1={x} x2={x} y1={hi} y2={lo} stroke="var(--color-ink-muted)" strokeWidth="1" />
+            <rect x={x - 9} y={q3} width="18" height={q1 - q3} rx="2" fill={s(1)} fillOpacity="0.2"
+              stroke={s(1)} strokeWidth="1.5" />
+            <line x1={x - 9} x2={x + 9} y1={med} y2={med} stroke={s(1)} strokeWidth="2.5" />
+          </g>
+        ))
+
     case 'bullet':
       return [0.86, 0.52, 0.7].map((v, i) => (
         <g key={i}>
