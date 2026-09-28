@@ -563,6 +563,13 @@ function mapSpec(m: ReportBlockInput['map']): Yaml {
     // simplify is not zero: it keeps every vertex, and `||` leaves it alone.
     hexKm: m.hexKm || undefined,
     simplify: m.simplify || undefined,
+    classify: m.classify || undefined,
+    // Only with custom classes, which are the only ones that read them: the
+    // server refuses breaks beside any other method rather than ignore them.
+    breaks: m.classify === 'custom' && m.breaks?.length ? m.breaks : undefined,
+    ramp: m.ramp || undefined,
+    // Zero is a midpoint, and the default one: written only when it is not.
+    midpoint: m.ramp === 'diverging' && m.midpoint ? m.midpoint : undefined,
     basemap: basemapOf(m),
     overlays: m.overlays?.length ? m.overlays : undefined,
   }
@@ -988,6 +995,10 @@ function readMap(m: Doc): TileMap {
     toLon: str(m.toLon) || undefined,
     hexKm: num(m.hexKm),
     simplify: num(m.simplify),
+    classify: str(m.classify) || undefined,
+    breaks: asList(m.breaks).length ? asList(m.breaks).map(Number) : undefined,
+    ramp: str(m.ramp) || undefined,
+    midpoint: num(m.midpoint),
     // Cast rather than checked. The server refuses a provider it has no code
     // for, so a stored one is one of these; a check here would be a second
     // list to keep in step with that one.

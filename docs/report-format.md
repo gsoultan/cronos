@@ -637,6 +637,41 @@ holds to within two and a half percent: it is set by the stretch at the middle
 of the data rounded to a step of five percent, and a filter leaves the grid
 exactly where it was unless it moves the data far enough to change that.
 
+**Shades.** The polygon, line and hexbin layers shade each mark from a ramp
+of six. `classify` says how the values are split among them:
+
+| `classify` | Each shade holds | For |
+| :--- | :--- | :--- |
+| `quantile` (default) | the same number of places | skewed measures — most of them |
+| `equal` | the same width of values | a measure whose steps mean something: a percentage, a score |
+| `jenks` | a run of values between the widest gaps | clumped data; natural breaks, found exactly rather than approximated |
+| `custom` | the classes `breaks` sets: up to five upper bounds, ascending | a regulator's thresholds, last year's bands |
+
+A value on a break is in the shade below it. A custom class keeps its colour
+whatever the data is, so two reports shade the same threshold alike, and a
+band no value reaches is left out of the legend.
+
+`ramp: diverging` takes two hues either side of `midpoint` — zero unless set —
+for a measure whose middle means something: a change on last year, a margin,
+performance against a target. The three shades below the middle and the three
+above are classed apart, each side palest nearest it; classed together, one
+large rise would put every fall and every small rise in the same pale band. The
+hues are blue and orange, which hold apart under every common colour-vision
+deficiency, as red and green do not.
+
+```yaml
+map:
+  layers: [polygon]
+  geometry: shape
+  ramp: diverging
+  midpoint: 95
+  classify: jenks
+```
+
+A diverging ramp's custom breaks include its midpoint and at most two either
+side of it. `classify` and `ramp` on a map with no shaded layer are refused:
+there is nothing for them to colour.
+
 **Colour by category** with `series`, on the layers whose colour is otherwise
 unspent — `scatter`, `bubble`, `cluster` and `flow`:
 
@@ -654,7 +689,13 @@ It is refused beside `polygon`, `line`, `hexbin` or `heat`, which already spend
 colour on the value: two meanings for one channel is how a choropleth with
 coloured dots on it becomes unreadable. Categories take the first three colours
 of the palette, the way a scatter's series do, and a fourth and later share the
-third, named together in the legend.
+third, named together in the legend. Each is drawn in a shape of its own as
+well — a circle, a square, a triangle, each at the same area — on screen and on
+paper alike, so a reader who cannot tell two of the colours apart can still
+tell the categories apart, and the key shows the shape beside the colour.
+
+A `bubble` layer keys its sizes under the map: three rings drawn to the
+bubbles' own rule, at round numbers up to the largest value on it.
 
 The server projects every geometry to **Web Mercator**, simplifies it, and sends
 SVG paths — the same argument that keeps currency formatting on the server.

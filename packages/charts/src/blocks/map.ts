@@ -1,4 +1,4 @@
-import type { ChartBlock, DrawOptions, GeoMap, MapKey } from '../types'
+import type { ChartBlock, DrawOptions, GeoMap } from '../types'
 import { el } from '../dom'
 import { svg } from '../svg'
 import { rampLegend } from '../legend'
@@ -15,6 +15,7 @@ import { plane, type Plane } from '../map/plane'
 import { density, markersOf, type Density } from '../map/density'
 import { refiner, type Refiner } from '../map/detail'
 import { grouped } from '../map/format'
+import { bubbleValues, diverge, keyLegend, SHADED, sizeLegend } from '../map/keys'
 import { areaTools, pickOf, type Pick } from '../map/sets'
 
 /** How deep a map with no basemap may be zoomed: a street, about. */
@@ -98,22 +99,29 @@ export function mapBlock(b: ChartBlock, opts: DrawOptions = {}): HTMLElement {
   const pick = pickOf(m, opts.filter)
   const layers: Drawn[] = []
   const refiners: Refiner[] = []
+  // What the map's own bubbles are sized by, keyed again as a view arrives.
+  const sizes = el('div', { class: 'size-slot' })
   for (const [k, x] of maps.entries()) {
     const tint = k > 0 && !x.keys?.length ? tintOf(k) : undefined
-    const own = x.layers.flatMap((l) =>
-      draw(l, x, { tips, overlay, show, painted, pick: k === 0 ? pick : undefined, tint }) ?? [])
-    if (tint !== undefined) {
-      for (const l of own) l.node.style.setProperty('--cr-pin', `var(--cr-series-${slotOf(tint, PLOT_PALETTE_SIZE)})`)
+    const own: Drawn[] = []
+    for (const name of x.layers) {
+      const l = draw(name, x, { tips, overlay, show, painted, pick: k === 0 ? pick : undefined, tint })
+      if (!l) continue
+      if (x.ramp === 'diverging' && SHADED.has(name)) diverge(l.node)
+      if (tint !== undefined) l.node.style.setProperty('--cr-pin', `var(--cr-series-${slotOf(tint, PLOT_PALETTE_SIZE)})`)
+      ;(k > 0 && above ? above : canvas).append(l.node)
+      own.push(l)
     }
-    for (const l of own) (k > 0 && above ? above : canvas).append(l.node)
     layers.push(...own)
     if (x.detail && opts.mapView) {
       refiners.push(refiner(x.detail, opts.mapView, stage, (got) => {
         for (const l of own) l.take?.(got)
+        if (k === 0) sizes.replaceChildren(sizeLegend(bubbleValues({ ...x, ...got })) ?? '')
         redraw(true)
       }))
     }
   }
+  sizes.replaceChildren(sizeLegend(bubbleValues(m)) ?? '')
   areaTools(stage, above ?? canvas, port, m.area, opts.filter)
 
   const line = credits(tiles, m.note)
@@ -153,7 +161,7 @@ export function mapBlock(b: ChartBlock, opts: DrawOptions = {}): HTMLElement {
   if (painted) pointAt(stage, painted, tips, pick)
 
   panel.append(stage)
-  legends(panel, m, line.element)
+  legends(panel, m, line.element, sizes)
   watch(stage, port, redraw, () => { for (const r of refiners) r.stop() })
   canvas.setAttribute('viewBox', viewBox(port.view()))
   above?.setAttribute('viewBox', viewBox(port.view()))
@@ -162,11 +170,13 @@ export function mapBlock(b: ChartBlock, opts: DrawOptions = {}): HTMLElement {
 
 /** What goes under a map: the ramp, the categories, the credits, and what the
  *  reader should know about how much of the data is on it. */
-function legends(panel: HTMLElement, m: GeoMap, credit: HTMLElement | null) {
+function legends(panel: HTMLElement, m: GeoMap, credit: HTMLElement | null, sizes: HTMLElement) {
   const ramp = ramped(m) ? rampLegend(m.legend) : null
+  if (ramp && m.ramp === 'diverging') diverge(ramp)
   if (ramp) panel.append(ramp)
-  const keyed = keyLegend(m.keys)
+  const keyed = keyLegend(m)
   if (keyed) panel.append(keyed)
+  panel.append(sizes)
   if (credit) panel.append(credit)
   // Beside the legend, where a reader checks what the colours mean: a map
   // drawn from part of its data has totals that mean less than they look.
@@ -189,7 +199,8 @@ function legends(panel: HTMLElement, m: GeoMap, credit: HTMLElement | null) {
  */
 function overlayLegend(panel: HTMLElement, ov: GeoMap, k: number) {
   const ramp = ramped(ov) ? rampLegend(ov.legend) : null
-  const keys = keyLegend(ov.keys)
+  if (ramp && ov.ramp === 'diverging') diverge(ramp)
+  const keys = keyLegend(ov)
   if (!keys && pinned(ov)) {
     panel.append(el('div', { class: 'legend', part: 'legend overlay-key' },
       el('span', { class: 'key' },
@@ -357,12 +368,3 @@ function aspectOf(m: GeoMap): string {
   return String(Math.round(Math.min(Math.max(a, 1), 2.2) * 1000) / 1000)
 }
 
-/** The key for points coloured by category. */
-function keyLegend(keys: MapKey[] | undefined): HTMLElement | null {
-  if (!keys || keys.length === 0) return null
-  return el('div', { class: 'legend', part: 'legend' },
-    ...keys.map((k) =>
-      el('span', { class: 'key' },
-        el('i', { class: 'swatch dot', style: `background: var(--cr-series-${slotOf(k.slot, PLOT_PALETTE_SIZE)})` }),
-        k.label)))
-}

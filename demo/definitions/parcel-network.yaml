@@ -68,6 +68,24 @@ spec:
             lon: lon
             basemap: {provider: openstreetmap}
 
+        # Against a target, either side of it: the zones that beat 95% in the
+        # warm shades, the ones short of it in the cool, each side classed on
+        # its own at its natural breaks — so a zone that just missed is never
+        # the colour of one that failed badly.
+        - kind: chart
+          chart: map
+          dataset: zones
+          title: On time against the 95% target
+          x: {field: city}
+          y: {field: on_time, aggregate: max}
+          map:
+            layers: [polygon]
+            geometry: shape
+            ramp: diverging
+            midpoint: 95
+            classify: jenks
+            basemap: {provider: openstreetmap}
+
         # Nine hundred points would be a smear at this zoom. Clustered, they
         # are a count per neighbourhood that separates as you zoom in, each
         # delivery coloured by who carried it.

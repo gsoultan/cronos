@@ -1,4 +1,6 @@
 import type { Cells, Marker } from '../types'
+import { glyphOf, paintGlyph } from './glyphs'
+import { bubbleRadius } from './layers'
 import { compact, grouped } from './format'
 import type { Colours, Hit, Painter } from './plane'
 import type { View } from './view'
@@ -115,12 +117,11 @@ function dots(ctx: CanvasRenderingContext2D, d: DotLayer, view: View, scale: num
     const py = ((cells.y[i] ?? 0) - view.y) * scale
     const n = cells.n[i] ?? 1
     const r = d.kind === 'bubble'
-      ? 4 + Math.sqrt(weights[i] ?? 0) * 14
+      ? bubbleRadius(weights[i] ?? 0)
       : n > 1 ? Math.min(4.5 + Math.log2(n) * 0.8, 9) : 4.5
     if (px < -r || py < -r || px > width + r || py > height + r) continue
     ctx.fillStyle = d.keyed ? colours.series(cells.s?.[i]) : colours.pin
-    ctx.beginPath()
-    ctx.arc(px, py, r, 0, Math.PI * 2)
+    paintGlyph(ctx, d.keyed ? glyphOf(cells.s?.[i]) : 'circle', px, py, r)
     ctx.fill()
     ctx.stroke()
     d.index.add(px, py, r, i)

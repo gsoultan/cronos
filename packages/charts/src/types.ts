@@ -267,6 +267,9 @@ export interface GeoMap {
   hexes?: Shape[]
   /** What each colour means, when points are coloured by category. */
   keys?: MapKey[]
+  /** 'diverging' when the shaded layers take two hues either side of a
+   *  midpoint — steps below the middle cool, from it up warm. */
+  ramp?: 'diverging'
   tiles?: Tiles
   /** Why a basemap the author asked for is not under the data. */
   note?: string

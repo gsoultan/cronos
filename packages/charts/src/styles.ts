@@ -55,6 +55,18 @@ $SCOPE$ {
   --cr-ramp-5: #256abf;
   --cr-ramp-6: #104281;
 
+  /* The diverging ramp, for a measure with a middle — a change, a margin: the
+     sequential ramp's blue below it and the palette's orange above, darkest
+     furthest from it and palest either side. Blue against orange holds apart
+     under every common colour-vision deficiency, which red against green
+     does not. A map reads it through the sequential names; see map.ts. */
+  --cr-div-1: #104281;
+  --cr-div-2: #3987e5;
+  --cr-div-3: #9ec5f4;
+  --cr-div-4: #f7c6ab;
+  --cr-div-5: #eb7f4c;
+  --cr-div-6: #a33f12;
+
   /* The ordinal ramp, for categories whose order carries meaning — funnel
      stages, treemap ranks. One hue like the sequential ramp, but with wider
      lightness gaps and a light end that still clears the surface: these are
@@ -489,7 +501,14 @@ tr:last-child td { border-bottom: 0 }
 .credit { margin-top: 6px; font-size: 11px; color: var(--cr-ink-muted) }
 .credit a { color: inherit; text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 40%, transparent) }
 .credit .note { display: block; margin-top: 2px; color: var(--cr-ink-secondary) }
-.swatch.dot { border-radius: 999px }
+.swatch.dot, .swatch.circle { border-radius: 999px }
+/* A category's glyph in its key, as its places are drawn — see glyphs.ts. */
+.swatch.square { border-radius: 1px }
+.swatch.triangle { border-radius: 0; clip-path: polygon(50% 0, 100% 100%, 0 100%) }
+/* What a bubble's size says: circles drawn to the bubbles' own rule. */
+.legend.sizes { align-items: flex-end }
+.size-ring { display: block; flex: none; overflow: visible }
+.size-ring circle { fill: none; stroke: var(--cr-ink-muted); stroke-width: 1 }
 
 /* -- Legend and tooltip -------------------------------------------------- */
 
@@ -651,6 +670,14 @@ tr:last-child td { border-bottom: 0 }
     --cr-ramp-4: #5598e7;
     --cr-ramp-5: #86b6ef;
     --cr-ramp-6: #b7d3f6;
+    /* Reversed for the same reason: the shades either side of the midpoint
+       recede toward the surface, and the extremes are the bright ones. */
+    --cr-div-1: #b7d3f6;
+    --cr-div-2: #5598e7;
+    --cr-div-3: #1c5cab;
+    --cr-div-4: #8a3510;
+    --cr-div-5: #d95926;
+    --cr-div-6: #f5b28f;
 
     /* Re-stepped for the dark surface, and reversed for the same reason the
        sequential ramp is: the step nearest the surface has to stay visible

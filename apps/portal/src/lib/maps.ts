@@ -26,6 +26,12 @@ const SHAPED = ['polygon', 'line']
  */
 const COLOURED = new Set(['polygon', 'line', 'hexbin', 'heat'])
 
+/** The layers shaded from the ramp, which classes and a diverging ramp colour. */
+const SHADED = new Set(['polygon', 'line', 'hexbin'])
+
+/** Whether any layer is shaded from the ramp. */
+export const shades = (layers: string[]) => layers.some((l) => SHADED.has(l))
+
 /** As wide as a hexagon may be. Wider than a continent is one hexagon. */
 export const MAX_HEX_KM = 5000
 
@@ -93,6 +99,11 @@ export function relayer(
     ...block.map,
     layers,
     hexKm: layers.includes('hexbin') ? block.map?.hexKm : undefined,
+  }
+  // How the shades are classed means nothing once nothing is shaded, and the
+  // server refuses it rather than ignore it.
+  if (!shades(drawnLayers(map))) {
+    map.classify = map.breaks = map.ramp = map.midpoint = undefined
   }
   return { map, series: takesSeries(drawnLayers(map)) ? block.series : undefined }
 }

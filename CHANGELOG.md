@@ -22,6 +22,16 @@ needs a deployment to act says so under **Upgrading**.
 
 ## Unreleased
 
+**A map shades its values the way they fall.** `classify` splits the shaded
+layers' values among the six shades by `quantile` — as before, and still the
+default — `equal` intervals, `jenks` natural breaks, found exactly, or
+`custom` breaks an author gives. `ramp: diverging` shades in two hues either
+side of a `midpoint`, for changes, margins and targets, each side classed
+apart. Places coloured by category are drawn in a shape per category as well,
+on screen and on paper, and a bubble map keys what its sizes mean. The demo's
+parcel network shades its zones against a 95% on-time target. See "Shades" in
+[docs/report-format.md](docs/report-format.md).
+
 **A map filters the report it is on.** A click on a region or a place narrows
 the report to it — the `string` or `enum` filter bound to the field the map
 labels by — and a click on it again lets it go; the map stays whole, with the

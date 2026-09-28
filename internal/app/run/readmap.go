@@ -212,7 +212,7 @@ func (r *mapReader) finish(out *GeoMap) {
 	}
 	out.Bounds = r.box.padded()
 
-	shade(out)
+	shade(out, r.blk.Map)
 	r.paint(out)
 
 	lo, hi := span(r.weights)
@@ -249,7 +249,7 @@ func partial(blk definition.Block) string {
 // same rows, so the same colour has to mean the same value on both. Hexagons
 // never share a map with either — definition.MapSpec refuses it — because a
 // hexagon's value is a fold of points and not a row.
-func shade(out *GeoMap) {
+func shade(out *GeoMap, m *definition.MapSpec) {
 	marks := make([]*Shape, 0, len(out.Shapes)+len(out.Lines)+len(out.Hexes))
 	for _, list := range [][]Shape{out.Shapes, out.Lines, out.Hexes} {
 		for i := range list {
@@ -260,12 +260,15 @@ func shade(out *GeoMap) {
 	for i, s := range marks {
 		values[i] = s.Value
 	}
-	breaks := steps(values)
+	ramp := shadesFor(m, values)
 	for _, s := range marks {
-		s.Step = stepOf(s.Value, breaks)
+		s.Step = ramp.shade(s.Value)
 		s.Formatted = compact(s.Value)
 	}
-	out.Legend = legendOf(values, breaks)
+	out.Legend = ramp.legend(values)
+	if ramp.diverging {
+		out.Ramp = string(definition.DivergingRamp)
+	}
 }
 
 // paint gives each marker and flow its category's colour, and names them.
@@ -374,21 +377,6 @@ func foldOf(blk definition.Block, ds definition.Dataset) definition.Fold {
 		}
 	}
 	return definition.Foldable(name)
-}
-
-// legendOf labels each band of the ramp with the values it covers.
-func legendOf(values []float64, breaks []float64) []Legend {
-	if len(values) == 0 {
-		return []Legend{}
-	}
-	lo, hi := span(values)
-	out := make([]Legend, 0, len(breaks)+1)
-	from := lo
-	for i, b := range breaks {
-		out = append(out, Legend{Step: i, From: compact(from), To: compact(b)})
-		from = b
-	}
-	return append(out, Legend{Step: len(breaks), From: compact(from), To: compact(hi)})
 }
 
 // layerNames is the resolved layer list as the wire carries it.

@@ -47,6 +47,8 @@ type Tick struct {
 type Key struct {
 	Tone  string `json:"tone"`
 	Label string `json:"label"`
+	// Shape is the glyph the key's marks are drawn in, as Mark.Shape.
+	Shape string `json:"shape,omitempty"`
 }
 
 // validate reports what would typeset into a wrong chart rather than a failed
