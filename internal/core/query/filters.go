@@ -52,6 +52,12 @@ func (b *binder) filter(ds definition.Dataset, def definition.Filter, field stri
 		return "", fmt.Errorf("%w: filter %q was sent operator %q, which is not one of them",
 			ErrBadArgument, def.Name, v.Op)
 	}
+	// An area narrows two fields with its own two operators, and nothing
+	// else takes either: a date filter sent `near` is a caller's mistake, and
+	// an area sent `eq` would compare a latitude with a list of four numbers.
+	if def.Type == definition.Area || v.Op == Within || v.Op == Near {
+		return b.area(ds, def, v)
+	}
 	// The field name is the one piece of a filter predicate that reaches SQL as
 	// text rather than as an argument. It comes from the author's bind map, not
 	// from the caller — but an author is not a reason to skip the check, so it

@@ -1,4 +1,5 @@
 import { el } from './dom'
+import { describeArea } from './map/sets'
 import type { FilterDef, FilterValues } from './types'
 
 /**
@@ -65,15 +66,30 @@ function control(def: FilterDef, value: Value, emit: Emit): HTMLElement {
       return range(def, value, emit, def.type === 'number' ? 'number' : 'date')
     case 'slider':
       return one(def, value, emit, 'number')
+    case 'map':
+      return area(value, emit)
     default:
       return text(def, value, emit)
   }
+}
+
+/**
+ * An area, which is set on a map rather than typed: the bar says what it holds
+ * — a box, or a distance around a place — and lets it go.
+ */
+function area(value: Value, emit: Emit): HTMLElement {
+  const said = describeArea(value)
+  if (!said) return el('span', { class: 'area-none' }, 'Everywhere — set it from a map')
+  const clear = el('button', { type: 'button', class: 'chip on', 'aria-label': 'Show everywhere' }, '✕')
+  clear.addEventListener('click', () => emit(undefined))
+  return el('span', { class: 'chips' }, el('span', { class: 'area-said' }, said), clear)
 }
 
 /** What a payload from a server too old to send a control gets. */
 function fallback(type: string): string {
   if (type === 'enum' || type === 'bool') return 'dropdown'
   if (type === 'date' || type === 'number') return 'range'
+  if (type === 'area') return 'map'
   return 'search'
 }
 

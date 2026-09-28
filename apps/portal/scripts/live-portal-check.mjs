@@ -169,12 +169,22 @@ fleet.on('pageerror', (e) => errors.push(String(e)))
 await fleet.route(/tile\.openstreetmap\.org|api\.mapbox\.com|tile\.googleapis\.com/, (r) => r.abort())
 const fleetViews = []
 fleet.on('response', (r) => { if (r.url().endsWith('/map')) fleetViews.push(r.status()) })
+// Each render of the report, as asked and as answered: what a map sets has to
+// reach the server, and the server's numbers are what show it did.
+const renders = []
+fleet.on('response', async (r) => {
+  if (r.request().method() !== 'POST' || !/\/v1\/reports\/fleet$/.test(r.url())) return
+  renders.push({ asked: r.request().postDataJSON(), view: await r.json().catch(() => null) })
+})
 await fleet.goto(`${B}/reports/fleet`, { waitUntil: 'domcontentloaded' })
 const heatMap = fleet.getByTestId('chart').filter({ hasText: 'Where the vans are' })
 await heatMap.locator('[part=map-canvas]').waitFor({ timeout: 30000 })
 ok('a map of 200,000 places draws in the portal, painted rather than an element each',
   await heatMap.locator('[part=map-canvas]').count() === 1
-  && await heatMap.locator('[part=marker]').count() === 0)
+  // The only marks that are elements are the eleven depots drawn over it.
+  && await heatMap.locator('[part=marker]').count() === 11)
+ok('the depots drawn over it are named under it',
+  (await heatMap.locator('[part~=overlay-key]').innerText()).includes('Depots'))
 ok('and says how many places it holds',
   (await heatMap.locator('[part=places]').innerText()).includes('200,000 places'))
 ok('its clusters count every one of them',
@@ -183,6 +193,55 @@ ok('its clusters count every one of them',
 for (let i = 0; i < 60 && fleetViews.length < 2; i++) await fleet.waitForTimeout(100)
 ok('each asks the server for the part in view, and is answered',
   fleetViews.length >= 2 && fleetViews.every((s) => s === 200))
+
+/* A map sets the report's filters. A click on a depot narrows the report to
+   its vans, while the depots map stays whole with the one picked marked, so
+   the next can be clicked; the filter bar shows what the map set, and using
+   the bar for something else does not undo it. */
+const rendered = async (seen) => {
+  for (let i = 0; i < 150 && renders.length === seen; i++) await fleet.waitForTimeout(100)
+  await fleet.waitForTimeout(300)
+  return renders.at(-1)
+}
+const positions = (r) => r?.view?.blocks?.find((b) => b.title === 'Positions')?.value
+const whole = positions(renders.at(-1))
+const depotsMap = fleet.getByTestId('chart').filter({ has: fleet.locator('h3', { hasText: /^Depots$/ }) })
+const rotterdam = depotsMap.getByRole('button', { name: /^Rotterdam,/ })
+ok('a depot on the map is a button that filters the report', await rotterdam.count() === 1)
+let at = renders.length
+await rotterdam.dispatchEvent('click')
+const picked = await rendered(at)
+ok('a click on a depot narrows the report to its vans',
+  JSON.stringify(picked?.asked?.filters?.depot) === '{"op":"in","values":["Rotterdam"]}'
+  && !!positions(picked) && positions(picked) !== whole)
+ok('the depots map stays whole, with the one picked marked',
+  await depotsMap.getByRole('button', { name: /click to/ }).count() === 11
+  && await depotsMap.locator('[aria-pressed=true]').getAttribute('aria-label')
+    .then((l) => l?.startsWith('Rotterdam,')))
+ok('and the filter bar shows the depot the map set',
+  await fleet.getByTestId('filter-depot').inputValue() === 'Rotterdam')
+
+at = renders.length
+await heatMap.getByRole('button', { name: 'Filter to this view' }).click()
+const boxed = await rendered(at)
+ok('"Filter to this view" narrows the report to the part of the world in view',
+  boxed?.asked?.filters?.where?.op === 'within' && boxed.asked.filters.depot !== undefined)
+ok('and the filter bar says which part, in degrees',
+  /°N to .*°N, .*°E to .*°E/.test(await fleet.getByTestId('filter-where').innerText()))
+
+at = renders.length
+await fleet.getByTestId('report-filters').getByText('Northline', { exact: true }).click()
+await fleet.getByTestId('apply-filters').click()
+const both = await rendered(at)
+ok('applying the bar keeps what the map set, operator and all',
+  JSON.stringify(both?.asked?.filters?.depot) === '{"op":"in","values":["Rotterdam"]}'
+  && both?.asked?.filters?.where?.op === 'within' && both?.asked?.filters?.carrier !== undefined)
+
+at = renders.length
+await fleet.getByTestId('filter-where-clear').click()
+const unboxed = await rendered(at)
+ok('"Show everywhere" lets the area go, and nothing else',
+  unboxed?.asked?.filters?.where === undefined && unboxed?.asked?.filters?.depot !== undefined)
 await fleet.close()
 
 /* -- The catalogue: what the project contains ----------------------------- */
@@ -377,6 +436,27 @@ const saved = await fetch(`${process.env.API}/v1/definitions/Report/billing-summ
 ok('and a save keeps the filter', saved.includes("status = 'overdue'"))
 ok('and the sort', saved.includes('issued_at'))
 ok('and the shared filter the form never writes', saved.includes('name: region'))
+
+/* fleet draws its depots over its vans and has filters a map sets. The builder
+   rewrites a map's block and every filter wholesale, so a key it does not read
+   is a key a save deletes — the overlays, a filter's control, an area's pair of
+   fields — and opening the report would have warned that saving drops them. */
+await page.goto(`${B}/reports/fleet/edit`, { waitUntil: 'domcontentloaded' })
+await page.locator('[data-testid=canvas-block]').first().waitFor({ timeout: 20000 })
+ok('a report whose maps filter and overlay is not beyond the editor',
+  await page.locator('[data-testid=unmodelled-warning]').count() === 0)
+ok('and an area filter is bound through a latitude and a longitude',
+  await page.getByLabel(/, latitude$/).count() >= 1
+  && (await page.getByLabel(/, latitude$/).first().inputValue()) !== ''
+  && (await page.getByLabel(/, longitude$/).first().inputValue()) !== '')
+await page.locator('button:has-text("Save report")').click()
+await page.waitForURL(/\/$/, { timeout: 15000 })
+const fleetSaved = await fetch(`${process.env.API}/v1/definitions/Report/fleet`, {
+  headers: { authorization: `Bearer ${process.env.TOKEN}` },
+}).then((r) => r.text())
+ok('a save keeps the datasets drawn over a map', fleetSaved.includes('overlays:'))
+ok('and the control a filter was given', fleetSaved.includes('control: checkboxes'))
+ok('and the pair of fields an area narrows', /pings: "?lat,lon"?/.test(fleetSaved))
 
 /* -- Activity: what ran, and who got it ----------------------------------
    Nothing has run yet, and the page says so rather than showing an empty

@@ -8,8 +8,9 @@ package run
 // rules.
 type ViewRequest struct {
 	Request
-	// Block is the map's place in the output's layout, as Detail named it.
-	Block int
+	// Block is the map's place in the output's layout, and Overlay which
+	// dataset over it — zero for the map itself — as Detail named them.
+	Block, Overlay int
 	// View is what the reader sees, in world units, and Width and Height the
 	// CSS pixels it is drawn in.
 	View          Bounds

@@ -424,6 +424,18 @@ func (s *Service) checkBlocks(ctx context.Context, rep definition.Report,
 			if err := s.provable(ctx, rep, out.Name, i, ds, blk, filters); err != nil {
 				return err
 			}
+			// Each dataset a map draws over itself is a query of its own, and
+			// proved like one.
+			for j, ov := range blk.OverlaysFor(rep.Dataset) {
+				ods := sets[ov.Dataset]
+				if _, _, err := builder.BuildBlock(ods, ov, defaults(ods), filters, checker(ods)); err != nil {
+					return fmt.Errorf("%w: output %q block %d overlay %d: %v",
+						query.ErrBadTemplate, out.Name, i, j, err)
+				}
+				if err := s.provable(ctx, rep, out.Name, i, ods, ov, filters); err != nil {
+					return err
+				}
+			}
 		}
 	}
 	return nil

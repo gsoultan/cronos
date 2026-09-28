@@ -95,10 +95,25 @@ func CheckFilters(filters []definition.Filter, datasets map[string]definition.Da
 				return fmt.Errorf("%w: filter %q binds to dataset %q, which this report does not read",
 					ErrBadTemplate, f.Name, name)
 			}
-			if _, ok := ds.Field(field); !ok {
-				return fmt.Errorf("%w: filter %q binds %s to %q, which is not a field of it",
-					ErrBadTemplate, f.Name, name, field)
+			if err := boundFields(f, ds, name, field); err != nil {
+				return err
 			}
+		}
+	}
+	return nil
+}
+
+// boundFields checks the fields a filter narrows exist: one, or an area's two.
+func boundFields(f definition.Filter, ds definition.Dataset, name, field string) error {
+	fields := []string{field}
+	if f.Type == definition.Area {
+		lat, lon, _ := f.Coordinates(name)
+		fields = []string{lat, lon}
+	}
+	for _, fld := range fields {
+		if _, ok := ds.Field(fld); !ok {
+			return fmt.Errorf("%w: filter %q binds %s to %q, which is not a field of it",
+				ErrBadTemplate, f.Name, name, fld)
 		}
 	}
 	return nil

@@ -20,6 +20,11 @@ const (
 	Contains Op = "contains"
 	IsNull   Op = "isNull"
 	NotNull  Op = "notNull"
+	// Within and Near are an area filter's, and only an area filter's: a box
+	// as south, west, north, east, and a distance in kilometres around a
+	// latitude and longitude.
+	Within Op = "within"
+	Near   Op = "near"
 )
 
 // sqlOp is the comparison each op writes. Anything absent here cannot be
@@ -33,7 +38,8 @@ var arity = map[Op]int{
 	Eq: 1, Ne: 1, Lt: 1, Lte: 1, Gt: 1, Gte: 1,
 	Contains: 1, Between: 2, IsNull: 0, NotNull: 0,
 	// In takes any number, checked separately.
-	In: -1,
+	In:     -1,
+	Within: 4, Near: 3,
 }
 
 // Valid reports whether o is an operator the compiler knows.

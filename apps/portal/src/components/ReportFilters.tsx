@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Button, Chip, NumberInput, Radio, Select, TextInput } from '@mantine/core'
 import { DatePickerInput } from '@mantine/dates'
+import { describeArea } from '@cronos/charts'
 import type { ReportFilter, RunFilters } from '../lib/api'
 
 /**
@@ -44,6 +45,16 @@ export function ReportFilters({ filters, value, onApply }: {
   onApply: (next: RunFilters) => void
 }) {
   const [draft, setDraft] = useState<Record<string, string[]>>(() => textOf(value))
+  /* Kept in step with what is applied, which a map can change: a region
+     clicked or a view filtered to arrives here as a new value, and a draft
+     still holding the old one would have Apply put it back. */
+  const applied = JSON.stringify(value)
+  const before = useRef(applied)
+  useEffect(() => {
+    const was = textOf(JSON.parse(before.current) as RunFilters)
+    before.current = applied
+    setDraft((d) => retaken(d, was, textOf(JSON.parse(applied) as RunFilters)))
+  }, [applied])
 
   if (filters.length === 0) return null
 
@@ -58,6 +69,12 @@ export function ReportFilters({ filters, value, onApply }: {
     })
   }
 
+  // The whole list, for a control that holds several: one box unticked is a
+  // shorter list, which writing each position in turn never made.
+  function put(name: string, texts: string[]) {
+    setDraft((d) => ({ ...d, [name]: texts }))
+  }
+
   return (
     <section data-testid="report-filters"
       className="mb-6 rounded-lg border border-line bg-surface p-4 shadow-card">
@@ -68,7 +85,10 @@ export function ReportFilters({ filters, value, onApply }: {
               <span className="mb-1 block text-caption font-medium text-ink-secondary">
                 {f.label || f.name}
               </span>
-              <FilterControl f={f} draft={draft} set={set} />
+              {f.type === 'area'
+                ? <AreaState f={f} value={value[f.name]}
+                  clear={() => onApply(without(value, f.name))} />
+                : <FilterControl f={f} draft={draft} set={set} put={put} />}
             </label>
           </div>
         ))}
@@ -78,7 +98,7 @@ export function ReportFilters({ filters, value, onApply }: {
               query against somebody's warehouse, and a filter bar that re-runs
               as you type is a cost their DBA notices. */}
           <Button size="xs" disabled={!dirty} data-testid="apply-filters"
-            onClick={() => onApply(toFilters(filters, draft))}>
+            onClick={() => onApply(toFilters(filters, draft, value))}>
             Apply
           </Button>
           {anySet && (
@@ -94,10 +114,35 @@ export function ReportFilters({ filters, value, onApply }: {
 }
 
 /** The applied filters, back as the text the controls hold. */
-function textOf(value: RunFilters): Record<string, string[]> {
+export function textOf(value: RunFilters): Record<string, string[]> {
   const out: Record<string, string[]> = {}
-  for (const [name, v] of Object.entries(value)) {
-    out[name] = v.values.map((x) => String(x ?? ''))
+  for (const [name, v] of Object.entries(value)) out[name] = textOfOne(v)
+  return out
+}
+
+/** One applied filter as its control's text. The upper end of a range alone
+ *  goes back in the second box, where it was typed. */
+function textOfOne(v: RunFilters[string]): string[] {
+  const text = v.values.map((x) => String(x ?? ''))
+  return v.op === 'lte' ? ['', ...text] : text
+}
+
+/**
+ * The draft, once the applied filters have changed under it.
+ *
+ * A filter whose applied value moved — set on a map, let go of, applied from
+ * here — shows what is applied now. An edit to any other filter, typed and not
+ * yet applied, stays where the reader left it: a click on a map is not a
+ * reason to throw it away.
+ */
+export function retaken(draft: Record<string, string[]>, before: Record<string, string[]>,
+  now: Record<string, string[]>): Record<string, string[]> {
+  const out = { ...draft }
+  for (const name of new Set([...Object.keys(before), ...Object.keys(now)])) {
+    if (JSON.stringify(before[name]) === JSON.stringify(now[name])) continue
+    const v = now[name]
+    if (v) out[name] = v
+    else delete out[name]
   }
   return out
 }
@@ -109,28 +154,43 @@ function textOf(value: RunFilters): Record<string, string[]> {
  * matches every row and `between "" ""` is an error, and both would be a filter
  * somebody did not set changing what they see.
  */
-export function toFilters(filters: ReportFilter[], draft: Record<string, string[]>): RunFilters {
+export function toFilters(filters: ReportFilter[], draft: Record<string, string[]>,
+  applied: RunFilters = {}): RunFilters {
   const out: RunFilters = {}
 
   for (const f of filters) {
+    // A filter nobody touched goes on as it was applied. A map sets some with
+    // an operator this bar has no control for — a region picked is `in`, an
+    // area is four numbers — and Apply rewriting them as the bar would have is
+    // Apply changing a filter the reader never touched.
+    const was = applied[f.name]
+    if (was && JSON.stringify(textOfOne(was)) === JSON.stringify(draft[f.name] ?? [])) {
+      out[f.name] = was
+      continue
+    }
+    // An area is only ever set on a map; there is no text to make one from.
+    if (f.type === 'area') continue
+
     const parts = (draft[f.name] ?? []).map((s) => s.trim())
 
-    if (f.type === 'date') {
+    if (f.type === 'date' || (f.type === 'number' && f.control === 'range')) {
+      const as = f.type === 'number' ? Number : String
       const [from, to] = parts
-      if (from && to) out[f.name] = { op: 'between', values: [from, to] }
+      if (from && to) out[f.name] = { op: 'between', values: [as(from), as(to)] }
       // One end is still a filter, and the honest operator for it says which
       // end — rather than inventing the other and narrowing more than asked.
-      else if (from) out[f.name] = { op: 'gte', values: [from] }
-      else if (to) out[f.name] = { op: 'lte', values: [to] }
+      else if (from) out[f.name] = { op: 'gte', values: [as(from)] }
+      else if (to) out[f.name] = { op: 'lte', values: [as(to)] }
       continue
     }
 
-    const [first] = parts
+    const given = parts.filter((p) => p !== '')
+    const [first] = given
     if (!first) continue
 
     switch (f.type) {
       case 'enum':
-        out[f.name] = { op: 'in', values: [first] }
+        out[f.name] = { op: 'in', values: given }
         break
       case 'number':
         out[f.name] = { op: 'eq', values: [Number(first)] }
@@ -153,10 +213,11 @@ export function toFilters(filters: ReportFilter[], draft: Record<string, string[
  * default applied here and again in the embed is two defaults, and the same
  * report would look different in the two places.
  */
-function FilterControl({ f, draft, set }: {
+function FilterControl({ f, draft, set, put }: {
   f: ReportFilter
   draft: Record<string, string[]>
   set: (name: string, at: number, v: string) => void
+  put: (name: string, texts: string[]) => void
 }) {
   const at = (i: number) => draft[f.name]?.[i] ?? ''
   const label = f.label || f.name
@@ -223,7 +284,7 @@ function FilterControl({ f, draft, set }: {
          statuses the list is shorter than the control that hides it. */
       return (
         <Chip.Group multiple value={draft[f.name] ?? []}
-          onChange={(v: string[]) => v.forEach((x, i) => set(f.name, i, x))}>
+          onChange={(v: string[]) => put(f.name, v)}>
           <div className="flex flex-wrap gap-1.5" data-testid={`filter-${f.name}`}>
             {(f.values ?? []).map((v) => (
               <Chip key={v} size="xs" value={v}>{v}</Chip>
@@ -258,6 +319,37 @@ function FilterControl({ f, draft, set }: {
           value={at(0)} onChange={(e) => set(f.name, 0, e.currentTarget.value)} />
       )
   }
+}
+
+/**
+ * An area the report is narrowed to, said in words — it is set on a map, so
+ * there is nothing to type — and a way to let it go.
+ */
+function AreaState({ f, value, clear }: {
+  f: ReportFilter
+  value: RunFilters[string] | undefined
+  clear: () => void
+}) {
+  // The embed's words for the same filter, from the same function.
+  const said = describeArea(value)
+  if (!said) {
+    return <span className="text-caption text-ink-muted" data-testid={`filter-${f.name}`}>
+      Everywhere — set it from a map</span>
+  }
+  return (
+    <span className="flex items-center gap-2" data-testid={`filter-${f.name}`}>
+      <span className="text-caption text-ink">{said}</span>
+      <Button size="compact-xs" variant="subtle" color="gray" onClick={clear}
+        data-testid={`filter-${f.name}-clear`}>Show everywhere</Button>
+    </span>
+  )
+}
+
+/** The filters without one of them. */
+function without(value: RunFilters, name: string): RunFilters {
+  const next = { ...value }
+  delete next[name]
+  return next
 }
 
 /** The relative periods a presets control offers. */

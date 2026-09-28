@@ -4,6 +4,7 @@ import type { Tips } from '../tip'
 import { PLOT_PALETTE_SIZE, RAMP_STEPS, slotOf } from '../palette'
 import { g } from './geo'
 import type { View } from './view'
+import type { Pick } from './sets'
 
 /**
  * One layer of a map, drawn in world units.
@@ -29,14 +30,38 @@ export const ramp = (step: number) =>
 export const series = (slot = 0) => `var(--cr-series-${slotOf(slot, PLOT_PALETTE_SIZE)})`
 
 /** Filled areas from the ramp: regions, or hexagons. */
-export function areas(shapes: Shape[], tips: Tips, kind: 'shapes' | 'hexes'): Layer {
+export function areas(shapes: Shape[], tips: Tips, kind: 'shapes' | 'hexes', pick?: Pick): Layer {
   const node = svg('g', { class: kind })
   for (const s of shapes) {
     const path = svg('path', { d: s.path, part: kind === 'shapes' ? 'region' : 'hexagon', fill: ramp(s.step) })
-    tips.bind(path, s.label, s.formatted)
+    tips.bind(path, s.label, pickable(path, s.label, s.formatted, kind === 'shapes' ? pick : undefined))
     node.append(path)
   }
   return { node }
+}
+
+/**
+ * Makes a mark set the report's filter to its label, when the map sets one:
+ * a click or Enter picks it, and picks it again to let go. Returns what the
+ * tooltip says under the value — what a click would do.
+ */
+export function pickable(mark: Element, label: string, value: string, pick?: Pick): string {
+  if (!pick) return value
+  const on = pick.picked(label)
+  mark.classList.add('pickable')
+  if (on) mark.classList.add('picked')
+  // A button, pressed while it is the filter: what a screen reader needs to
+  // say that a click does something, and what it did.
+  mark.setAttribute('role', 'button')
+  mark.setAttribute('aria-pressed', String(on))
+  mark.addEventListener('click', () => pick.toggle(label))
+  mark.addEventListener('keydown', (e) => {
+    const k = (e as KeyboardEvent).key
+    if (k !== 'Enter' && k !== ' ') return
+    e.preventDefault()
+    pick.toggle(label)
+  })
+  return `${value} · ${on ? 'click to show everything again' : 'click to filter the report to it'}`
 }
 
 /**
@@ -113,14 +138,14 @@ export function heat(markers: Marker[]): Layer {
  * indistinguishable from a row that was filtered away. Bubbles are drawn
  * largest first, so a small one is never hidden under a large neighbour.
  */
-export function dots(markers: Marker[], tips: Tips, sized: boolean, keyed: boolean): Layer {
+export function dots(markers: Marker[], tips: Tips, sized: boolean, keyed: boolean, pick?: Pick): Layer {
   const node = svg('g', { class: 'dots' })
   const order = sized ? [...markers].sort((a, b) => b.weight - a.weight) : markers
   const drawn: [SVGCircleElement, number][] = []
   for (const p of order) {
     const mark = svg('circle', { cx: g(p.x), cy: g(p.y), r: '0', class: 'pin', part: 'marker' })
     if (keyed) mark.style.fill = series(p.slot)
-    tips.bind(mark, p.label, p.size ? `${p.formatted} · ${p.size}` : p.formatted)
+    tips.bind(mark, p.label, pickable(mark, p.label, p.size ? `${p.formatted} · ${p.size}` : p.formatted, pick))
     node.append(mark)
     drawn.push([mark, sized ? 4 + Math.sqrt(Math.max(p.weight, 0)) * 14 : 4.5])
   }

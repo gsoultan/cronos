@@ -17,6 +17,7 @@ const TYPES = [
   { value: 'string', label: 'Text' },
   { value: 'number', label: 'Number' },
   { value: 'bool', label: 'Yes or no' },
+  { value: 'area', label: 'A place on a map' },
 ]
 
 /**
@@ -62,7 +63,7 @@ export function FiltersEditor({ filters, datasets, onChange }: Props) {
               <Field label="Type">
               <Select size="xs" data={TYPES} value={f.type} allowDeselect={false}
                 aria-label={`Filter ${i + 1} type`}
-                onChange={(v) => at(i, { type: v ?? 'string' })} />
+                onChange={(v) => at(i, retyped(f, v ?? 'string'))} />
               </Field>
             </div>
             <button type="button" aria-label={`Remove filter ${i + 1}`}
@@ -95,17 +96,18 @@ export function FiltersEditor({ filters, datasets, onChange }: Props) {
                   <span className="w-[120px] shrink-0 truncate text-caption text-ink-secondary">
                     {d.label}
                   </span>
-                  <Select size="xs" className="min-w-0 flex-1" clearable
-                    placeholder="Not affected"
-                    aria-label={`Filter ${i + 1} in ${d.label}`}
-                    data={d.fields.map((x) => ({ value: x.name, label: x.label }))}
-                    value={f.bind[d.name] ?? null}
-                    onChange={(v) => at(i, {
-                      bind: v
-                        ? { ...f.bind, [d.name]: v }
-                        : Object.fromEntries(
-                          Object.entries(f.bind).filter(([k]) => k !== d.name)),
-                    })} />
+                  {f.type === 'area' ? (
+                    <PlaceFields dataset={d} value={f.bind[d.name]}
+                      label={`Filter ${i + 1} in ${d.label}`}
+                      onChange={(v) => at(i, { bind: rebound(f.bind, d.name, v) })} />
+                  ) : (
+                    <Select size="xs" className="min-w-0 flex-1" clearable
+                      placeholder="Not affected"
+                      aria-label={`Filter ${i + 1} in ${d.label}`}
+                      data={d.fields.map((x) => ({ value: x.name, label: x.label }))}
+                      value={f.bind[d.name] ?? null}
+                      onChange={(v) => at(i, { bind: rebound(f.bind, d.name, v) })} />
+                  )}
                 </div>
               ))}
             </div>
@@ -120,6 +122,61 @@ export function FiltersEditor({ filters, datasets, onChange }: Props) {
                    hover:text-ink disabled:cursor-default disabled:opacity-50">
         Add a filter
       </button>
+    </div>
+  )
+}
+
+/**
+ * A filter given another type.
+ *
+ * Its control goes: a control suits some types and not others, and checkboxes
+ * left on a date is a save the server refuses. So does what it narrows, when
+ * the change is to or from an area — a field where a pair of them belongs, or
+ * the other way round, is a binding that means nothing.
+ */
+function retyped(f: ReportFilter, type: string): Partial<ReportFilter> {
+  const place = (t: string) => t === 'area'
+  return {
+    type, control: undefined,
+    bind: place(type) === place(f.type) ? f.bind : {},
+  }
+}
+
+/** The bind map with one dataset's entry set, or taken out when there is none. */
+function rebound(bind: Record<string, string>, dataset: string, v: string | null) {
+  const next = { ...bind }
+  if (v) next[dataset] = v
+  else delete next[dataset]
+  return next
+}
+
+/**
+ * Where a dataset keeps its places, for an area to narrow it by.
+ *
+ * Two pickers where every other type has one, because a place is two columns;
+ * written as the pair the format takes, `lat,lon`. Half a pair is written as
+ * it stands and refused on save, with a sentence showing what it holds — the
+ * same as a filter bound to nothing, rather than an author's choice undone.
+ */
+function PlaceFields({ dataset, value, label, onChange }: {
+  dataset: Dataset
+  value: string | undefined
+  label: string
+  onChange: (pair: string | null) => void
+}) {
+  const [lat = '', lon = ''] = (value ?? '').split(',').map((s) => s.trim())
+  const numbers = dataset.fields
+    .filter((x) => x.type === 'number' || x.type === 'decimal')
+    .map((x) => ({ value: x.name, label: x.label }))
+  const set = (a: string, b: string) => onChange(a || b ? `${a},${b}` : null)
+  return (
+    <div className="flex min-w-0 flex-1 gap-1.5">
+      <Select size="xs" className="min-w-0 flex-1" clearable placeholder="Latitude"
+        aria-label={`${label}, latitude`} data={numbers} value={lat || null}
+        onChange={(v) => set(v ?? '', lon)} />
+      <Select size="xs" className="min-w-0 flex-1" clearable placeholder="Longitude"
+        aria-label={`${label}, longitude`} data={numbers} value={lon || null}
+        onChange={(v) => set(lat, v ?? '')} />
     </div>
   )
 }

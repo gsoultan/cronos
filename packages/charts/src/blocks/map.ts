@@ -13,8 +13,9 @@ import { credits } from '../map/credits'
 import { around, viewBox } from '../map/geo'
 import { plane, type Plane } from '../map/plane'
 import { density, markersOf, type Density } from '../map/density'
-import { refiner } from '../map/detail'
+import { refiner, type Refiner } from '../map/detail'
 import { grouped } from '../map/format'
+import { areaTools, pickOf, type Pick } from '../map/sets'
 
 /** How deep a map with no basemap may be zoomed: a street, about. */
 const DEEPEST = 18
@@ -70,9 +71,16 @@ export function mapBlock(b: ChartBlock, opts: DrawOptions = {}): HTMLElement {
   const basemap = tiles ? tileLayer(tiles) : null
   if (basemap) stage.append(basemap.element)
   stage.append(canvas)
+  // The map and whatever it draws over itself, bottom to top.
+  const maps = [m, ...(m.overlays ?? [])]
   // Only where a layer paints: clusters of cells are buttons, not pixels.
-  const painted = m.cells && m.layers.some((l) => PAINTED.has(l)) ? plane(stage) : null
+  const painted = maps.some((x) => x.cells && x.layers.some((l) => PAINTED.has(l))) ? plane(stage) : null
   if (painted) stage.append(painted.element)
+  // Over the painted places, so a heat field does not bury what is drawn on it.
+  const above = maps.length > 1 || m.area
+    ? svg('svg', { class: 'geo-above', part: 'chart-above', preserveAspectRatio: 'none' })
+    : null
+  if (above) stage.append(above)
   stage.append(overlay)
   if (tiles?.logo) {
     stage.append(el('img', { class: 'geo-logo', part: 'logo', src: tiles.logo, alt: tiles.logoAlt ?? '' }))
@@ -85,14 +93,28 @@ export function mapBlock(b: ChartBlock, opts: DrawOptions = {}): HTMLElement {
     redraw(true)
     return port.view().w < before * 0.99
   }
-  const layers = m.layers.flatMap((l) => draw(l, m, { tips, overlay, show, painted }) ?? [])
-  for (const l of layers) canvas.append(l.node)
-  const refine = m.detail && opts.mapView
-    ? refiner(m.detail, opts.mapView, stage, (got) => {
-      for (const l of layers) l.take?.(got)
-      redraw(true)
-    })
-    : null
+  // Only the map itself sets the report's filters; what it draws over itself
+  // is there to be read.
+  const pick = pickOf(m, opts.filter)
+  const layers: Drawn[] = []
+  const refiners: Refiner[] = []
+  for (const [k, x] of maps.entries()) {
+    const tint = k > 0 && !x.keys?.length ? tintOf(k) : undefined
+    const own = x.layers.flatMap((l) =>
+      draw(l, x, { tips, overlay, show, painted, pick: k === 0 ? pick : undefined, tint }) ?? [])
+    if (tint !== undefined) {
+      for (const l of own) l.node.style.setProperty('--cr-pin', `var(--cr-series-${slotOf(tint, PLOT_PALETTE_SIZE)})`)
+    }
+    for (const l of own) (k > 0 && above ? above : canvas).append(l.node)
+    layers.push(...own)
+    if (x.detail && opts.mapView) {
+      refiners.push(refiner(x.detail, opts.mapView, stage, (got) => {
+        for (const l of own) l.take?.(got)
+        redraw(true)
+      }))
+    }
+  }
+  areaTools(stage, above ?? canvas, port, m.area, opts.filter)
 
   const line = credits(tiles, m.note)
   let frame = 0
@@ -104,12 +126,13 @@ export function mapBlock(b: ChartBlock, opts: DrawOptions = {}): HTMLElement {
     const view = port.view()
     const scale = port.scale()
     canvas.setAttribute('viewBox', viewBox(view))
+    above?.setAttribute('viewBox', viewBox(view))
     for (const l of layers) l.update?.(view, scale, settled)
     painted?.paint(view, scale, stage.clientWidth, stage.clientHeight, settled)
     if (basemap) basemap.lay(view, stage.clientWidth, stage.clientHeight)
     if (settled) {
       line.follow(view, basemap?.zoom() ?? -1)
-      refine?.follow(view)
+      for (const r of refiners) r.follow(view)
     }
     buttons.refresh()
   }
@@ -127,12 +150,13 @@ export function mapBlock(b: ChartBlock, opts: DrawOptions = {}): HTMLElement {
     if (!frame) frame = requestAnimationFrame(render)
   }
   const buttons = controls(stage, port, redraw, () => tips.hide())
-  if (painted) pointAt(stage, painted, tips)
+  if (painted) pointAt(stage, painted, tips, pick)
 
   panel.append(stage)
   legends(panel, m, line.element)
-  watch(stage, port, redraw, () => refine?.stop())
+  watch(stage, port, redraw, () => { for (const r of refiners) r.stop() })
   canvas.setAttribute('viewBox', viewBox(port.view()))
+  above?.setAttribute('viewBox', viewBox(port.view()))
   return panel
 }
 
@@ -154,6 +178,47 @@ function legends(panel: HTMLElement, m: GeoMap, credit: HTMLElement | null) {
       ? `${grouped(m.places)} places, gathered where they crowd together. Zoom in to see each one.`
       : `${grouped(m.places)} places, every one of them counted.`))
   }
+  for (const [k, ov] of (m.overlays ?? []).entries()) overlayLegend(panel, ov, k + 1)
+}
+
+/**
+ * What a dataset drawn over the map says under it. Places in one colour are
+ * that colour beside its name — without it, a reader cannot tell its dots
+ * from the map's own. Places coloured by category, or shapes shaded, are its
+ * name over what the colours mean.
+ */
+function overlayLegend(panel: HTMLElement, ov: GeoMap, k: number) {
+  const ramp = ramped(ov) ? rampLegend(ov.legend) : null
+  const keys = keyLegend(ov.keys)
+  if (!keys && pinned(ov)) {
+    panel.append(el('div', { class: 'legend', part: 'legend overlay-key' },
+      el('span', { class: 'key' },
+        el('i', { class: 'swatch dot', style: `background: var(--cr-series-${slotOf(tintOf(k), PLOT_PALETTE_SIZE)})` }),
+        ov.title ?? '')))
+  }
+  if (ramp || keys) {
+    panel.append(el('p', { class: 'legend-title', part: 'overlay-title' }, ov.title ?? ''))
+    if (ramp) panel.append(ramp)
+    if (keys) panel.append(keys)
+  }
+  if (ov.partial) panel.append(el('p', { class: 'unaffected', part: 'partial' }, ov.partial))
+}
+
+/** Whether a map draws places as pins — the marks a colour tells apart. */
+function pinned(m: GeoMap): boolean {
+  const places = m.markers.length + (m.cells?.x.length ?? 0) > 0
+  return places && m.layers.some((l) => l === 'scatter' || l === 'bubble' || l === 'cluster')
+}
+
+/**
+ * The palette slot the kth dataset drawn over a map paints its places in:
+ * never the map's own pin colour, and from the slots that stay apart for
+ * every reader. Past them it folds into the last, as a series does — see
+ * palette.ts — rather than a hue two readers in twelve cannot tell apart.
+ */
+function tintOf(k: number): number {
+  const slots = [2, 0]
+  return slots[Math.min(k - 1, slots.length - 1)] ?? 0
 }
 
 /** What the layers need besides the map. */
@@ -162,17 +227,21 @@ interface Scene {
   overlay: HTMLElement
   show: (c: { members: { x: number; y: number }[] }) => boolean
   painted: Plane | null
+  pick?: Pick
+  /** The palette slot an overlay's places are painted in. */
+  tint?: number
 }
 
 /** One layer, or nothing for a layer this build has never heard of. */
 function draw(layer: string, m: GeoMap, s: Scene): Drawn | undefined {
   const keyed = (m.keys?.length ?? 0) > 0
   if (m.cells && s.painted && PAINTED.has(layer)) {
-    return paintedLayer(density(m.cells, layer as 'heat' | 'bubble' | 'scatter', keyed), s.painted)
+    const kind = layer as 'heat' | 'bubble' | 'scatter'
+    return paintedLayer(density(m.cells, kind, { keyed, tint: s.tint, picks: !!s.pick }), s.painted)
   }
   switch (layer) {
     case 'polygon':
-      return areas(m.shapes, s.tips, 'shapes')
+      return areas(m.shapes, s.tips, 'shapes', s.pick)
     case 'hexbin':
       return areas(m.hexes ?? [], s.tips, 'hexes')
     case 'line':
@@ -180,13 +249,13 @@ function draw(layer: string, m: GeoMap, s: Scene): Drawn | undefined {
     case 'heat':
       return heat(m.markers)
     case 'cluster': {
-      const c = clusters(m.cells ? markersOf(m.cells) : m.markers, s.tips, keyed, s.overlay, s.show)
+      const c = clusters(m.cells ? markersOf(m.cells) : m.markers, s.tips, keyed, s.overlay, s.show, s.pick)
       return { ...c, take: (got) => { if (got.cells) c.swap(markersOf(got.cells)) } }
     }
     case 'bubble':
-      return dots(m.markers, s.tips, true, keyed)
+      return dots(m.markers, s.tips, true, keyed, s.pick)
     case 'scatter':
-      return dots(m.markers, s.tips, false, keyed)
+      return dots(m.markers, s.tips, false, keyed, s.pick)
     case 'flow': {
       const f = flows(m.arcs, s.tips, keyed)
       return { ...f, take: (got) => f.swap(got.arcs) }
@@ -210,10 +279,23 @@ function paintedLayer(d: Density, on: Plane): Drawn {
  * element under it to listen. Over a mark, its tooltip; off one, whatever the
  * elements beneath had to say.
  */
-function pointAt(stage: HTMLElement, on: Plane, tips: Tips) {
+function pointAt(stage: HTMLElement, on: Plane, tips: Tips, pick?: Pick) {
   let showing = false
+  // A painted place, clicked, picks it — the drag guard in controls.ts stops
+  // this from running at the end of a drag.
+  // A mark drawn over the map answers for itself, above the painted places.
+  const own = (e: Event) => e.target instanceof HTMLButtonElement ||
+    (e.target instanceof Element && e.target.closest('.geo-above > g') !== null)
+  if (pick) {
+    stage.addEventListener('click', (e) => {
+      if (own(e)) return
+      const box = stage.getBoundingClientRect()
+      const hit = on.find(e.clientX - box.left, e.clientY - box.top)
+      if (hit?.place) pick.toggle(hit.place)
+    })
+  }
   stage.addEventListener('pointermove', (e) => {
-    if (stage.classList.contains('dragging') || e.target instanceof HTMLButtonElement) return
+    if (stage.classList.contains('dragging') || own(e)) return
     const box = stage.getBoundingClientRect()
     const hit = on.find(e.clientX - box.left, e.clientY - box.top)
     if (hit) {
@@ -252,10 +334,11 @@ function watch(stage: HTMLElement, port: Viewport, redraw: (settled: boolean, no
   seen.observe(stage)
 }
 
-/** Whether there is anything at all to draw. */
+/** Whether there is anything at all to draw, on the map or over it. */
 function empty(m: GeoMap): boolean {
-  return m.shapes.length + m.markers.length + m.arcs.length +
-    (m.lines?.length ?? 0) + (m.hexes?.length ?? 0) + (m.cells?.x.length ?? 0) === 0
+  const own = m.shapes.length + m.markers.length + m.arcs.length +
+    (m.lines?.length ?? 0) + (m.hexes?.length ?? 0) + (m.cells?.x.length ?? 0)
+  return own === 0 && (m.overlays ?? []).every(empty)
 }
 
 /** Whether a layer shaded from the ramp drew anything, which is when the

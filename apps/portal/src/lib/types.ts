@@ -1,3 +1,5 @@
+import type { Yaml } from './yaml'
+
 /** Mirrors the definition format in docs/report-format.md. */
 
 export type FieldType = 'string' | 'number' | 'decimal' | 'date' | 'bool' | 'enum'
@@ -156,11 +158,19 @@ export interface Tile {
 export interface ReportFilter {
   name: string
   label?: string
-  /** string, number, bool, date or enum. */
+  /** string, number, bool, date, enum or area. */
   type: string
   /** The permitted values. Enum only. */
   values?: string[]
+  /**
+   * An area's is a pair — `lat,lon` — because a place is two columns, and the
+   * filter narrows by both.
+   */
   bind: Record<string, string>
+  /** How the filter bar shows it — checkboxes rather than a dropdown, say.
+   *  Undefined is the type's default. Kept as read, and let go of when the
+   *  type changes, because a control suits some types and not others. */
+  control?: string
 }
 
 /** One measure of a tile that draws several, and how it is drawn. */
@@ -251,6 +261,13 @@ export interface TileMap {
    */
   basemap?: string
   attribution?: string
+  /**
+   * Other datasets drawn over this map — depots over the deliveries around
+   * them — each a block of its own under `map.overlays`. Kept as read: the
+   * builder has no control for them yet, and a map rewritten without them
+   * would lose a layer nobody asked to remove.
+   */
+  overlays?: Yaml[]
 }
 
 /**

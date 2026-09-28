@@ -16,7 +16,10 @@ them as the map did.
 */
 type viewRequest struct {
 	request
-	Block      int        `json:"block"`
+	Block int `json:"block"`
+	// Overlay is which dataset drawn over the map, from one; absent or zero
+	// is the map itself.
+	Overlay    int        `json:"overlay,omitempty"`
 	View       [4]float64 `json:"view"`
 	Width      int        `json:"width"`
 	Height     int        `json:"height"`

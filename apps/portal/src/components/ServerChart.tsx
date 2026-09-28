@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { documentCss, drawBlock } from '@cronos/charts'
-import type { Block, MapViewer } from '@cronos/charts'
+import type { Block, DrawOptions, MapViewer } from '@cronos/charts'
 
 /**
  * The chart stylesheet, adopted into this document once.
@@ -47,12 +47,18 @@ function adoptOnce() {
  * budget, and wrapping each one in a component per chart type would be a second
  * implementation to keep in step with the first — the thing this replaces.
  */
-export function ServerChart({ block, mapView }: { block: Block; mapView?: MapViewer }) {
+export function ServerChart({ block, mapView, filter }: {
+  block: Block
+  mapView?: MapViewer
+  filter?: DrawOptions['filter']
+}) {
   const host = useRef<HTMLDivElement>(null)
-  /* Read through a ref, so a new function from a parent's re-render does not
+  /* Read through refs, so a new function from a parent's re-render does not
      redraw the chart — which would throw away where the reader had panned to. */
   const viewer = useRef(mapView)
   viewer.current = mapView
+  const setter = useRef(filter)
+  setter.current = filter
 
   useEffect(() => {
     adoptOnce()
@@ -61,7 +67,10 @@ export function ServerChart({ block, mapView }: { block: Block; mapView?: MapVie
     const ask: MapViewer | undefined = viewer.current
       ? (q, signal) => viewer.current ? viewer.current(q, signal) : Promise.reject(new Error('gone'))
       : undefined
-    at.replaceChildren(drawBlock(block, { mapView: ask }))
+    const set: DrawOptions['filter'] = setter.current
+      ? (name, value) => setter.current?.(name, value)
+      : undefined
+    at.replaceChildren(drawBlock(block, { mapView: ask, filter: set }))
     // Replaced rather than appended on every render, and cleared on unmount:
     // a filter changes faster than anybody looks, and two charts stacked in
     // one cell is what appending gives.

@@ -2,10 +2,12 @@ import { el } from '../dom'
 import { PLOT_PALETTE_SIZE, RAMP_STEPS, slotOf } from '../palette'
 import type { View } from './view'
 
-/** What a painted mark says when pointed at. */
+/** What a painted mark says when pointed at — and, for a lone place, the
+ *  label a click on it would pick. */
 export interface Hit {
   label: string
   sub: string
+  place?: string
 }
 
 /** The theme's colours, resolved to values a canvas can paint with. */

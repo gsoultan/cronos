@@ -66,11 +66,12 @@ func (s *Service) bigMapFor(ctx context.Context, r definition.Report, blk defini
 	return &bigMap{blk: blk, ds: ds, engine: engine, params: params, filters: filters, pr: pr}, nil
 }
 
-// large draws a map whose own query was cut: the whole of it, gathered.
-func (s *Service) large(ctx context.Context, r definition.Report, out definition.Output, at int,
-	params map[string]any, filters query.Filters, pr principal.Principal) (*GeoMap, error) {
+// large draws a map whose own query was cut: the whole of it, gathered. The
+// detail is how a viewer names it when it asks for more — a block, or an
+// overlay of one — and paper, which cannot zoom, is gathered coarser.
+func (s *Service) large(ctx context.Context, r definition.Report, blk definition.Block, detail Detail,
+	paper bool, params map[string]any, filters query.Filters, pr principal.Principal) (*GeoMap, error) {
 
-	blk := out.Layout[at]
 	q, err := s.bigMapFor(ctx, r, blk, params, filters, pr)
 	if err != nil {
 		return nil, err
@@ -94,7 +95,7 @@ func (s *Service) large(ctx context.Context, r definition.Report, out definition
 		return nil, err
 	}
 	w, h := openWidth, openHeight
-	if out.Renderer != definition.Interactive {
+	if paper {
 		w, h = printWidth, printHeight
 	}
 	grid := query.MapGrid{Cells: gridFor(m.Bounds, w, h, q.keyed())}
@@ -106,7 +107,8 @@ func (s *Service) large(ctx context.Context, r definition.Report, out definition
 	// a hexagon is the same hexagon at every zoom, and asking again would be
 	// a query per pan for the answer already on screen.
 	if markersDrawn(blk.Map) || blk.Map.Draws(definition.FlowLayer) {
-		m.Detail = &Detail{Output: out.Name, Block: at, Categories: m.categories}
+		detail.Categories = m.categories
+		m.Detail = &detail
 	}
 	return m, nil
 }

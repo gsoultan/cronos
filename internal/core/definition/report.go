@@ -50,14 +50,19 @@ func (r Report) Rendered(kind RendererKind) (Output, bool) {
 func (r Report) Datasets() []string {
 	seen := map[string]bool{}
 	var out []string
-	for _, o := range r.Outputs {
-		for _, b := range o.Layout {
-			name := b.DatasetFor(r.Dataset)
-			if name == "" || seen[name] {
-				continue
-			}
+	add := func(name string) {
+		if name != "" && !seen[name] {
 			seen[name] = true
 			out = append(out, name)
+		}
+	}
+	for _, o := range r.Outputs {
+		for _, b := range o.Layout {
+			add(b.DatasetFor(r.Dataset))
+			// And what a map draws over itself, each its own query.
+			for _, ov := range b.OverlaysFor(r.Dataset) {
+				add(ov.Dataset)
+			}
 		}
 	}
 	return out

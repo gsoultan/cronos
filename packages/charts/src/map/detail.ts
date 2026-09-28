@@ -77,6 +77,7 @@ export function question(d: MapDetail, v: View, width: number, height: number): 
     output: d.output, block: d.block,
     view: [r(v.x), r(v.y), r(v.x + v.w), r(v.y + v.h)], width, height,
   }
+  if (d.overlay) q.overlay = d.overlay
   if (d.categories?.length) q.categories = d.categories
   return q
 }

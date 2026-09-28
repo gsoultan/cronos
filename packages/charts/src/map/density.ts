@@ -22,7 +22,19 @@ export interface Density extends Painter {
  * says how many, and is a little larger than a place, so a crowd reads as one
  * before a reader has zoomed far enough to separate it.
  */
-export function density(first: Cells, kind: DensityKind, keyed: boolean): Density {
+/** How a painted layer is drawn, besides its places. */
+export interface DensityStyle {
+  /** Coloured by category, which the cells carry. */
+  keyed: boolean
+  /** The palette slot places with no category are painted in, for a dataset
+   *  drawn over a map; the map's own pin colour when unset. */
+  tint?: number
+  /** Whether a click on a lone place picks it: the map's own places do, and
+   *  a dataset drawn over it never sets the map's filter. */
+  picks?: boolean
+}
+
+export function density(first: Cells, kind: DensityKind, style: DensityStyle): Density {
   let cells = first
   let weights = weigh(first)
   let index = new ScreenIndex()
@@ -41,12 +53,15 @@ export function density(first: Cells, kind: DensityKind, keyed: boolean): Densit
         heat(ctx, { cells, weights }, view, scale, size, palette.rgb)
         return
       }
-      dots(ctx, { cells, weights, kind, keyed, index }, view, scale, size, colours)
+      const own = style.tint === undefined ? colours : { ...colours, pin: colours.series(style.tint) }
+      dots(ctx, { cells, weights, kind, keyed: style.keyed, index }, view, scale, size, own)
     },
     find(px, py) {
       if (kind === 'heat') return null
       const i = index.nearest(px, py)
-      return i < 0 ? null : describe(cells, i)
+      if (i < 0) return null
+      const hit = describe(cells, i)
+      return style.picks ? hit : { label: hit.label, sub: hit.sub }
     },
   }
 }
@@ -67,7 +82,7 @@ export function markersOf(c: Cells): Marker[] {
 export function describe(c: Cells, i: number): Hit {
   const n = c.n[i] ?? 1
   const v = compact(c.v[i] ?? 0)
-  if (n === 1) return { label: c.l?.[i] || '1 location', sub: v }
+  if (n === 1) return { label: c.l?.[i] || '1 location', sub: v, place: c.l?.[i] || undefined }
   return { label: `${grouped(n)} locations`, sub: c.mean ? `${v} on average` : v }
 }
 

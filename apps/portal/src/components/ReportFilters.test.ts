@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { toFilters } from './ReportFilters'
+import { retaken, textOf, toFilters } from './ReportFilters'
 import type { ReportFilter } from '../lib/api'
 
 /*
@@ -22,6 +22,12 @@ const status: ReportFilter = {
   control: 'dropdown',
 }
 const amount: ReportFilter = { name: 'amount', label: 'Amount', type: 'number', control: 'range' }
+const size: ReportFilter = { name: 'size', label: 'Size', type: 'number', control: 'slider' }
+const depots: ReportFilter = {
+  name: 'depots', label: 'Depots', type: 'enum', values: ['North', 'South', 'East'],
+  control: 'checkboxes',
+}
+const where: ReportFilter = { name: 'where', label: 'Where', type: 'area', control: 'map' }
 const paid: ReportFilter = { name: 'paid', label: 'Paid', type: 'bool', control: 'dropdown' }
 
 describe('an untouched control sends nothing', () => {
@@ -77,9 +83,30 @@ describe('every other type has one obvious meaning', () => {
   })
 
   test('a number is a number, not the text of one', () => {
-    const out = toFilters([amount], { amount: ['1200'] })
-    expect(out).toEqual({ amount: { op: 'eq', values: [1200] } })
-    expect(typeof out.amount!.values[0]).toBe('number')
+    const out = toFilters([size], { size: ['1200'] })
+    expect(out).toEqual({ size: { op: 'eq', values: [1200] } })
+    expect(typeof out.size!.values[0]).toBe('number')
+  })
+
+  /*
+   * A number's default control is a range, and it sent `eq` with the lower
+   * end: From 100 To 500 asked for exactly 100. The same two ends a date has,
+   * as numbers.
+   */
+  test('a number range is a range', () => {
+    expect(toFilters([amount], { amount: ['100', '500'] })).toEqual({
+      amount: { op: 'between', values: [100, 500] },
+    })
+    expect(toFilters([amount], { amount: ['', '500'] })).toEqual({
+      amount: { op: 'lte', values: [500] },
+    })
+  })
+
+  // Several boxes ticked sent the first of them and dropped the rest.
+  test('several ticked are several', () => {
+    expect(toFilters([depots], { depots: ['North', 'East'] })).toEqual({
+      depots: { op: 'in', values: ['North', 'East'] },
+    })
   })
 
   test('a bool is a bool, and "false" is not truthy', () => {
@@ -98,5 +125,69 @@ describe('every other type has one obvious meaning', () => {
 test('only the filters the report declares are sent', () => {
   expect(toFilters([region], { region: ['acme'], gone: ['x'] })).toEqual({
     region: { op: 'contains', values: ['acme'] },
+  })
+})
+
+/*
+ * A map sets filters too — a region clicked, the view it was moved to — and
+ * the bar has to show them, and not undo them. The draft is text; what a map
+ * sets is not always something text says.
+ */
+describe('a filter a map set', () => {
+  const box = { op: 'within', values: [52.3, 4.8, 52.4, 5.0] }
+
+  test('an area goes on as it was when something else is applied', () => {
+    const applied = { where: box }
+    const draft = { ...textOf(applied), region: ['acme'] }
+    expect(toFilters([where, region], draft, applied)).toEqual({
+      where: box, region: { op: 'contains', values: ['acme'] },
+    })
+  })
+
+  test('and is never made from text', () => {
+    expect(toFilters([where], { where: ['52.3', '4.8', '52.4', '5'] })).toEqual({})
+  })
+
+  /* A region picked is `in`. Rewritten as the bar writes a string, it would
+     become `contains` — and "North" would match "North East". */
+  test('a region picked keeps its operator', () => {
+    const applied = { region: { op: 'in', values: ['North'] } }
+    expect(toFilters([region], textOf(applied), applied)).toEqual(applied)
+  })
+
+  test('changed by the reader, it is the bar\'s again', () => {
+    const applied = { region: { op: 'in', values: ['North'] } }
+    expect(toFilters([region], { region: ['acme'] }, applied)).toEqual({
+      region: { op: 'contains', values: ['acme'] },
+    })
+  })
+})
+
+describe('the draft follows what is applied', () => {
+  /* The upper end alone came back in the lower box once the bar started
+     following the applied filters: "until 31 July" read as "from 31 July". */
+  test('the upper end of a range comes back where it was typed', () => {
+    expect(textOf({ period: { op: 'lte', values: ['2026-07-31'] } })).toEqual({
+      period: ['', '2026-07-31'],
+    })
+  })
+
+  test('a filter the map set replaces what the draft held for it', () => {
+    const before = {}
+    const now = { depots: ['North'] }
+    expect(retaken({ depots: ['South'] }, before, now)).toEqual({ depots: ['North'] })
+  })
+
+  test('an edit not yet applied, to another filter, stays', () => {
+    const before = {}
+    const now = { depots: ['North'] }
+    expect(retaken({ region: ['acm'] }, before, now)).toEqual({
+      region: ['acm'], depots: ['North'],
+    })
+  })
+
+  test('a filter let go of leaves the draft', () => {
+    const before = { where: ['52.3', '4.8', '52.4', '5'] }
+    expect(retaken({ ...before }, before, {})).toEqual({})
   })
 })

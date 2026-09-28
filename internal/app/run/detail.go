@@ -15,7 +15,10 @@ in, or a carrier would change colour as the reader pans. The viewer returns
 these with every view and the server colours by them.
 */
 type Detail struct {
-	Output     string   `json:"output"`
-	Block      int      `json:"block"`
+	Output string `json:"output"`
+	Block  int    `json:"block"`
+	// Overlay is which dataset drawn over the map this is, from one; zero is
+	// the map itself.
+	Overlay    int      `json:"overlay,omitempty"`
 	Categories []string `json:"categories,omitempty"`
 }
