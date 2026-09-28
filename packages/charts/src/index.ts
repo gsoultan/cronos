@@ -91,7 +91,7 @@ export { el, fill } from './dom'
 export { css, documentCss, LAYER } from './styles'
 export type {
   Arc, Axis, Bar, Block, Bounds, Cell, Cells, ChartBlock, Coverage, Credit, Delta, DrawOptions,
-  FilterDef, FilterValues, Gauge, GeoMap, Group, LegendStop, MapArea, MapDetail, MapKey, MapPick,
+  FilterDef, FilterValues, FrameMark, Frames, Gauge, GeoMap, Group, LegendStop, MapArea, MapDetail, MapKey, MapPick,
   MapViewAsk, MapViewer, Marker, Point, Rect, ReportPayload, Shape, Stage, StatBlock, Step, TableBlock,
   TextBlock, Tick, Tiles, Track,
 } from './types'

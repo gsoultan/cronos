@@ -1056,3 +1056,16 @@ test('a map keeps its H3 cells', () => {
   expect(back.input.blocks[0]?.map).toMatchObject({ h3: 'cell', h3Resolution: 6 })
   expect(readReport(report(back.input)).input.blocks).toEqual(back.input.blocks)
 })
+
+// A map that plays through time keeps its date and its period, and one given
+// a date and no period is written with the period the server needs.
+test('a map keeps the periods it plays through', () => {
+  const back = readReport(storedMap('layers: [bubble]', 'lat: lat', 'lon: lon', 'time: {field: issued_at, grain: week}'))
+  expect(back.drops).toEqual([])
+  expect(back.input.blocks[0]?.map).toMatchObject({ time: 'issued_at', timeGrain: 'week' })
+  expect(readReport(report(back.input)).input.blocks).toEqual(back.input.blocks)
+
+  const block = back.input.blocks[0]!
+  const unset = { ...back.input, blocks: [{ ...block, map: { ...block.map, timeGrain: undefined } }] }
+  expect(report(unset)).toContain('grain: month')
+})

@@ -66,3 +66,19 @@ func TestAHexbinOverAnInheritedAverageIsRefused(t *testing.T) {
 		t.Errorf("the error does not say why: %v", err)
 	}
 }
+
+// A timed map adds each place's size up across its periods too, so a size
+// that inherits an average is refused as a value that does.
+func TestATimedMapSizedByAnInheritedAverageIsRefused(t *testing.T) {
+	blk := dropMap(definition.BubbleLayer)
+	blk.Map.Time = &definition.DimensionRef{Field: "drop_id", Grain: "day"}
+	blk.Size = definition.MeasureRef{Field: "parcels"}
+
+	_, _, err := NewBuilder(SQLite{}).BuildBlock(drops(), blk, nil, Filters{}, embedded("c-9"))
+	if err == nil {
+		t.Fatal("sizes added up across periods from averages compiled")
+	}
+	if !strings.Contains(err.Error(), "periods") || !strings.Contains(err.Error(), `"avg"`) {
+		t.Errorf("the error does not say why: %v", err)
+	}
+}

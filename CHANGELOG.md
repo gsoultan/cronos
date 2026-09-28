@@ -22,6 +22,15 @@ needs a deployment to act says so under **Upgrading**.
 
 ## Unreleased
 
+**A map plays through time.** `time: {field, grain}` plays a map through the
+days, weeks, months, quarters or years of a date. It opens on every period
+together, as paper prints it, with a slider under it: play, drag or step
+through the periods, and "All periods" goes back. A period's places are sized,
+and its regions shaded, against every period at once, so a colour or a bubble
+means the same number in the first and the last. The demo's parcel network
+plays August's deliveries a day at a time. See "Maps that play through time"
+in [docs/report-format.md](docs/report-format.md).
+
 **A map draws H3 cells.** An `h3` layer shades the cells of Uber's H3 grid: a
 column of cell ids a warehouse has indexed its rows by — rolled up into
 coarser parents with `h3Resolution` — or the places at `lat` and `lon` binned

@@ -1,5 +1,6 @@
 import { carryOver, document, fromYaml, toYaml, unmodelled, type Yaml } from './yaml'
 import { reference, referenced, sourceSecret } from './secrets'
+import { DEFAULT_TIME_GRAIN } from './maps'
 import type { BasemapProvider, Field, Param, TileMap } from './types'
 
 /**
@@ -575,6 +576,8 @@ function mapSpec(m: ReportBlockInput['map']): Yaml {
     animate: m.animate || undefined,
     h3: m.h3 || undefined,
     h3Resolution: m.h3Resolution || undefined,
+    // A grain is required beside a field; a month is what one unset means.
+    time: m.time ? { field: m.time, grain: m.timeGrain || DEFAULT_TIME_GRAIN } : undefined,
     basemap: basemapOf(m),
     overlays: m.overlays?.length ? m.overlays : undefined,
   }
@@ -990,6 +993,7 @@ function readBlock(v: Yaml): ReportBlockInput {
  */
 function readMap(m: Doc): TileMap {
   const basemap = asMap(m.basemap)
+  const time = asMap(m.time)
   return {
     layers: asList(m.layers).map(str),
     geometry: str(m.geometry) || undefined,
@@ -1009,6 +1013,8 @@ function readMap(m: Doc): TileMap {
     animate: m.animate === true || undefined,
     h3: str(m.h3) || undefined,
     h3Resolution: num(m.h3Resolution),
+    time: str(time.field) || undefined,
+    timeGrain: str(time.grain) || undefined,
     // Cast rather than checked. The server refuses a provider it has no code
     // for, so a stored one is one of these; a check here would be a second
     // list to keep in step with that one.

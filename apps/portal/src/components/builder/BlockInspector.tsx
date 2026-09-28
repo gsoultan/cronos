@@ -4,8 +4,8 @@ import { Field } from '../form/Field'
 import { BasemapKeys } from './BasemapKeys'
 import {
   basemapChoice, colours, DEFAULT_KEY, defaultStyle, drawnLayers, excludedBy, MAX_HEX_KM,
-  MAX_RADIUS_KM, names, readsPoints, readsShapes, relayer, shades, styleOptions, switchBasemap, takesSeries,
-  type BasemapChoice,
+  MAX_RADIUS_KM, names, plays, readsPoints, readsShapes, relayer, shades, styleOptions, switchBasemap, takesSeries,
+  DEFAULT_TIME_GRAIN, TIME_GRAINS, type BasemapChoice,
 } from '../../lib/maps'
 import { CATEGORICAL, FOLDED, GRIDDED, METERED, MULTI_SERIES, PLOTS, STACKABLE } from '../../lib/types'
 import type {
@@ -480,6 +480,8 @@ function MapFields({ block, dimensions, onChange }: {
 
       {drawn.includes('h3') && <H3Fields map={map} dimensions={dimensions} onChange={set} />}
 
+      {plays(drawn) && <TimeFields map={map} dates={dimensions.filter((d) => d.type === 'date')} onChange={set} />}
+
       {readsPoints(drawn, map.h3) && (
         <div className="grid grid-cols-2 gap-3">
           <Field label="Latitude">
@@ -604,6 +606,36 @@ const CLASSES = [
   { value: 'jenks', label: 'Where the values gap' },
   { value: 'custom', label: 'Breaks of my own' },
 ]
+
+/**
+ * A map that plays through time: the date it plays through, and by what
+ * period. The period shows only once there is a date, since it says nothing
+ * without one.
+ */
+function TimeFields({ map, dates, onChange }: {
+  map: TileMap
+  dates: FieldDef[]
+  onChange: (patch: Partial<TileMap>) => void
+}) {
+  return (
+    <>
+      <Field label="Play through" required={false}
+        help="A date. The map opens on every period together, and plays them one at a time.">
+        <Select data={opts(dates)} value={map.time ?? null} clearable data-testid="map-time"
+          placeholder={dates.length > 0 ? 'Every row at once' : 'The dataset has no date field'}
+          disabled={dates.length === 0 && !map.time}
+          onChange={(v) => onChange({ time: v ?? undefined, timeGrain: v ? map.timeGrain : undefined })} />
+      </Field>
+      {map.time && (
+        <Field label="A period is a">
+          <Select data={TIME_GRAINS} value={map.timeGrain ?? DEFAULT_TIME_GRAIN} allowDeselect={false}
+            data-testid="map-time-grain"
+            onChange={(v) => onChange({ timeGrain: v ?? undefined })} />
+        </Field>
+      )}
+    </>
+  )
+}
 
 const RAMPS = [
   { value: 'sequential', label: 'One colour, darker for more' },

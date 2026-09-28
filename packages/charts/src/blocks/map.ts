@@ -1,4 +1,4 @@
-import type { ChartBlock, DrawOptions, GeoMap } from '../types'
+import type { ChartBlock, DrawOptions, GeoMap, LegendStop } from '../types'
 import { el } from '../dom'
 import { svg } from '../svg'
 import { rampLegend } from '../legend'
@@ -18,6 +18,7 @@ import { grouped } from '../map/format'
 import { bubbleValues, diverge, keyLegend, SHADED, sizeLegend } from '../map/keys'
 import { labeller, namesOf } from '../map/labels'
 import { areaTools, pickOf, type Pick } from '../map/sets'
+import { frameOf, periodValues, timeline, type Timeline } from '../map/time'
 
 /** How deep a map with no basemap may be zoomed: a street, about. */
 const DEEPEST = 18
@@ -25,9 +26,12 @@ const DEEPEST = 18
 /** The layers a large map paints on its canvas rather than builds. */
 const PAINTED = new Set(['heat', 'bubble', 'scatter'])
 
-/** A layer, and how it takes the places of a view a large map's reader moved
- *  to — for the layers that draw places at all. */
-type Drawn = Layer & { take?(m: GeoMap): void }
+/** A layer; how it takes the places of a view a large map's reader moved
+ *  to, for the layers that draw places at all; and how it shows a period of
+ *  a map that plays through time — see map/time.ts. Two ways and not one: a
+ *  view carries places and leaves the regions as they are, where a period
+ *  carries both. */
+type Drawn = Layer & { take?(m: GeoMap): void; period?(m: GeoMap): void }
 
 /**
  * A map.
@@ -103,6 +107,9 @@ export function mapBlock(b: ChartBlock, opts: DrawOptions = {}): HTMLElement {
   // is there to be read.
   const pick = pickOf(m, opts.filter)
   const layers: Drawn[] = []
+  // The map's own, which a period is shown on; what it draws over itself
+  // stays as it is.
+  const mine: Drawn[] = []
   const refiners: Refiner[] = []
   // What the map's own bubbles are sized by, keyed again as a view arrives.
   const sizes = el('div', { class: 'size-slot' })
@@ -118,6 +125,7 @@ export function mapBlock(b: ChartBlock, opts: DrawOptions = {}): HTMLElement {
       own.push(l)
     }
     layers.push(...own)
+    if (k === 0) mine.push(...own)
     if (x.detail && opts.mapView) {
       refiners.push(refiner(x.detail, opts.mapView, stage, (got) => {
         for (const l of own) l.take?.(got)
@@ -173,17 +181,39 @@ export function mapBlock(b: ChartBlock, opts: DrawOptions = {}): HTMLElement {
   if (painted) pointAt(stage, painted, tips, pick)
 
   panel.append(stage)
-  legends(panel, m, line.element, sizes)
-  watch(stage, port, redraw, () => { for (const r of refiners) r.stop() })
+  let played: Timeline | null = null
+  if (m.frames?.length) {
+    played = timeline(m.frames, (i) => {
+      const f = i === null ? m : frameOf(m, i)
+      // A tooltip open over a place the period does not have would go on
+      // saying its old number.
+      tips.hide()
+      for (const l of mine) l.period?.(f)
+      names?.swap(namesOf(f))
+      shade(f.legend)
+      sizes.replaceChildren(sizeLegend(i === null ? bubbleValues(m) : periodValues(m)) ?? '')
+      redraw(true)
+    })
+    panel.append(played.element)
+  }
+  const shade = legends(panel, m, line.element, sizes)
+  watch(stage, port, redraw, () => {
+    for (const r of refiners) r.stop()
+    played?.stop()
+  })
   canvas.setAttribute('viewBox', viewBox(port.view()))
   above?.setAttribute('viewBox', viewBox(port.view()))
   return panel
 }
 
-/** What goes under a map: the ramp, the categories, the credits, and what the
- *  reader should know about how much of the data is on it. */
-function legends(panel: HTMLElement, m: GeoMap, credit: HTMLElement | null, sizes: HTMLElement) {
-  const ramp = ramped(m) ? rampLegend(m.legend) : null
+/**
+ * What goes under a map: the ramp, the categories, the credits, and what the
+ * reader should know about how much of the data is on it. Returns how to say
+ * what other shades mean — a period's, on a map that plays through time.
+ */
+function legends(panel: HTMLElement, m: GeoMap, credit: HTMLElement | null,
+  sizes: HTMLElement): (stops: LegendStop[]) => void {
+  let ramp = ramped(m) ? rampLegend(m.legend) : null
   if (ramp && m.ramp === 'diverging') diverge(ramp)
   if (ramp) panel.append(ramp)
   const keyed = keyLegend(m)
@@ -201,6 +231,14 @@ function legends(panel: HTMLElement, m: GeoMap, credit: HTMLElement | null, size
       : `${grouped(m.places)} places, every one of them counted.`))
   }
   for (const [k, ov] of (m.overlays ?? []).entries()) overlayLegend(panel, ov, k + 1)
+  return (stops) => {
+    const was = ramp
+    const next = rampLegend(stops)
+    if (!was || !next) return
+    if (m.ramp === 'diverging') diverge(next)
+    was.replaceWith(next)
+    ramp = next
+  }
 }
 
 /**
@@ -263,31 +301,38 @@ function draw(layer: string, m: GeoMap, s: Scene): Drawn | undefined {
     return paintedLayer(density(m.cells, kind, { keyed, tint: s.tint, picks: !!s.pick }), s.painted)
   }
   switch (layer) {
-    case 'polygon':
-      return areas(m.shapes, s.tips, 'shapes', s.pick)
+    case 'polygon': {
+      const a = areas(m.shapes, s.tips, 'shapes', s.pick)
+      return { ...a, period: (f) => a.shade(f.shapes) }
+    }
     case 'hexbin':
     case 'h3':
       // H3's cells arrive as hexagons do: shapes shaded from the ramp.
       return areas(m.hexes ?? [], s.tips, 'hexes')
-    case 'line':
-      return routes(m.lines ?? [], s.tips)
-    case 'heat':
-      return heat(m.markers)
+    case 'line': {
+      const r = routes(m.lines ?? [], s.tips)
+      return { ...r, period: (f) => r.shade(f.lines ?? []) }
+    }
+    case 'heat': {
+      const h = heat(m.markers)
+      return { ...h, period: (f) => h.swap(f.markers) }
+    }
     case 'cluster': {
       const c = clusters(m.cells ? markersOf(m.cells) : m.markers, s.tips, keyed, s.overlay, s.show, s.pick)
-      return { ...c, take: (got) => { if (got.cells) c.swap(markersOf(got.cells)) } }
+      return { ...c, take: (got) => { if (got.cells) c.swap(markersOf(got.cells)) }, period: (f) => c.swap(f.markers) }
     }
     case 'bubble':
-      return dots(m.markers, s.tips, true, keyed, s.pick)
-    case 'scatter':
-      return dots(m.markers, s.tips, false, keyed, s.pick)
+    case 'scatter': {
+      const d = dots(m.markers, s.tips, layer === 'bubble', keyed, s.pick)
+      return { ...d, period: (f) => d.swap(f.markers) }
+    }
     case 'flow': {
       const f = flows(m.arcs, s.tips, keyed, m.animate)
-      return { ...f, take: (got) => f.swap(got.arcs) }
+      return { ...f, take: (got) => f.swap(got.arcs), period: (got) => f.swap(got.arcs) }
     }
     case 'radius': {
       const r = rings(ringed(m), m.radiusKm ?? 0, s.tips, keyed)
-      return { ...r, take: (got) => r.swap(ringed(got)) }
+      return { ...r, take: (got) => r.swap(ringed(got)), period: (got) => r.swap(ringed(got)) }
     }
   }
   // A layer this build has never heard of is a normal condition — the server

@@ -43,6 +43,13 @@ type GeoMap struct {
 	RadiusKm float64 `json:"radiusKm,omitempty"`
 	Labels   bool    `json:"labels,omitempty"`
 	Animate  bool    `json:"animate,omitempty"`
+	// Frames are a timed map's periods, earliest first, as a reader reads
+	// them — each mark's Frames are its value in those it had rows in, keyed
+	// by the period's place here — and FrameLegend what a period's shades
+	// mean: one set for every period, so a colour means one value in all of
+	// them. The marks themselves are every period together.
+	Frames      []string `json:"frames,omitempty"`
+	FrameLegend []Legend `json:"frameLegend,omitempty"`
 
 	// Tiles is the basemap, when the author asked for one and it could be
 	// drawn.

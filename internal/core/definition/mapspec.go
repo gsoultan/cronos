@@ -85,6 +85,11 @@ type MapSpec struct {
 	// places are binned into, or a coarser one indexed cells are added up to.
 	// Unset sizes cells binned from places to the data.
 	H3Resolution int `json:"h3Resolution,omitempty" yaml:"h3Resolution,omitempty"`
+
+	// Time plays the map through periods: its field bucketed by its grain,
+	// each period a frame a reader steps or plays through. The map opens on
+	// every period together, as the report's other blocks show them.
+	Time *DimensionRef `json:"time,omitempty" yaml:"time,omitempty"`
 }
 
 // MaxRadiusKm is as far as a radius layer's circles may reach: about a
@@ -166,6 +171,9 @@ func (m MapSpec) Validate(output string, i int) error {
 	if err := m.validateMarks(output, i); err != nil {
 		return err
 	}
+	if err := m.validateTime(output, i); err != nil {
+		return err
+	}
 	if m.Basemap != nil {
 		return m.Basemap.Validate(output, i)
 	}
@@ -244,6 +252,7 @@ const (
 	ToLatCol    MapColumn = "toLat"
 	ToLonCol    MapColumn = "toLon"
 	H3Col       MapColumn = "h3"
+	TimeCol     MapColumn = "time"
 	SeriesCol   MapColumn = "series"
 	ValueCol    MapColumn = "value"
 	SizeCol     MapColumn = "size"
@@ -279,6 +288,9 @@ func (b Block) MapColumns() []MapColumn {
 	}
 	if m.Draws(H3Layer) && m.H3 != "" {
 		out = append(out, H3Col)
+	}
+	if m.Time != nil {
+		out = append(out, TimeCol)
 	}
 	// The category a point is coloured by. Only on the layers that leave
 	// colour free for it — see validateMapSeries.
@@ -340,7 +352,18 @@ func (b Block) Grouped() bool {
 // the points inside it. Either way the aggregate has to survive being applied
 // to its own results, which an average does not.
 func (b Block) Folds() bool {
-	return b.Grouped() || (b.Map != nil && (b.Map.Draws(HexbinLayer) || b.foldsH3()))
+	return b.Grouped() || (b.Map != nil && (b.Map.Draws(HexbinLayer) || b.foldsH3() || b.Map.Time != nil))
+}
+
+// FoldedMeasures is the measures a folding map applies twice: its value, and
+// on a map that plays through time its size too, since a place's size in
+// each period adds up to its size on the map as it opens.
+func (b Block) FoldedMeasures() []MeasureRef {
+	out := []MeasureRef{b.Y}
+	if b.Map != nil && b.Map.Time != nil && b.Size.Field != "" {
+		out = append(out, b.Size)
+	}
+	return out
 }
 
 // foldsH3 reports whether an h3 layer adds its cells up from rows inside

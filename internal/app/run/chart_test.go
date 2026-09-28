@@ -52,7 +52,11 @@ kind: Dataset
 metadata: {name: depots}
 spec:
   sources: [{ref: warehouse}]
-  query: SELECT region, shape, lat, lon, to_lat, to_lon, carrier, parcels, staff, depot, route FROM depots
+  # A day each depot delivered on, from its name, so a map can play through
+  # them without a column every positional insert would have to fill.
+  query: >-
+    SELECT region, shape, lat, lon, to_lat, to_lon, carrier, parcels, staff, depot, route,
+    date('2026-08-01', '+' || (length(depot) % 3) || ' days') AS day FROM depots
   fields:
     - {name: region,  type: string,  role: dimension, label: Region}
     - {name: depot,   type: string,  role: dimension, label: Depot}
@@ -64,7 +68,8 @@ spec:
     - {name: to_lon,  type: decimal, role: dimension, hidden: true}
     - {name: carrier, type: string,  role: dimension, label: Carrier}
     - {name: parcels, type: decimal, role: measure, aggregate: sum, label: Parcels}
-    - {name: staff,   type: decimal, role: measure, aggregate: sum, label: Staff}`
+    - {name: staff,   type: decimal, role: measure, aggregate: sum, label: Staff}
+    - {name: day,     type: date,    role: dimension, label: Day}`
 
 // charts names each test's own in-memory database.
 var charts atomic.Int64

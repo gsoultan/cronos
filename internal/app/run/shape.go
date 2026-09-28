@@ -14,4 +14,7 @@ type Shape struct {
 	// custom properties, which is the embed's whole theming API, and a hex
 	// chosen on the server would ignore the host's dark mode.
 	Step int `json:"step"`
+	// Frames are the mark in each period of a timed map it had rows in; the
+	// fields above are every period together.
+	Frames Frames `json:"frames,omitempty"`
 }

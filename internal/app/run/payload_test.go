@@ -120,6 +120,17 @@ spec:
           series: {field: carrier}
           map: {layers: [cluster], lat: lat, lon: lon}
         - kind: chart
+          chart: map
+          title: By day
+          x: {field: region}
+          y: {field: parcels, aggregate: sum}
+          map:
+            layers: [polygon, bubble]
+            geometry: shape
+            lat: lat
+            lon: lon
+            time: {field: day, grain: day}
+        - kind: chart
           chart: combo
           title: Combo
           x: {field: region}
@@ -178,7 +189,7 @@ func TestPayloadForEveryChartType(t *testing.T) {
 
 	// Every chart type, one block each, plus a stat and a table — and the
 	// layers a map draws beyond the first, a map each.
-	if len(view.Blocks) != 20 {
+	if len(view.Blocks) != 21 {
 		t.Fatalf("want a block per chart type, got %d", len(view.Blocks))
 	}
 	if len(view.Filters) != 2 {
@@ -201,6 +212,7 @@ func TestPayloadForEveryChartType(t *testing.T) {
 		`"chart": "gauge"`, `"chart": "treemap"`,
 		`"groups"`, `"totals"`, `"points"`, `"tracks"`, `"stages"`,
 		`"steps"`, `"cells"`, `"rects"`, `"gauge"`, `"shapes"`, `"markers"`, `"arcs"`,
+		`"frames"`, `"frameLegend"`,
 	} {
 		if !strings.Contains(string(raw), want) {
 			t.Errorf("the payload has no %s", want)

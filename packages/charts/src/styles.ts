@@ -545,6 +545,46 @@ tr:last-child td { border-bottom: 0 }
 .legend.sizes { align-items: flex-end }
 .size-ring { display: block; flex: none; overflow: visible }
 .size-ring circle { fill: none; stroke: var(--cr-ink-muted); stroke-width: 1 }
+/* A region with nothing in the period a map is playing: still on the map,
+   empty, its edge where it was. A rule over the fill attribute each period
+   sets, so the step it would have had does not show through. */
+.shapes path.void { fill: var(--cr-line); fill-opacity: 0.35 }
+/* A period's shades ease into the next, for a reader who has not asked their
+   system for less motion. Nothing else changes a shade once it is drawn. */
+@media (prefers-reduced-motion: no-preference) {
+  .shapes path { transition: fill 0.35s }
+  .routes .route { transition: stroke 0.35s }
+}
+/* The periods under a map that plays through time: play, a slider, the one
+   shown, and every period together. */
+.geo-time {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--cr-ink-secondary);
+}
+.geo-time button {
+  flex: none;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--cr-line);
+  border-radius: 6px;
+  font: inherit;
+  color: var(--cr-ink);
+  background: var(--cr-surface);
+  cursor: pointer;
+}
+.geo-time .play { display: grid; place-items: center; width: 32px; padding: 0 }
+.geo-time .play path { fill: currentColor }
+.geo-time button:hover { background: color-mix(in srgb, var(--cr-line) 50%, var(--cr-surface)) }
+.geo-time button:focus-visible, .geo-time input:focus-visible { outline: 2px solid var(--cr-accent); outline-offset: 2px }
+.geo-time .all[aria-pressed='true'] { border-color: var(--cr-accent); color: var(--cr-accent) }
+.geo-time input { flex: 1; min-width: 80px; margin: 0; accent-color: var(--cr-accent) }
+/* Every period together: the slider waits to be moved, not on its first stop. */
+.geo-time input.idle { opacity: 0.45 }
+.geo-time .period { flex: none; min-width: 9ch; font-variant-numeric: tabular-nums; color: var(--cr-ink) }
 
 /* -- Legend and tooltip -------------------------------------------------- */
 

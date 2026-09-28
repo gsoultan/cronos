@@ -285,6 +285,14 @@ export interface TileMap {
    *  the data, and draws indexed ones as they are. */
   h3Resolution?: number
   /**
+   * A date field the map plays through, a period at a time — `map.time` in
+   * the file — and the period: day, week, month, quarter or year. The map
+   * opens on every period together. Not beside hexagons or H3 cells, which
+   * the server refuses: each is folded from every place at once.
+   */
+  time?: string
+  timeGrain?: string
+  /**
    * Other datasets drawn over this map — depots over the deliveries around
    * them — each a block of its own under `map.overlays`. Kept as read: the
    * builder has no control for them yet, and a map rewritten without them
