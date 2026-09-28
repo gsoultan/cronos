@@ -470,6 +470,7 @@ The type is a closed set, checked when the report is stored:
 | `chart` | Reads | Draws |
 | :--- | :--- | :--- |
 | `bar` | `x` dimension, `y` measure | Horizontal bars |
+| `column` | `x` dimension, `y` measure | Vertical columns against a scale |
 | `line` | `x` dimension, `y` measure | A line through every bucket |
 | `area` | `x` dimension, `y` measure | A filled line |
 | `pie` · `donut` | `x` dimension, `y` measure | Parts of a whole |
@@ -482,11 +483,41 @@ The type is a closed set, checked when the report is stored:
 | `heatmap` | `x` + `series` dimensions, `y` | Two dimensions against a measure |
 | `gauge` | `y` measure, plus `target:` | One number against something |
 | `treemap` | `x` dimension, `y` measure | Area within area |
+| `radar` | `x` dimension, `y` measure | A spoke per category, a shape per series |
+| `bullet` | `y` measure, plus `target:`; `x` optional | A bar per category against its target |
 
 `series:` names a second dimension to split by, and `stacked: true` stacks the
-result — on `bar` and `area` only, because a stacked line has a top edge that
-reads as a total nobody measured. Splitting a `pie` is refused for the same
-class of reason: it is already part-to-whole.
+result — on `bar`, `column` and `area` only, because a stacked line has a top
+edge that reads as a total nobody measured. `stacked: percent` stacks each
+bucket to its whole, every part drawn as its share of the bucket against a
+scale of percentages — on `bar` and `column`; an area stacked to its whole is
+refused for now. The values stay the values, and hiding a series with its
+legend key redraws the rest to the whole. Splitting a `pie` is refused for the
+same class of reason as stacking a line: it is already part-to-whole.
+
+A `column` chart is the bar chart stood up: for categories read left to right,
+it has a scale down its left and each column's figure over its top while its
+band has room for it. A `radar` needs three categories or more — with two it
+is a line — and is for a profile across a handful of measures of one kind; its
+rings are at the scale's ticks, and it cannot stack.
+
+A `bullet` chart is a gauge's reading in a row's height: each category of `x`
+is a bar along one shared scale, across a track shaded by how far it is to its
+`target:` — a field or a fixed `value`, as a gauge's — with the target a mark
+across it and "1,500 of 1,000 · 150%" beside it. Without `x` it is one bullet
+for the whole set. `bands:` are where the track's shade changes, as fractions
+of each row's target, ascending, at most two: `[0.6, 0.9]`, the default,
+shades below 60% darkest, then to 90%, then the rest.
+
+```yaml
+- kind: chart
+  chart: bullet
+  title: Billed against plan
+  x: {field: region}
+  y: {field: total, aggregate: sum}
+  target: {value: 250000, label: Plan}
+  bands: [0.5, 0.8]
+```
 
 Every chart is drawn at the width of the panel it is in, and drawn again when
 that changes, so a circle stays round, a label is measured and cut to its room

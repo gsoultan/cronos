@@ -107,6 +107,28 @@ type chartElement struct {
 	Category categoryDataset `xml:"categoryDataset"`
 	// Pie is the shape behind pie charts: a key rather than a category.
 	Pie pieDataset `xml:"pieDataset"`
+	// The bar plots, which say which way a bar chart runs. Jasper's bars stand
+	// up unless the plot says otherwise.
+	BarPlot        plotHolder `xml:"barPlot"`
+	Bar3DPlot      plotHolder `xml:"bar3DPlot"`
+	StackedBarPlot plotHolder `xml:"stackedBarPlot"`
+}
+
+// plotHolder is a chart's own plot element, around the plot every kind shares.
+type plotHolder struct {
+	Plot struct {
+		Orientation string `xml:"orientation,attr"`
+	} `xml:"plot"`
+}
+
+// horizontal reports whether a bar chart's plot lays its bars on their sides.
+func (c chartElement) horizontal() bool {
+	for _, p := range []plotHolder{c.BarPlot, c.Bar3DPlot, c.StackedBarPlot} {
+		if strings.EqualFold(p.Plot.Orientation, "Horizontal") {
+			return true
+		}
+	}
+	return false
 }
 
 type chartFrame struct {
@@ -188,9 +210,21 @@ func (c contents) charts() []placedChart {
 			})
 		}
 	}
-	add(definition.BarChart, "barChart", c.BarCharts)
-	add(definition.BarChart, "bar3DChart", c.Bar3DCharts)
-	add(definition.BarChart, "stackedBarChart", c.StackedBarCharts)
+	// A column unless its plot is horizontal. Every bar chart used to import
+	// as horizontal bars, which is the one orientation Jasper does not draw
+	// by default.
+	bars := func(from string, found []chartElement) {
+		for _, ch := range found {
+			kind := definition.ColumnChart
+			if ch.horizontal() {
+				kind = definition.BarChart
+			}
+			add(kind, from, []chartElement{ch})
+		}
+	}
+	bars("barChart", c.BarCharts)
+	bars("bar3DChart", c.Bar3DCharts)
+	bars("stackedBarChart", c.StackedBarCharts)
 	add(definition.LineChart, "lineChart", c.LineCharts)
 	add(definition.AreaChart, "areaChart", c.AreaCharts)
 	add(definition.AreaChart, "stackedAreaChart", c.StackedAreaChart)

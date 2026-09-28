@@ -116,6 +116,32 @@ spec:
           series: {field: status}
           y: {field: total, aggregate: sum}
 
+        # The same parts as shares of each month: what a stack answers as
+        # "how much", this answers as "what share".
+        - kind: chart
+          chart: column
+          title: Each month's billing by status
+          stacked: percent
+          x: {field: issued_at, grain: month}
+          series: {field: status}
+          y: {field: total, aggregate: sum}
+
+        # A profile across the statuses, rather than a ranking of them.
+        - kind: chart
+          chart: radar
+          title: Where the money sits
+          x: {field: status}
+          y: {field: total, aggregate: sum}
+
+        # Every customer against the same plan, a row each — twenty gauges'
+        # worth of reading in the height of one.
+        - kind: chart
+          chart: bullet
+          title: Customers against plan
+          x: {field: customer_name}
+          y: {field: total, aggregate: sum}
+          target: {value: 20000, label: Plan}
+
         - kind: table
           title: Invoices
           columns: [issued_at, customer_name, status, total]

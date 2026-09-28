@@ -141,6 +141,10 @@
   "line": rgb("#e1e0d9"),
   // The ground a treemap's group is drawn on, under its name.
   "frame": rgb("#f1f0ec"),
+  // A bullet's track, darkest furthest from its target, and the mark the
+  // target is: the ink the words are set in.
+  "shade-1": rgb("#c9c7bf"), "shade-2": rgb("#dddbd4"), "shade-3": rgb("#eeede8"),
+  "ink": rgb("#232323"),
   // The page itself, for cutting a hole back out of a printed region — a
   // lake inside a district. Typst's polygon has no holes of its own.
   "paper": rgb("#ffffff"),

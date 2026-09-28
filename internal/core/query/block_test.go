@@ -280,3 +280,39 @@ func TestACappedStatementWithNoOrderingStillCompiles(t *testing.T) {
 		t.Errorf("a gauge grew an ordering it does not need:\n%s", sql)
 	}
 }
+
+// A bullet chart reads a value and its target per category, inside the rows
+// the caller may read — and a fixed target never reaches the statement.
+func TestABulletFoldsPerCategoryInsideRowScope(t *testing.T) {
+	target := 1000.0
+	sql := block(t, dated(), definition.Block{
+		Kind: definition.ChartBlock, Chart: definition.BulletChart, Title: "Against plan",
+		X:      definition.DimensionRef{Field: "status"},
+		Y:      definition.MeasureRef{Field: "total", Aggregate: "sum"},
+		Target: definition.Target{Value: &target},
+	}, Postgres{})
+	for _, want := range []string{"status AS bucket", "SUM(total) AS value", "GROUP BY status", "ORDER BY 1"} {
+		if !strings.Contains(sql, want) {
+			t.Errorf("a bullet's statement is missing %q:\n%s", want, sql)
+		}
+	}
+	if scope, agg := strings.Index(sql, "customer_id = $"), strings.Index(sql, "SUM(total)"); scope < 0 || agg > scope {
+		t.Errorf("a bullet does not fold inside row scope:\n%s", sql)
+	}
+	if strings.Contains(sql, "1000") || strings.Contains(sql, "AS target") {
+		t.Errorf("a fixed target reached the statement:\n%s", sql)
+	}
+}
+
+// A bullet whose target is a column reads it beside the value.
+func TestABulletReadsItsTargetColumn(t *testing.T) {
+	sql := block(t, dated(), definition.Block{
+		Kind: definition.ChartBlock, Chart: definition.BulletChart, Title: "Against plan",
+		X:      definition.DimensionRef{Field: "status"},
+		Y:      definition.MeasureRef{Field: "total", Aggregate: "sum"},
+		Target: definition.Target{Field: "total", Aggregate: "max"},
+	}, Postgres{})
+	if !strings.Contains(sql, "MAX(total) AS target") {
+		t.Errorf("the target column is not read:\n%s", sql)
+	}
+}

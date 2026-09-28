@@ -50,6 +50,9 @@ func readChart(out *Block, blk definition.Block, ds definition.Dataset, rows Row
 		out.XAxis, out.YAxis = &x, &y
 	case blk.Chart.Folded():
 		out.Gauge, err = readGauge(blk, rows)
+	case blk.Chart == definition.BulletChart:
+		out.Bullets, out.XAxis, err = readBullets(blk, rows)
+		out.Bands = bandsOf(blk)
 	case blk.Chart.Mixes():
 		var y Axis
 		out.Tracks, y, out.Axis2, err = readCombo(blk, rows)
@@ -61,21 +64,13 @@ func readChart(out *Block, blk definition.Block, ds definition.Dataset, rows Row
 		out.Steps, y, err = readWaterfall(blk, rows)
 		out.YAxis = &y
 	case blk.Chart.Gridded():
-		var g grid
-		if g, err = readHeatmap(blk, rows); err == nil {
-			out.Cells, out.HeatRows, out.HeatColumns = g.cells, g.rows, g.columns
-			// Total is the grid the data asked for, which may exceed the one
-			// drawn — the same promise a table's Total makes about its page.
-			if g.full > len(g.cells) {
-				out.Total = g.full
-			}
-		}
+		err = out.readGrid(blk, rows)
 	case blk.Chart == definition.TreemapChart:
 		out.Rects, err = readTreemap(blk, rows)
 	case blk.Series.Field != "":
-		out.Stacked = blk.Stacked
+		out.Stacked, out.Percent = blk.Stacked.On(), blk.Stacked.Shares()
 		out.Groups, err = readGroups(rows, blk.X.Grain)
-		if blk.Stacked {
+		if out.Stacked {
 			out.Totals = totals(out.Groups)
 		}
 	default:
@@ -85,6 +80,21 @@ func readChart(out *Block, blk definition.Block, ds definition.Dataset, rows Row
 		out.scaleFor(blk.Chart)
 	}
 	return err
+}
+
+// readGrid reads a heatmap's cells and the labels down and across it.
+func (out *Block) readGrid(blk definition.Block, rows Rows) error {
+	g, err := readHeatmap(blk, rows)
+	if err != nil {
+		return err
+	}
+	out.Cells, out.HeatRows, out.HeatColumns = g.cells, g.rows, g.columns
+	// Total is the grid the data asked for, which may exceed the one drawn —
+	// the same promise a table's Total makes about its page.
+	if g.full > len(g.cells) {
+		out.Total = g.full
+	}
+	return nil
 }
 
 // readShares reads one series and, for a chart of parts of a whole, the whole.
@@ -118,10 +128,29 @@ func sumOf(parts []Bar) Bar {
 // label per point, so the axis is the only thing carrying the magnitude — and
 // a viewer choosing its own ticks would be the one part of the report this
 // engine did not format.
+//
+// A column chart and a radar are read against theirs as a line is, and both
+// start at nothing: a column stands on it, and a radar's middle is it.
 func (b *Block) scaleFor(chart definition.ChartType) {
-	if chart != definition.LineChart && chart != definition.AreaChart {
+	var y Axis
+	switch chart {
+	case definition.LineChart, definition.AreaChart:
+		y = axis(b.heights())
+	case definition.ColumnChart, definition.RadarChart:
+		if b.Percent {
+			y = shareAxis(b.Groups)
+		} else {
+			y = axis(append(b.reaches(), 0))
+		}
+	default:
 		return
 	}
+	b.YAxis = &y
+}
+
+// heights are what a line chart's scale has to reach: every point, or a
+// stacked area's top edge.
+func (b *Block) heights() []float64 {
 	var values []float64
 	switch {
 	case b.Totals != nil:
@@ -141,8 +170,7 @@ func (b *Block) scaleFor(chart definition.ChartType) {
 			values = append(values, bar.Value)
 		}
 	}
-	y := axis(values)
-	b.YAxis = &y
+	return values
 }
 
 // readStat takes the single cell the aggregate produced.

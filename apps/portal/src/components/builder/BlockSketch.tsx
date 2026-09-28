@@ -36,8 +36,47 @@ export function BlockSketch({ kind, title }: { kind: TileKind; title: string }) 
 const s = (n: number) => `var(--color-series-${n})`
 const step = (n: number) => `var(--color-step-${n}, var(--color-series-1))`
 
+/** Points around a middle, one per spoke from twelve o'clock: a radar's web. */
+function spokes(reach: number[], r: number, cx = 60, cy = 36): string {
+  return reach.map((k, i) => {
+    const a = -Math.PI / 2 + (i * 2 * Math.PI) / reach.length
+    return `${(cx + Math.cos(a) * r * k).toFixed(1)},${(cy + Math.sin(a) * r * k).toFixed(1)}`
+  }).join(' ')
+}
+
+/** A bullet's shades, darkest furthest from its target. */
+const shade = (k: number) => `color-mix(in srgb, var(--color-ink-muted) ${[34, 20, 9][k]}%, var(--color-surface))`
+
 function shape(kind: TileKind) {
   switch (kind) {
+    case 'bar':
+      return [0.9, 0.66, 0.5, 0.3].map((w, i) => (
+        <rect key={i} x="8" y={8 + i * 14} width={w * 104} height="10" rx="2" fill={s(1)} />
+      ))
+
+    case 'radar':
+      return (
+        <>
+          {[1, 0.66, 0.33].map((k) => (
+            <polygon key={k} points={spokes([k, k, k, k, k], 28)} fill="none"
+              stroke="var(--color-line)" strokeWidth="1" />
+          ))}
+          <polygon points={spokes([0.9, 0.6, 0.8, 0.45, 0.7], 28)} fill={s(1)} fillOpacity="0.18"
+            stroke={s(1)} strokeWidth="2" strokeLinejoin="round" />
+        </>
+      )
+
+    case 'bullet':
+      return [0.86, 0.52, 0.7].map((v, i) => (
+        <g key={i}>
+          {[[8, 58], [66, 30], [96, 16]].map(([x, w], k) => (
+            <rect key={k} x={x} y={8 + i * 19} width={w} height="13" fill={shade(k)} />
+          ))}
+          <rect x="8" y={12.5 + i * 19} width={v * 104} height="4" rx="1" fill={s(1)} />
+          <rect x="84" y={9 + i * 19} width="2" height="11" fill="var(--color-ink)" />
+        </g>
+      ))
+
     case 'pie':
     case 'donut':
       return (

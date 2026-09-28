@@ -20,6 +20,8 @@ const LABEL_PX = 12
  * Stacked, a bucket's parts sit end to end with the surface showing between
  * them, positive parts to the right of zero and negative ones to the left;
  * grouped, each series gets a thinner bar of its own under the bucket.
+ * Stacked to a whole, each part is its share of the parts on show, and the
+ * total beside the stack is said only while every series is showing.
  */
 export function barBlock(b: ChartBlock): HTMLElement {
   const panel = chartPanel(b.title)
@@ -47,6 +49,11 @@ function draw(width: number, b: ChartBlock, groups: Group[], shown: boolean[], m
   const live = groups.filter((_, i) => shown[i])
   const buckets = groups[0]?.bars ?? []
   const stacked = !!b.stacked && groups.length > 1
+  const size = (i: number): Size => {
+    if (!b.percent) return (v) => v.value
+    const whole = live.reduce((sum, g) => sum + Math.abs(g.bars[i]?.value ?? 0), 0)
+    return (v) => (whole > 0 ? v.value / whole : 0)
+  }
   const lanes = stacked ? 1 : Math.max(live.length, 1)
   const thick = lanes > 1 ? 12 : 20
   const row = lanes * thick + (lanes - 1) * 3 + 12
@@ -54,7 +61,7 @@ function draw(width: number, b: ChartBlock, groups: Group[], shown: boolean[], m
 
   // Where nothing is, and how far a unit reaches, across the room left once
   // the names and the numbers have theirs.
-  const ends = buckets.flatMap((_, i) => stacked ? stackEnds(live, i) : live.map((g) => g.bars[i]?.value ?? 0))
+  const ends = buckets.flatMap((_, i) => stacked ? stackEnds(live, i, size(i)) : live.map((g) => g.bars[i]?.value ?? 0))
   const lo = Math.min(0, ...ends)
   const hi = Math.max(0, ...ends, lo === 0 ? 1e-9 : 0)
   const values = stacked ? (b.totals ?? []).map((t) => t.formatted) : live.flatMap((g) => g.bars.map((x) => x.formatted))
@@ -74,12 +81,14 @@ function draw(width: number, b: ChartBlock, groups: Group[], shown: boolean[], m
     const top = i * row + 6
     text.append(label(0, top + (row - 12) / 2 + 4, fit(bucket.label, nameW, LABEL_PX, m), 'name', 'start'))
     if (stacked) {
-      stack(marks, live, i, top, thick, x, tips, bucket.label)
+      stack(marks, live, i, top, thick, x, tips, bucket.label, size(i), !!b.percent)
       // Past whichever end the stack reaches on the total's side: parts
       // either side of nothing can net to a value inside the stack.
       const total = b.totals?.[i]
-      const [up, down] = stackEnds(live, i)
-      if (total) value(text, x, total.value < 0 ? (down ?? 0) : (up ?? 0), total.formatted, top + thick / 2)
+      const [up, down] = stackEnds(live, i, size(i))
+      if (total && live.length === groups.length) {
+        value(text, x, total.value < 0 && !b.percent ? (down ?? 0) : (up ?? 0), total.formatted, top + thick / 2)
+      }
       return
     }
     live.forEach((g, k) => {
@@ -94,34 +103,40 @@ function draw(width: number, b: ChartBlock, groups: Group[], shown: boolean[], m
   return root
 }
 
+/** How long a part is drawn: its value, or its share of its bucket. */
+type Size = (v: Bar) => number
+
 /** The ends a bucket's stack reaches, either side of nothing. */
-function stackEnds(groups: Group[], i: number): number[] {
+function stackEnds(groups: Group[], i: number, size: Size): number[] {
   let up = 0
   let down = 0
   for (const g of groups) {
-    const v = g.bars[i]?.value ?? 0
-    if (v >= 0) up += v
-    else down += v
+    const v = g.bars[i]
+    const s = v ? size(v) : 0
+    if (s >= 0) up += s
+    else down += s
   }
   return [up, down]
 }
 
 /** One bucket's parts, end to end outward from nothing. */
 function stack(into: SVGGElement, groups: Group[], i: number, top: number, thick: number,
-  x: (v: number) => number, tips: Tips, bucket: string) {
+  x: (v: number) => number, tips: Tips, bucket: string, size: Size, percent: boolean) {
   let up = 0
   let down = 0
   for (const g of groups) {
     const v = g.bars[i]
     if (!v || v.value === 0) continue
-    const from = v.value >= 0 ? up : down + v.value
-    if (v.value >= 0) up += v.value
-    else down += v.value
+    const s = size(v)
+    const from = s >= 0 ? up : down + s
+    if (s >= 0) up += s
+    else down += s
     // Square between parts, with a pixel of surface either side: two fills
     // that touch read as one fill.
     const left = x(from) + 1
-    const w = Math.abs(x(from + Math.abs(v.value)) - x(from)) - 2
-    mark(into, left, top, w, thick, v.value, g.slot, tips, `${g.label} · ${bucket}`, v, 1)
+    const w = Math.abs(x(from + Math.abs(s)) - x(from)) - 2
+    const said = percent ? { ...v, formatted: `${v.formatted} · ${Math.round(s * 1000) / 10}%` } : v
+    mark(into, left, top, w, thick, s, g.slot, tips, `${g.label} · ${bucket}`, said, 1)
   }
 }
 

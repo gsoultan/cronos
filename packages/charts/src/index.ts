@@ -1,5 +1,8 @@
 import { statBlock } from './blocks/stat'
 import { barBlock } from './blocks/bar'
+import { columnBlock } from './blocks/column'
+import { radarBlock } from './blocks/radar'
+import { bulletBlock } from './blocks/bullet'
 import { lineBlock } from './blocks/line'
 import { pieBlock } from './blocks/pie'
 import { scatterBlock } from './blocks/scatter'
@@ -54,6 +57,8 @@ export function drawChart(b: ChartBlock, opts: DrawOptions = {}): HTMLElement {
   switch (b.chart) {
     case 'bar':
       return barBlock(b)
+    case 'column':
+      return columnBlock(b)
     case 'line':
       return lineBlock(b, false)
     case 'area':
@@ -79,6 +84,10 @@ export function drawChart(b: ChartBlock, opts: DrawOptions = {}): HTMLElement {
       return gaugeBlock(b)
     case 'treemap':
       return treemapBlock(b)
+    case 'radar':
+      return radarBlock(b)
+    case 'bullet':
+      return bulletBlock(b)
     default:
       return unsupported(`${b.chart} charts need a newer viewer`)
   }
@@ -90,7 +99,7 @@ export { unaffectedNote } from './coverage'
 export { el, fill } from './dom'
 export { css, documentCss, LAYER } from './styles'
 export type {
-  Arc, Axis, Bar, Block, Bounds, Cell, Cells, ChartBlock, Coverage, Credit, Delta, DrawOptions,
+  Arc, Axis, Bar, Block, Bounds, Bullet, Cell, Cells, ChartBlock, Coverage, Credit, Delta, DrawOptions,
   FilterDef, FilterValues, FrameMark, Frames, Gauge, GeoMap, Group, LegendStop, MapArea, MapDetail, MapKey, MapPick,
   MapViewAsk, MapViewer, Marker, Point, Rect, ReportPayload, Shape, Stage, StatBlock, Step, TableBlock,
   TextBlock, Tick, Tiles, Track,

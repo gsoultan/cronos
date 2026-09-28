@@ -1270,6 +1270,294 @@
       "title": "Treemap"
     },
     {
+      "chart": "column",
+      "coverage": {
+        "applied": [
+          "carrier",
+          "parcels_over"
+        ]
+      },
+      "groups": [
+        {
+          "label": "Aurora",
+          "slot": 0,
+          "bars": [
+            {
+              "label": "England",
+              "value": 1200,
+              "formatted": "1,200"
+            },
+            {
+              "label": "Scotland",
+              "value": 700,
+              "formatted": "700"
+            }
+          ]
+        },
+        {
+          "label": "Baltic",
+          "slot": 1,
+          "bars": [
+            {
+              "label": "England",
+              "value": 300,
+              "formatted": "300"
+            },
+            {
+              "label": "Scotland",
+              "value": 0,
+              "formatted": "0"
+            }
+          ]
+        }
+      ],
+      "kind": "chart",
+      "series": [],
+      "stacked": false,
+      "title": "Columns by carrier",
+      "yAxis": {
+        "min": 0,
+        "max": 1500,
+        "ticks": [
+          {
+            "at": 0,
+            "label": "0"
+          },
+          {
+            "at": 0.3333333333333333,
+            "label": "500"
+          },
+          {
+            "at": 0.6666666666666666,
+            "label": "1,000"
+          },
+          {
+            "at": 1,
+            "label": "1,500"
+          }
+        ]
+      }
+    },
+    {
+      "chart": "column",
+      "coverage": {
+        "applied": [
+          "carrier",
+          "parcels_over"
+        ]
+      },
+      "groups": [
+        {
+          "label": "Aurora",
+          "slot": 0,
+          "bars": [
+            {
+              "label": "England",
+              "value": 1200,
+              "formatted": "1,200"
+            },
+            {
+              "label": "Scotland",
+              "value": 700,
+              "formatted": "700"
+            }
+          ]
+        },
+        {
+          "label": "Baltic",
+          "slot": 1,
+          "bars": [
+            {
+              "label": "England",
+              "value": 300,
+              "formatted": "300"
+            },
+            {
+              "label": "Scotland",
+              "value": 0,
+              "formatted": "0"
+            }
+          ]
+        }
+      ],
+      "kind": "chart",
+      "percent": true,
+      "series": [],
+      "stacked": true,
+      "title": "Share by carrier",
+      "totals": [
+        {
+          "label": "England",
+          "value": 1500,
+          "formatted": "1,500"
+        },
+        {
+          "label": "Scotland",
+          "value": 700,
+          "formatted": "700"
+        }
+      ],
+      "yAxis": {
+        "min": 0,
+        "max": 1,
+        "ticks": [
+          {
+            "at": 0,
+            "label": "0%"
+          },
+          {
+            "at": 0.25,
+            "label": "25%"
+          },
+          {
+            "at": 0.5,
+            "label": "50%"
+          },
+          {
+            "at": 0.75,
+            "label": "75%"
+          },
+          {
+            "at": 1,
+            "label": "100%"
+          }
+        ]
+      }
+    },
+    {
+      "chart": "radar",
+      "coverage": {
+        "applied": [
+          "carrier",
+          "parcels_over"
+        ]
+      },
+      "groups": [
+        {
+          "label": "Baltic",
+          "slot": 0,
+          "bars": [
+            {
+              "label": "Bristol",
+              "value": 300,
+              "formatted": "300"
+            },
+            {
+              "label": "Edinburgh",
+              "value": 0,
+              "formatted": "0"
+            },
+            {
+              "label": "London",
+              "value": 0,
+              "formatted": "0"
+            }
+          ]
+        },
+        {
+          "label": "Aurora",
+          "slot": 1,
+          "bars": [
+            {
+              "label": "Bristol",
+              "value": 0,
+              "formatted": "0"
+            },
+            {
+              "label": "Edinburgh",
+              "value": 700,
+              "formatted": "700"
+            },
+            {
+              "label": "London",
+              "value": 1200,
+              "formatted": "1,200"
+            }
+          ]
+        }
+      ],
+      "kind": "chart",
+      "series": [],
+      "stacked": false,
+      "title": "Radar",
+      "yAxis": {
+        "min": 0,
+        "max": 1500,
+        "ticks": [
+          {
+            "at": 0,
+            "label": "0"
+          },
+          {
+            "at": 0.3333333333333333,
+            "label": "500"
+          },
+          {
+            "at": 0.6666666666666666,
+            "label": "1,000"
+          },
+          {
+            "at": 1,
+            "label": "1,500"
+          }
+        ]
+      }
+    },
+    {
+      "bands": [
+        0.6,
+        0.9
+      ],
+      "bullets": [
+        {
+          "label": "England",
+          "value": 1500,
+          "formatted": "1,500",
+          "target": 1000,
+          "targetFormatted": "1,000"
+        },
+        {
+          "label": "Scotland",
+          "value": 700,
+          "formatted": "700",
+          "target": 1000,
+          "targetFormatted": "1,000"
+        }
+      ],
+      "chart": "bullet",
+      "coverage": {
+        "applied": [
+          "carrier",
+          "parcels_over"
+        ]
+      },
+      "kind": "chart",
+      "series": [],
+      "title": "Bullet",
+      "xAxis": {
+        "min": 0,
+        "max": 1500,
+        "ticks": [
+          {
+            "at": 0,
+            "label": "0"
+          },
+          {
+            "at": 0.3333333333333333,
+            "label": "500"
+          },
+          {
+            "at": 0.6666666666666666,
+            "label": "1,000"
+          },
+          {
+            "at": 1,
+            "label": "1,500"
+          }
+        ]
+      }
+    },
+    {
       "columns": [
         {
           "label": "Region"

@@ -74,6 +74,21 @@ func TestRoundTrip(t *testing.T) {
 						{Kind: definition.ChartBlock, Chart: "bar", Title: "By month",
 							X: definition.DimensionRef{Field: "issued_at", Grain: "month"},
 							Y: definition.MeasureRef{Field: "total", Aggregate: "sum"}},
+						{Kind: definition.ChartBlock, Chart: "column", Title: "Stacked",
+							X:       definition.DimensionRef{Field: "issued_at", Grain: "month"},
+							Y:       definition.MeasureRef{Field: "total", Aggregate: "sum"},
+							Series:  definition.DimensionRef{Field: "currency"},
+							Stacked: definition.StackedParts},
+						{Kind: definition.ChartBlock, Chart: "column", Title: "Shares",
+							X:       definition.DimensionRef{Field: "issued_at", Grain: "month"},
+							Y:       definition.MeasureRef{Field: "total", Aggregate: "sum"},
+							Series:  definition.DimensionRef{Field: "currency"},
+							Stacked: definition.StackedShares},
+						{Kind: definition.ChartBlock, Chart: "bullet", Title: "Against plan",
+							X:      definition.DimensionRef{Field: "currency"},
+							Y:      definition.MeasureRef{Field: "total", Aggregate: "sum"},
+							Target: definition.Target{Value: new(1000.0), Label: "Plan"},
+							Bands:  []float64{0.5, 0.8}},
 						{Kind: definition.TableBlock, Columns: []string{"issued_at", "total"},
 							Sort: []definition.SortKey{{Field: "issued_at", Dir: "desc"}}, PageSize: 50},
 					},
@@ -102,6 +117,13 @@ func TestRoundTrip(t *testing.T) {
 		raw, err := enc.Report(want)
 		if err != nil {
 			t.Fatalf("encode: %v", err)
+		}
+		// Written the way an author writes them: a stack as `true`, a stack of
+		// shares by its name.
+		for _, said := range []string{"stacked: true", "stacked: percent", "bands:"} {
+			if !strings.Contains(string(raw), said) {
+				t.Errorf("the report does not say %q:\n%s", said, raw)
+			}
 		}
 		got, err := ldr.Report(raw)
 		if err != nil {

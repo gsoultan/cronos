@@ -45,10 +45,12 @@ func (t *translation) chart(c placedChart) (definition.Block, bool) {
 	blk := definition.Block{
 		Kind: definition.ChartBlock, Chart: c.kind,
 		Title: t.chartTitle(c), X: x, Y: y, Series: series,
-		// Only where the type can carry it. Jasper has a stacked line chart;
-		// cronos refuses one, because a stacked line is a shape whose top edge
-		// reads as a total nobody measured.
-		Stacked: c.stacked && c.kind.Stacks() && series.Field != "",
+	}
+	// Only where the type can carry it. Jasper has a stacked line chart;
+	// cronos refuses one, because a stacked line is a shape whose top edge
+	// reads as a total nobody measured.
+	if c.stacked && c.kind.Stacks() && series.Field != "" {
+		blk.Stacked = definition.StackedParts
 	}
 	return blk, true
 }

@@ -22,6 +22,18 @@ needs a deployment to act says so under **Upgrading**.
 
 ## Unreleased
 
+**Three more chart types, and stacks to 100%.** `chart: column` is the bar
+chart stood up, against a scale; `chart: radar` draws a spoke per category and
+a shape per series; `chart: bullet` reads each category's value against a
+`target:` along one scale, across a track shaded at the target's fractions
+(`bands:`). `stacked: percent` stacks a bar or column chart's parts as shares
+of each bucket's whole. All four draw in the viewer, the portal and a PDF, the
+builder offers them, and the demo's billing report shows each; see "Charts" in
+[docs/report-format.md](docs/report-format.md). A Jasper bar chart now imports
+as a `column` unless its plot is horizontal, which is how Jasper draws it. A
+gauge added in the builder no longer takes a grouping the server refuses. The
+embed is 33.6 KB.
+
 **Every chart, redrawn.** Charts are drawn at their panel's real width and drawn
 again when it changes, where they were drawn once and stretched: a scatter's
 dots filled a strip down the middle of a wide panel, a line chart's last label

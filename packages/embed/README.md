@@ -165,7 +165,8 @@ for a page with a theme switch of its own.
 
 Structural parts are exposed for the cases custom properties cannot reach:
 `::part(panel)`, `::part(stat)`, `::part(table)`, `::part(bar)`,
-`::part(grid)`, `::part(message)`, `::part(unaffected)`.
+`::part(point)`, `::part(target)`, `::part(grid)`, `::part(message)`,
+`::part(unaffected)`.
 
 ## Blocks say when a filter misses them
 

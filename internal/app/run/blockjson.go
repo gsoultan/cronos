@@ -76,8 +76,15 @@ func (b Block) chartJSON(out map[string]any) {
 		if b.Stacked {
 			out["totals"] = b.Totals
 		}
+		if b.Percent {
+			out["percent"] = true
+		}
 	case b.Gauge != nil:
 		out["gauge"] = b.Gauge
+	case b.Bullets != nil:
+		out["bullets"] = b.Bullets
+		out["xAxis"] = b.XAxis
+		out["bands"] = b.Bands
 	case b.Tracks != nil:
 		out["tracks"] = b.Tracks
 		if b.Axis2 != nil {

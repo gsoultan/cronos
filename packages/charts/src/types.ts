@@ -84,6 +84,16 @@ export interface Axis {
   ticks: Tick[]
 }
 
+/** One row of a bullet chart: a category's value and the target it is read
+ *  against, each formatted by the engine that knew the unit. */
+export interface Bullet {
+  label: string
+  value: number
+  formatted: string
+  target: number
+  targetFormatted: string
+}
+
 /** The Web Mercator world-unit box a map fits, already padded. */
 export interface Bounds {
   minX: number
@@ -429,6 +439,9 @@ export interface ChartBlock {
   /** One entry per series, when the block splits by a dimension. */
   groups?: Group[]
   stacked?: boolean
+  /** Stacked to a whole: each part drawn as its share of its bucket, against
+   *  a scale of percentages. The values are still the values. */
+  percent?: boolean
   /** The height of each stack, formatted by the engine that knew the
    *  currency. Present when stacked. */
   totals?: Bar[]
@@ -446,6 +459,10 @@ export interface ChartBlock {
   heatColumns?: string[]
   rects?: Rect[]
   gauge?: Gauge
+  /** A bullet chart's rows, read along `xAxis`, and the fractions of each
+   *  row's target its track is shaded at. */
+  bullets?: Bullet[]
+  bands?: number[]
   coverage?: Coverage
 }
 

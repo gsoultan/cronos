@@ -88,9 +88,10 @@ ok('deselecting returns the inspector to report settings',
  */
 const kinds = await p.locator('[data-testid=block-palette] button').evaluateAll(
   (bs) => bs.map((b) => b.getAttribute('aria-label')?.replace(/^Add /, '')))
-ok(`the palette offers every chart (${kinds.length})`, kinds.length >= 16)
+ok(`the palette offers every chart (${kinds.length})`, kinds.length >= 19)
 
-for (const label of ['Pie chart', 'Funnel', 'Map', 'Treemap', 'Heatmap', 'Gauge', 'Bubble']) {
+for (const label of ['Pie chart', 'Funnel', 'Map', 'Treemap', 'Heatmap', 'Gauge', 'Bubble',
+  'Column chart', 'Radar', 'Bullet']) {
   const before = await p.locator('[data-testid=layout-canvas] > div').count()
   await p.click(`[data-testid=block-palette] button[aria-label="Add ${label}"]`)
   await until(() => p.locator('[data-testid=layout-canvas] > div').count(), before + 1)
@@ -112,7 +113,9 @@ for (const label of ['Pie chart', 'Funnel', 'Map', 'Treemap', 'Heatmap', 'Gauge'
  * nothing under it, and a gauge as a stat tile adrift in a card three times its
  * height. Each was a confident picture of a chart the report does not draw.
  */
-for (const label of ['Bars + line', 'Waterfall', 'Area chart', 'Gauge']) {
+// A bar chart too: its bars lie down, and it was drawn with the column
+// component, standing up.
+for (const label of ['Bars + line', 'Waterfall', 'Area chart', 'Gauge', 'Bar chart', 'Radar', 'Bullet']) {
   const before = await p.locator('[data-testid=layout-canvas] > div').count()
   await p.click(`[data-testid=block-palette] button[aria-label="Add ${label}"]`)
   await until(() => p.locator('[data-testid=layout-canvas] > div').count(), before + 1)

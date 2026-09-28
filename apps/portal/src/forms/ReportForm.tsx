@@ -87,6 +87,7 @@ function tiles(blocks: ReportInput['blocks']): Tile[] {
       map: b.map,
       metrics: b.metrics as Tile['metrics'],
       target: b.target as Tile['target'],
+      bands: b.bands,
       columns: b.columns,
       filter: b.filter,
       sort: b.sort?.map((k) => ({ field: k.field, dir: k.dir as 'asc' | 'desc' | undefined })),
@@ -170,7 +171,12 @@ export function ReportForm({ onDone, onCancel, initial }: Props) {
       title: preset.label,
       span: spanFor(kind),
       field: visible.find((f) => f.role === 'measure')?.name,
-      groupBy: kind === 'stat' ? undefined : visible.find((f) => f.role === 'dimension')?.name,
+      // A number and a gauge are one figure for the whole set, so they are
+      // grouped by nothing. A gauge used to be seeded with a grouping it
+      // hid, and the server refused the report the canvas wrote from it.
+      groupBy: kind === 'stat' || kind === 'gauge'
+        ? undefined
+        : visible.find((f) => f.role === 'dimension')?.name,
       aggregate: 'sum',
       // A plot needs two measures before it draws anything, so the second one
       // is seeded too — with the same field when the dataset has only one,
@@ -186,9 +192,13 @@ export function ReportForm({ onDone, onCancel, initial }: Props) {
       // needs at least one stage — seeded so the canvas shows something the
       // author can correct rather than an empty panel they have to guess at.
       metrics: METERED.includes(kind) ? seed(kind, visible) : undefined,
+      // A bullet reads its measure against a second where the dataset has
+      // one, so it opens as a comparison rather than as 100% of itself.
       target: kind === 'gauge'
         ? { field: visible.find((f) => f.role === 'measure')?.name }
-        : undefined,
+        : kind === 'bullet'
+          ? { field: (visible.filter((f) => f.role === 'measure')[1] ?? visible.find((f) => f.role === 'measure'))?.name }
+          : undefined,
       // A heatmap's second dimension is the other axis of the grid, not an
       // optional split, so it is seeded rather than left for the inspector.
       series: GRIDDED.includes(kind)

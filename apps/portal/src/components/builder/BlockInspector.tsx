@@ -7,7 +7,7 @@ import {
   MAX_RADIUS_KM, names, plays, readsPoints, readsShapes, relayer, shades, studioStyle, styleOptions, switchBasemap, takesSeries,
   DEFAULT_TIME_GRAIN, TIME_GRAINS, type BasemapChoice,
 } from '../../lib/maps'
-import { CATEGORICAL, FOLDED, GRIDDED, METERED, MULTI_SERIES, PLOTS, STACKABLE } from '../../lib/types'
+import { CATEGORICAL, GRIDDED, METERED, MULTI_SERIES, PLOTS, STACKABLE, TARGETED } from '../../lib/types'
 import type {
   Dataset, Field as FieldDef, Tile, TileMap, TileMetric, TileTarget,
 } from '../../lib/types'
@@ -173,7 +173,7 @@ export function BlockInspector({
           onChange={(metrics) => onChange({ metrics })} />
       )}
 
-      {is(FOLDED, block.kind) && (
+      {is(TARGETED, block.kind) && (
         <TargetField target={block.target ?? {}} measures={measures}
           onChange={(patch) => onChange({ target: { ...block.target, ...patch } })} />
       )}
@@ -183,11 +183,14 @@ export function BlockInspector({
           Then this only groups them, and saying "Labelled by" would name the
           wrong control. */}
       {(is(CATEGORICAL, block.kind) || is(PLOTS, block.kind) || block.kind === 'map'
-        || block.kind === 'combo') && (
+        || block.kind === 'combo' || block.kind === 'bullet') && (
         <Field label={block.kind === 'map' && !block.map?.region ? 'Labelled by' : 'Grouped by'}
           help={groupHelp(block, fields)}>
-          <Select data={opts(dimensions)} value={block.groupBy ?? null} allowDeselect={false}
-            placeholder="Choose a field"
+          {/* Optional on a bullet chart alone: without it, one bullet for the
+              whole set. */}
+          <Select data={opts(dimensions)} value={block.groupBy ?? null}
+            allowDeselect={block.kind === 'bullet'} clearable={block.kind === 'bullet'}
+            placeholder={block.kind === 'bullet' ? 'The whole set' : 'Choose a field'}
             onChange={(v) => onChange({ groupBy: v ?? undefined })} />
         </Field>
       )}
@@ -230,8 +233,13 @@ export function BlockInspector({
       )}
 
       {is(STACKABLE, block.kind) && block.series && (
-        <Checkbox label="Stack the series" checked={block.stacked ?? false}
-          onChange={(e) => onChange({ stacked: e.currentTarget.checked || undefined })} />
+        <Field label="Series drawn">
+          {/* Stacked to its whole is a bar's and a column's: the server
+              refuses it on an area, which stacks its values. */}
+          <Select data={block.kind === 'area' ? STACKS.slice(0, 2) : STACKS} allowDeselect={false}
+            value={block.stacked === 'percent' ? 'percent' : block.stacked ? 'stacked' : 'beside'}
+            onChange={(v) => onChange({ stacked: v === 'percent' ? 'percent' : v === 'stacked' ? true : undefined })} />
+        </Field>
       )}
 
       {block.kind === 'map' && (
@@ -374,7 +382,8 @@ function Metrics({ kind, metrics, measures, onChange }: {
   )
 }
 
-/** What a gauge reads its value against: a column, or a fixed number. */
+/** What a gauge or a bullet chart reads its values against: a column, or a
+ *  fixed number. */
 function TargetField({ target, measures, onChange }: {
   target: TileTarget
   measures: FieldDef[]
@@ -421,6 +430,12 @@ const TARGETS = [
   { value: 'value', label: 'A fixed number' },
 ]
 
+const STACKS = [
+  { value: 'beside', label: 'Beside each other' },
+  { value: 'stacked', label: 'Stacked' },
+  { value: 'percent', label: 'Stacked to 100%' },
+]
+
 function groupHelp({ kind, map }: Tile, fields: FieldDef[]): string {
   if (kind === 'map' && map?.region) {
     const label = fields.find((f) => f.name === map.region)?.label ?? map.region
@@ -430,6 +445,8 @@ function groupHelp({ kind, map }: Tile, fields: FieldDef[]): string {
   if (is(PLOTS, kind)) return 'One dot per value of this field.'
   if (is(GRIDDED, kind)) return 'Along the top of the grid.'
   if (kind === 'waterfall') return 'One step per value, in this order.'
+  if (kind === 'radar') return 'One spoke per value of this field. Three or more.'
+  if (kind === 'bullet') return 'One bullet per value, each against its target. Leave empty for one.'
   return 'One bar, point or slice per value of this field.'
 }
 

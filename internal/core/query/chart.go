@@ -29,8 +29,8 @@ func (b Builder) chartSQL(ds definition.Dataset, blk definition.Block, inner str
 		return b.mapSQL(ds, blk, inner)
 	case blk.Chart.Plots():
 		return b.plotSQL(ds, blk, inner)
-	case blk.Chart.Folded():
-		return b.gaugeSQL(ds, blk, inner)
+	case blk.Chart.Targeted():
+		return b.targetSQL(ds, blk, inner)
 	case len(blk.Metrics) > 0:
 		return b.metricSQL(ds, blk, inner)
 	}
@@ -77,14 +77,28 @@ func (b Builder) metricSQL(ds definition.Dataset, blk definition.Block, inner st
 	return b.wrap(sel, inner, blk, group, b.order(ds, blk, len(group)))
 }
 
-// gaugeSQL folds the whole set to one number and, where the target is a
-// column, the number it is read against.
-func (b Builder) gaugeSQL(ds definition.Dataset, blk definition.Block, inner string) (string, error) {
+// targetSQL reads a number and, where the target is a column, the number it
+// is read against: once for the whole set for a gauge, and once per category
+// of x for a bullet chart that has one.
+func (b Builder) targetSQL(ds definition.Dataset, blk definition.Block, inner string) (string, error) {
+	var sel, group []string
+	if blk.X.Field != "" {
+		x, err := column(ds, blk.X.Field)
+		if err != nil {
+			return "", err
+		}
+		if blk.X.Grain != "" {
+			if x, err = b.dialect.Bucket(blk.X.Grain, x); err != nil {
+				return "", err
+			}
+		}
+		sel, group = append(sel, x+" AS bucket"), append(group, x)
+	}
 	value, err := b.measure(ds, blk.Y)
 	if err != nil {
 		return "", err
 	}
-	sel := []string{value + " AS value"}
+	sel = append(sel, value+" AS value")
 
 	// A fixed target is a number in the definition and never reaches SQL. The
 	// alternative — interpolating it into the statement — would put a value
@@ -96,7 +110,7 @@ func (b Builder) gaugeSQL(ds definition.Dataset, blk definition.Block, inner str
 		}
 		sel = append(sel, target+" AS target")
 	}
-	return b.wrap(sel, inner, blk, nil, orderedBy{})
+	return b.wrap(sel, inner, blk, group, b.order(ds, blk, len(group)))
 }
 
 // seriesSQL buckets and folds — the categorical charts.

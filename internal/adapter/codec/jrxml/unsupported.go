@@ -151,7 +151,7 @@ var notCarried = map[string]lost{
 	"headerCell":                {Note, "crosstab", "part of a crosstab that was not imported"},
 
 	"componentElement": {Review, "component",
-		"a component element — a Jasper table, list, barcode, map or spider chart — has no cronos equivalent and is not imported"},
+		"a component element — a Jasper table, list, barcode, map or spider chart — is not imported; a spider chart is a cronos radar, rebuilt as `chart: radar`"},
 	"genericElement":     {Review, "component", "a generic element is host-application-specific and is not imported"},
 	"genericElementType": {Note, "component", "part of a generic element that was not imported"},
 	"table":              {Review, "component", "a Jasper table component is not imported; a cronos table block reads columns from a dataset instead"},
@@ -211,13 +211,13 @@ var notCarried = map[string]lost{
 	"timeSeries":        {Note, "chart", "part of a time-series chart that was not imported"},
 	"scatterChart":      {Review, "chart", "an XY, time-series or scatter chart plots two measures against each other; cronos charts a dimension against a measure, so this is not imported"},
 	"bubbleChart":       {Review, "chart", "a bubble chart has a third axis cronos does not draw; it is not imported"},
-	"meterChart":        {Review, "chart", "a meter or thermometer chart draws one value against a range; the nearest cronos block is a stat, which this import does not infer from it"},
-	"thermometerChart":  {Review, "chart", "a meter or thermometer chart draws one value against a range; the nearest cronos block is a stat, which this import does not infer from it"},
+	"meterChart":        {Review, "chart", "a meter or thermometer chart draws one value against a range; the nearest cronos charts are a gauge and a bullet, which need a target this import cannot infer from the range"},
+	"thermometerChart":  {Review, "chart", "a meter or thermometer chart draws one value against a range; the nearest cronos charts are a gauge and a bullet, which need a target this import cannot infer from the range"},
 	"multiAxisChart":    {Review, "chart", "a multi-axis chart draws several measures on separate scales; cronos charts one measure, so this is not imported"},
 	"ganttChart":        {Review, "chart", "a Gantt chart is not a cronos chart kind and is not imported"},
 	"candlestickChart":  {Review, "chart", "a candlestick chart is not a cronos chart kind and is not imported"},
 	"highLowChart":      {Review, "chart", "a high-low chart is not a cronos chart kind and is not imported"},
-	"spiderChart":       {Review, "chart", "a spider chart is not a cronos chart kind and is not imported"},
+	"spiderChart":       {Review, "chart", "a spider chart is a cronos radar, but it arrives as a component this import does not read; rebuild it as `chart: radar`"},
 
 	// ---- Appearance. Expected, and expected to be ignored. ----
 	"textElement":       {Note, "appearance", appearanceDetail},

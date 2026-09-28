@@ -32,6 +32,10 @@ type Block struct {
 	// bucket. A property of the drawing rather than of the data, which is why
 	// it travels beside the groups instead of being inferred from them.
 	Stacked bool `json:"stacked,omitempty"`
+	// Percent says each part of a stack is drawn as its share of its bucket,
+	// against a scale of percentages. The values are still the values: the
+	// shares are worked out where they are drawn, from the parts on show.
+	Percent bool `json:"percent,omitempty"`
 	// Totals is the height of each stack, one per bucket, formatted.
 	//
 	// Sent rather than added up in the viewer. A viewer summing the segments
@@ -64,6 +68,10 @@ type Block struct {
 	HeatColumns []string `json:"heatColumns,omitempty"`
 	// Gauge is one number against a target.
 	Gauge *Gauge `json:"gauge,omitempty"`
+	// Bullets are a bullet chart's rows, read along XAxis, and Bands the
+	// fractions of each row's target its track changes shade at.
+	Bullets []Bullet  `json:"bullets,omitempty"`
+	Bands   []float64 `json:"bands,omitempty"`
 
 	// Table. Also never omitempty, for the same reason.
 	Columns []Column   `json:"columns"`

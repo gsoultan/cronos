@@ -36,9 +36,10 @@ type Block struct {
 	XValue MeasureRef   `json:"xValue,omitzero" yaml:"xValue,omitempty"`
 	Y      MeasureRef   `json:"y,omitzero" yaml:"y,omitempty"`
 	Series DimensionRef `json:"series,omitzero" yaml:"series,omitempty"`
-	// Stacked draws a multi-series bar or area as one stack per bucket rather
-	// than side by side. Ignored by the types ChartType.Stacks rejects.
-	Stacked bool `json:"stacked,omitempty" yaml:"stacked,omitempty"`
+	// Stacked draws a multi-series bar, column or area as one stack per bucket
+	// rather than side by side — `true`, or `percent` for each part as its
+	// share of the bucket. Refused on the types ChartType.Stacks rejects.
+	Stacked Stacking `json:"stacked,omitempty" yaml:"stacked,omitempty"`
 	// Size is the measure a bubble's radius reads. A bubble without one is a
 	// scatter, and says so rather than drawing every dot the same size.
 	Size MeasureRef `json:"size,omitzero" yaml:"size,omitempty"`
@@ -46,8 +47,12 @@ type Block struct {
 	// bars and lines, or a funnel whose stages are separate columns. It
 	// replaces `y` on the types that read it rather than joining it.
 	Metrics []Metric `json:"metrics,omitempty" yaml:"metrics,omitempty"`
-	// Target is what a gauge measures its value against.
+	// Target is what a gauge or a bullet chart measures its values against.
 	Target Target `json:"target,omitzero" yaml:"target,omitempty"`
+	// Bands are where a bullet chart's track changes shade, as fractions of
+	// each row's target, ascending: `[0.6, 0.9]` shades below 60% darkest,
+	// then to 90%, then the rest. Empty takes those two.
+	Bands []float64 `json:"bands,omitempty" yaml:"bands,omitempty"`
 	// Map is the geography a map block reads.
 	Map *MapSpec `json:"map,omitempty" yaml:"map,omitempty"`
 

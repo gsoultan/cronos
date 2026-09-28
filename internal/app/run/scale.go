@@ -1,6 +1,7 @@
 package run
 
 import (
+	"fmt"
 	"math"
 	"sort"
 
@@ -183,6 +184,36 @@ func axis(values []float64) Axis {
 		out.Ticks = append(out.Ticks, Tick{At: (v - lo) / (hi - lo), Label: compact(v)})
 	}
 	return out
+}
+
+// shareAxis is the scale of a stack drawn to its whole: nothing to 100%, and
+// down to -100% where some part is below nothing, a part's share being of its
+// bucket's parts either side of zero. Fixed rather than fitted to the data,
+// because a reader hiding a series has the rest redrawn to the whole.
+func shareAxis(groups []Group) Axis {
+	lo, step := 0.0, 0.25
+	for _, g := range groups {
+		for _, bar := range g.Bars {
+			if bar.Value < 0 {
+				lo, step = -1, 0.5
+			}
+		}
+	}
+	out := Axis{Min: lo, Max: 1}
+	for v := lo; v <= 1+step/2; v += step {
+		out.Ticks = append(out.Ticks, Tick{At: (v - lo) / (1 - lo), Label: fmt.Sprintf("%.0f%%", v*100)})
+	}
+	return out
+}
+
+// reaches are what a column chart's or a radar's scale has to reach: every
+// value, or each stack's ends either side of nothing — a stack's total can net
+// its parts to a value inside it.
+func (b *Block) reaches() []float64 {
+	if b.Groups != nil {
+		return groupEnds(*b)
+	}
+	return b.heights()
 }
 
 // whole reports whether every value is a whole number.
