@@ -196,3 +196,54 @@ INSERT INTO lanes VALUES
   ('London → Bristol',    'UK & IE','Northline',       51.5074, -0.1278, 51.4545, -2.5879,  780),
   ('Bristol → Dublin',    'UK & IE','Swift Parcel',    51.4545, -2.5879, 53.3498, -6.2603,  440),
   ('Manchester → Dublin', 'UK & IE','Harbour Express', 53.4808, -2.2426, 53.3498, -6.2603,  310);
+
+-- Two hundred thousand van positions: every van on the road in August,
+-- reporting where it was every few minutes. The map of these is the one no
+-- browser can hold one by one — see "A million places" in
+-- docs/report-format.md. Placed like the drops, by a hash of the row number
+-- and a spread around each depot, but further out: a van drives between drops,
+-- and the busiest roads are the ones near the depot it loads at.
+CREATE TABLE pings (
+  id INTEGER PRIMARY KEY, depot TEXT, carrier TEXT, lat REAL, lon REAL, speed REAL
+);
+
+INSERT INTO pings
+WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 200000),
+f AS (
+  SELECT i,
+    abs(sin(i * 12.9898) * 43758.5453) AS a,
+    abs(sin(i * 78.233 + 1.7) * 24634.6345) AS b
+  FROM n
+),
+-- Each depot's share of the vans, as a CASE rather than a lookup: a subquery
+-- per row made this twelve seconds of every development boot.
+v AS (
+  SELECT i, a - floor(a) AS pick, b - floor(b) AS near,
+    a * 97.13 - floor(a * 97.13) AS turn, b * 89.71 - floor(b * 89.71) AS pace
+  FROM f
+),
+w AS (
+  SELECT i, near, turn, pace,
+    CASE WHEN pick < 0.17 THEN 'RTM' WHEN pick < 0.31 THEN 'AMS' WHEN pick < 0.40 THEN 'ANR'
+         WHEN pick < 0.52 THEN 'HAM' WHEN pick < 0.59 THEN 'GDN' WHEN pick < 0.64 THEN 'RIX'
+         WHEN pick < 0.67 THEN 'TLL' WHEN pick < 0.74 THEN 'BRS' WHEN pick < 0.89 THEN 'LON'
+         WHEN pick < 0.95 THEN 'MAN' ELSE 'DUB' END AS depot,
+    -- How far its vans range: degrees of latitude, one standard deviation.
+    CASE WHEN pick < 0.17 THEN 0.30 WHEN pick < 0.31 THEN 0.28 WHEN pick < 0.40 THEN 0.25
+         WHEN pick < 0.52 THEN 0.35 WHEN pick < 0.64 THEN 0.30 WHEN pick < 0.67 THEN 0.22
+         WHEN pick < 0.74 THEN 0.28 WHEN pick < 0.89 THEN 0.40 WHEN pick < 0.95 THEN 0.30
+         ELSE 0.25 END AS reach
+  FROM v
+),
+placed AS (
+  SELECT w.i, w.depot, w.pace, dp.carrier, dp.lat AS dlat, dp.lon AS dlon,
+    w.reach * min(sqrt(-2 * ln(0.0001 + 0.9998 * w.near)), 3.0) AS r,
+    2 * pi() * w.turn AS bearing
+  FROM w JOIN depots dp ON dp.depot = w.depot
+)
+SELECT i, depot, carrier,
+  round(dlat + r * cos(bearing), 5),
+  round(dlon + r * sin(bearing) / cos(radians(dlat)), 5),
+  -- Slow near the depot and in town, faster out on the road.
+  round(12 + 70 * pace * min(r / 0.4, 1), 1)
+FROM placed;

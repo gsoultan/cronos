@@ -22,6 +22,18 @@ needs a deployment to act says so under **Upgrading**.
 
 ## Unreleased
 
+**A map draws any number of places.** It read at most 5,000 and, past that,
+drew the first 5,000 in whatever order the query returned them — with every
+total folded from them, a hexagon's or a region's, counting only those. A map
+with more is now gathered in the database: dots, heat and clusters into cells a
+few pixels wide that the map asks for again, finer, as a reader zooms in —
+until each cell is one place with its own name — hexagons and regions totalled
+over every row, and flows into routes between cells. Painted on a canvas, so a
+million places open in about a second on Postgres, with a payload the size of
+the screen rather than the table. The demo has a report of 200,000 van
+positions, `fleet`. See "A million places" in
+[docs/report-format.md](docs/report-format.md).
+
 **Secrets are set in the portal, and kept sealed.** A password or a tile key used
 to be the deployment's alone — an environment variable or a mounted file, set by
 whoever runs the server — so connecting a warehouse from the portal produced a

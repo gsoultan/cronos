@@ -146,22 +146,29 @@ export function radii(drawn: [SVGCircleElement, number][]): NonNullable<Layer['u
  * an arrowhead at every scale. The width is pixels, set once: a non-scaling
  * stroke keeps it so at every zoom.
  */
-export function flows(arcs: Arc[], tips: Tips, keyed: boolean): Layer {
+export function flows(arcs: Arc[], tips: Tips, keyed: boolean): Layer & { swap(arcs: Arc[]): void } {
   const node = svg('g', { class: 'flows' })
-  for (const a of arcs) {
-    const dx = a.x2 - a.x1
-    const dy = a.y2 - a.y1
-    const bow = 0.18
-    const cx = (a.x1 + a.x2) / 2 - dy * bow
-    const cy = (a.y1 + a.y2) / 2 + dx * bow
-    const arc = svg('path', {
-      d: `M${g(a.x1)} ${g(a.y1)}Q${g(cx)} ${g(cy)} ${g(a.x2)} ${g(a.y2)}`,
-      class: 'flow', part: 'flow',
-    })
-    arc.style.strokeWidth = `${Math.round((1.5 + a.weight * 4.5) * 10) / 10}px`
-    arc.style.stroke = keyed ? series(a.slot) : 'var(--cr-series-1)'
-    tips.bind(arc, a.label, a.formatted)
-    node.append(arc)
+  const lay = (list: Arc[]) => {
+    node.replaceChildren()
+    for (const a of list) node.append(arc(a, tips, keyed))
   }
-  return { node }
+  lay(arcs)
+  // The routes of a view a large map's reader moved to.
+  return { node, swap: lay }
+}
+
+function arc(a: Arc, tips: Tips, keyed: boolean): SVGElement {
+  const dx = a.x2 - a.x1
+  const dy = a.y2 - a.y1
+  const bow = 0.18
+  const cx = (a.x1 + a.x2) / 2 - dy * bow
+  const cy = (a.y1 + a.y2) / 2 + dx * bow
+  const path = svg('path', {
+    d: `M${g(a.x1)} ${g(a.y1)}Q${g(cx)} ${g(cy)} ${g(a.x2)} ${g(a.y2)}`,
+    class: 'flow', part: 'flow',
+  })
+  path.style.strokeWidth = `${Math.round((1.5 + a.weight * 4.5) * 10) / 10}px`
+  path.style.stroke = keyed ? series(a.slot) : 'var(--cr-series-1)'
+  tips.bind(path, a.label, a.formatted)
+  return path
 }

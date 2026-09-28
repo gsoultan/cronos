@@ -1,4 +1,4 @@
-import type { Block } from '@cronos/charts'
+import type { Block, GeoMap, MapViewAsk } from '@cronos/charts'
 import type { SecretList } from './types'
 /**
  * The cronos API, as the portal sees it.
@@ -544,6 +544,20 @@ export function runReport(name: string, body: { filters?: RunFilters; params?: R
   })
 }
 
+/**
+ * The part of a large map a reader has in view — see MapViewAsk in
+ * @cronos/charts. The filters go again, as they went with the report: the
+ * server applies everything a render applies, and a view with other filters
+ * would be a different map.
+ */
+export function mapView(name: string, ask: MapViewAsk, filters: RunFilters, signal: AbortSignal) {
+  return call<GeoMap>(`/v1/reports/${encodeURIComponent(name)}/map`, {
+    method: 'POST',
+    signal,
+    body: JSON.stringify({ ...ask, filters }),
+  })
+}
+
 export interface Run {
   id: string
   schedule: string
@@ -692,6 +706,22 @@ export async function readShared(token: string, report: string): Promise<ReportV
   })
   if (!r.ok) throw new ApiError(r.status, await serverMessage(r))
   return r.json() as Promise<ReportView>
+}
+
+/** The part of a shared report's large map in view, with the same token. */
+export async function readSharedMap(token: string, report: string, ask: MapViewAsk,
+  signal: AbortSignal): Promise<GeoMap> {
+  const base = apiBase()
+  if (!base) throw new ApiError(0, 'This portal is not connected to a server.')
+
+  const r = await fetch(`${base}/v1/embed/reports/${encodeURIComponent(report)}/map`, {
+    method: 'POST',
+    signal,
+    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+    body: JSON.stringify(ask),
+  })
+  if (!r.ok) throw new ApiError(r.status, await serverMessage(r))
+  return r.json() as Promise<GeoMap>
 }
 
 /* ---------------------------------------------------------------------- *

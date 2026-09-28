@@ -193,6 +193,10 @@ func Routes(d Deps) http.Handler {
 
 	mux := http.NewServeMux()
 	mux.Handle("/v1/embed/reports/{name}", perReader(embed))
+	// The part of a large map an embedded reader has in view. The same checks
+	// and the same allowance as the render it belongs to: a view is a render
+	// of less of the world.
+	mux.Handle("/v1/embed/reports/{name}/map", perReader(NewEmbedMaps(embed)))
 	// The portal's own read. A separate path from the embed one because the
 	// two have different callers and different audiences, and the audience
 	// check should be the first thing a handler does rather than a branch
@@ -201,8 +205,9 @@ func Routes(d Deps) http.Handler {
 	// granted opens for the whole project, so a deployment that sets none sees
 	// no change at all.
 	granting, _ := d.Roster.(Granting)
-	mux.Handle("/v1/reports/{name}",
-		perReader(NewPortalReports(embed, author, d.Log).WithGrants(granting)))
+	portalReports := NewPortalReports(embed, author, d.Log).WithGrants(granting)
+	mux.Handle("/v1/reports/{name}", perReader(portalReports))
+	mux.Handle("/v1/reports/{name}/map", perReader(NewPortalMaps(portalReports)))
 
 	// Sending renders a document and hands it to a delivery channel, so it is
 	// limited like a render rather than not at all: the cost is a typesetter

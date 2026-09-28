@@ -1,6 +1,6 @@
 import { Client } from './client'
 import { css, drawBlock, el, fill, filterBar, unaffectedNote } from '@cronos/charts'
-import type { Block, FilterDef, FilterValues, ReportPayload } from '@cronos/charts'
+import type { Block, FilterDef, FilterValues, GeoMap, MapViewAsk, ReportPayload } from '@cronos/charts'
 
 /*
  * Nothing here runs at import time.
@@ -135,10 +135,22 @@ export class CronosReport extends Base {
      three renderers of this payload and the portal's drew one chart type out
      of fourteen; two implementations of the same switch is how that happens. */
   #block(b: Block, filters: FilterDef[]): HTMLElement {
-    const node = drawBlock(b)
+    const node = drawBlock(b, { mapView: (ask, signal) => this.#mapView(ask, signal) })
     const note = unaffectedNote(b.coverage, filters)
     if (note) node.append(note)
     return node
+  }
+
+  /* A large map asks for the part a reader has in view, with this element's
+     own token and filters: the renderer never holds a credential. Filters as
+     they are now, which are the ones the map on screen was rendered with — a
+     change to them reloads the report and replaces the map. */
+  #mapView(ask: MapViewAsk, signal: AbortSignal): Promise<GeoMap> {
+    const endpoint = this.getAttribute('endpoint')
+    const token = this.getAttribute('token')
+    const report = this.getAttribute('report')
+    if (!endpoint || !token || !report) return Promise.reject(new Error('Not configured'))
+    return new Client(endpoint, token).mapView(report, ask, this.#filters, signal)
   }
 
   #say(text: string, isError: boolean) {

@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useParams } from '@tanstack/react-router'
 import { EmptyState } from '../components/EmptyState'
 import { LiveReport } from '../components/LiveReport'
-import { openShare, readShared, type ReportView } from '../lib/api'
+import { openShare, readShared, readSharedMap, type ReportView } from '../lib/api'
 
 /**
  * A report opened by a link, by somebody who is not in the project.
@@ -19,11 +19,13 @@ import { openShare, readShared, type ReportView } from '../lib/api'
 export function SharedPage() {
   const { id } = useParams({ strict: false })
 
-  const query = useQuery<ReportView>({
+  /* The token as well as the view: a large map asks for the part a reader has
+     in view with the same token the report was opened with. */
+  const query = useQuery<{ view: ReportView; token: string; report: string }>({
     queryKey: ['shared', id],
     queryFn: async () => {
       const { token, report } = await openShare(id ?? '')
-      return readShared(token, report)
+      return { view: await readShared(token, report), token, report }
     },
     enabled: !!id,
     refetchOnWindowFocus: false,
@@ -50,9 +52,9 @@ export function SharedPage() {
       {query.data && (
         <>
           <header className="mb-6">
-            <h1 className="text-title font-semibold text-ink">{query.data.title}</h1>
-            {query.data.description && (
-              <p className="mt-1 text-ink-secondary">{query.data.description}</p>
+            <h1 className="text-title font-semibold text-ink">{query.data.view.title}</h1>
+            {query.data.view.description && (
+              <p className="mt-1 text-ink-secondary">{query.data.view.description}</p>
             )}
             {/* Said plainly. Somebody reading a shared report should know it is
                 one — that they are seeing it through somebody else's access,
@@ -61,7 +63,8 @@ export function SharedPage() {
               Shared with you. This shows current data, as the person who shared it sees it.
             </p>
           </header>
-          <LiveReport view={query.data} />
+          <LiveReport view={query.data.view} mapView={(ask, signal) =>
+            readSharedMap(query.data.token, query.data.report, ask, signal)} />
         </>
       )}
     </main>

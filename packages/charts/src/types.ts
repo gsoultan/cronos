@@ -116,6 +116,62 @@ export interface Marker {
   size?: string
   /** The colour of the point's category, when the map colours by one. */
   slot?: number
+  /** How many places this marker stands for: a cell of a large map gathers
+   *  several. One when absent. */
+  n?: number
+}
+
+/**
+ * A large map's places, gathered into a grid — see run.Cells. Parallel lists
+ * rather than a list of objects, because fifty thousand objects is fifty
+ * thousand copies of every key name. A cell holding one place is that place.
+ */
+export interface Cells {
+  /** A cell's edge in world units. */
+  size: number
+  x: number[]
+  y: number[]
+  /** Places in each cell. */
+  n: number[]
+  /** The measure folded over them. */
+  v: number[]
+  /** The bubble's size measure, folded the same way. */
+  z?: number[]
+  /** Each cell's category slot. */
+  s?: number[]
+  /** A lone place's label; empty for a cell of several. */
+  l?: string[]
+  /** v is an average across each cell's places rather than a total. */
+  mean?: boolean
+}
+
+/** How a viewer asks for more of a large map: see MapViewAsk. */
+export interface MapDetail {
+  output: string
+  block: number
+  categories?: string[]
+}
+
+/** One view of a large map, asked of the server: where the reader is looking,
+ *  in world units as minX, minY, maxX, maxY, and the pixels it is drawn in. */
+export interface MapViewAsk {
+  output: string
+  block: number
+  view: [number, number, number, number]
+  width: number
+  height: number
+  categories?: string[]
+}
+
+/** What answers a view: the host's own route to the server, carrying the
+ *  reader's own credentials — the renderer never sees them. */
+export type MapViewer = (ask: MapViewAsk, signal: AbortSignal) => Promise<GeoMap>
+
+/** What a host gives the renderers beyond the payload. */
+export interface DrawOptions {
+  /** Asks for the part of a large map in view. Without it a large map is
+   *  drawn from the cells it opened with, at every zoom. */
+  mapView?: MapViewer
 }
 
 /** One flow, from somewhere to somewhere else. */
@@ -193,6 +249,12 @@ export interface GeoMap {
   /** That the map was drawn from the first rows of more than it could hold,
    *  and what that does to its totals. */
   partial?: string
+  /** A large map's places, gathered where they crowd together. */
+  cells?: Cells
+  /** How many places a large map holds. */
+  places?: number
+  /** How to ask for more of a large map; absent on one that fits. */
+  detail?: MapDetail
 }
 
 /** One measure of a combo chart, and how it is drawn. */

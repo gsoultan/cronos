@@ -57,8 +57,10 @@ func printMap(c *document.Chart, m *GeoMap) {
 				c.Marks = append(c.Marks, document.Mark{Kind: document.DotMark,
 					X: xy[0], Y: xy[1], W: 0.035, Tone: "ramp-6-wash"})
 			}
+			cellDots(c, m.Cells, at, layer, keyed)
 		case "bubble", "scatter", "cluster":
 			pins(c, m.Markers, at, layer == "bubble", keyed)
+			cellDots(c, m.Cells, at, layer, keyed)
 		case "flow":
 			flows(c, m.Arcs, at, keyed)
 		}
@@ -148,6 +150,39 @@ func pins(c *document.Chart, markers []Marker, at func(x, y float64) [2]float64,
 		}
 		c.Marks = append(c.Marks, document.Mark{Kind: document.DotMark, X: xy[0], Y: xy[1],
 			W: r, Tone: colour, Label: p.Label, Value: p.Formatted})
+	}
+}
+
+/*
+cellDots prints a large map's cells: a dot per cell, its area the share of the
+busiest cell's places it holds — gathered for a page, which cannot zoom, so a
+few thousand of them rather than a screen's worth. A heat layer's are washes,
+as its places are.
+*/
+func cellDots(c *document.Chart, cells *Cells, at func(x, y float64) [2]float64, layer string, keyed bool) {
+	if cells == nil {
+		return
+	}
+	most := 1
+	for _, n := range cells.N {
+		most = max(most, n)
+	}
+	for i, n := range cells.N {
+		xy := at(cells.X[i], cells.Y[i])
+		share := sqrt(float64(n) / float64(most))
+		mark := document.Mark{Kind: document.DotMark, X: xy[0], Y: xy[1],
+			W: 0.003 + share*0.012, Tone: "series-2", Value: compact(cells.V[i]),
+			Label: places(n)}
+		if n == 1 && i < len(cells.L) && cells.L[i] != "" {
+			mark.Label = cells.L[i]
+		}
+		switch {
+		case layer == "heat":
+			mark.W, mark.Tone = 0.01+share*0.03, "ramp-6-wash"
+		case keyed && i < len(cells.S):
+			mark.Tone = tone(cells.S[i])
+		}
+		c.Marks = append(c.Marks, mark)
 	}
 }
 

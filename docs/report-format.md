@@ -713,10 +713,42 @@ then mailed to five thousand people. A ring inside another is a hole, on paper
 and on screen alike, whichever way the data wound it; an island in a lake, and
 one region's exclave in another's hole, are drawn after the hole they sit in.
 
-A map reads at most 5,000 rows, like every chart. One that had more says so
-under itself and on paper: the rest are not on it, and a total folded from its
-points — a region added up from the points under it, a hexagon from the points
-inside it — counts only the ones that are.
+#### A million places
+
+A map with more places than a browser can hold is not cut short. Up to 5,000
+places a map is its places, a mark each, exactly as it always was. Past that it
+is asked again, differently, and the database does the gathering — over every
+row, so no total on it counts only some of them:
+
+- **Dots, bubbles, heat and clusters** are gathered into a grid a few pixels
+  wide at the depth the map opens at. Each time a reader stops moving the map
+  it asks for the part in view, a finer grid each time, until every cell is one
+  place with its own name and value. A cell of several says how many places it
+  holds and their total — the measure's own aggregate applied again, or their
+  average where the measure is an average, which its tooltip says.
+- **Hexagons** are folded in the database: the same hexagons, holding the same
+  places, as a small map would draw.
+- **Regions** under points are totalled over their own rows, so an average of
+  a region is exact rather than refused.
+- **Flows** are gathered into routes between cells, the busiest 5,000 kept,
+  and split into the flows they are as a reader zooms in.
+- **Categories** keep their colours in every view. The most common get the
+  palette's first colours once, when the map opens, and every view is coloured
+  by that.
+
+A view is a render of less of the world: the same parameters, filters and
+row-level security, applied again by the server — an embedded reader's view is
+asked for with the embed's own token. The map says under itself how many places
+it holds. On paper it is its cells, dots sized by how many places each holds; a
+page cannot zoom, so a few thousand of them.
+
+How long a large map takes to open is how long the warehouse takes to group
+every row: a million places open in about 0.9 s on Postgres and 3.4 s on SQLite,
+and a view of a few streets answers in tens of milliseconds. The demo's `fleet`
+report draws two hundred thousand van positions three ways.
+
+Regions are the one thing a map still cuts: one reads at most 5,000 of them,
+and says so under itself and on paper if it had more.
 
 One block compiles to one query, so a map's layers share a grain. Asking for
 the geometry field *and* points runs at the point grain and adds each region up

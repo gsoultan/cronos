@@ -63,3 +63,7 @@ var sqlServerUnits = map[string]string{
 func (SQLServer) Limit(n int) (string, string) {
 	return fmt.Sprintf("TOP (%d) ", n), ""
 }
+
+// Ln is LOG here: SQL Server's LOG with one argument is the natural logarithm,
+// and it has no LN at all.
+func (SQLServer) Ln(expr string) string { return "LOG(" + expr + ")" }

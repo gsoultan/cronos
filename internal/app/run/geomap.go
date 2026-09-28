@@ -47,4 +47,22 @@ type GeoMap struct {
 	// folded from its points — a region's, a hexagon's — counts only those.
 	// A map cut at the cap looked like the whole of its data until this.
 	Partial string `json:"partial,omitempty"`
+
+	// Cells are the places of a map too large to send one by one, gathered
+	// into a grid fine enough for the depth it opens at. Nil for a map that
+	// fits, whose places are Markers as they always were.
+	Cells *Cells `json:"cells,omitempty"`
+	// Places is how many places a large map holds — the number no list in
+	// this payload is long enough to count.
+	Places int `json:"places,omitempty"`
+	// Detail is how a viewer asks for the part of a large map in view, at
+	// the depth it is looking at. Nil for a map that fits.
+	Detail *Detail `json:"detail,omitempty"`
+
+	// cut is whether the map's own query had more rows than a map holds,
+	// which is the moment it is asked again as a large one.
+	cut bool
+	// categories are a large map's, most common first — the order its
+	// colours were given in, which every view of it is coloured by.
+	categories []string
 }

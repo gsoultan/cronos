@@ -230,6 +230,7 @@ func (r *mapReader) finish(out *GeoMap) {
 	}
 	if r.cut {
 		out.Partial = partial(r.blk)
+		out.cut = true
 	}
 }
 

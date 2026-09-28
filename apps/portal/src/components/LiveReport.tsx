@@ -4,7 +4,7 @@ import { DataTable } from './DataTable'
 import { Panel } from './Panel'
 import { EmptyState } from './EmptyState'
 import type { ReportBlock, ReportView } from '../lib/api'
-import type { Bar, TableBlock } from '@cronos/charts'
+import type { Bar, MapViewer, TableBlock } from '@cronos/charts'
 import type { Field } from '../lib/types'
 
 /**
@@ -20,8 +20,11 @@ import type { Field } from '../lib/types'
  * renderings of a stat tile would drift, and the one nobody looks at would be
  * the one a customer sees.
  */
-export function LiveReport({ view, applied = [] }: {
+export function LiveReport({ view, applied = [], mapView }: {
   view: ReportView
+  /* How a large map asks for the part a reader has in view: this page's own
+     route and credentials, which the renderer never holds. */
+  mapView?: MapViewer
   /*
      Which filters the reader has actually set.
 
@@ -78,7 +81,7 @@ export function LiveReport({ view, applied = [] }: {
         <div key={i}
           className="grid min-w-0 items-stretch gap-4 [grid-template-columns:repeat(auto-fit,minmax(min(400px,100%),1fr))]">
           {row.map((b, j) => (
-            <Block key={b.title + j} block={b} view={view} applied={applied} />
+            <Block key={b.title + j} block={b} view={view} applied={applied} mapView={mapView} />
           ))}
         </div>
       ))}
@@ -122,10 +125,11 @@ export function rowsOf(blocks: ReportBlock[]): ReportBlock[][] {
   return out
 }
 
-function Block({ block, view, applied }: {
+function Block({ block, view, applied, mapView }: {
   block: ReportBlock
   view: ReportView
   applied: string[]
+  mapView?: MapViewer
 }) {
   if (block.kind === 'chart') {
     /*
@@ -139,7 +143,7 @@ function Block({ block, view, applied }: {
      */
     return (
       <div className="flex flex-col">
-        <div className="min-h-0 flex-1"><ServerChart block={block} /></div>
+        <div className="min-h-0 flex-1"><ServerChart block={block} mapView={mapView} /></div>
         <Unaffected block={block} view={view} applied={applied} />
       </div>
     )

@@ -13,7 +13,7 @@ import { treemapBlock } from './blocks/treemap'
 import { tableBlock } from './blocks/table'
 import { textBlock } from './blocks/text'
 import { unsupported } from './blocks/unsupported'
-import type { Block, ChartBlock } from './types'
+import type { Block, ChartBlock, DrawOptions } from './types'
 
 /**
  * The chart renderers, as plain DOM.
@@ -29,12 +29,12 @@ import type { Block, ChartBlock } from './types'
  * internal/core/document/mark.go), but the two that draw in a browser can, and
  * now do.
  */
-export function drawBlock(b: Block): HTMLElement {
+export function drawBlock(b: Block, opts: DrawOptions = {}): HTMLElement {
   switch (b.kind) {
     case 'stat':
       return statBlock(b)
     case 'chart':
-      return drawChart(b)
+      return drawChart(b, opts)
     case 'table':
       return tableBlock(b)
     case 'text':
@@ -50,7 +50,7 @@ export function drawBlock(b: Block): HTMLElement {
  * The chart type is an open set the server grows, so this switch has a default
  * for the same reason the one above does.
  */
-export function drawChart(b: ChartBlock): HTMLElement {
+export function drawChart(b: ChartBlock, opts: DrawOptions = {}): HTMLElement {
   switch (b.chart) {
     case 'bar':
       return barBlock(b)
@@ -66,7 +66,7 @@ export function drawChart(b: ChartBlock): HTMLElement {
     case 'bubble':
       return scatterBlock(b)
     case 'map':
-      return mapBlock(b)
+      return mapBlock(b, opts)
     case 'combo':
       return comboBlock(b)
     case 'funnel':
@@ -89,7 +89,8 @@ export { unaffectedNote } from './coverage'
 export { el, fill } from './dom'
 export { css, documentCss, LAYER } from './styles'
 export type {
-  Arc, Axis, Bar, Block, Bounds, Cell, ChartBlock, Coverage, Credit, Delta, FilterDef,
-  FilterValues, Gauge, GeoMap, Group, LegendStop, MapKey, Marker, Point, Rect,
-  ReportPayload, Shape, Stage, StatBlock, Step, TableBlock, TextBlock, Tick, Tiles, Track,
+  Arc, Axis, Bar, Block, Bounds, Cell, Cells, ChartBlock, Coverage, Credit, Delta, DrawOptions,
+  FilterDef, FilterValues, Gauge, GeoMap, Group, LegendStop, MapDetail, MapKey, MapViewAsk,
+  MapViewer, Marker, Point, Rect, ReportPayload, Shape, Stage, StatBlock, Step, TableBlock,
+  TextBlock, Tick, Tiles, Track,
 } from './types'

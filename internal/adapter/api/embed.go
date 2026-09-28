@@ -61,9 +61,25 @@ func (e *Embed) allowed(ctx context.Context, claims token.Claims) bool {
 
 // ServeHTTP handles POST /v1/embed/reports/{name}.
 func (e *Embed) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	claims, name, ok := e.caller(w, r)
+	if !ok {
+		return
+	}
+	e.renderWith(w, r, claims.Principal(), name, claims.Params)
+}
+
+/*
+caller is who an embed request is from, having checked everything a token
+cannot be trusted to say about itself — or the refusal, already written.
+
+One place for it, because a report and a view of one of its maps are the same
+read by two routes, and a second copy of these checks is a second place for one
+of them to be missing.
+*/
+func (e *Embed) caller(w http.ResponseWriter, r *http.Request) (token.Claims, string, bool) {
 	if r.Method != http.MethodPost {
 		fail(w, http.StatusMethodNotAllowed, "Use POST.")
-		return
+		return token.Claims{}, "", false
 	}
 	name := r.PathValue("name")
 
@@ -80,7 +96,7 @@ func (e *Embed) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		audit(r.Context(), e.log, principal.Principal{}, ActionRead, name, Refused,
 			map[string]any{"reason": "the token did not verify"})
 		fail(w, http.StatusUnauthorized, "This report link is no longer valid.")
-		return
+		return token.Claims{}, "", false
 	}
 	// The half a signature cannot do. A token is valid until it expires and
 	// nothing about the signature can be taken back, so a token we issued
@@ -92,7 +108,7 @@ func (e *Embed) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		audit(r.Context(), e.log, claims.Principal(), ActionRead, name, Refused,
 			map[string]any{"reason": "the share was withdrawn or has expired"})
 		fail(w, http.StatusUnauthorized, "This report link is no longer valid.")
-		return
+		return token.Claims{}, "", false
 	}
 	// A token pinned to one report may not open another. The pin is the
 	// host's decision; honouring it is what makes it worth making.
@@ -102,10 +118,9 @@ func (e *Embed) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		audit(r.Context(), e.log, claims.Principal(), ActionRead, name, Refused,
 			map[string]any{"reason": "the token is pinned to " + claims.Report})
 		fail(w, http.StatusForbidden, "This link does not open that report.")
-		return
+		return token.Claims{}, "", false
 	}
-
-	e.renderWith(w, r, claims.Principal(), name, claims.Params)
+	return claims, name, true
 }
 
 // render runs a report for an already-authenticated caller.

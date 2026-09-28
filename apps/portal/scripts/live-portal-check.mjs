@@ -158,6 +158,33 @@ await maps.waitForTimeout(200)
 ok('a map zooms in the portal as it does in the embed', (await viewBoxOf()) !== fit)
 await maps.close()
 
+/* -- A map of more places than a browser holds ------------------------------
+   The demo's fleet report: two hundred thousand van positions, gathered into
+   cells by the server and painted on a canvas. In the portal a report's maps
+   reach the server through the viewer the page hands the chart, so the check
+   is that the part in view is asked for and answered — not only that the first
+   paint happened. */
+const fleet = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+fleet.on('pageerror', (e) => errors.push(String(e)))
+await fleet.route(/tile\.openstreetmap\.org|api\.mapbox\.com|tile\.googleapis\.com/, (r) => r.abort())
+const fleetViews = []
+fleet.on('response', (r) => { if (r.url().endsWith('/map')) fleetViews.push(r.status()) })
+await fleet.goto(`${B}/reports/fleet`, { waitUntil: 'domcontentloaded' })
+const heatMap = fleet.getByTestId('chart').filter({ hasText: 'Where the vans are' })
+await heatMap.locator('[part=map-canvas]').waitFor({ timeout: 30000 })
+ok('a map of 200,000 places draws in the portal, painted rather than an element each',
+  await heatMap.locator('[part=map-canvas]').count() === 1
+  && await heatMap.locator('[part=marker]').count() === 0)
+ok('and says how many places it holds',
+  (await heatMap.locator('[part=places]').innerText()).includes('200,000 places'))
+ok('its clusters count every one of them',
+  (await fleet.getByTestId('chart').filter({ hasText: 'Vans by carrier' })
+    .getByRole('button', { name: /locations/ }).count()) > 0)
+for (let i = 0; i < 60 && fleetViews.length < 2; i++) await fleet.waitForTimeout(100)
+ok('each asks the server for the part in view, and is answered',
+  fleetViews.length >= 2 && fleetViews.every((s) => s === 200))
+await fleet.close()
+
 /* -- The catalogue: what the project contains ----------------------------- */
 await page.goto(`${B}/data`, { waitUntil: 'domcontentloaded' })
 await page.locator('[data-testid=datasets-card]').waitFor({ timeout: 15000 })

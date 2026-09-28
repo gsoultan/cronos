@@ -341,14 +341,25 @@ func (p *PortalReports) WithGrants(g Granting) *PortalReports {
 
 // ServeHTTP handles POST /v1/reports/{name}.
 func (p *PortalReports) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	pr, name, ok := p.reader(w, r)
+	if !ok {
+		return
+	}
+	p.embed.render(w, r, pr, name)
+}
+
+// reader is who a portal read is from, once they are signed in, in the
+// project, and granted the report — or the refusal, already written. Shared
+// with the map views for the reason Embed.caller is.
+func (p *PortalReports) reader(w http.ResponseWriter, r *http.Request) (principal.Principal, string, bool) {
 	pr, ok := p.auth.Principal(r)
 	if !ok {
 		fail(w, http.StatusUnauthorized, "Sign in to view this report.")
-		return
+		return principal.Principal{}, "", false
 	}
 	if !pr.CanRead() {
 		fail(w, http.StatusForbidden, "You do not have access to this project.")
-		return
+		return principal.Principal{}, "", false
 	}
 
 	name := r.PathValue("name")
@@ -358,7 +369,7 @@ func (p *PortalReports) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// guessing would open every restricted one in the deployment at the
 		// moment the database is least well.
 		fail(w, http.StatusServiceUnavailable, "Could not check who may open this report.")
-		return
+		return principal.Principal{}, "", false
 	}
 	if !allowed {
 		/*
@@ -371,9 +382,9 @@ func (p *PortalReports) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		audit(r.Context(), p.log, pr, ActionRead, name, Refused,
 			map[string]any{"reason": "not granted"})
 		fail(w, http.StatusNotFound, "No such report.")
-		return
+		return principal.Principal{}, "", false
 	}
-	p.embed.render(w, r, pr, name)
+	return pr, name, true
 }
 
 // ForgetStanding drops the cached answers, so a test does not wait five seconds

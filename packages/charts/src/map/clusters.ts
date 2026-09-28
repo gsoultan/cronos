@@ -2,7 +2,7 @@ import type { Marker } from '../types'
 import { el } from '../dom'
 import { svg } from '../svg'
 import type { Tips } from '../tip'
-import { cluster, count, type Cluster } from './cluster'
+import { cluster, count, placesIn, type Cluster } from './cluster'
 import { g } from './geo'
 import { radii, series, type Layer } from './layers'
 
@@ -24,8 +24,10 @@ const CELL = 72
  * the map and keep their groups, so a pinch does not reshuffle forty buttons
  * sixty times a second.
  */
-export function clusters(markers: Marker[], tips: Tips, keyed: boolean, overlay: HTMLElement,
-  show: (c: Cluster) => boolean): Layer {
+export function clusters(first: Marker[], tips: Tips, keyed: boolean, overlay: HTMLElement,
+  show: (c: Cluster) => boolean): Layer & { swap(markers: Marker[]): void } {
+
+  let markers = first
 
   const node = svg('g', { class: 'dots' })
   let bubbles: [HTMLButtonElement, Cluster][] = []
@@ -41,7 +43,7 @@ export function clusters(markers: Marker[], tips: Tips, keyed: boolean, overlay:
 
     for (const c of cluster(markers, CELL / scale)) {
       const one = c.members[0]
-      if (c.members.length === 1 && one) {
+      if (placesIn(c) === 1 && one) {
         const mark = svg('circle', { cx: g(one.x), cy: g(one.y), r: '0', class: 'pin', part: 'marker' })
         if (keyed) mark.style.fill = series(one.slot)
         tips.bind(mark, one.label, one.formatted)
@@ -57,6 +59,12 @@ export function clusters(markers: Marker[], tips: Tips, keyed: boolean, overlay:
 
   return {
     node,
+    // The cells of a view a reader moved to: grouped again at the next
+    // update, whatever the scale.
+    swap(next) {
+      markers = next
+      groupedAt = 0
+    },
     update(view, scale, settled) {
       if (!(scale > 0)) return
       if (groupedAt === 0 || (settled && Math.abs(Math.log2(scale / groupedAt)) > 0.01)) regroup(scale)
@@ -70,7 +78,7 @@ export function clusters(markers: Marker[], tips: Tips, keyed: boolean, overlay:
 
 /** One cluster's button. */
 function bubble(c: Cluster, tips: Tips, show: (c: Cluster) => boolean): HTMLButtonElement {
-  const n = c.members.length
+  const n = placesIn(c)
   const d = Math.round(Math.min(24 + Math.log2(n) * 5, 60))
   const b = el('button', {
     type: 'button', class: 'cluster', part: 'cluster',
@@ -94,7 +102,8 @@ function bubble(c: Cluster, tips: Tips, show: (c: Cluster) => boolean): HTMLButt
     // in there is the only way left to answer the click.
     if (!show(c)) {
       const names = c.members.slice(0, 4).map((m) => m.label).join(', ')
-      tips.show(e as PointerEvent, `${n} locations here`, n > 4 ? `${names} and ${n - 4} more` : names)
+      const more = n - Math.min(c.members.length, 4)
+      tips.show(e as PointerEvent, `${n} locations here`, more > 0 ? `${names} and ${more} more` : names)
     }
   })
   return b
