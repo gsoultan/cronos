@@ -531,13 +531,19 @@ ok('a waterfall draws a column per step and a closing total', await fall.locator
 ok('each step says its change where there is room', await fall.locator('text.value').count() === 4)
 ok('and leaves it to the tooltip where there is not', await fall.evaluate(async (panel) => {
   const was = panel.style.cssText
+  // Waited for, not timed: the redraw comes from a ResizeObserver, and Linux
+  // WebKit delivers one when it next paints, which no fixed pause promises.
+  const until = async (settled) => {
+    for (let i = 0; i < 100 && !settled(); i++) await new Promise((done) => setTimeout(done, 50))
+    return settled()
+  }
+  const written = () => panel.querySelectorAll('text.value').length
   panel.style.cssText = 'width: 170px; min-width: 0; box-sizing: border-box'
-  await new Promise((done) => setTimeout(done, 400))
-  const written = panel.querySelectorAll('text.value').length
+  const left = await until(() => written() < 4)
   const drawn = panel.querySelectorAll('[part=bar]').length
   panel.style.cssText = was
-  await new Promise((done) => setTimeout(done, 400))
-  return drawn === 4 && written < 4
+  await until(() => written() === 4)
+  return drawn === 4 && left
 }))
 ok('a fall is coloured against a rise',
   await fillOf(fall.locator('[part=bar]').nth(1)) !== await fillOf(fall.locator('[part=bar]').nth(2)))
@@ -677,7 +683,9 @@ ok('a plain wheel scrolls the page and leaves the map where it was',
   JSON.stringify(await geo()) === JSON.stringify(wheeled))
 await map.locator('.geo-stage').focus()
 await page.keyboard.press('0')
-await page.waitForTimeout(100)
+// Waited for rather than timed: the view is redrawn on the engine's next
+// frame, and a tenth of a second was not always one on a busy runner.
+for (let i = 0; i < 40 && JSON.stringify(await geo()) !== JSON.stringify(fitted); i++) await page.waitForTimeout(50)
 ok('and 0 puts it back as it arrived', JSON.stringify(await geo()) === JSON.stringify(fitted))
 
 /* A press let go outside the map, before it had the pointer, is a release the
@@ -967,14 +975,22 @@ ok('a sunburst names a segment only where the name is inside it',
 ok("a bullet's scale does not print one tick through the next",
   await panelOf('Bullet').evaluate(async (panel) => {
     const was = panel.style.cssText
+    // Waited for, as the waterfall's is: the chart is redrawn at its new
+    // width when the engine next paints, and its width says when it has been.
+    const until = async (settled) => {
+      for (let i = 0; i < 100 && !settled(); i++) await new Promise((done) => setTimeout(done, 50))
+      return settled()
+    }
+    const chart = () => panel.querySelector('svg.canvas')?.getAttribute('viewBox')
+    const wide = chart()
     panel.style.cssText = 'width: 200px; min-width: 0; box-sizing: border-box'
-    await new Promise((done) => setTimeout(done, 400))
+    const redrawn = await until(() => chart() !== wide)
     const boxes = [...panel.querySelectorAll('text.tick')].map((t) => t.getBoundingClientRect())
       .sort((a, b) => a.left - b.left)
     const clear = boxes.length > 0 && boxes.every((b, i) => i === 0 || b.left >= boxes[i - 1].right)
     panel.style.cssText = was
-    await new Promise((done) => setTimeout(done, 400))
-    return clear
+    await until(() => chart() === wide)
+    return redrawn && clear
   }))
 // A year of days, two of which the depots delivered on: the rest are
 // outlines, because a day with nothing in it is not a light day.
