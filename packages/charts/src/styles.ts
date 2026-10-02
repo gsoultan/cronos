@@ -204,7 +204,10 @@ $SCOPE$[hidden] { display: none }
   color: var(--cr-ink);
 }
 
-.stat { margin: 4px 0 0; font-size: 32px; font-weight: 650; letter-spacing: -0.025em; line-height: 1.1; font-variant-numeric: tabular-nums }
+/* The width a stat's figure is fitted to. The second size is the one that
+   fits; the first is for a browser without container units. */
+.stat-fit { container-type: inline-size }
+.stat { margin: 4px 0 0; font-size: 32px; font-size: clamp(14px, calc(100cqi / (var(--n, 8) * 0.64)), 32px); font-weight: 650; letter-spacing: -0.025em; line-height: 1.1; font-variant-numeric: tabular-nums }
 .delta { margin: 8px 0 0; font-size: 13px; color: var(--cr-ink-muted) }
 .delta b { font-weight: 600 }
 .up { color: var(--cr-good) }

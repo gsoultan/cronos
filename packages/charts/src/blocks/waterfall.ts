@@ -5,6 +5,8 @@ import { bar, label, measure, sized } from '../frame'
 import { chartPanel, host, nothing, PLOT_HEIGHT } from '../chart'
 import { withTips } from '../tip'
 
+const VALUE_PX = 12
+
 /**
  * A waterfall: floating columns that each start where the last one ended,
  * joined by a thread at the running total, each with its own change written
@@ -30,8 +32,9 @@ export function waterfallBlock(b: ChartBlock): HTMLElement {
   const at = host(panel)
   let entered = false
   sized(at, (width) => {
+    const m = measure(at)
     const c = cartesian({
-      width, height: PLOT_HEIGHT, m: measure(at), y, categories: steps.map((s) => s.label), headroom: 20,
+      width, height: PLOT_HEIGHT, m, y, categories: steps.map((s) => s.label), headroom: 20,
     })
     steps.forEach((s, i) => {
       const band = c.band(i)
@@ -46,9 +49,14 @@ export function waterfallBlock(b: ChartBlock): HTMLElement {
       col.style.fill = fill(s)
       tips.bind(col, s.label, s.formatted)
       c.marks.append(col)
-      // Over a rise and a total, under a fall: where the column's value is.
+      // Over a rise and a total, under a fall: where the column's value is —
+      // and only where the step is wide enough to hold it. Thirteen steps in
+      // a narrow panel wrote thirteen figures through one another, which
+      // says less than the tooltip each column still has.
       const down = s.sign < 0 && !s.total
-      c.marks.append(label(left + w / 2, down ? bottom + 14 : top - 6, s.formatted, 'value'))
+      if (m(s.formatted, VALUE_PX) <= band.w - 2) {
+        c.marks.append(label(left + w / 2, down ? bottom + 14 : top - 6, s.formatted, 'value'))
+      }
 
       const next = steps[i + 1]
       if (!next) return

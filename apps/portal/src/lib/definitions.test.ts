@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import {
-  connectionFor, dataset, dataSource, passwordSecret, readDataset, readDataSource,
-  readReport, readSchedule, report, schedule, withCarry, type SourceInput,
+  blockInput, connectionFor, dataset, dataSource, passwordSecret, readDataset, readDataSource,
+  readReport, readSchedule, report, schedule, tileOf, withCarry, type SourceInput,
 } from './definitions'
 import type { Field, Param } from './types'
 import { relayer } from './maps'
@@ -821,6 +821,42 @@ test('a funnel of columns has no x to bucket by', () => {
 
   const back = readReport(yaml).input.blocks[0]
   expect(back?.metrics?.map((m) => m.label)).toEqual(['Quoted', 'Paid'])
+})
+
+test('a block comes back off the canvas as it went on', () => {
+  // A block is read from the file, becomes a tile while it is on the canvas,
+  // and is written from the tile. The tile had nowhere to keep a grain, so
+  // opening a report and saving it turned every chart of months into a chart
+  // of dates — and `drops` could not say so, since it compares the file with
+  // what was read from it, which still had the grain.
+  const yaml = report({
+    name: 'R', slug: 'r', dataset: 'invoices',
+    blocks: [{ kind: 'line', title: 'Over time', groupBy: 'issued_at', grain: 'month', field: 'total', aggregate: 'sum' }],
+  })
+  expect(yaml).toContain('grain: month')
+
+  const read = readReport(yaml).input
+  const saved = report({ ...read, blocks: read.blocks.map((b) => blockInput({ ...tileOf(b), id: 't', span: 6 })) })
+  expect(saved).toBe(report(read))
+  expect(saved).toContain('grain: month')
+})
+
+test('a funnel of rows keeps the measure its stages are sized by', () => {
+  // The other shape a funnel comes in: a stage per value of a field. The
+  // writer dropped y from every funnel, so this one was saved as a chart the
+  // server refuses — and its preview was refused the same way.
+  const yaml = report({
+    name: 'R', slug: 'r', dataset: 'invoices',
+    blocks: [{ kind: 'funnel', title: 'By status', groupBy: 'status', field: 'total', aggregate: 'sum' }],
+  })
+  expect(yaml).toContain('x:\n            field: status')
+  expect(yaml).toContain('y:\n            field: total')
+  expect(yaml).not.toContain('metrics:')
+
+  const loaded = readReport(yaml)
+  expect(loaded.drops).toEqual([])
+  expect(loaded.input.blocks[0]?.groupBy).toBe('status')
+  expect(loaded.input.blocks[0]?.field).toBe('total')
 })
 
 test('a gauge writes one kind of target, never both', () => {

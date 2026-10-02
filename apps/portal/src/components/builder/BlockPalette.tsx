@@ -33,12 +33,17 @@ export const PALETTE: { kind: TileKind; label: string; hint: string; icon: strin
  * The palette is used once per block and then ignored; the canvas is looked at
  * constantly. Giving the palette 72px of width instead of 140px of height is
  * the whole trade, and the canvas gets the difference.
+ *
+ * It scrolls within its own height. There is an entry per kind of chart, and
+ * past a dozen the strip was taller than the editor: it ran out of the bottom
+ * of the page, over whatever the form had put there.
  */
 export function BlockPalette({ onAdd }: { onAdd: (kind: TileKind) => void }) {
   return (
     <div data-testid="block-palette"
-      className="flex shrink-0 gap-2 max-lg:flex-row max-lg:overflow-x-auto lg:w-[76px] lg:flex-col">
-      <p className="hidden text-micro font-semibold tracking-[0.06em] text-ink-muted uppercase lg:block">
+      className="flex shrink-0 gap-2 [scrollbar-width:thin] max-lg:flex-row max-lg:overflow-x-auto
+                 lg:min-h-0 lg:w-[76px] lg:flex-col lg:overflow-y-auto">
+      <p className="sticky top-0 z-10 hidden bg-plane pb-1 text-micro font-semibold tracking-[0.06em] text-ink-muted uppercase lg:block">
         Add
       </p>
       {PALETTE.map((p) => (
