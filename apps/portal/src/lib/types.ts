@@ -131,6 +131,9 @@ export interface Tile {
   dataset?: string
   field?: string
   groupBy?: string
+  /** What a date grouping is bucketed into: a month, a week. Undefined is
+   *  each date as it stands. */
+  grain?: string
   series?: string
   aggregate?: 'sum' | 'count' | 'avg' | 'min' | 'max'
   /** Draws a multi-series bar, column or area as one stack per bucket —

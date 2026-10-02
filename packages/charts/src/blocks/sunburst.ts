@@ -69,11 +69,37 @@ function segment(into: SVGSVGElement, slot: number, r0: number, r1: number, from
   // its own name, the part after the series it sits in.
   const own = name.includes(' · ') ? name.slice(name.lastIndexOf(' · ') + 3) : name
   const r = (r0 + r1) / 2
-  if (span * r >= own.length * LABEL_PX * 0.62 + 6) {
-    const mid = from + span / 2 - Math.PI / 2
-    into.append(label(MID + Math.cos(mid) * r, MID + Math.sin(mid) * r + 3.5, own,
-      cls.includes('child') ? 'sun-label outer' : 'sun-label'))
+  const mid = from + span / 2 - Math.PI / 2
+  const x = Math.cos(mid) * r
+  const y = Math.sin(mid) * r
+  if (holds(x, y, own.length * LABEL_PX * 0.62 / 2 + 2, LABEL_PX / 2, r0, r1, from, span)) {
+    into.append(label(MID + x, MID + y + 3.5, own, cls.includes('child') ? 'sun-label outer' : 'sun-label'))
   }
+}
+
+/**
+ * Whether a segment holds a name set level across its middle: every corner of
+ * the name's box inside the ring and inside the segment's angle.
+ *
+ * The name is level and the segment is not, so the length of its arc is not
+ * the room it has: down the side of the ring a long arc is a tall, narrow
+ * place, and a name judged by the arc lay across its neighbours and out past
+ * the edge of the chart.
+ */
+function holds(x: number, y: number, halfW: number, halfH: number,
+  r0: number, r1: number, from: number, span: number): boolean {
+  const whole = span >= Math.PI * 2 - 1e-6
+  for (const [dx, dy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) {
+    const cx = x + dx * halfW
+    const cy = y + dy * halfH
+    const radius = Math.hypot(cx, cy)
+    if (radius < r0 || radius > r1) return false
+    // The angle from twelve o'clock, clockwise, as the segments are laid.
+    let a = Math.atan2(cx, -cy) - from
+    a -= Math.floor(a / (Math.PI * 2)) * Math.PI * 2
+    if (!whole && a > span) return false
+  }
+  return true
 }
 
 interface Parent { g: Group; total: number; children: Bar[] }

@@ -154,7 +154,7 @@ export function BlockInspector({
       </Field>
 
       {/* A histogram counts its rows: what it bins is chosen below. */}
-      {block.kind !== 'table' && !is(METERED, block.kind) && block.kind !== 'histogram' && (
+      {block.kind !== 'table' && (!is(METERED, block.kind) || byRows(block)) && block.kind !== 'histogram' && (
         <>
           <Field label="Measure" help={block.kind === 'boxplot'
             ? 'The number whose spread each box draws, read row by row.'
@@ -212,7 +212,7 @@ export function BlockInspector({
           Then this only groups them, and saying "Labelled by" would name the
           wrong control. */}
       {(is(CATEGORICAL, block.kind) || is(PLOTS, block.kind) || block.kind === 'map'
-        || block.kind === 'combo' || block.kind === 'bullet' || block.kind === 'boxplot') && (
+        || block.kind === 'combo' || block.kind === 'bullet' || block.kind === 'boxplot' || byRows(block)) && (
         <Field label={block.kind === 'map' && !block.map?.region ? 'Labelled by' : 'Grouped by'}
           help={groupHelp(block, fields)}>
           {/* Optional on a bullet chart and a box plot: without it, one for
@@ -220,7 +220,25 @@ export function BlockInspector({
           <Select data={opts(dimensions)} value={block.groupBy ?? null}
             allowDeselect={optionalGroup(block.kind)} clearable={optionalGroup(block.kind)}
             placeholder={optionalGroup(block.kind) ? 'The whole set' : 'Choose a field'}
-            onChange={(v) => onChange({ groupBy: v ?? undefined })} />
+            // A grain belongs to the date it buckets: left on a grouping
+            // that is not one, it is a month of statuses, which the server
+            // refuses.
+            onChange={(v) => onChange({
+              groupBy: v ?? undefined,
+              grain: fields.find((f) => f.name === v)?.type === 'date' ? block.grain : undefined,
+            })} />
+        </Field>
+      )}
+
+      {/* A date is grouped by the period it falls in, or the chart is a bar
+          a day. Offered where the grouping is a date and the file takes a
+          grain: a plot's x is what each dot is, and a calendar's cells are
+          days whatever is said. */}
+      {grained(block, fields) && (
+        <Field label="Bucketed by" required={false} help="The period each date is counted in.">
+          <Select data={TIME_GRAINS} value={block.grain ?? null} clearable
+            placeholder="Each date as it is" data-testid="block-grain"
+            onChange={(v) => onChange({ grain: v ?? undefined })} />
         </Field>
       )}
 
@@ -364,7 +382,9 @@ function Metrics({ kind, metrics, measures, onChange }: {
     <Field label={combo ? 'Measures' : 'Stages'} data-testid="metrics"
       help={combo
         ? 'Drawn together against the same buckets.'
-        : 'One stage per measure, in this order.'}>
+        : metrics.length
+          ? 'One stage per measure, in this order.'
+          : 'Add one to make each stage a measure of its own, rather than a value of the field below.'}>
       <div className="grid gap-2">
         {metrics.map((m, i) => (
           <div key={`${m.field}-${i}`} className="grid gap-1.5 rounded-md border border-line p-2">
@@ -470,6 +490,17 @@ function pairedLabel(kind: Tile['kind']): string | undefined {
 }
 
 /** The kinds whose grouping may be left empty, drawing one for every row. */
+/** A funnel with a stage per value of a field rather than per measure: the
+ *  shape that has one measure and a grouping, as a bar chart does. */
+const byRows = (block: Tile) => block.kind === 'funnel' && !block.metrics?.length
+
+/** Whether a block's grouping is a date the file lets it bucket. */
+function grained(block: Tile, fields: FieldDef[]): boolean {
+  if (!block.groupBy || is(PLOTS, block.kind) || block.kind === 'calendar' || block.kind === 'map') return false
+  if (block.kind === 'gauge' || block.kind === 'histogram' || (block.kind === 'funnel' && !byRows(block))) return false
+  return fields.find((f) => f.name === block.groupBy)?.type === 'date'
+}
+
 const optionalGroup = (kind: Tile['kind']) => kind === 'bullet' || kind === 'boxplot'
 
 const STACKS = [
@@ -489,6 +520,7 @@ function groupHelp({ kind, map }: Tile, fields: FieldDef[]): string {
   if (kind === 'sankey') return 'Where each flow comes from: one node down the left per value.'
   if (kind === 'sunburst') return 'The outer ring: the parts of each inner segment.'
   if (kind === 'waterfall') return 'One step per value, in this order.'
+  if (kind === 'funnel') return 'One stage per value of this field, largest first.'
   if (kind === 'radar') return 'One spoke per value of this field. Three or more.'
   if (kind === 'bullet') return 'One bullet per value, each against its target. Leave empty for one.'
   if (kind === 'boxplot') return 'One box per value of this field. Leave empty for one over every row.'

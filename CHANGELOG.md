@@ -22,6 +22,27 @@ needs a deployment to act says so under **Upgrading**.
 
 ## Unreleased
 
+**The builder draws every block as the report will.** The canvas asked the
+server for a map and sketched everything else from sample numbers; now each
+chart and stat is the published one, drawn from the project's data as it is
+edited, and a block the server would refuse says why where it would have been.
+Tables stay a sample. Three faults this showed, all of them in builds before
+this one:
+
+- **Saving a report from the builder removed `grain:` from every chart**, so a
+  chart of months became a chart of dates. Reports edited in the builder since
+  grains were added should be checked: open one, set "Bucketed by" on each chart
+  grouped by a date, and save. Reports only ever edited as files are unaffected.
+- **A funnel with a stage per value of a field** (`x` and `y`, no `metrics`)
+  was saved without its `y`, which the server refused — the save failed rather
+  than changing the report.
+- The list of blocks to add ran off the bottom of the editor.
+
+In the viewer, a stat's figure is sized to its tile rather than cut off by it,
+a waterfall and a bullet chart's scale leave out the figures that do not fit
+rather than printing them through one another, and a sunburst names a segment
+only where the name is inside it. The embed is 36.7 KB.
+
 **Calendars, and stats with a trend.** `chart: calendar` draws a measure per
 day, a year a block of weeks with each day shaded; a `stat` with `trend:` draws
 its number over the periods of a date under the figure and reports its last

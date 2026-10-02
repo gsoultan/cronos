@@ -4,10 +4,24 @@ import { ColumnChart } from '../ColumnChart'
 import { LineChart } from '../LineChart'
 import { DataTable } from '../DataTable'
 import { BlockSketch } from './BlockSketch'
-import { MapPreview } from './MapPreview'
+import { ServerPreview } from './ServerPreview'
 import { sampleRows } from '../../lib/sampleRows'
 import { currency, monthLabel } from '../../lib/format'
 import type { Field, Tile } from '../../lib/types'
+
+/**
+ * The block as it will be published, where there is a server to ask, and as
+ * a sample of its kind where there is not.
+ *
+ * A table stays a sample either way: its columns are the whole of what an
+ * author is choosing, and fifty real rows a keystroke is a query for nothing
+ * the sample does not show.
+ */
+export function BlockPreview({ block, fields, dataset }: { block: Tile; fields: Field[]; dataset: string }) {
+  const sample = <SamplePreview block={block} fields={fields} />
+  if (block.kind === 'table') return sample
+  return <ServerPreview block={block} dataset={dataset} fallback={sample} />
+}
 
 /**
  * The block, drawn with the components that will actually render it.
@@ -18,7 +32,7 @@ import type { Field, Tile } from '../../lib/types'
  * are the same `StatTile`, `ColumnChart`, `LineChart` and `DataTable` the
  * report renders, fed sample rows.
  */
-export function BlockPreview({ block, fields, dataset }: { block: Tile; fields: Field[]; dataset: string }) {
+function SamplePreview({ block, fields }: { block: Tile; fields: Field[] }) {
   const field = fields.find((f) => f.name === block.field)
   const group = fields.find((f) => f.name === block.groupBy)
 
@@ -81,9 +95,6 @@ export function BlockPreview({ block, fields, dataset }: { block: Tile; fields: 
           )}
         </div>
       )
-
-    case 'map':
-      return <MapPreview block={block} dataset={dataset} />
 
     default:
       /* Not `null`, which is what this was: every chart type the palette gained

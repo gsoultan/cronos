@@ -1,6 +1,7 @@
 import type { Axis, Bullet, ChartBlock } from '../types'
 import { svg, n } from '../svg'
 import { bar, canvas, fit, label, measure, sized, type Measure } from '../frame'
+import { thin, TICK_PX } from '../axes'
 import { chartPanel, host, hue, nothing } from '../chart'
 import { withTips, type Tips } from '../tip'
 
@@ -66,7 +67,7 @@ function draw(width: number, rows: Bullet[], axis: Axis, bands: number[], m: Mea
     const at = x0 + span + GAP
     text.append(label(at, mid + 4, fit(words[i] ?? '', width - at - 2, LABEL_PX, m), 'name', 'start'))
   })
-  scale(text, axis, x, rows.length * ROW + 16)
+  scale(text, axis, x, rows.length * ROW + 16, m)
   return root
 }
 
@@ -82,10 +83,16 @@ function track(into: SVGGElement, r: Bullet, bands: number[], axis: Axis, x: (v:
 }
 
 /** The shared scale, under the last row. */
-function scale(into: SVGGElement, axis: Axis, x: (v: number) => number, y: number) {
-  for (const t of axis.ticks) {
+function scale(into: SVGGElement, axis: Axis, x: (v: number) => number, y: number, m: Measure) {
+  // Every tick where they fit side by side, else every second or third: the
+  // track is what is left between the names and the figures, and in a narrow
+  // panel five ticks along it were one run of digits.
+  const room = Math.abs(x(axis.max) - x(axis.min)) / Math.max(axis.ticks.length - 1, 1)
+  const every = thin(Math.max(0, ...axis.ticks.map((t) => m(t.label, TICK_PX))), room)
+  axis.ticks.forEach((t, i) => {
+    if (i % every !== 0) return
     into.append(label(x(axis.min + t.at * (axis.max - axis.min)), y, t.label, 'tick'))
-  }
+  })
 }
 
 function share(r: Bullet): string {

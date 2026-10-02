@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { blockInput, report, withCarry, type Loaded, type ReportInput } from '../lib/definitions'
+import { blockInput, report, tileOf, withCarry, type Loaded, type ReportInput } from '../lib/definitions'
 import { usePublish } from '../lib/usePublish'
 import { PublishError } from '../components/form/PublishError'
 import { UnmodelledWarning } from '../components/form/UnmodelledWarning'
@@ -71,29 +71,7 @@ function spanFor(kind: TileKind): number {
 function tiles(blocks: ReportInput['blocks']): Tile[] {
   return blocks.map((b) => {
     const kind = (KINDS.has(b.kind) ? b.kind : 'bar') as TileKind
-    return {
-      id: nextId(),
-      kind,
-      title: b.title ?? '',
-      span: spanFor(kind),
-      dataset: b.dataset,
-      field: b.field,
-      groupBy: b.groupBy,
-      aggregate: b.aggregate as Tile['aggregate'],
-      series: b.series,
-      stacked: b.stacked,
-      xField: b.xField,
-      sizeField: b.sizeField,
-      map: b.map,
-      metrics: b.metrics as Tile['metrics'],
-      target: b.target as Tile['target'],
-      bands: b.bands,
-      bins: b.bins,
-      trend: b.trend as Tile['trend'],
-      columns: b.columns,
-      filter: b.filter,
-      sort: b.sort?.map((k) => ({ field: k.field, dir: k.dir as 'asc' | 'desc' | undefined })),
-    }
+    return { ...tileOf(b), id: nextId(), kind, span: spanFor(kind) }
   })
 }
 

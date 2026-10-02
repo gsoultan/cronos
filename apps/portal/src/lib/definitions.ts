@@ -1,7 +1,7 @@
 import { carryOver, document, fromYaml, toYaml, unmodelled, type Yaml } from './yaml'
 import { reference, referenced, sourceSecret } from './secrets'
 import { DEFAULT_TIME_GRAIN } from './maps'
-import type { BasemapProvider, Field, Param, Tile, TileMap } from './types'
+import type { BasemapProvider, Field, Param, Tile, TileKind, TileMap } from './types'
 
 /**
  * Form state to a definition document.
@@ -393,13 +393,35 @@ export interface ReportBlockInput {
   sort?: { field: string; dir?: string }[]
 }
 
+/**
+ * A block as the canvas holds it: what was read from the file, less the id
+ * and span the canvas gives it.
+ *
+ * Beside `blockInput`, which is its way back, because the two are one trip
+ * and a field has to be named in both to survive it. This lived in the form,
+ * out of sight of the other half and of any test.
+ */
+export function tileOf(b: ReportBlockInput): Omit<Tile, 'id' | 'span'> {
+  return {
+    kind: b.kind as TileKind, title: b.title ?? '', dataset: b.dataset,
+    field: b.field, groupBy: b.groupBy, grain: b.grain,
+    aggregate: b.aggregate as Tile['aggregate'],
+    series: b.series, stacked: b.stacked,
+    xField: b.xField, sizeField: b.sizeField, map: b.map,
+    metrics: b.metrics as Tile['metrics'], target: b.target as Tile['target'],
+    bands: b.bands, bins: b.bins, trend: b.trend as Tile['trend'],
+    columns: b.columns, filter: b.filter,
+    sort: b.sort?.map((k) => ({ field: k.field, dir: k.dir as 'asc' | 'desc' | undefined })),
+  }
+}
+
 /** A block of the builder's canvas, in the vocabulary a report is written
  *  in — translated in one place, so a save and a preview cannot write the
  *  same block two ways. */
 export function blockInput(b: Tile): ReportBlockInput {
   return {
     kind: b.kind, title: b.title, dataset: b.dataset,
-    field: b.field, groupBy: b.groupBy, aggregate: b.aggregate,
+    field: b.field, groupBy: b.groupBy, grain: b.grain, aggregate: b.aggregate,
     series: b.series, stacked: b.stacked,
     xField: b.xField, sizeField: b.sizeField, map: b.map,
     metrics: b.metrics, target: b.target, bands: b.bands, bins: b.bins, trend: b.trend,
@@ -558,24 +580,32 @@ function block(b: ReportBlockInput): Yaml {
  */
 function xOf(chart: string, b: ReportBlockInput): Yaml {
   if (chart === 'histogram') return b.xField ? { field: b.xField } : undefined
-  if ((chart === 'funnel' && (b.metrics?.length ?? 0) > 0) || chart === 'gauge' || !b.groupBy) {
-    return undefined
-  }
+  if (staged(chart, b) || chart === 'gauge' || !b.groupBy) return undefined
   // A calendar's cells are days whatever its x says, so it says nothing.
   return { field: b.groupBy, grain: PLOTTED.has(chart) || chart === 'calendar' ? undefined : b.grain || undefined }
 }
 
 /**
- * What a chart measures, folded — except where it is not. A metered chart's
- * measures replace y rather than joining it; a box plot reads every row's
+ * What a chart measures, folded — except where it is not. A combo's measures,
+ * and a funnel's where it lists any, replace y rather than joining it; a box plot reads every row's
  * value, so its y has no aggregate; and a histogram counts its rows unless it
  * names a measure to fold over each bin.
  */
 function yOf(chart: string, b: ReportBlockInput): Yaml {
-  if (METERED.has(chart)) return undefined
+  if (chart === 'combo' || staged(chart, b)) return undefined
   if (chart === 'boxplot') return { field: b.field }
   if (chart === 'histogram' && !b.field) return undefined
   return { field: b.field, aggregate: b.aggregate ?? 'sum' }
+}
+
+/**
+ * Whether a funnel's stages are a list of measures. The other funnel has a
+ * stage per value of a field, and is written as any chart of categories is:
+ * an x and a y. Treating every funnel as the first kind dropped the second
+ * one's y, and the server refuses a chart with half of the pair.
+ */
+function staged(chart: string, b: ReportBlockInput): boolean {
+  return chart === 'funnel' && (b.metrics?.length ?? 0) > 0
 }
 
 function metrics(list: ReportBlockInput['metrics']): Yaml {

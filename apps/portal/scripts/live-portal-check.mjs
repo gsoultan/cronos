@@ -440,6 +440,48 @@ await page.locator('[data-testid=canvas-block]').first().waitFor({ timeout: 2000
 ok('nothing in this report is beyond the editor',
   await page.locator('[data-testid=unmodelled-warning]').count() === 0)
 
+/* The canvas draws each block as the server would publish it: two stats and a
+   bar chart of this project's invoices, not a sample of what a stat or a bar
+   chart looks like. Only a map was, and every other chart was a sketch that
+   could not say what the report would — the table stays a sample, its columns
+   being the whole of what an author chooses. */
+await page.locator('[data-testid=server-preview] [part=bar]').first().waitFor({ timeout: 20000 })
+ok('the canvas draws its charts and stats from the server',
+  await page.locator('[data-testid=server-preview]').count() === 3
+  && await page.locator('[data-testid=server-preview] [part=stat]').count() === 2)
+ok('and none of them is one the server would refuse',
+  await page.locator('[data-testid=preview-refused]').count() === 0)
+
+/* And every kind of chart, not the three above. billing-shapes draws the same
+   invoices every way there is, so its canvas is the one place a chart the
+   builder writes differently from the file shows: a funnel of rows was written
+   without its y, and its preview was the server refusing it — as a save would
+   have been. One preview per block that is not the table, and none refused. */
+await page.goto(`${B}/reports/billing-shapes/edit`, { waitUntil: 'domcontentloaded' })
+await page.locator('[data-testid=canvas-block]').first().waitFor({ timeout: 20000 })
+const drawn = page.locator('[data-testid=server-preview]')
+const refusals = page.locator('[data-testid=preview-refused]')
+const every = await page.locator('[data-testid=canvas-block]').count() - 1
+for (let i = 0; i < 100 && await drawn.count() + await refusals.count() < every; i++) await page.waitForTimeout(200)
+ok(`every chart there is previews from the server (${await drawn.count()} of ${every})`,
+  every >= 18 && await drawn.count() === every)
+ok(`and the server refuses none of them ${(await refusals.allTextContents()).join(' | ')}`.trimEnd(),
+  await refusals.count() === 0)
+/* A chart of months is still one on the canvas. The canvas had nowhere to
+   keep a grain, so the previews drew a point a day — and so did the report,
+   once anybody saved it from here. */
+await page.locator('[data-testid=canvas-block]', { hasText: 'Billed over time' }).click()
+ok('a date grouping keeps the period it is bucketed by',
+  await page.locator('[data-testid=block-grain]').inputValue() === 'month')
+
+/* The palette has an entry per kind of chart, and scrolls within the editor
+   rather than running out of the bottom of the page over the form's warnings. */
+const strip = await page.locator('[data-testid=block-palette]').boundingBox()
+ok('the palette ends where the editor does',
+  strip !== null && strip.y + strip.height <= page.viewportSize().height)
+await page.goto(`${B}/reports/billing-summary/edit`, { waitUntil: 'domcontentloaded' })
+await page.locator('[data-testid=canvas-block]').first().waitFor({ timeout: 20000 })
+
 /* The inspector is the block when a block is selected, so the predicate is
    read from the block that carries it. billing-summary's second stat is the
    one filtered to overdue. */

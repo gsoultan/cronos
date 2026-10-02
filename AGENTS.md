@@ -179,7 +179,7 @@ that needs a wrapper.
 | Stack | React 19.2+, Mantine 9, TanStack Router/Query/Form | Web component, framework-agnostic |
 | PWA / service worker | Yes | No |
 | Builder UI | Yes | **Never** |
-| Budget | See below | ≲40 KB gzip (**36.4 KB** today, gated by `bun run size`; the interactive map took it from 14.8, painting a large one's cells from 20.8, maps that filter and draw overlays from 24.4, shading, glyphs and size keys from 26.5, labels, radii, flow heads and themed basemaps from 27.8, and maps that play through time from 30.1. Charts redrawn at their real size took it to 35.8, and stripping the stylesheet's comments at build — `packages/charts/build/sheet.ts`, 11 KB of prose inside a string no minifier touches — brought it back; column, radar and bullet charts took it to 33.6, histograms and box plots to 34.3, sankeys and sunbursts to 35.5, and calendars and stat trends to 36.4) |
+| Budget | See below | ≲40 KB gzip (**36.7 KB** today, gated by `bun run size`; the interactive map took it from 14.8, painting a large one's cells from 20.8, maps that filter and draw overlays from 24.4, shading, glyphs and size keys from 26.5, labels, radii, flow heads and themed basemaps from 27.8, and maps that play through time from 30.1. Charts redrawn at their real size took it to 35.8, and stripping the stylesheet's comments at build — `packages/charts/build/sheet.ts`, 11 KB of prose inside a string no minifier touches — brought it back; column, radar and bullet charts took it to 33.6, histograms and box plots to 34.3, sankeys and sunbursts to 35.5, calendars and stat trends to 36.4, and fitting figures and names to the room they have to 36.7) |
 
 ### Toolchain
 

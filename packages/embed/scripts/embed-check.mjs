@@ -436,6 +436,19 @@ await report.locator('.panel').first().waitFor()
 /* -- It renders ----------------------------------------------------------- */
 ok('renders every block', await report.locator('.panel').count() === 16)
 ok('the headline value is shown', (await report.locator('.stat').first().innerText()) === '€49.9M')
+/* A figure is fitted to its tile. At one size, a tile narrower than its
+   number cut the last digit off — and what was left still read as a number. */
+ok('a headline value fits a tile narrower than it was set for', await report.evaluate((host) => {
+  const value = host.shadowRoot.querySelector('.stat')
+  const panel = value.closest('.panel')
+  const was = panel.style.cssText
+  panel.style.cssText = 'width: 110px; min-width: 0; box-sizing: border-box'
+  const range = document.createRange()
+  range.selectNodeContents(value)
+  const fits = range.getBoundingClientRect().right <= value.getBoundingClientRect().right + 0.5
+  panel.style.cssText = was
+  return fits
+}))
 ok('a delta is coloured by meaning, not direction',
   await report.locator('.delta b.up').first().isVisible())
 ok('the table says what it is showing',
@@ -513,6 +526,19 @@ ok('stages take the ordinal ramp, so the order is in the colour',
 
 const fall = report.locator('.panel', { hasText: 'Movement' })
 ok('a waterfall draws a column per step and a closing total', await fall.locator('[part=bar]').count() === 4)
+/* A step's figure is written where the step has the width for it. Written
+   regardless, a narrow panel's figures ran through one another. */
+ok('each step says its change where there is room', await fall.locator('text.value').count() === 4)
+ok('and leaves it to the tooltip where there is not', await fall.evaluate(async (panel) => {
+  const was = panel.style.cssText
+  panel.style.cssText = 'width: 170px; min-width: 0; box-sizing: border-box'
+  await new Promise((done) => setTimeout(done, 400))
+  const written = panel.querySelectorAll('text.value').length
+  const drawn = panel.querySelectorAll('[part=bar]').length
+  panel.style.cssText = was
+  await new Promise((done) => setTimeout(done, 400))
+  return drawn === 4 && written < 4
+}))
 ok('a fall is coloured against a rise',
   await fillOf(fall.locator('[part=bar]').nth(1)) !== await fillOf(fall.locator('[part=bar]').nth(2)))
 ok('and the total is neither',
@@ -923,6 +949,33 @@ ok('a sankey draws a band per pair that flows, and a node each side of it',
 ok("a sunburst draws each part within its whole, and the server's whole in its middle",
   await panelOf('Sunburst').locator('[part=slice]').count() === 5 &&
   (await panelOf('Sunburst').locator('text.centre').textContent()) === '2,200')
+// A name is level and a segment is not: one judged by the length of its
+// arc lay across its neighbours down the side of the ring, and out past the
+// edge. Every corner of a name is on the segment it names, or it is not drawn.
+ok('a sunburst names a segment only where the name is inside it',
+  await panelOf('Sunburst').evaluate((panel) => {
+    const root = panel.getRootNode()
+    return [...panel.querySelectorAll('text.sun-label')].every((name) => {
+      const box = name.getBoundingClientRect()
+      const under = [[box.left, box.top], [box.right, box.top], [box.left, box.bottom], [box.right, box.bottom]]
+        .map(([x, y]) => root.elementsFromPoint(x, y).find((e) => e.getAttribute('part') === 'slice'))
+      return under[0] && under.every((slice) => slice === under[0])
+    })
+  }))
+// The scale under a bullet chart has the width of the track, which is what
+// the names and the figures leave: its ticks are thinned to the ones that fit.
+ok("a bullet's scale does not print one tick through the next",
+  await panelOf('Bullet').evaluate(async (panel) => {
+    const was = panel.style.cssText
+    panel.style.cssText = 'width: 200px; min-width: 0; box-sizing: border-box'
+    await new Promise((done) => setTimeout(done, 400))
+    const boxes = [...panel.querySelectorAll('text.tick')].map((t) => t.getBoundingClientRect())
+      .sort((a, b) => a.left - b.left)
+    const clear = boxes.length > 0 && boxes.every((b, i) => i === 0 || b.left >= boxes[i - 1].right)
+    panel.style.cssText = was
+    await new Promise((done) => setTimeout(done, 400))
+    return clear
+  }))
 // A year of days, two of which the depots delivered on: the rest are
 // outlines, because a day with nothing in it is not a light day.
 ok('a calendar draws every day of the year, shading the ones with rows',

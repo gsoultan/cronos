@@ -21,9 +21,14 @@ const SPARK = 36
  * latest period marked, and each period's figure a point away.
  */
 export function statBlock(b: StatBlock): HTMLElement {
+  // The figure is set as large as its tile has room for: the stylesheet
+  // divides the tile's width by the figure's length, which is all it needs to
+  // be told. At one size, a narrow tile cut the last digit off, and a number
+  // missing a digit is a different number.
+  const value = el('p', { class: 'stat', part: 'stat' }, b.value)
+  value.style.setProperty('--n', String(Math.max(b.value.length, 1)))
   const panel = el('section', { class: 'panel', part: 'panel' },
-    el('h3', {}, b.title),
-    el('p', { class: 'stat', part: 'stat' }, b.value))
+    el('h3', {}, b.title), el('div', { class: 'stat-fit' }, value))
 
   if (b.delta) {
     const tone = b.delta.good ? 'up' : 'down'
