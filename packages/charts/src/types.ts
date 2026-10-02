@@ -35,6 +35,8 @@ export interface StatBlock {
   title: string
   value: string
   delta?: Delta
+  /** The number per period, oldest first, when the stat has a trend. */
+  trend?: Bar[]
   coverage?: Coverage
 }
 
@@ -111,6 +113,15 @@ export interface Box {
 
 /** A sankey, laid out by the server in fractions of the box: nodes down the
  *  left (side 0) and the right (side 1), and a band from source to target. */
+/** One day of a calendar: its date as ISO 8601, what it measured, and which
+ *  shade of the ramp that falls in. */
+export interface Day {
+  date: string
+  value: number
+  formatted: string
+  step: number
+}
+
 export interface SankeyNode {
   label: string
   side: number
@@ -520,6 +531,8 @@ export interface ChartBlock {
   bins?: Bin[]
   boxes?: Box[]
   sankey?: Sankey
+  /** A calendar's days, in date order. */
+  days?: Day[]
   coverage?: Coverage
 }
 

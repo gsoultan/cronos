@@ -66,6 +66,8 @@ func drawOn(c *document.Chart, b Block) {
 		printBoxes(c, b)
 	case b.Sankey != nil:
 		printSankey(c, b.Sankey)
+	case b.Days != nil:
+		printCalendar(c, b.Days)
 	case b.Rects != nil:
 		treemap(c, b.Rects)
 	case b.Stages != nil:

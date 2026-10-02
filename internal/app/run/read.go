@@ -75,6 +75,8 @@ func readChart(out *Block, blk definition.Block, ds definition.Dataset, rows Row
 		err = out.readSankey(blk, rows)
 	case blk.Chart == definition.SunburstChart:
 		err = out.readSunburst(blk, rows)
+	case blk.Chart == definition.CalendarChart:
+		out.Days, err = readDays(rows)
 	case blk.Series.Field != "":
 		err = out.readSplit(blk, rows)
 	default:

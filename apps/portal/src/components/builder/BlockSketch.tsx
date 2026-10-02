@@ -116,6 +116,18 @@ function shape(kind: TileKind) {
         </>
       )
 
+    case 'calendar':
+      // A block of weeks, a few of their days shaded: the texture of a year.
+      return Array.from({ length: 7 }, (_row, r) =>
+        Array.from({ length: 16 }, (_col, c) => {
+          const shade = ((r * 16 + c) * 37) % 11
+          return (
+            <rect key={`${r}-${c}`} x={8 + c * 6.6} y={10 + r * 7} width="5.4" height="5.8" rx="1"
+              fill={shade > 6 ? s(1) : 'none'} fillOpacity={shade > 6 ? 0.25 + (shade - 7) * 0.2 : 0}
+              stroke={shade > 6 ? 'none' : 'var(--color-line)'} strokeWidth="0.6" />
+          )
+        }))
+
     case 'bullet':
       return [0.86, 0.52, 0.7].map((v, i) => (
         <g key={i}>

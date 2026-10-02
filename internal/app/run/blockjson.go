@@ -23,6 +23,12 @@ func (b Block) MarshalJSON() ([]byte, error) {
 	switch b.Kind {
 	case "stat", "text":
 		out["value"] = b.Value
+		if b.Trend != nil {
+			out["trend"] = b.Trend
+		}
+		if b.Delta != nil {
+			out["delta"] = b.Delta
+		}
 	case "chart":
 		out["chart"] = b.Chart
 		out["series"] = nonNilBars(b.Series)
@@ -116,6 +122,8 @@ func (b Block) shapeJSON(out map[string]any) {
 		out["boxes"] = b.Boxes
 	case b.Sankey != nil:
 		out["sankey"] = b.Sankey
+	case b.Days != nil:
+		out["days"] = b.Days
 	case b.Tracks != nil:
 		out["tracks"] = b.Tracks
 		if b.Axis2 != nil {

@@ -489,6 +489,7 @@ The type is a closed set, checked when the report is stored:
 | `boxplot` | `y` number; `x` dimension optional | Each category's quartiles, median and whiskers |
 | `sankey` | `x` + `series` dimensions, `y` | A band from each category of `x` to each of `series` |
 | `sunburst` | `x` + `series` dimensions, `y` | `series` as an inner ring, its parts of `x` around it |
+| `calendar` | `x` date, `y` measure | A year a block of weeks, each day shaded |
 
 `series:` names a second dimension to split by, and `stacked: true` stacks the
 result — on `bar`, `column` and `area` only, because a stacked line has a top
@@ -536,6 +537,31 @@ so a page and a screen draw the same picture. Each side draws its twelve
 largest nodes and folds the rest into "Other". A `sunburst` is a treemap's
 nesting as rings: `series` around the middle and each one's categories of `x`
 around it, largest first, with the whole in the middle. Both need `series`.
+
+A `calendar` draws a measure per day of `x`, which must be a date — a year a
+block of weeks, Monday at the top, each day shaded by the quantile it falls in
+and every day with nothing in it an outline. Its `x` takes no grain but `day`:
+a month of days is one bucket of a column chart.
+
+A `stat` takes a `trend:` — a date and a period — and draws its number over
+those periods under the figure, with the last against the one before as the
+change it reports: "▼ 12.4% vs Jun 2026". Whether a fall is good news is the
+measure's to say, and `better: lower` says it, for days to pay or tickets
+open. The periods are the same statement a line chart of the measure would
+be, over the same rows the tile's own figure reads.
+
+```yaml
+- kind: stat
+  label: Billed
+  value: {field: total, aggregate: sum}
+  trend: {field: issued_at, grain: month}
+
+- kind: chart
+  chart: calendar
+  title: Billed by day
+  x: {field: issued_at}
+  y: {field: total, aggregate: sum}
+```
 
 ```yaml
 - kind: chart

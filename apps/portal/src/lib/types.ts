@@ -76,12 +76,12 @@ export type TileKind =
   | 'bar' | 'column' | 'line' | 'area' | 'pie' | 'donut'
   | 'scatter' | 'bubble' | 'map'
   | 'combo' | 'funnel' | 'waterfall' | 'heatmap' | 'gauge' | 'treemap'
-  | 'radar' | 'bullet' | 'histogram' | 'boxplot' | 'sankey' | 'sunburst'
+  | 'radar' | 'bullet' | 'histogram' | 'boxplot' | 'sankey' | 'sunburst' | 'calendar'
 
 /** The tiles that bucket a dimension and fold a measure. */
 export const CATEGORICAL: TileKind[] = [
   'bar', 'column', 'line', 'area', 'pie', 'donut', 'waterfall', 'heatmap', 'treemap', 'radar',
-  'sankey', 'sunburst',
+  'sankey', 'sunburst', 'calendar',
 ]
 
 /** The tiles that read a list of measures rather than one. */
@@ -153,6 +153,8 @@ export interface Tile {
   bands?: number[]
   /** About how many bins a histogram cuts its range into. */
   bins?: number
+  /** A stat's number over time, drawn under it. */
+  trend?: TileTrend
   columns?: string[]
   /**
    * Narrows this block alone — "of which, overdue".
@@ -205,6 +207,13 @@ export interface TileMetric {
    *  scales on one plot is the most-flagged mistake in charting, so it is
    *  reachable and never accidental. */
   secondary?: boolean
+}
+
+/** A stat's number per period of a date, and which way is good news. */
+export interface TileTrend {
+  field: string
+  grain?: string
+  better?: 'higher' | 'lower'
 }
 
 /** What a gauge or a bullet chart measures against: a column, or a number. */

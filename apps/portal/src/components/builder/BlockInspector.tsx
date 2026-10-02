@@ -175,6 +175,11 @@ export function BlockInspector({
         </>
       )}
 
+      {block.kind === 'stat' && (
+        <TrendField trend={block.trend} dates={dimensions.filter((d) => d.type === 'date')}
+          onChange={(trend) => onChange({ trend })} />
+      )}
+
       {block.kind === 'histogram' && (
         <>
           <Field label="Binned field" help="The number cut into bins along the bottom.">
@@ -693,6 +698,45 @@ function TimeFields({ map, dates, onChange }: {
     </>
   )
 }
+
+/**
+ * A stat's number over time: the date its periods come from, how long each
+ * is, and whether a rise is good news — outstanding invoices rising is not.
+ */
+function TrendField({ trend, dates, onChange }: {
+  trend: Tile['trend']
+  dates: FieldDef[]
+  onChange: (trend: Tile['trend']) => void
+}) {
+  return (
+    <>
+      <Field label="Trend over" required={false}
+        help="A date. The number's periods run under it as a line, the latest against the one before.">
+        <Select data={opts(dates)} value={trend?.field ?? null} clearable data-testid="stat-trend"
+          placeholder={dates.length > 0 ? 'No trend' : 'The dataset has no date field'}
+          disabled={dates.length === 0 && !trend}
+          onChange={(v) => onChange(v ? { ...trend, field: v } : undefined)} />
+      </Field>
+      {trend && (
+        <>
+          <Field label="A period is a">
+            <Select data={TIME_GRAINS} value={trend.grain ?? 'month'} allowDeselect={false}
+              onChange={(v) => onChange({ ...trend, grain: v ?? 'month' })} />
+          </Field>
+          <Field label="A rise is">
+            <Select data={BETTER} value={trend.better ?? 'higher'} allowDeselect={false}
+              onChange={(v) => onChange({ ...trend, better: v === 'lower' ? 'lower' : undefined })} />
+          </Field>
+        </>
+      )}
+    </>
+  )
+}
+
+const BETTER = [
+  { value: 'higher', label: 'Good news' },
+  { value: 'lower', label: 'Bad news' },
+]
 
 const RAMPS = [
   { value: 'sequential', label: 'One colour, darker for more' },

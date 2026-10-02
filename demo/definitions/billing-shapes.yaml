@@ -48,6 +48,7 @@ spec:
         - kind: stat
           label: Total billed
           value: {field: total, aggregate: sum}
+          trend: {field: issued_at, grain: month}
 
         # One number against something, which is the question a stat tile
         # cannot answer.
@@ -168,6 +169,13 @@ spec:
           title: Status, then customer
           x: {field: customer_name}
           series: {field: status}
+          y: {field: total, aggregate: sum}
+
+        # The days the billing happened on, a year at a time.
+        - kind: chart
+          chart: calendar
+          title: Billed by day
+          x: {field: issued_at}
           y: {field: total, aggregate: sum}
 
         - kind: table
