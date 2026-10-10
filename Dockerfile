@@ -49,7 +49,7 @@ RUN bun install --frozen-lockfile && cd packages/embed && bun run build
 # right thing right up until it is behind: six standard-library advisories were
 # open against 1.26.5, and a tag that floats gives no way to say which one an
 # image was built with. go.mod names the same version, so the two cannot drift.
-FROM golang:1.26.6-alpine AS server
+FROM golang:1.26.9-alpine AS server
 WORKDIR /src
 
 COPY . .
