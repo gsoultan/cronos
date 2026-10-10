@@ -60,7 +60,10 @@ type Signer struct {
 	   longer-lived than that, because Mint would not have issued it.
 	*/
 	retired [][]byte
-	now     func() time.Time
+	// audience confines this signer to one kind of token. Empty means either.
+	// See For.
+	audience string
+	now      func() time.Time
 }
 
 // NewSigner returns a Signer over key, or an error if the key is too weak to
@@ -77,7 +80,26 @@ func NewSigner(key []byte) (*Signer, error) {
 // scheduled mint that must date a token from the run rather than from whenever
 // a worker got to it.
 func (s *Signer) WithClock(now func() time.Time) *Signer {
-	return &Signer{key: s.key, retired: s.retired, now: now}
+	return &Signer{key: s.key, retired: s.retired, audience: s.audience, now: now}
+}
+
+/*
+For returns a copy that mints and verifies one audience and refuses the other.
+
+The embed key is held by host applications: their backends sign a token for
+each of their own users. Holding a key means choosing every claim it signs,
+the audience included — so while one key signed both kinds, a host's backend
+could write `aud: portal` with a platform claim and administer the deployment
+it was given to embed one report from. Every rule that an embed token can
+never claim a role read the audience, and the audience was theirs to write.
+
+So the embed key is a different key, and the signer made from it is confined
+here rather than by the care of whoever wires it: handed to the portal's
+authentication by mistake, it refuses every token rather than accepting the
+wrong ones.
+*/
+func (s *Signer) For(audience string) *Signer {
+	return &Signer{key: s.key, retired: s.retired, audience: audience, now: s.now}
 }
 
 /*
@@ -98,7 +120,7 @@ func (s *Signer) Accepting(keys ...[]byte) (*Signer, error) {
 		}
 		retired = append(retired, k)
 	}
-	return &Signer{key: s.key, retired: retired, now: s.now}, nil
+	return &Signer{key: s.key, retired: retired, audience: s.audience, now: s.now}, nil
 }
 
 // Mint issues a token valid for lifetime.
@@ -114,6 +136,8 @@ func (s *Signer) Mint(c Claims, lifetime time.Duration) (string, error) {
 		return "", fmt.Errorf("token: org and project are required")
 	case c.Audience != Embed && c.Audience != Portal:
 		return "", fmt.Errorf("token: audience must be %q or %q", Embed, Portal)
+	case s.audience != "" && c.Audience != s.audience:
+		return "", fmt.Errorf("token: this key signs %s tokens only", s.audience)
 	}
 
 	issued := s.now()
@@ -151,6 +175,11 @@ func (s *Signer) Verify(raw, audience string) (Claims, error) {
 	if err != nil {
 		return Claims{}, fmt.Errorf("%w: malformed signature", ErrInvalid)
 	}
+	// Before the signature, and the same answer as a bad one: a signer
+	// confined to one audience has no key that speaks for the other.
+	if s.audience != "" && audience != s.audience {
+		return Claims{}, fmt.Errorf("%w: audience", ErrInvalid)
+	}
 	if !s.signed(prefix+"."+encoded, got) {
 		return Claims{}, fmt.Errorf("%w: signature", ErrInvalid)
 	}
@@ -181,6 +210,22 @@ func (s *Signer) check(c Claims) error {
 		return fmt.Errorf("%w: expired", ErrInvalid)
 	case c.IssuedAt != 0 && now.Add(skew).Before(time.Unix(c.IssuedAt, 0)):
 		return fmt.Errorf("%w: issued in the future", ErrInvalid)
+	case c.IssuedAt == 0 || c.ExpiresAt-c.IssuedAt > int64(MaxLifetime/time.Second):
+		/*
+		   Longer-lived than Mint would issue, or not saying when it was issued.
+
+		   Mint refuses a lifetime over the maximum, and that was the only
+		   place the maximum was held — which covers every token cronos signs
+		   and none a host signs for itself, with a key it holds and in code we
+		   never see. A host-minted token has no id to revoke it by, so expiry
+		   is the only way it stops; one signed for ten years was a permanent
+		   credential in a browser, and verified.
+
+		   Checked against its own issue time, which cannot be moved to hide
+		   it: the case above refuses one issued in the future, so no token
+		   is good for more than the maximum from now.
+		*/
+		return fmt.Errorf("%w: lifetime", ErrInvalid)
 	case c.Org == "" || c.Project == "":
 		return fmt.Errorf("%w: no tenancy", ErrInvalid)
 	}

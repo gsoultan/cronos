@@ -17,6 +17,11 @@ project_name: cronos
 before:
   hooks:
     - go mod tidy
+    # The embed element, compiled into cronosd and cronosd-ee so a host page
+    # loads it from the server it talks to. Without this a release binary
+    # serves no /v1/embed/cronos-embed.js — scripts/check-release-parity.sh
+    # fails if this line goes.
+    - ./scripts/embed-bundle.sh
 
 builds:
   # The community edition.

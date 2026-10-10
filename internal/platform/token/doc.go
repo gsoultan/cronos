@@ -13,6 +13,13 @@
 // Anything a JWT library would do for us is something that can also be done to
 // us.
 //
+// # Two keys
+//
+// A portal session is signed by cronos, with the signing key. An embed token
+// is signed by a host application's backend, with the embed key — a different
+// key, because whoever holds a key writes every claim it signs, the audience
+// included. See Signer.For.
+//
 // # What the token is for
 //
 // It carries the constraints a host application decided when it minted the

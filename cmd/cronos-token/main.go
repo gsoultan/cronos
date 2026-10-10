@@ -31,9 +31,9 @@ func main() {
 	)
 	flag.Parse()
 
-	key := os.Getenv("CRONOS_SIGNING_KEY")
+	key, name := signingKey(*audience)
 	if key == "" {
-		fmt.Fprintln(os.Stderr, "CRONOS_SIGNING_KEY is required")
+		fmt.Fprintln(os.Stderr, name+" is required")
 		os.Exit(1)
 	}
 	signer, err := token.NewSigner([]byte(key))
@@ -58,6 +58,20 @@ func main() {
 		fmt.Fprintln(os.Stderr, string(b))
 	}
 	fmt.Println(tok)
+}
+
+// signingKey picks the key the server verifies this audience with, and names
+// the variable it came from. An embed token is signed with CRONOS_EMBED_KEY
+// where a deployment has one — the key a host application holds — and with the
+// signing key where it does not, which is what the server accepts in each case.
+func signingKey(audience string) (key, name string) {
+	if audience == token.Embed {
+		if k := os.Getenv("CRONOS_EMBED_KEY"); k != "" {
+			return k, "CRONOS_EMBED_KEY"
+		}
+		return os.Getenv("CRONOS_SIGNING_KEY"), "CRONOS_EMBED_KEY or CRONOS_SIGNING_KEY"
+	}
+	return os.Getenv("CRONOS_SIGNING_KEY"), "CRONOS_SIGNING_KEY"
 }
 
 func pairs(s string) map[string]string {

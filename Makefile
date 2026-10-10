@@ -32,6 +32,8 @@ dev-api: ## Run the API only
 	@./scripts/dev.sh --api
 
 build: ## Build both binaries and the portal
+	@# First, so cronosd carries the element it serves to host pages.
+	./scripts/embed-bundle.sh
 	$(GO) build -o bin/cronosd ./cmd/cronosd
 	$(GO) build -o bin/cronosd-ee ./cmd/cronosd-ee
 	$(GO) build -o bin/cronos-import ./cmd/cronos-import
@@ -101,6 +103,7 @@ live: ## Drive the embed component and the portal against a real cronosd
 	@./scripts/live-datasources.sh
 	@./scripts/live-projects.sh
 	@./scripts/live-embed.sh
+	@./scripts/live-integrations.sh
 	@./scripts/live-portal.sh
 
 objectstore: ## Read a lake out of a real object store (MinIO, needs -tags duckdb)
@@ -114,6 +117,7 @@ ui: ## Run every browser suite against a running portal (make dev-web first)
 	cd $(EMBED) && bun run build && bun run embed && bun run vue
 	cd $(REACT) && bun run react
 	@./scripts/live-embed.sh
+	@./scripts/live-integrations.sh
 	@./scripts/live-portal.sh
 
 shots: ## Drive the portal in headless Chrome and write screenshots

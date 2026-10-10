@@ -46,6 +46,7 @@ type File struct {
 	Addr        string   `yaml:"addr,omitempty"`
 	SigningKey  string   `yaml:"signingKey,omitempty"`
 	SecretsKey  string   `yaml:"secretsKey,omitempty"`
+	EmbedKey    string   `yaml:"embedKey,omitempty"`
 	AdminKey    string   `yaml:"adminKey,omitempty"`
 	Org         string   `yaml:"org,omitempty"`
 	Project     string   `yaml:"project,omitempty"`
@@ -170,6 +171,9 @@ func (f File) fill(s *Server) {
 	if len(s.SigningKey) == 0 && f.SigningKey != "" {
 		s.SigningKey = []byte(f.SigningKey)
 	}
+	if len(s.EmbedKey) == 0 && f.EmbedKey != "" {
+		s.EmbedKey = []byte(f.EmbedKey)
+	}
 	if len(s.SecretsKey) == 0 && f.SecretsKey != "" {
 		s.SecretsKey = []byte(f.SecretsKey)
 	}
@@ -280,7 +284,9 @@ const header = `# cronos configuration, written by first-run setup.
 # Every setting here can also be an environment variable, and the environment
 # wins where both are set — see "What has to be set" in docs/deploying.md.
 #
-# This file holds the signing key and the key that seals stored secrets. It is
+# This file holds the signing key, the key that seals stored secrets, and the
+# embed key. embedKey is the only one a host application is ever given: its
+# backend signs embed tokens with it, and it can sign nothing else. It is
 # mode 0600 and cronos refuses to start if that is widened, because a key every
 # account on the host can read is one that has been published.
 #

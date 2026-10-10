@@ -53,6 +53,10 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      # goreleaser's before hook builds the embed element into cronosd, and
+      # that is a bun build.
+      - uses: oven-sh/setup-bun@v2
+
       # A tag on a commit whose CHANGELOG says nothing about it is a version an
       # operator can read off `cronosd -version` and then not look up. `make
       # release` checks this locally and nothing enforced it, so the check that

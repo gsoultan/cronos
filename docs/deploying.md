@@ -203,10 +203,10 @@ does not need a container to do it — see
 
 | Variable | Why |
 |---|---|
-| `CRONOS_SIGNING_KEY` | 32 bytes minimum. Every token is signed with it. Rotate it through `CRONOS_SIGNING_KEY_PREVIOUS` rather than replacing it outright — see Rotating the signing key. |
+| `CRONOS_SIGNING_KEY` | 32 bytes minimum. Every portal session is signed with it, and it is never given to a host application. Rotate it through `CRONOS_SIGNING_KEY_PREVIOUS` rather than replacing it outright — see Rotating the signing key. |
 | `CRONOS_ORG`, `CRONOS_PROJECT` | The one project this process serves. |
 | `CRONOS_STORE_DSN` | The definition store. Without it, definitions are files and there is no sign-in, no run history and no sharing. |
-| `CRONOS_ORIGINS` | The host applications allowed to call the API. Never `*` — the API reads an Authorization header. |
+| `CRONOS_ORIGINS` | The host applications allowed to call the API, and to load the embed element from it. Never `*` — the API reads an Authorization header. |
 
 And what should be:
 
@@ -217,6 +217,8 @@ And what should be:
 | `CRONOS_HISTORY_RETENTION` | e.g. `2160h`. Unset keeps run history for ever. |
 | `CRONOS_BEHIND_PROXY=1` | Required behind a terminating proxy, and only there — see Terminating TLS. It keys rate limits on `X-Forwarded-For` and makes the SSO state cookie `Secure`. Believing it without a proxy keys every limit by a value the caller chooses; omitting it behind one sends that cookie without `Secure`. |
 | `CRONOS_SIGNING_KEY_PREVIOUS` | Comma-separated keys accepted but never minted with, for a rotation. Unset outside one. |
+| `CRONOS_EMBED_KEY` | 32 bytes minimum, and not the signing key. The key a host application's backend signs embed tokens with — the only key a host is given. Without it embed tokens are signed with `CRONOS_SIGNING_KEY` and startup warns: a host holding that key can sign a portal session. First-run setup generates one. See The embed key. |
+| `CRONOS_EMBED_KEY_PREVIOUS` | Comma-separated embed keys accepted but never minted with, for a rotation. Unset outside one. |
 | `CRONOS_SECRETS_KEY_PREVIOUS` | Comma-separated keys that open stored secrets and seal none, for a rotation. Unset outside one. |
 | `CRONOS_SHARED_SECRETS` | With `CRONOS_PROJECTS`: the deployment secrets every project may read, e.g. `mapbox-token`. No other deployment secret is readable by any project — see Secrets. |
 | `CRONOS_AUDIT` | `log` by default, `off` to stop it. |
@@ -227,6 +229,69 @@ And what should be:
 | `CRONOS_METRICS_ADDR` | e.g. `127.0.0.1:9090`. Serves the exposition there and nowhere else — see Probes. |
 | `CRONOS_SECRET_MAPBOX_TOKEN` | A Mapbox **public** token (`pk.`), for maps drawn over `provider: mapbox`, for every project that has not set its own. See Map basemaps. |
 | `CRONOS_SECRET_GOOGLE_MAPS_KEY` | A Google Maps Platform key with the Map Tiles API enabled, for maps drawn over `provider: google`, likewise. See Map basemaps. |
+
+## The embed element
+
+`cronosd` serves the element host applications embed, at
+`/v1/embed/cronos-embed.js`. Plain HTML and any framework load it with one tag,
+and `@cronos/react` loads it from the `endpoint` it is given:
+
+```html
+<script type="module" src="https://reports.example.com/v1/embed/cronos-embed.js"></script>
+```
+
+It is compiled into the binary, so the element a page runs is always the one
+that matches this server's API. Every release archive and image carries it;
+startup logs `embed-script=true`. A `go build` of your own carries it only after
+`scripts/embed-bundle.sh` (which `make build` runs), and without it the route is
+not mounted and the log says `embed-script=false`.
+
+Two things the host has to allow, or the element never runs:
+
+- its origin in `CRONOS_ORIGINS` — a module script is fetched in CORS mode, so
+  the script goes through the same allow-list as the API;
+- this server in its Content-Security-Policy, under `script-src` and
+  `connect-src`.
+
+The script carries no data and needs no token. It is revalidated on every page
+load (an unchanged one is a 304), so an upgrade reaches every host page on its
+next load, with no cache to wait out.
+
+## The embed key
+
+A host application's backend signs a token for each of its users, so it holds a
+key. `CRONOS_EMBED_KEY` is that key, and it is deliberately not the signing
+key: whoever holds a key chooses every claim it signs, and with one key for
+both, a host's backend could sign `aud: portal` with a platform role and
+administer the deployment it was given to embed one report from.
+
+With a key of its own, an embed token is verified with the embed key and
+nothing else, and the embed key is refused for a portal session. A host that
+leaks it has leaked the reports its own users could already read. Startup logs
+`embed-key=true`, and refuses to start if the two keys are the same, or if the
+embed key is one the portal still accepts from a rotation.
+
+cronos also refuses any token that lives longer than twenty-four hours or does
+not say when it was issued, whoever signed it. A host-signed token has no id to
+revoke it by, so its expiry is the only way it stops.
+
+`cronos-token` signs an embed token with `CRONOS_EMBED_KEY` where it is set.
+`integrations/token.ts` is the same thing for a host's backend, in thirty lines.
+
+### Moving hosts off the signing key
+
+A deployment from before this had one key, and every host has it. In order:
+
+1. Generate a key and set `CRONOS_EMBED_KEY` to it, with
+   `CRONOS_EMBED_KEY_PREVIOUS` set to the current signing key. Nothing breaks:
+   tokens hosts sign with the old key still open reports.
+2. Give each host the new embed key, and have it sign with that.
+3. A day after the last host has changed, unset `CRONOS_EMBED_KEY_PREVIOUS`.
+4. Rotate `CRONOS_SIGNING_KEY` — see Rotating the signing key. Until this step
+   every host still holds a key the portal accepts, so the move is not finished
+   before it. Where a host is not trusted with that for a day, replace the
+   signing key outright instead of rotating it: everybody signs in again, and
+   the old key is worth nothing from that moment.
 
 ## Secrets
 

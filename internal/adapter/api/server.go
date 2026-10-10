@@ -37,6 +37,10 @@ type Deps struct {
 	*/
 	Projects Projects
 	Signer   *token.Signer
+	// EmbedSigner mints and verifies embed tokens, with the key a host
+	// application is given. Absent, they are signed with Signer — which is a
+	// host holding the key to the portal; see token.Signer.For.
+	EmbedSigner *token.Signer
 
 	Origins []string
 	Log     *slog.Logger
@@ -95,6 +99,9 @@ type Deps struct {
 	// Portal is where the portal is served, for the link in the email. There
 	// is nothing to put in an invitation without it.
 	Portal string
+	// Script is the built embed element, served to host pages. Absent — a
+	// binary built without scripts/embed-bundle.sh — the route is not mounted.
+	Script []byte
 
 	// Org and Project are the single tenant this process serves. The store is
 	// multi-tenant; the process is not, and the read fallback is gated on
@@ -161,7 +168,11 @@ var (
 // There is no other unauthenticated read of a definition, not even its name —
 // a report's existence is information about our customer's business.
 func Routes(d Deps) http.Handler {
-	embed := NewEmbed(d.Projects, d.Signer, d.Log)
+	embedSigner := d.EmbedSigner
+	if embedSigner == nil && d.Signer != nil {
+		embedSigner = d.Signer.For(token.Embed)
+	}
+	embed := NewEmbed(d.Projects, embedSigner, d.Log)
 	if rv, ok := d.Shares.(Revocations); ok {
 		embed = embed.WithRevocations(rv)
 	}
@@ -197,6 +208,11 @@ func Routes(d Deps) http.Handler {
 	// and the same allowance as the render it belongs to: a view is a render
 	// of less of the world.
 	mux.Handle("/v1/embed/reports/{name}/map", perReader(NewEmbedMaps(embed)))
+	// The element itself, for a host page to load. Code rather than a read of
+	// anything, so no token — see Script.
+	if len(d.Script) > 0 {
+		mux.Handle("/v1/embed/cronos-embed.js", NewScript(d.Script))
+	}
 	// The portal's own read. A separate path from the embed one because the
 	// two have different callers and different audiences, and the audience
 	// check should be the first thing a handler does rather than a branch

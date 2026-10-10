@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Acme Billing — plain JavaScript</title>
+  <link rel="stylesheet" href="./site.css">
+
+  <!-- The report element, from the cronos server itself. No install, no build,
+       and always the version that matches the server's API. The server.ts
+       beside this file writes the address in. -->
+  <script type="module" src="__CRONOS_URL__/v1/embed/cronos-embed.js"></script>
+  <script type="module" src="./app.js"></script>
+</head>
+<body data-cronos="__CRONOS_URL__">
+  <header>
+    <h1>Acme Billing</h1>
+    <nav data-testid="account"></nav>
+  </header>
+  <main data-testid="stage"></main>
+</body>
+</html>

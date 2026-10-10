@@ -23,7 +23,7 @@ type CORS struct {
 // switch, and there is nothing to enumerate at run time. There is in the
 // source, and cors_methods_test.go reads it: PUT was answered by two handlers
 // and missing from here.
-const allowedMethods = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+const allowedMethods = "GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS"
 
 // NewCORS wraps next, permitting exactly these origins.
 func NewCORS(origins []string, next http.Handler) *CORS {

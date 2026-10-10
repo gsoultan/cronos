@@ -29,3 +29,7 @@ packages/*/harness/*.js
 # meant to be shared belongs in AGENTS.md and docs/, where it is reviewed.
 graphify-out/
 .serena/
+
+# The embed element, built into cronosd by scripts/embed-bundle.sh. Generated,
+# and stale the first time somebody forgets to rebuild it — see the package doc.
+internal/platform/embedscript/bundle/*.js

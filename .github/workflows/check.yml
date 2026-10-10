@@ -473,6 +473,13 @@ jobs:
           ./scripts/live-embed.sh
           ./scripts/live-portal.sh
 
+      # The two example host applications in integrations/ — plain JavaScript
+      # and React — holding only CRONOS_EMBED_KEY. An example nothing runs is
+      # wrong by the second release; and this is where the embed key is proved
+      # against a running server to open reports and not the portal.
+      - name: the example host applications
+        run: ./scripts/live-integrations.sh
+
       # Enrolment through the browser: a QR code that encodes a real secret, a
       # code computed from it, and a wizard that renders where it should. The
       # QR encoded nothing for a while and every server-side test passed.

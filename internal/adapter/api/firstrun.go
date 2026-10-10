@@ -192,6 +192,7 @@ func (h *FirstRun) configure(w http.ResponseWriter, r *http.Request) {
 	file := config.File{
 		SigningKey:  keys.signing,
 		SecretsKey:  keys.secrets,
+		EmbedKey:    keys.embed,
 		Org:         in.Org,
 		Project:     in.Project,
 		Driver:      in.Driver,
@@ -243,15 +244,17 @@ func (h *FirstRun) configure(w http.ResponseWriter, r *http.Request) {
 }
 
 // generated is what setup makes rather than asks for.
-type generated struct{ signing, secrets string }
+type generated struct{ signing, secrets, embed string }
 
 /*
-generate makes both keys. Generated, never typed: one is the root of trust for
+generate makes the keys. Generated, never typed: one is the root of trust for
 every token the deployment will issue and the other seals every password
 somebody stores in it, and a person choosing either chooses a memorable one.
 
-Two keys rather than one used twice, so rotating the signing key — the routine
-answer to a leaked token — does not also make every stored secret unreadable.
+Separate keys rather than one used twice, so rotating the signing key — the
+routine answer to a leaked token — does not also make every stored secret
+unreadable, and so the key a host application is handed to sign embed tokens
+with is not the one that signs a portal session.
 */
 func (h *FirstRun) generate() (generated, error) {
 	signing, err := h.newKey()
@@ -262,5 +265,9 @@ func (h *FirstRun) generate() (generated, error) {
 	if err != nil {
 		return generated{}, err
 	}
-	return generated{signing: signing, secrets: secrets}, nil
+	embed, err := h.newKey()
+	if err != nil {
+		return generated{}, err
+	}
+	return generated{signing: signing, secrets: secrets, embed: embed}, nil
 }

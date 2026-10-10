@@ -1,5 +1,6 @@
-import { useEffect, useRef, type CSSProperties } from 'react'
-import { register, type CronosReport as ReportElement, type FilterValues } from '@cronos/embed'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import type { CronosReport as ReportElement, FilterValues } from '@cronos/embed'
+import { load } from './load'
 
 /**
  * Teaches JSX about the custom element.
@@ -28,7 +29,11 @@ declare module 'react' {
 }
 
 export interface CronosReportProps {
-  /** cronos base URL. */
+  /**
+   * cronos base URL. The element is loaded from here too, so this decides what
+   * code runs on your page: a constant in your code, never something a visitor
+   * can set.
+   */
   endpoint: string
   /** Signed embed token, minted by your server. Opaque to the browser. */
   token: string
@@ -63,6 +68,11 @@ export interface CronosReportProps {
  *   3. Types, so `report="montly-statement"` is a compile error rather than
  *      an empty box.
  *
+ * The element is not in this package. It is loaded from `endpoint`, which
+ * serves the build that matches its API — see load.ts — and nothing renders
+ * until it is defined, because a property set on an element that has not
+ * upgraded yet shadows the setter it was meant for.
+ *
  * There is no `'use client'` directive and no hydration machinery. The host
  * is a client-side application, and adding server-component ceremony for a
  * case nobody has would only make this harder to read.
@@ -71,10 +81,29 @@ export function CronosReport({
   endpoint, token, report, filters, onLoad, onError, onFilter, className, style,
 }: CronosReportProps) {
   const ref = useRef<ReportElement | null>(null)
+  const [ready, setReady] = useState(() =>
+    typeof customElements !== 'undefined' && !!customElements.get('cronos-report'))
 
-  /* Registration is a browser-only side effect, kept out of module scope so
+  /* The latest onError, read when the load settles, so a parent passing a new
+     arrow function each render does not restart the load. */
+  const failed = useRef(onError)
+  failed.current = onError
+
+  /* Loading is a browser-only side effect, kept out of module scope so
      importing this file is inert until something mounts. */
-  useEffect(() => { register() }, [])
+  useEffect(() => {
+    let live = true
+    load(endpoint).then(
+      () => { if (live) setReady(true) },
+      (err: unknown) => {
+        // The cause for the developer — a CORS refusal, a wrong endpoint — and
+        // a sentence for the person looking at the page.
+        console.error(err)
+        if (live) failed.current?.({ message: 'The report could not be loaded.' })
+      },
+    )
+    return () => { live = false }
+  }, [endpoint])
 
   /* Serialised, because a caller writing `filters={{ status: … }}` creates a
      new object on every render. Keyed on identity this would refetch forever;
@@ -83,7 +112,7 @@ export function CronosReport({
   const key = JSON.stringify(filters ?? {})
   useEffect(() => {
     if (ref.current) ref.current.filters = JSON.parse(key) as FilterValues
-  }, [key])
+  }, [key, ready])
 
   useEffect(() => {
     const node = ref.current
@@ -100,8 +129,9 @@ export function CronosReport({
       node.removeEventListener('cronos:error', failed)
       node.removeEventListener('cronos:filter', filtered)
     }
-  }, [onLoad, onError, onFilter])
+  }, [onLoad, onError, onFilter, ready])
 
+  if (!ready) return null
   return (
     <cronos-report
       ref={ref}

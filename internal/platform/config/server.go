@@ -75,6 +75,18 @@ type Server struct {
 	   rotation — nothing it signed can still be valid.
 	*/
 	PreviousKeys [][]byte
+	/*
+	   EmbedKey signs embed tokens, and is the key a host application is given.
+
+	   Separate from SigningKey because a host's backend signs with it: one key
+	   for both let whoever held it sign a portal session — see token.Signer.For.
+	   Absent, embed tokens are signed with SigningKey as they always were, and
+	   startup says so.
+	*/
+	EmbedKey []byte
+	// PreviousEmbedKeys are embed keys verified against and never signed with,
+	// for a rotation — and, once, for moving hosts off the signing key.
+	PreviousEmbedKeys [][]byte
 	// Origins are the host pages allowed to embed. No wildcard; see api.CORS.
 	Origins []string
 	// AdminKey enables the management API. Absent means the server is
@@ -162,10 +174,12 @@ func Load() (Server, error) {
 		SigningKey: []byte(os.Getenv("CRONOS_SIGNING_KEY")),
 		// Comma-separated, oldest or newest first makes no difference: they
 		// are all tried and none is minted with.
-		PreviousKeys: keys(os.Getenv("CRONOS_SIGNING_KEY_PREVIOUS")),
-		Seed:         os.Getenv("CRONOS_SEED"),
-		SeedSource:   os.Getenv("CRONOS_SEED_SOURCE"),
-		AdminKey:     []byte(os.Getenv("CRONOS_ADMIN_KEY")),
+		PreviousKeys:      keys(os.Getenv("CRONOS_SIGNING_KEY_PREVIOUS")),
+		EmbedKey:          []byte(os.Getenv("CRONOS_EMBED_KEY")),
+		PreviousEmbedKeys: keys(os.Getenv("CRONOS_EMBED_KEY_PREVIOUS")),
+		Seed:              os.Getenv("CRONOS_SEED"),
+		SeedSource:        os.Getenv("CRONOS_SEED_SOURCE"),
+		AdminKey:          []byte(os.Getenv("CRONOS_ADMIN_KEY")),
 		// Where ${secret:name} is looked up. Files first when a directory is
 		// given, because a mounted file is not visible in /proc to everything
 		// running as the same user and does not appear in a crash dump.
