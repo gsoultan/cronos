@@ -140,5 +140,15 @@ for section in $(awk '/^archives:/ { inside = 1; next }
 	fi
 done
 
+# The embed element is compiled into cronosd, and a binary built without it
+# runs, serves no /v1/embed/cronos-embed.js, and says so only in a startup log
+# line. So both channels build it before the server — the archives in a before
+# hook, the image in a stage copied into the server's source.
+BUNDLE=internal/platform/embedscript/bundle/
+grep -qE '^    - \./scripts/embed-bundle\.sh$' "$CONFIG" ||
+	bad "$CONFIG does not build the embed element before its binaries"
+grep -q "COPY --from=embedjs .*cronos-embed.js ${BUNDLE}\$" "$IMAGE" ||
+	bad "$IMAGE does not put the embed element into ${BUNDLE} before building"
+
 [ "$status" -eq 0 ] && ok "every command ships in the channels that should carry it"
 exit $status

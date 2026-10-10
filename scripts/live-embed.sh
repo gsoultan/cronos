@@ -9,6 +9,10 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 export CRONOS_SIGNING_KEY="${CRONOS_SIGNING_KEY:-development-key-at-least-32-bytes-long}"
+# No CRONOS_EMBED_KEY here, on purpose: this is a deployment that has not set
+# one, where embed tokens are still signed with the signing key. The separate
+# key is driven by scripts/live-integrations.sh, so both arrangements are run.
+unset CRONOS_EMBED_KEY CRONOS_EMBED_KEY_PREVIOUS
 export CRONOS_DEFINITIONS=demo/definitions
 export CRONOS_SEED=demo/seed.sql
 export CRONOS_ADDR="${CRONOS_ADDR:-:8788}"
@@ -33,6 +37,8 @@ if lsof -ti "tcp:${PAGE_PORT}" >/dev/null 2>&1; then
   sleep 1
 fi
 
+# The element the page loads comes from cronosd itself, so it is built in.
+./scripts/embed-bundle.sh
 go build -o bin/cronosd ./cmd/cronosd
 go build -o bin/cronos-token ./cmd/cronos-token
 

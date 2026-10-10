@@ -22,6 +22,45 @@ needs a deployment to act says so under **Upgrading**.
 
 ## Unreleased
 
+**A host application no longer holds the key to the portal.** Embed tokens are
+signed by a host's backend, and the key it was given for that was
+`CRONOS_SIGNING_KEY` — the key that signs portal sessions. Whoever holds a key
+writes every claim it signs, so a host's backend could sign `aud: portal` with a
+platform role, and cronos accepted it as a deployment administrator. There is
+now `CRONOS_EMBED_KEY`: it signs embed tokens and is refused for anything else,
+and with it set the signing key no longer opens an embedded report. First-run
+setup generates one. Separately, a token that lives longer than twenty-four
+hours, or does not say when it was issued, is refused whoever signed it — that
+limit was held only where cronos minted, so a host could sign one for years.
+
+*Upgrading:* nothing breaks if you do nothing — embed tokens are still accepted
+under the signing key, and startup warns on every boot. To close it, follow
+"Moving hosts off the signing key" in docs/deploying.md: set `CRONOS_EMBED_KEY`
+with `CRONOS_EMBED_KEY_PREVIOUS` as the old key, change the hosts over, then
+rotate `CRONOS_SIGNING_KEY`. A host that signs tokens without `iat`, or for
+more than a day, must stop: those are refused from this build.
+
+**Two example host applications, run in CI.** `integrations/` is a report
+embedded in a plain JavaScript page and in a React application, with the
+backend that signs their tokens, under a strict Content-Security-Policy.
+`scripts/live-integrations.sh` drives both in a browser against a real server.
+
+**A host page loads the report element from cronos itself.** `cronosd` serves
+it at `/v1/embed/cronos-embed.js`, so plain HTML or any framework embeds a
+report with one script tag and nothing installed, and the element always
+matches the server's API. `@cronos/react` loads it from its `endpoint` instead
+of bundling it, and is now 0.9 KB. The script needs no token, goes through the
+`CRONOS_ORIGINS` allow-list, is revalidated on every load and gzipped when
+asked; startup logs `embed-script=true`. See "The embed element" in
+docs/deploying.md.
+
+*Upgrading:* this `@cronos/react` needs a cronosd from this build or later,
+the host's origin in `CRONOS_ORIGINS` (it was already needed for the API), and
+the cronos origin in the host's CSP `script-src`. A mismatch reaches `onError`.
+A `go build` of your own serves the element only after
+`scripts/embed-bundle.sh`; `make build`, the image and the release archives
+run it.
+
 **The builder draws every block as the report will.** The canvas asked the
 server for a map and sketched everything else from sample numbers; now each
 chart and stat is the published one, drawn from the project's data as it is

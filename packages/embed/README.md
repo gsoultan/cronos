@@ -1,10 +1,10 @@
 # @cronos/embed
 
-A report in someone else's application. One script tag, one element, **3.0 KB
+A report in someone else's application. One script tag, one element, **36.7 KB
 gzipped** against a 40 KB budget.
 
 ```html
-<script type="module" src="https://cdn.example.com/cronos-embed.js"></script>
+<script type="module" src="https://reports.acme.com/v1/embed/cronos-embed.js"></script>
 
 <cronos-report
   endpoint="https://reports.acme.com"
@@ -25,6 +25,36 @@ the artifact that lives in somebody else's page, in whichever browser their
 customer has. Two fingers on a phone are driven in Chrome alone: the other
 engines' drivers have no second finger to put down.
 
+## Loaded from the server it talks to
+
+`cronosd` serves this element at `/v1/embed/cronos-embed.js` (compiled into the
+binary by `scripts/embed-bundle.sh`), so any frontend loads it from the same
+cronos it calls: plain HTML, Vue, Svelte, Angular, and React through
+`@cronos/react`. Nothing to install, and the element always matches the
+server's API, because it ships with it. From npm or a CDN the two drift, and an
+upgraded server meets an old element as an empty panel.
+
+What the host page needs:
+
+- **Its origin in `CRONOS_ORIGINS`.** A module script is fetched in CORS mode,
+  so the script is answered through the same allow-list as the API. A page that
+  may not call cronos may not load the element either.
+- **The cronos origin in its CSP**: `script-src` to load the element and
+  `connect-src` for the API.
+- **A cronosd that was built with it.** Startup logs `embed-script=true`;
+  `false` means a `go build` without the bundle, and the script is a 404. Every
+  release archive and image is built with it.
+
+The response is revalidated on every load (`no-cache` with an ETag, so an
+unchanged element costs a 304), gzipped when the browser asks, and sent with
+`nosniff`. It needs no token: it is code, the same for everybody, and what it
+can read is decided by the token the host gives it.
+
+Subresource integrity (`integrity="sha384-…"`) works, and pins the element to
+one build: the page breaks on the next cronos upgrade until the hash is
+updated. Worth it where cronos is run by someone other than the host; not
+where it is your own server.
+
 ## What it is not
 
 No builder, no React, no service worker. `apps/portal` is for the people who
@@ -36,29 +66,34 @@ than rediscovering.
 
 ## Getting a token, and what you must not do with it
 
-Your **server** mints it, against cronos, with your signing key. The browser
-receives a string it cannot read or change.
+Your **server** signs it, with `CRONOS_EMBED_KEY`. The browser receives a
+string it cannot read or change. Your backend never calls cronos to do it —
+the token is a JSON payload and one HMAC, thirty lines in any language
+(`integrations/token.ts`).
 
 ```
-your backend  ──(signing key, server to server)──>  cronos
-     │                                                 mints a token pinned to
-     │                                                 one report and one scope
+your backend   signs a token pinned to one report and one row scope,
+     │         with the embed key
      ▼
    browser  ──(Authorization: Bearer …)──>  cronos
 ```
 
 Three rules, and the first one is the whole of it:
 
-- **The signing key never reaches the browser.** If `CRONOS_SIGNING_KEY` is in
-  a frontend bundle, nothing else on this page matters — anyone can mint a
-  token for any tenant.
+- **The embed key never reaches the browser.** If `CRONOS_EMBED_KEY` is in a
+  frontend bundle, nothing else on this page matters — anyone can sign a token
+  for any customer's rows.
+- **It is the embed key, not the signing key.** `CRONOS_SIGNING_KEY` signs
+  portal sessions and is never given to a host: a backend holding it could sign
+  itself an administrator. The embed key is refused for that — see "The embed
+  key" in docs/deploying.md.
 - **`CRONOS_ORIGINS` names your application exactly**, scheme included:
   `https://app.acme.com`. Never `*`. This API reads an `Authorization` header,
   and a wildcard origin beside a credential is the oldest hole in CORS.
-- **Keep the lifetime short.** One hour is the default and 24 hours is the
-  ceiling. A token minted by a host carries no id, so there is nothing to
-  revoke — expiry is the only way one stops working, which is why the number
-  matters.
+- **Keep the lifetime short.** One hour is `cronos-token`'s default and 24
+  hours is the ceiling — cronos refuses a longer one whoever signed it. A token
+  minted by a host carries no id, so there is nothing to revoke — expiry is the
+  only way one stops working, which is why the number matters.
 
 The token travels in a header and there is no way to pass it in a URL. That is
 deliberate: URLs leak through `Referer`, browser history, and every server and
@@ -131,11 +166,11 @@ custom elements do:
 
 | Host | What is needed | Checked by |
 | :--- | :--- | :--- |
-| **React** | `@cronos/react` — a wrapper for properties, custom events and types | `packages/react`, in a real client SPA |
+| **React** | `@cronos/react` — a wrapper for properties, custom events and types | `packages/react`, in a real client SPA; `integrations/react` against a real server |
 | **Vue 3** | Nothing. Add `isCustomElement` if you use templates rather than `h()` | `bun run vue` |
 | **Angular** | `CUSTOM_ELEMENTS_SCHEMA` on the module | — |
 | **Svelte** | Nothing | — |
-| **Plain HTML** | Nothing | `bun run embed` |
+| **Plain HTML** | Nothing | `bun run embed`; `integrations/plain` against a real server |
 
 React is the one that needs a wrapper, and only for three things: `filters` is
 a property rather than an attribute, custom events have no React equivalent in

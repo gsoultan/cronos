@@ -112,6 +112,12 @@ jobs:
       # tag — and its whole reason to exist is that syft fails at this quietly.
       - uses: anchore/sbom-action/download-syft@v0
 
+      # goreleaser's before hook builds the embed element into cronosd, and
+      # that is a bun build. release.yml installed it and this job did not, so
+      # the snapshot below failed on `bun: command not found` the first time
+      # the hook existed.
+      - uses: oven-sh/setup-bun@v2
+
       - name: release artifacts
         # goreleaser rather than `make dist`, so this needs it on PATH. A
         # snapshot with signing skipped: signing is keyless and wants the OIDC
@@ -472,6 +478,13 @@ jobs:
         run: |
           ./scripts/live-embed.sh
           ./scripts/live-portal.sh
+
+      # The two example host applications in integrations/ — plain JavaScript
+      # and React — holding only CRONOS_EMBED_KEY. An example nothing runs is
+      # wrong by the second release; and this is where the embed key is proved
+      # against a running server to open reports and not the portal.
+      - name: the example host applications
+        run: ./scripts/live-integrations.sh
 
       # Enrolment through the browser: a QR code that encodes a real secret, a
       # code computed from it, and a wizard that renders where it should. The

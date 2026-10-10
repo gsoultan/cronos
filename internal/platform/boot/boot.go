@@ -52,6 +52,7 @@ import (
 	"github.com/gsoultan/cronos/internal/extension"
 	"github.com/gsoultan/cronos/internal/platform/build"
 	"github.com/gsoultan/cronos/internal/platform/config"
+	"github.com/gsoultan/cronos/internal/platform/embedscript"
 	"github.com/gsoultan/cronos/internal/platform/token"
 
 	/*
@@ -111,6 +112,10 @@ func Serve(log *slog.Logger) error {
 		if signer, err = signer.Accepting(cfg.PreviousKeys...); err != nil {
 			return err
 		}
+	}
+	embedSigner, err := embedSignerFor(cfg, signer, log)
+	if err != nil {
+		return err
 	}
 	which, err := tenants(cfg)
 	if err != nil {
@@ -274,7 +279,7 @@ func Serve(log *slog.Logger) error {
 	sweepInvitations(retention, records, log)
 
 	handler := api.Routes(api.Deps{
-		Projects: projects, Signer: signer,
+		Projects: projects, Signer: signer, EmbedSigner: embedSigner,
 		Origins: cfg.Origins, Log: log,
 
 		Publish: publishingBy(projects, runtimes),
@@ -283,7 +288,7 @@ func Serve(log *slog.Logger) error {
 
 		Runs:      history(records),
 		Users:     users(records),
-		Shares:    sharingFor(records, signer, projects, runtimes),
+		Shares:    sharingFor(records, embedSigner, projects, runtimes),
 		Roster:    roster(records),
 		Directory: directory(records),
 
@@ -297,6 +302,7 @@ func Serve(log *slog.Logger) error {
 		Invitations: invitations(records),
 		Post:        postman(cfg, log),
 		Portal:      cfg.Portal,
+		Script:      embedscript.Bytes(),
 		Sends:       sendingFor(cfg, projects, runtimes, log),
 		Channels:    channelNames(cfg, log),
 
@@ -316,7 +322,13 @@ func Serve(log *slog.Logger) error {
 		"projects", names(which), "definitions", counts(runtimes),
 		"origins", cfg.Origins, "management", len(cfg.AdminKey) > 0,
 		"scheduler", cfg.Scheduler, "sign-in", records != nil,
-		"auth", extension.Auth().Name(), "audit", auditSink)
+		"auth", extension.Auth().Name(), "audit", auditSink,
+		// False is a binary built without scripts/embed-bundle.sh: host pages
+		// get a 404 for the element, and this is where that is visible.
+		"embed-script", len(embedscript.Bytes()) > 0,
+		// False is a deployment whose hosts sign embed tokens with the signing
+		// key. See embedSignerFor.
+		"embed-key", len(cfg.EmbedKey) > 0)
 
 	/*
 	   Metrics on an address of their own, when asked for.

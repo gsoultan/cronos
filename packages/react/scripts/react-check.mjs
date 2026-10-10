@@ -23,7 +23,9 @@ const payload = (overdue) => ({
 })
 
 let requests = 0
+let scripts = 0
 let fail = false
+let noScript = false
 
 const server = createServer((req, res) => {
   if (req.url === '/' || req.url === '') {
@@ -33,6 +35,15 @@ const server = createServer((req, res) => {
   if (req.url === '/app.js') {
     res.writeHead(200, { 'content-type': 'text/javascript' })
     return res.end(readFileSync('harness/app.js'))
+  }
+  /* The element, served by the endpoint as cronosd serves it. The wrapper
+     carries none of its own, so if this route were missing nothing renders. */
+  if (req.url === '/v1/embed/cronos-embed.js') {
+    scripts++
+    // A cronosd built without the element, or one that refused this origin.
+    if (noScript) return res.writeHead(404).end()
+    res.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8' })
+    return res.end(readFileSync('../embed/dist/cronos-embed.js'))
   }
   if (req.url.startsWith('/v1/embed/reports/')) {
     requests++
@@ -83,6 +94,9 @@ ok('onLoad reaches a React callback',
    A component that fetches on mount without cleaning up fetches twice, and an
    ISV developing against us would see doubled API usage and blame the widget. */
 ok(`StrictMode's double mount does not double-fetch (${requests} request)`, requests === 1)
+/* From the endpoint, and once. StrictMode mounts twice; a loader that imported
+   per mount would fetch the element twice and try to define it twice. */
+ok(`the element was loaded from the endpoint, once (${scripts})`, scripts === 1)
 
 /* The one that matters. `filters={{…}}` is a new object on every render, so a
    dependency on identity would reload forever — and each reload sets state,
@@ -124,6 +138,18 @@ ok('unmounting removes the element', await page.locator('cronos-report').count()
    a silent console is what proves the abort actually happened. */
 ok(`React logged nothing (${errors.length})`, errors.length === 0)
 if (errors.length) console.log(errors.slice(0, 3).map((e) => `       ${e}`).join('\n'))
+
+/* A server that cannot supply the element says so through onError, in a
+   sentence for a person, rather than leaving an empty box. A fresh page,
+   because the element is defined once per page and this one already has it. */
+noScript = true
+const bare = await browser.newPage()
+await bare.goto(base, { waitUntil: 'domcontentloaded' })
+await bare.waitForFunction(() =>
+  document.querySelector('[data-testid=events]')?.textContent?.includes('error'))
+ok('an element the server cannot supply reaches onError', true)
+ok('and nothing half-defined is rendered', await bare.locator('cronos-report').count() === 0)
+noScript = false
 
 console.log(fails ? `\n${fails} failed` : '\nall passed')
 await browser.close()

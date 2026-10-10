@@ -1,8 +1,9 @@
 # cronos, as an image.
 #
-# Three stages, because three different things need building and only one of
-# them needs to be in the result: the portal is static files, the server is a
-# binary, and the typesetter is somebody else's binary this depends on.
+# Four stages, because four different things need building: the portal is
+# static files, the embed element is JavaScript compiled into the server, the
+# server is a binary, and the typesetter is somebody else's binary this depends
+# on.
 
 # --- The portal -------------------------------------------------------------
 FROM oven/bun:1-alpine AS portal
@@ -27,6 +28,20 @@ COPY packages/charts ./packages/charts
 ARG VITE_CRONOS_API=""
 RUN cd apps/portal && bun run build
 
+# --- The embed element ------------------------------------------------------
+# Compiled into cronosd, which serves it at /v1/embed/cronos-embed.js so a host
+# page loads the element from the server it talks to. The archives build it in
+# goreleaser's before hook; scripts/check-release-parity.sh holds both channels
+# to it. A workspace install, because the element builds packages/charts by path.
+FROM oven/bun:1-alpine AS embedjs
+WORKDIR /src
+COPY package.json bun.lock ./
+COPY packages ./packages
+# The workspace's other member. Only its manifest: a frozen install resolves
+# every workspace the lockfile names, and builds none of them.
+COPY integrations/react/package.json ./integrations/react/
+RUN bun install --frozen-lockfile && cd packages/embed && bun run build
+
 # --- The server -------------------------------------------------------------
 # Pinned to the patch, not the minor.
 #
@@ -34,10 +49,11 @@ RUN cd apps/portal && bun run build
 # right thing right up until it is behind: six standard-library advisories were
 # open against 1.26.5, and a tag that floats gives no way to say which one an
 # image was built with. go.mod names the same version, so the two cannot drift.
-FROM golang:1.26.6-alpine AS server
+FROM golang:1.26.9-alpine AS server
 WORKDIR /src
 
 COPY . .
+COPY --from=embedjs /src/packages/embed/dist/cronos-embed.js internal/platform/embedscript/bundle/
 # CGO off, so the result runs on a distroless base with no libc. That is also
 # what excludes the duckdb federation build, which needs cgo — a deployment
 # that federates builds its own image with -tags duckdb and a base that has

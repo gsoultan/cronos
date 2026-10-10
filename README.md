@@ -22,9 +22,11 @@ data behind the first report you open.
 
 ```bash
 export CRONOS_SIGNING_KEY="development-key-at-least-32-bytes-long"
+# The key a host application is given. It signs embed tokens and nothing else.
+export CRONOS_EMBED_KEY="development-embed-key-32-bytes-long"
 CRONOS_DEFINITIONS=demo/definitions CRONOS_SEED=demo/seed.sql go run ./cmd/cronosd
 
-# What a host application's backend does, server to server:
+# What a host application's backend does, with the embed key:
 TOKEN=$(go run ./cmd/cronos-token -scope customer_id=c-1 -report billing-summary)
 
 curl -s -X POST localhost:8787/v1/embed/reports/billing-summary \
@@ -35,6 +37,69 @@ curl -s -X POST localhost:8787/v1/embed/reports/billing-summary \
 Change `-scope customer_id=c-2` and the same report returns a different
 customer's invoices. Drop `-scope` and it returns none — see
 [docs/tenancy.md](docs/tenancy.md).
+
+## Embedding a report in your application
+
+A report goes into another application as one element, `<cronos-report>`, and
+the cronos server serves that element itself — so a front end loads it from the
+server it talks to and installs nothing.
+
+**Any front end, no build step:**
+
+```html
+<script type="module" src="https://reports.acme.com/v1/embed/cronos-embed.js"></script>
+
+<cronos-report
+  endpoint="https://reports.acme.com"
+  token="…from your backend…"
+  report="billing-summary"></cronos-report>
+```
+
+**React**, with [`@cronos/react`](packages/react/README.md), which loads the
+same element from `endpoint` and adds props, callbacks and types:
+
+```tsx
+import { CronosReport } from '@cronos/react'
+
+<CronosReport endpoint="https://reports.acme.com" token={token} report="billing-summary"
+  onError={(e) => toast(e.message)} />
+```
+
+**The token comes from your backend**, signed with `CRONOS_EMBED_KEY`. It names
+one report and the rows this user may read; the browser can neither read it
+nor change it. The whole of it is thirty lines in any language —
+[`integrations/token.ts`](integrations/token.ts):
+
+```ts
+const { token, expiresAt } = mintEmbedToken(process.env.CRONOS_EMBED_KEY, {
+  org: 'acme', project: 'finance',
+  subject: session.user,                       // who, in your application
+  report: 'billing-summary',
+  scope: { customer_id: customerOf(session) }, // decided here, never by the browser
+})
+```
+
+Both of the above are runnable, with that backend, in
+[`integrations/`](integrations/README.md):
+
+```bash
+./scripts/live-integrations.sh     # builds, starts cronosd and the host, drives both in Chrome
+```
+
+What keeps it safe, and what each part is for:
+
+| | |
+| :--- | :--- |
+| **Two keys** | `CRONOS_EMBED_KEY` is the only key a host application is given. It signs embed tokens and nothing else: cronos refuses it for a portal session, so a host that leaks it has leaked reports its own users could already read, not the deployment. `CRONOS_SIGNING_KEY` never leaves cronos. |
+| **Short tokens** | Fifteen minutes in the examples, twenty-four hours at most — refused past that whoever signed it. The page asks its backend for the next one before the last runs out. |
+| **One report, one scope** | A token is pinned to a report and a row scope. A filter narrows what it allows and can never widen it; a copied token opens what that user was already looking at. |
+| **An allow-list, not `*`** | `CRONOS_ORIGINS` names the host's origin exactly. The element and the API both answer through it. |
+| **A policy on the host page** | `script-src` and `connect-src` naming the cronos server, nothing inline. Both examples run under one. |
+| **No iframe, no `innerHTML`** | The element is a shadow root in your page, built from nodes and text. A customer's name is data from whoever signed up, and it stays text. |
+
+The longer account is in [packages/embed/README.md](packages/embed/README.md),
+and what an operator sets is under "The embed element" and "The embed key" in
+[docs/deploying.md](docs/deploying.md).
 
 ## Publishing definitions
 
@@ -378,8 +443,9 @@ always failing.
 | `internal/adapter/codec/jrxml/` | JasperReports in — the common 80%, and a report of what it refused |
 | `internal/adapter/driver/duckdb/` | Federation — one query over a warehouse, a lake and a spreadsheet. cgo, so `-tags duckdb` |
 | `apps/portal/` | The authoring UI — React 19, Mantine, Tailwind, PWA |
-| `packages/embed/` | `<cronos-report>`, 3.2 KB gzipped, framework-agnostic |
-| `packages/react/` | A React wrapper for it |
+| `packages/embed/` | `<cronos-report>`, 36.7 KB gzipped, framework-agnostic. Compiled into `cronosd`, which serves it |
+| `packages/react/` | A React wrapper for it, 0.9 KB — the element is loaded from the server |
+| `integrations/` | Two example host applications, plain JavaScript and React, and the backend that signs their tokens |
 | `ee/` | Commercially licensed. Nothing under `internal/core` may import it. |
 
 ## Coming from JasperReports
@@ -416,7 +482,7 @@ whole of it: what comes across, what does not, and what to do instead.
 ```bash
 make check          # build, vet, gofmt, test, licence boundary, typecheck, budgets
 make ui             # every browser suite, plus the embed against a real server
-make live           # just the embed against a real cronosd
+make live           # the embed, and the example host applications, against a real cronosd
 make pdf            # render a sample statement and open it
 make duckdb         # build and test federation (cgo, several hundred MB)
 make xlsx-oracle    # install openpyxl, so the spreadsheet tests run rather than skip

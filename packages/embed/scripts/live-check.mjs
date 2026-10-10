@@ -10,7 +10,6 @@
  * the tokens.
  */
 import { createServer } from 'node:http'
-import { readFileSync } from 'node:fs'
 import { chromium } from 'playwright'
 
 const API = process.env.CRONOS_BASE
@@ -25,11 +24,13 @@ if (!API || !TOKEN) {
 
 /* The host page. Served from its own origin so the request is genuinely
    cross-origin — which is what an ISV's page is, and the only way the CORS
-   allow-list is under test rather than bypassed. */
+   allow-list is under test rather than bypassed. The element itself comes
+   from cronosd, as it does for a host: one cross-origin module import, through
+   the same allow-list as the API. */
 const HOST = `<!doctype html><meta charset="utf-8">
 <div id="stage"></div>
 <script type="module">
-  import '/cronos-embed.js'
+  import ${JSON.stringify(`${API}/v1/embed/cronos-embed.js`)}
   const el = document.createElement('cronos-report')
   el.setAttribute('endpoint', ${JSON.stringify(API)})
   el.setAttribute('token', ${JSON.stringify(TOKEN)})
@@ -40,10 +41,6 @@ const HOST = `<!doctype html><meta charset="utf-8">
 </script>`
 
 const page = createServer((req, res) => {
-  if (req.url === '/cronos-embed.js') {
-    res.writeHead(200, { 'content-type': 'text/javascript' })
-    return res.end(readFileSync('packages/embed/dist/cronos-embed.js'))
-  }
   res.writeHead(200, { 'content-type': 'text/html' }).end(HOST)
 })
 
@@ -93,6 +90,24 @@ ok('a block says the filter that misses it does not apply',
 /* -- Cross-origin, through the allow-list --------------------------------- */
 ok('the request was genuinely cross-origin',
   new URL(API).port !== String(PORT))
+
+/* -- The element, from the server it talks to ----------------------------- */
+const loaded = await tab.evaluate(() =>
+  performance.getEntriesByType('resource').map((e) => e.name))
+ok('the element was loaded from cronosd',
+  loaded.includes(`${API}/v1/embed/cronos-embed.js`))
+const script = await fetch(`${API}/v1/embed/cronos-embed.js`, {
+  headers: { origin: `http://localhost:${PORT}`, 'accept-encoding': 'gzip' },
+})
+ok('served as a script the browser will not sniff',
+  script.headers.get('content-type') === 'text/javascript; charset=utf-8' &&
+  script.headers.get('x-content-type-options') === 'nosniff')
+ok('compressed on the wire', script.headers.get('content-encoding') === 'gzip')
+const stranger = await fetch(`${API}/v1/embed/cronos-embed.js`, {
+  headers: { origin: 'https://not-ours.example' },
+})
+ok('an origin nobody listed is not allowed to load it',
+  stranger.headers.get('access-control-allow-origin') === null)
 
 /* -- Row scope, end to end ------------------------------------------------ */
 await tab.evaluate((t) => window.swap(t), TOKEN_C2)

@@ -11,6 +11,8 @@ well it works.
 | Query / federation engine | **DuckDB** (built, `-tags duckdb`) | One engine covers SQL databases, Parquet/CSV on object storage, and cross-source joins — the three data-source requirements without a second concept. |
 | Result transport | **Arrow record batches** | Columnar and zero-copy from driver to renderer; the data-plane contract that makes million-row exports survivable. |
 | License boundary | **Import graph** | Enforced by `scripts/check-license-boundary.sh` against the real build graph, not by convention. It holds in distribution too: `make dist` writes the community binaries and `cronosd-ee` as separate archives, each carrying the LICENSE that covers it. |
+| What a host holds | **The embed key, never the signing key** | A host's backend signs its own tokens, so it writes every claim, the audience included. `CRONOS_EMBED_KEY` is confined to embed tokens by `token.Signer.For`; the key that signs a portal session never leaves cronos. Nothing a host is given may verify as anything but an embed token. |
+| Where the embed element comes from | **The cronos server** | `cronosd` serves `<cronos-report>` at `/v1/embed/cronos-embed.js`, so the element always matches the API. `@cronos/react` loads it from there and bundles none; `integrations/` is both ways of using it, run in CI. |
 | Distribution | **Archives and an image** | A container is one way to run cronos, not the only one. Anything that ships has to be in both, or a tool exists in one channel and the documentation is wrong for half its readers. |
 
 ## Developer Profile Panel
@@ -103,6 +105,7 @@ internal/
     token/               Embed tokens — not JWT, see its doc.go ✓
     config/              Environment                            ✓
     h3/                  H3 cells, ported from Uber's C (Apache 2.0) ✓
+    embedscript/         The embed element, compiled in and served to host pages ✓
   extension/           License seams. See ee/doc.go.            ✓
 
 ✓ = built and under test. The rest is named so the shape is agreed before

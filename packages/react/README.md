@@ -1,6 +1,9 @@
 # @cronos/react
 
-A cronos report in a React application. **3.3 KB gzipped**, React not included.
+A cronos report in a React application. **0.9 KB gzipped** — React is not
+included, and neither is the report element: it is loaded at run time from the
+cronos server you pass as `endpoint`, so it is always the build that matches
+that server's API.
 
 ```tsx
 import { CronosReport } from '@cronos/react'
@@ -26,6 +29,26 @@ bun run react    # drive it in a real client-side React app
 bun run check    # typecheck + lint + build + budget
 ```
 
+## Where the element comes from
+
+`endpoint` + `/v1/embed/cronos-embed.js`, imported once per page the first
+time a `<CronosReport>` mounts. Nothing renders until it is defined, and a
+failure — a cronosd that refused your origin, or one built without the element
+— reaches `onError` rather than leaving an empty box. The cause is logged to
+the console for whoever is debugging.
+
+Because of that, **`endpoint` decides what code runs on your page**, not only
+where its data comes from:
+
+- It must be an absolute `https://` URL (`http://` for local development).
+  `data:`, `blob:` and relative URLs are refused.
+- It must be a **constant in your code or build config**, never read from a
+  query string, local storage or anything else a visitor can set.
+- Your CSP should name it in `script-src` and `connect-src`, which is the
+  control that holds even if the rule above is broken somewhere.
+- Your application's origin must be in `CRONOS_ORIGINS`: the element is a
+  module script, fetched in CORS mode.
+
 ## Where `token` comes from
 
 From your own backend, over a route your application already authenticates.
@@ -34,13 +57,14 @@ Never from the browser, and never from a signing key in a bundle.
 ```tsx
 // Your API route — this is the part cronos cannot do for you.
 //   POST /api/reports/token  →  { token, expiresAt }
-// It authenticates the user, decides their scope, and asks cronos for a token
-// pinned to it. The signing key stays on your server.
+// It authenticates the user, decides their scope, and signs a token pinned to
+// it with CRONOS_EMBED_KEY, which stays on your server. integrations/server.ts
+// is that route, runnable, and integrations/react is this component using it.
 
 function Billing() {
   const { data } = useQuery({
     queryKey: ['cronos-token'],
-    queryFn: () => fetch('/api/reports/token').then((r) => r.json()),
+    queryFn: () => fetch('/api/reports/token', { method: 'POST' }).then((r) => r.json()),
     // Tokens last an hour by default. Refetch before they do rather than
     // after, so a long-lived tab does not show an error it could have avoided.
     refetchInterval: 45 * 60 * 1000,
@@ -64,7 +88,7 @@ token*; everything there applies here, because this is the same element.
 ## Why a wrapper exists at all
 
 The thing underneath is a standard custom element, and in Vue or Svelte you
-would use it directly with no package. React needs three things it does not do
+would load it from the server with one script tag and use it directly. React needs three things it does not do
 for custom elements:
 
 1. **`filters` is a property, not an attribute.** React 18 stringifies object
