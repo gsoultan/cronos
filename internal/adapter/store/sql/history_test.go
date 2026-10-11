@@ -35,7 +35,7 @@ func TestARunAndItsDeliveriesComeBack(t *testing.T) {
 	for _, d := range []history.Delivery{
 		{RunID: run.ID, Recipient: "c-1", Channel: "email", Destination: "a@b.example",
 			Filename: "statement-c-1.pdf", Status: history.Delivered, Attempts: 1,
-			Bytes: 24000, At: run.StartedAt},
+			Bytes: 24000, SHA256: "9f86d081884c7d65", At: run.StartedAt},
 		{RunID: run.ID, Recipient: "c-2", Channel: "email", Destination: "x@y.example",
 			Status: history.Failed, Attempts: 4, Error: "after 4 attempts: 550 no mailbox",
 			At: run.StartedAt},
@@ -73,6 +73,9 @@ func TestARunAndItsDeliveriesComeBack(t *testing.T) {
 		t.Fatalf("got %d deliveries", len(deliveries))
 	}
 	// "We emailed them" is not an answer to an auditor; the address is.
+	if deliveries[0].SHA256 != "9f86d081884c7d65" {
+		t.Errorf("digest = %q", deliveries[0].SHA256)
+	}
 	if deliveries[0].Destination != "a@b.example" {
 		t.Errorf("destination = %q", deliveries[0].Destination)
 	}
@@ -204,6 +207,7 @@ func TestPruningRemovesOldRunsAndWhatTheyDelivered(t *testing.T) {
 		if err := s.Delivered(ctx, history.Delivery{
 			RunID: id, Recipient: "c-1", Channel: "email",
 			Destination: "c1@example.com", Status: history.Delivered, At: at,
+			SHA256: "digest-" + id,
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -230,8 +234,24 @@ func TestPruningRemovesOldRunsAndWhatTheyDelivered(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(delivered) != 1 {
-		t.Fatalf("the surviving run has %d deliveries", len(delivered))
+	if len(delivered) != 1 || delivered[0].SHA256 != "digest-run_20260801" {
+		t.Fatalf("the surviving run has %+v", delivered)
+	}
+
+	// The pruned run's digests went with it: the same run recorded again,
+	// without one, does not inherit the old digest.
+	again := history.Run{ID: "run_20260101", Org: "acme", Project: "finance",
+		Schedule: "monthly", Report: "statement", Output: "pdf",
+		StartedAt: recent, Status: history.Running}
+	if err := s.Begin(ctx, again); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Delivered(ctx, history.Delivery{RunID: again.ID, Recipient: "c-1",
+		Channel: "email", Status: history.Delivered, At: recent}); err != nil {
+		t.Fatal(err)
+	}
+	if _, d, err := s.Run(ctx, acme, again.ID); err != nil || len(d) != 1 || d[0].SHA256 != "" {
+		t.Fatalf("a pruned digest survived: %+v, %v", d, err)
 	}
 }
 

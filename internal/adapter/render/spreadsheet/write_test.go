@@ -220,3 +220,22 @@ func TestAWideSheetOpens(t *testing.T) {
 		t.Errorf("column AA holds %v", sheets[0].Rows[1][26])
 	}
 }
+
+// One book is one sequence of bytes, so a delivered workbook can be hashed into
+// the run history. The parts were written in map order, which Go randomises,
+// so two exports of the same rows came out as different files.
+func TestTheSameBookWritesTheSameBytes(t *testing.T) {
+	var first bytes.Buffer
+	if err := Write(&first, invoices()); err != nil {
+		t.Fatal(err)
+	}
+	for range 20 {
+		var again bytes.Buffer
+		if err := Write(&again, invoices()); err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(first.Bytes(), again.Bytes()) {
+			t.Fatal("two writes of one book differ")
+		}
+	}
+}
