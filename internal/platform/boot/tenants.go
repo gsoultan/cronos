@@ -513,7 +513,7 @@ func sendingFor(cfg config.Server, projects api.Projects,
 	}
 	services := map[*api.Project]*send.Service{}
 	for _, rt := range runtimes {
-		services[rt.project] = send.New(rt.repo, documents(rt.project.Runner), chans...)
+		services[rt.project] = send.New(rt.repo, documents(rt.project.Runner, rt.repo), chans...)
 	}
 	return sendPerProject{projects: projects, byProject: services}
 }

@@ -103,6 +103,12 @@ func (s *Service) dependants(kind, name string) []string {
 				add("schedule", sc.Name)
 			}
 		}
+	case codec.KindTemplate:
+		for _, rep := range s.catalog.Reports() {
+			if drawsWith(rep, name) {
+				add("report", rep.Name)
+			}
+		}
 	}
 	sort.Strings(used)
 	return used
@@ -118,6 +124,16 @@ func reads(rep definition.Report, dataset string) bool {
 			if b.Dataset == dataset {
 				return true
 			}
+		}
+	}
+	return false
+}
+
+// drawsWith reports whether any of a report's headers or footers is the template.
+func drawsWith(rep definition.Report, template string) bool {
+	for _, o := range rep.Outputs {
+		if o.Header.Template == template || o.Footer.Template == template {
+			return true
 		}
 	}
 	return false

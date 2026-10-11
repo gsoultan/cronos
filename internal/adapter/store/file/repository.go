@@ -28,6 +28,7 @@ type Repository struct {
 	reports   map[string]definition.Report
 	schedules map[string]definition.Schedule
 	sources   map[string]definition.DataSource
+	templates map[string]definition.Template
 	// raws remembers the document each definition was decoded from, keyed
 	// kind/name.
 	//
@@ -52,6 +53,7 @@ func (r *Repository) replace(fresh *Repository) {
 	defer r.mu.Unlock()
 	r.datasets, r.reports, r.paths = fresh.datasets, fresh.reports, fresh.paths
 	r.schedules, r.sources, r.raws = fresh.schedules, fresh.sources, fresh.raws
+	r.templates = fresh.templates
 }
 
 // Path returns where a definition was read from.
@@ -88,6 +90,7 @@ func empty() *Repository {
 		reports:   map[string]definition.Report{},
 		schedules: map[string]definition.Schedule{},
 		sources:   map[string]definition.DataSource{},
+		templates: map[string]definition.Template{},
 		raws:      map[string][]byte{},
 		paths:     map[string]string{},
 	}
@@ -235,6 +238,8 @@ func (r *Repository) Forget(kind, name string) {
 		delete(r.schedules, name)
 	case codec.KindDataSource:
 		delete(r.sources, name)
+	case codec.KindTemplate:
+		delete(r.templates, name)
 	default:
 		// A kind this build does not know is one it never loaded, so there is
 		// nothing to remove and nothing to say.
@@ -314,6 +319,14 @@ func (r *Repository) insert(data []byte, path string) error {
 		r.sources[src.Name] = src
 		r.paths[kind+"/"+src.Name] = path
 		keep(src.Name)
+	case codec.KindTemplate:
+		t, err := codec.Loader{}.Template(data)
+		if err != nil {
+			return fmt.Errorf("%s: %w", origin(path), err)
+		}
+		r.templates[t.Name] = t
+		r.paths[kind+"/"+t.Name] = path
+		keep(t.Name)
 	}
 	return nil
 }
@@ -345,6 +358,18 @@ func (r *Repository) Report(_ context.Context, name string) (definition.Report, 
 		return definition.Report{}, fmt.Errorf("%w: report %q", ErrNotFound, name)
 	}
 	return rep, nil
+}
+
+// Template returns the named template. It implements run.Templates.
+func (r *Repository) Template(_ context.Context, name string) (definition.Template, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	t, ok := r.templates[name]
+	if !ok {
+		return definition.Template{}, fmt.Errorf("%w: template %q", ErrNotFound, name)
+	}
+	return t, nil
 }
 
 // Schedule returns the named schedule.

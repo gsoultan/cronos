@@ -338,6 +338,8 @@ func canonicalKind(urlKind string) string {
 	// cannot be stepped around by asking in lowercase.
 	case "datasources", "datasource":
 		return codec.KindDataSource
+	case "templates", "template":
+		return codec.KindTemplate
 	}
 	return urlKind
 }

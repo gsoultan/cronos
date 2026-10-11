@@ -22,6 +22,9 @@ type Document struct {
 	// that had them rendered a PDF that simply did not, with nothing saying
 	// so, and the format documentation claimed they came out as images.
 	Charts []Chart `json:"charts,omitempty"`
+	// Header and Footer replace the built-in running lines when set.
+	Header Furniture `json:"header,omitzero"`
+	Footer Furniture `json:"footer,omitzero"`
 }
 
 // Validate reports what would otherwise become a wrong document rather than a

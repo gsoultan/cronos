@@ -59,6 +59,12 @@ func (o Output) validate(reportDefault string) error {
 		}
 		return nil
 	}
+	if err := o.Header.validate(o.Name, "header"); err != nil {
+		return err
+	}
+	if err := o.Footer.validate(o.Name, "footer"); err != nil {
+		return err
+	}
 	if len(o.Layout) == 0 {
 		// An output with no layout renders an empty document, which looks like
 		// a report that found no data rather than one that was never written.

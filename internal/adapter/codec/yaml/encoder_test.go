@@ -96,7 +96,7 @@ func TestRoundTrip(t *testing.T) {
 				{
 					Name: "pdf", Renderer: definition.Paginated,
 					Page:   definition.PageSpec{Size: "A4", Orientation: "portrait", Margins: "20mm"},
-					Header: definition.Furniture{Template: "templates/letterhead.typ"},
+					Header: definition.Furniture{Template: "letterhead"},
 					Footer: definition.Furniture{Text: "Page {{ .page }} of {{ .pages }}"},
 					Layout: []definition.Block{
 						{Kind: definition.TextBlock, Style: "h1", Text: "Statement"},

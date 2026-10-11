@@ -101,9 +101,5 @@ A template is a visual artefact and no assertion sees it. Open the PDF.
   content-addressed run history can hash a PDF.
 - **A brand sans.** Libertinus Serif is a good default and a poor brand. Ships
   with per-organisation branding, via `FontDir`.
-- **The header/footer templates** the report format allows
-  (`header: {template: letterhead.typ}`) are not wired up. When they are, they
-  are staged into the render root like everything else — which is exactly why
-  the root is per-render.
 - **Compiler pooling.** A fork per render is single-digit milliseconds against
   a render of hundreds. Revisit only with a burst profile that says otherwise.
