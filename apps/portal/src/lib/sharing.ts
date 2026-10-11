@@ -15,7 +15,7 @@
  * and behaves like an unauthenticated export of someone else's data.
  */
 
-export type Channel = 'email' | 'telegram'
+export type Channel = 'email' | 'telegram' | 'sftp' | 'webhook'
 
 export interface ChannelSpec {
   id: Channel
@@ -32,6 +32,14 @@ export const CHANNELS: ChannelSpec[] = [
     id: 'email', label: 'Email', icon: '✉',
     requires: 'An address. Nothing else.',
     sizeLimitMb: 25,
+  },
+  {
+    id: 'sftp', label: 'SFTP', icon: '⇪',
+    requires: "A folder on this deployment's SFTP server. The server is fixed by the deployment, so a folder is all a delivery names.",
+  },
+  {
+    id: 'webhook', label: 'Webhook', icon: '⤳',
+    requires: 'An https URL on a host this deployment allows. The document is the request body, signed.',
   },
   {
     id: 'telegram', label: 'Telegram', icon: '➤',

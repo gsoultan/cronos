@@ -149,8 +149,10 @@ type Server struct {
 	// Portal is where the portal is served, for links in email. A separate
 	// origin from the API in every real deployment — the portal is a static
 	// build behind a CDN — so it cannot be derived from the listen address.
-	Portal string
-	S3     S3
+	Portal  string
+	S3      S3
+	SFTP    SFTP
+	Webhook Webhook
 	// SeedSource names which datasource the seed applies to. Required when
 	// several are defined: the seed runs DDL, and picking one would be a guess.
 	SeedSource string
@@ -225,6 +227,15 @@ func Load() (Server, error) {
 		S3: S3{
 			Endpoint: os.Getenv("CRONOS_S3_ENDPOINT"), Region: os.Getenv("CRONOS_S3_REGION"),
 			AccessKey: os.Getenv("CRONOS_S3_ACCESS_KEY"), SecretKey: os.Getenv("CRONOS_S3_SECRET_KEY"),
+		},
+		SFTP: SFTP{
+			Addr: os.Getenv("CRONOS_SFTP_ADDR"), User: os.Getenv("CRONOS_SFTP_USER"),
+			Password: os.Getenv("CRONOS_SFTP_PASSWORD"), KeyFile: os.Getenv("CRONOS_SFTP_KEY_FILE"),
+			KnownHosts: os.Getenv("CRONOS_SFTP_KNOWN_HOSTS"), Root: os.Getenv("CRONOS_SFTP_ROOT"),
+		},
+		Webhook: Webhook{
+			Secret: os.Getenv("CRONOS_WEBHOOK_SECRET"),
+			Hosts:  hosts(os.Getenv("CRONOS_WEBHOOK_HOSTS")),
 		},
 	}
 	if origins := os.Getenv("CRONOS_ORIGINS"); origins != "" {

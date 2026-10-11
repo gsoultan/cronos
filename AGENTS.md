@@ -100,7 +100,8 @@ internal/
     deliver/file/        Documents to a directory                ✓
     deliver/email/       SMTP with a MIME attachment             ✓
     deliver/s3/          Object storage, S3 API                  ✓
-    deliver/             sftp · webhook
+    deliver/sftp/        A folder on one server, host key required ✓
+    deliver/webhook/     Signed HTTPS POST, to listed hosts only  ✓
   platform/
     token/               Embed tokens — not JWT, see its doc.go ✓
     config/              Environment                            ✓
