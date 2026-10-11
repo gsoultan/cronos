@@ -88,7 +88,12 @@ func keep(t *testing.T, pdf []byte) {
 // this test — an OS temp sweep, another run finishing — failed it for a reason
 // having nothing to do with the renderer. Comparing sets ignores what was
 // already there and still catches the leak this exists to catch.
+//
+// And in a temporary directory of its own. `go test ./...` runs packages at
+// once, and the burst and run tests render too: their roots appearing in the
+// shared one mid-test read as this render's leak.
 func TestRenderRemovesItsRoot(t *testing.T) {
+	t.Setenv("TMPDIR", t.TempDir())
 	before := renderRoots(t)
 	if err := New(TypstCLI{}).Render(context.Background(), fixture(2), &bytes.Buffer{}); err != nil {
 		t.Fatalf("render: %v", err)

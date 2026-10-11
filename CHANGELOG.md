@@ -90,6 +90,19 @@ file. A report that named a `.typ` path — which drew nothing — is refused wh
 loads, naming the output. Publish the file as a Template and name that, or
 remove the line.
 
+**Two more channels: `sftp` and `webhook`.** `via: sftp` drops each document
+into a folder on the deployment's SFTP server, written under a hidden name and
+renamed so a polling system never collects half a file; the server's key must
+be in a known_hosts file, and a mismatch is refused rather than retried.
+`via: webhook` POSTs the document to an https URL on a host listed in
+`CRONOS_WEBHOOK_HOSTS`, signed with `CRONOS_WEBHOOK_SECRET` and carrying an
+idempotency key, and never follows a redirect. See "Delivering by SFTP" and
+"Delivering by webhook" in docs/deploying.md.
+
+*Upgrading:* nothing changes without the new variables. An SFTP address without
+a user, a credential or a known_hosts file, and a webhook secret without hosts
+or hosts without a secret, are refused at startup, naming what is missing.
+
 **A host application no longer holds the key to the portal.** Embed tokens are
 signed by a host's backend, and the key it was given for that was
 `CRONOS_SIGNING_KEY` — the key that signs portal sessions. Whoever holds a key

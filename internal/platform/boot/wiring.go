@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 
 	alertemail "github.com/gsoultan/cronos/internal/adapter/alert/email"
 	"github.com/gsoultan/cronos/internal/adapter/api"
@@ -12,6 +13,8 @@ import (
 	emailchannel "github.com/gsoultan/cronos/internal/adapter/deliver/email"
 	filechannel "github.com/gsoultan/cronos/internal/adapter/deliver/file"
 	s3channel "github.com/gsoultan/cronos/internal/adapter/deliver/s3"
+	sftpchannel "github.com/gsoultan/cronos/internal/adapter/deliver/sftp"
+	webhookchannel "github.com/gsoultan/cronos/internal/adapter/deliver/webhook"
 	"github.com/gsoultan/cronos/internal/adapter/render/paginated"
 	"github.com/gsoultan/cronos/internal/adapter/render/spreadsheet"
 	"github.com/gsoultan/cronos/internal/adapter/store/file"
@@ -65,6 +68,22 @@ func channels(cfg config.Server, log *slog.Logger) ([]burst.Channel, error) {
 		}
 		out = append(out, c)
 	}
+	if cfg.SFTP.Configured() {
+		c, err := sftp(cfg.SFTP)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	if cfg.Webhook.Configured() {
+		c, err := webhookchannel.New(webhookchannel.Config{
+			Secret: []byte(cfg.Webhook.Secret), Hosts: cfg.Webhook.Hosts,
+		})
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
 
 	names := make([]string, 0, len(out))
 	for _, c := range out {
@@ -72,6 +91,21 @@ func channels(cfg config.Server, log *slog.Logger) ([]burst.Channel, error) {
 	}
 	log.Info("delivery channels", "registered", names)
 	return out, nil
+}
+
+// sftp builds the SFTP channel, reading its private key if it has one.
+func sftp(cfg config.SFTP) (*sftpchannel.Channel, error) {
+	var key []byte
+	if cfg.KeyFile != "" {
+		var err error
+		if key, err = os.ReadFile(cfg.KeyFile); err != nil {
+			return nil, fmt.Errorf("sftp: CRONOS_SFTP_KEY_FILE: %w", err)
+		}
+	}
+	return sftpchannel.New(sftpchannel.Config{
+		Addr: cfg.Addr, User: cfg.User, Password: cfg.Password, Key: key,
+		KnownHosts: cfg.KnownHosts, Root: cfg.Root,
+	})
 }
 
 // scheduler wires the burst pipeline behind a cron loop.
