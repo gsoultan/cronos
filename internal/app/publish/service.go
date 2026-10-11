@@ -73,12 +73,13 @@ type Verifier interface {
 
 // Service validates and stores definitions.
 type Service struct {
-	store    Store
-	datasets Datasets
-	reports  Reports
-	live     Live
-	catalog  Catalog
-	engines  Engines
+	store     Store
+	datasets  Datasets
+	reports   Reports
+	live      Live
+	catalog   Catalog
+	engines   Engines
+	templates Templates
 	/*
 	   channels are what this deployment can deliver through.
 
@@ -259,6 +260,16 @@ func (s *Service) check(ctx context.Context, kind string, raw []byte) (string, e
 			return "", err
 		}
 		return sc.Name, s.checkSchedule(ctx, sc)
+
+	case codec.KindTemplate:
+		// The loader validated it: a size, a name, and no package import.
+		// Whether it typesets is learnt by the reports that use it, which is
+		// where there is a document to typeset.
+		t, err := codec.Loader{}.Template(raw)
+		if err != nil {
+			return "", err
+		}
+		return t.Name, nil
 	}
 	return "", fmt.Errorf("%w: %s", ErrUnsupported, kind)
 }
@@ -394,6 +405,9 @@ func (s *Service) checkReport(ctx context.Context, rep definition.Report) error 
 		}
 	}
 	if err := query.CheckFilters(rep.Filters, known); err != nil {
+		return err
+	}
+	if err := s.checkFurniture(ctx, rep); err != nil {
 		return err
 	}
 	return s.checkBlocks(ctx, rep, sets)

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -66,12 +67,17 @@ func (t TypstCLI) Compile(ctx context.Context, root, main, out string) error {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	args := []string{"compile", "--root", root, "--ignore-system-fonts"}
+	// Packages from a directory that does not exist, so a template's
+	// `import "@preview/…"` cannot find one on this host's disk either.
+	none := filepath.Join(root, ".no-packages")
+	args := []string{"compile", "--root", root, "--ignore-system-fonts",
+		"--package-path", none, "--package-cache-path", none}
 	if t.FontDir != "" {
 		args = append(args, "--font-path", t.FontDir)
 	}
 	cmd := exec.CommandContext(ctx, t.bin(), append(args, main, out)...)
 	cmd.Dir = root
+	cmd.Env = offline(os.Environ())
 	stderr := &strings.Builder{}
 	cmd.Stderr = stderr
 
@@ -79,6 +85,35 @@ func (t TypstCLI) Compile(ctx context.Context, root, main, out string) error {
 		return t.wrap(ctx, err, stderr.String())
 	}
 	return nil
+}
+
+/*
+offline is the environment a compile runs in: this process's, with every
+proxy pointed at a port nothing listens on.
+
+Typst fetches a package from the network the first time a document imports
+one. The template cronos ships imports none, and a Template definition naming
+one is refused when it is stored — but an import path can be computed, and a
+typesetter running inside a server reaching out to a host an author chose is
+not something a regular expression should be the only thing preventing. Typst
+honours the proxy variables, so this makes the fetch fail at once on the
+loopback interface rather than leave the machine.
+*/
+func offline(env []string) []string {
+	out := make([]string, 0, len(env)+8)
+	for _, kv := range env {
+		name, _, _ := strings.Cut(kv, "=")
+		switch strings.ToUpper(name) {
+		case "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY":
+			continue
+		}
+		out = append(out, kv)
+	}
+	const nowhere = "http://127.0.0.1:9"
+	for _, name := range []string{"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"} {
+		out = append(out, name+"="+nowhere, strings.ToLower(name)+"="+nowhere)
+	}
+	return append(out, "NO_PROXY=", "no_proxy=")
 }
 
 func (t TypstCLI) wrap(ctx context.Context, err error, stderr string) error {

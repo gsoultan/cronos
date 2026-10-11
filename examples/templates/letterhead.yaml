@@ -1,0 +1,30 @@
+apiVersion: cronos.dev/v1
+kind: Template
+metadata:
+  name: letterhead
+  title: Acme letterhead
+  description: The logo and address across the top of every statement page.
+spec:
+  # Typst. header(ctx) draws the top of each page and footer(ctx) the bottom;
+  # define either or both. ctx carries page and pages (counted within this
+  # recipient's statement), group (whose statement it is), title, period and
+  # org. The whole document is in data.json if a template needs more.
+  #
+  # The logo is SVG written into the template, because a render can read
+  # nothing but its own files. A template may not import a Typst package.
+  source: |
+    #let logo = image(bytes("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'><rect width='40' height='40' rx='8' fill='#1f4e79'/><path d='M12 28 L20 10 L28 28 M15 22 H25' stroke='white' stroke-width='3' fill='none'/></svg>"), format: "svg", height: 22pt)
+
+    #let header(ctx) = {
+      set text(size: 8pt, fill: luma(90))
+      grid(
+        columns: (auto, 1fr, auto),
+        column-gutter: 8pt,
+        align: horizon,
+        logo,
+        [*Acme Logistics* \ 12 Harbour Road, Rotterdam],
+        align(right)[#ctx.title \ Page #ctx.page of #ctx.pages],
+      )
+      v(2pt)
+      line(length: 100%, stroke: 0.6pt + rgb("#1f4e79"))
+    }

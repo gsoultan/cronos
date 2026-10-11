@@ -247,6 +247,81 @@ func renderRoots(t *testing.T) map[string]bool {
 	return out
 }
 
+// An author's header(ctx) is called on every page of every statement, with the
+// page counted within that recipient's statement — the same promise the
+// built-in footer makes, now kept for a letterhead.
+func TestAHeaderTemplateIsHandedItsStatement(t *testing.T) {
+	doc := fixture(3, 90)
+	doc.Header = document.Furniture{Template: `#let header(ctx) = [#metadata(ctx) <seen>]`}
+	dir := t.TempDir()
+	if err := New(TypstCLI{}).stage(dir, doc); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(TypstCLI{}.bin(), "eval", "--root", dir, "--in", mainFile,
+		"query(<seen>).map(m => m.value)")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("typst eval: %v: %s", err, stderrOf(err))
+	}
+	var seen []struct {
+		Page, Pages  int
+		Group, Title string
+	}
+	if err := json.Unmarshal(out, &seen); err != nil {
+		t.Fatalf("%s: %v", out, err)
+	}
+	spans := statementSpans(t, doc)
+	if len(seen) != spans[0].pages+spans[1].pages {
+		t.Fatalf("header drawn on %d pages, the document has %d", len(seen), spans[0].pages+spans[1].pages)
+	}
+	last := seen[len(seen)-1]
+	if last.Group != "Customer 01" || last.Page != spans[1].pages || last.Pages != spans[1].pages {
+		t.Errorf("the last page was handed %+v, want page %d of %d of Customer 01",
+			last, spans[1].pages, spans[1].pages)
+	}
+	if seen[0].Page != 1 || seen[0].Title != doc.Title {
+		t.Errorf("the first page was handed %+v", seen[0])
+	}
+}
+
+// An author's template runs in the render's root and nowhere else: reading a
+// file outside it fails the render rather than printing the file.
+func TestATemplateCannotReadOutsideItsRoot(t *testing.T) {
+	doc := fixture(1)
+	doc.Footer = document.Furniture{Template: `#let footer(ctx) = read("/etc/hostname")`}
+	err := New(TypstCLI{}).Render(context.Background(), doc, &bytes.Buffer{})
+	if err == nil {
+		t.Fatal("a footer read /etc/hostname")
+	}
+}
+
+// A line of text replaces the built-in footer and compiles with its counters,
+// whatever else is in it: braces and hashes are characters, not Typst.
+func TestFooterTextIsText(t *testing.T) {
+	doc := fixture(2, 40)
+	doc.Footer = document.Furniture{Text: `Confidential #sys {{page}} / {{pages}} [x] $y$`}
+	if err := New(TypstCLI{}).Render(context.Background(), doc, &bytes.Buffer{}); err != nil {
+		t.Fatalf("render: %v", err)
+	}
+}
+
+// The compile runs with every proxy pointed at a closed loopback port, so a
+// package import computed at run time cannot reach the network.
+func TestTheCompilerIsOffline(t *testing.T) {
+	env := offline([]string{"PATH=/bin", "https_proxy=http://corp:3128", "NO_PROXY=packages.typst.org"})
+	got := strings.Join(env, " ")
+	for _, want := range []string{"PATH=/bin", "HTTPS_PROXY=http://127.0.0.1:9",
+		"https_proxy=http://127.0.0.1:9", "ALL_PROXY=http://127.0.0.1:9", "NO_PROXY="} {
+		if !strings.Contains(" "+got+" ", " "+want+" ") {
+			t.Errorf("environment lacks %s: %s", want, got)
+		}
+	}
+	if strings.Contains(got, "corp") || strings.Contains(got, "packages.typst.org") {
+		t.Errorf("the host's proxy settings survived: %s", got)
+	}
+}
+
 // The same document renders to the same bytes, so a delivered PDF can be
 // hashed and checked against the definition version that drew it. Typst
 // stamped the compile time into /CreationDate and the XMP packet, so two

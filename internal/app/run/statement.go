@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"regexp"
 
 	"github.com/gsoultan/cronos/internal/app/burst"
 	"github.com/gsoultan/cronos/internal/core/definition"
@@ -20,6 +21,7 @@ type Statements struct {
 	svc       *Service
 	renderer  burst.Renderer
 	workbooks Workbooks
+	templates Templates
 }
 
 // NewStatements wires the bridge.
@@ -29,6 +31,9 @@ func NewStatements(s *Service, r burst.Renderer) *Statements {
 
 // WithWorkbooks adds spreadsheet output.
 func (s *Statements) WithWorkbooks(w Workbooks) *Statements { s.workbooks = w; return s }
+
+// WithTemplates lets a header or footer draw with a Template definition.
+func (s *Statements) WithTemplates(t Templates) *Statements { s.templates = t; return s }
 
 // Statement renders one recipient's document.
 //
@@ -58,12 +63,42 @@ func (s *Statements) Statement(ctx context.Context, r definition.Report, output 
 	if err != nil {
 		return burst.StatementResult{}, err
 	}
+	if doc.Header, err = s.furniture(ctx, out.Header); err != nil {
+		return burst.StatementResult{}, err
+	}
+	if doc.Footer, err = s.furniture(ctx, out.Footer); err != nil {
+		return burst.StatementResult{}, err
+	}
 
 	var buf bytes.Buffer
 	if err := s.renderer.Render(ctx, doc, &buf); err != nil {
 		return burst.StatementResult{}, err
 	}
 	return burst.StatementResult{Document: buf.Bytes(), Rows: rows}, nil
+}
+
+// placeholder matches {{ .page }} and {{ .pages }} however they are spaced,
+// so the template has one spelling of each to replace.
+var placeholder = regexp.MustCompile(`\{\{\s*\.(pages?)\s*\}\}`)
+
+// furniture resolves a header or footer: its text with the placeholders in
+// the template's spelling, or the source of the template it names. A template
+// that has gone since the report was published fails the render rather than
+// printing the built-in line in its place — a statement without the letterhead
+// it was designed with is not the document somebody signed off.
+func (s *Statements) furniture(ctx context.Context, f definition.Furniture) (document.Furniture, error) {
+	if f.Template == "" {
+		return document.Furniture{Text: placeholder.ReplaceAllString(f.Text, "{{$1}}")}, nil
+	}
+	if s.templates == nil {
+		return document.Furniture{}, fmt.Errorf("%w: template %q, and no templates are configured",
+			ErrNotRenderable, f.Template)
+	}
+	t, err := s.templates.Template(ctx, f.Template)
+	if err != nil {
+		return document.Furniture{}, fmt.Errorf("%w: %v", ErrNotRenderable, err)
+	}
+	return document.Furniture{Template: t.Source}, nil
 }
 
 // toDocument maps a rendered view onto the paginated model.
