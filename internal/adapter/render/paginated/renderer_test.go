@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gsoultan/cronos/internal/core/document"
 )
@@ -318,5 +319,30 @@ func TestTheCompilerIsOffline(t *testing.T) {
 	}
 	if strings.Contains(got, "corp") || strings.Contains(got, "packages.typst.org") {
 		t.Errorf("the host's proxy settings survived: %s", got)
+	}
+}
+
+// The same document renders to the same bytes, so a delivered PDF can be
+// hashed and checked against the definition version that drew it. Typst
+// stamped the compile time into /CreationDate and the XMP packet, so two
+// renders a second apart differed. Each render also gets its own root
+// directory, which is the other thing that could leak into the output.
+func TestTheSameDocumentRendersToTheSameBytes(t *testing.T) {
+	render := func() []byte {
+		var buf bytes.Buffer
+		if err := New(TypstCLI{}).Render(context.Background(), fixture(3, 40), &buf); err != nil {
+			t.Fatalf("render: %v", err)
+		}
+		return buf.Bytes()
+	}
+	first := render()
+	for _, stamp := range []string{"/CreationDate", "/ModDate", "xmp:CreateDate", "xmp:ModifyDate"} {
+		if bytes.Contains(first, []byte(stamp)) {
+			t.Errorf("the PDF carries %s, the time it was drawn", stamp)
+		}
+	}
+	time.Sleep(1100 * time.Millisecond) // the stamp's resolution is a second
+	if second := render(); !bytes.Equal(first, second) {
+		t.Errorf("two renders of one document differ: %d and %d bytes", len(first), len(second))
 	}
 }
