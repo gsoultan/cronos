@@ -19,8 +19,8 @@ import (
 
 func main() {
 	var (
-		org      = flag.String("org", "acme", "organization id")
-		project  = flag.String("project", "finance", "project id")
+		org      = flag.String("org", tenant("CRONOS_ORG"), "organization id")
+		project  = flag.String("project", tenant("CRONOS_PROJECT"), "project id")
 		subject  = flag.String("subject", "demo-user", "who this is, in the host's own model")
 		report   = flag.String("report", "", "pin the token to one report")
 		audience = flag.String("audience", token.Embed, "embed (an end customer) or portal (an author)")
@@ -72,6 +72,17 @@ func signingKey(audience string) (key, name string) {
 		return os.Getenv("CRONOS_SIGNING_KEY"), "CRONOS_EMBED_KEY or CRONOS_SIGNING_KEY"
 	}
 	return os.Getenv("CRONOS_SIGNING_KEY"), "CRONOS_SIGNING_KEY"
+}
+
+// tenant is the organisation or project cronosd serves when it is started with
+// the same environment, so a token minted with no -org or -project opens the
+// server beside it. It defaulted to acme/finance against a server defaulting to
+// default/default, and the README's first token was refused as "No such report".
+func tenant(key string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return "default"
 }
 
 func pairs(s string) map[string]string {
