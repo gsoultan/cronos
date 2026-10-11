@@ -114,8 +114,11 @@ export function windowHeight(rows: number, cap: number): number {
   return Math.min(Math.max(rows, 1) * ROW_H, cap)
 }
 
-function renderCell(field: Field, value: unknown) {
-  if (value === null || value === undefined || value === '') {
+export function renderCell(field: Field, value: unknown) {
+  /* Except an empty string the engine wrote. It writes a null as a dash
+     itself, so its empty cell is a different answer: a pivot's pair that no
+     row reached, which is blank so a dash can still mean "matched, and null". */
+  if (value === null || value === undefined || (value === '' && field.format !== 'preformatted')) {
     return <span className="text-ink-muted">—</span>
   }
   /* Formatted already, by the engine that knew the currency and the locale.

@@ -73,7 +73,7 @@ await report.locator('.panel').first().waitFor({ timeout: 15000 })
 
 /* -- It agrees with the server -------------------------------------------- */
 const body = await text()
-ok('renders cronos-computed blocks', (await report.locator('.panel').count()) === 4)
+ok('renders cronos-computed blocks', (await report.locator('.panel').count()) === 5)
 ok('the stat carries the total the engine computed (60,171.25)',
   body.includes('60,171.25'))
 ok('a block filter narrows one tile only (4,120.75 outstanding)',
@@ -82,6 +82,10 @@ ok('the chart labels months rather than truncated dates',
   body.includes('Jul 2026') && !body.includes('2026-07-01'))
 ok('table headings come from the dataset labels',
   body.includes('Issued') && body.includes('Amount'))
+const pivot = report.locator('.panel', { hasText: 'Billed by status and month' })
+ok('a pivot arrives as a table, its grand total the stat\'s (60,171.25)',
+  (await pivot.locator('table').count()) === 1 &&
+  (await pivot.locator('tbody tr').last().innerText()).includes('60,171.25'))
 
 /* -- The report format's promise, computed by the server ------------------ */
 ok('a block says the filter that misses it does not apply',

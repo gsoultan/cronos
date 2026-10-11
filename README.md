@@ -465,8 +465,9 @@ go run ./cmd/cronos-import -datasource warehouse \
 container image — so an estate does not need a Go toolchain to move.
 
 It carries the query and its parameters, the fields, the grouping, the
-subtotals, the page setup and the table the detail band drew. It does not carry
-subreports, crosstabs, images or a column computed in Java — and it says which
+subtotals, the page setup, the table the detail band drew and a crosstab, as a
+pivot. It does not carry subreports, images or a column computed in Java — and
+it says which
 files had them, graded so an estate can be triaged rather than trusted. Two
 things it refuses rather than importing wrong: a `$P!{}` parameter spliced into
 the SQL as text, and a query that is not SQL.

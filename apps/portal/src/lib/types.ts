@@ -72,7 +72,7 @@ export type FilterNode = Condition | Group
  * on a canvas, which is a different question — definitions.ts translates.
  */
 export type TileKind =
-  | 'stat' | 'table'
+  | 'stat' | 'table' | 'pivot'
   | 'bar' | 'column' | 'line' | 'area' | 'pie' | 'donut'
   | 'scatter' | 'bubble' | 'map'
   | 'combo' | 'funnel' | 'waterfall' | 'heatmap' | 'gauge' | 'treemap'
@@ -81,19 +81,19 @@ export type TileKind =
 /** The tiles that bucket a dimension and fold a measure. */
 export const CATEGORICAL: TileKind[] = [
   'bar', 'column', 'line', 'area', 'pie', 'donut', 'waterfall', 'heatmap', 'treemap', 'radar',
-  'sankey', 'sunburst', 'calendar',
+  'sankey', 'sunburst', 'calendar', 'pivot',
 ]
 
 /** The tiles that read a list of measures rather than one. */
 export const METERED: TileKind[] = ['combo', 'funnel']
 
 /** The tiles that need a second dimension to place a value. */
-export const GRIDDED: TileKind[] = ['heatmap']
+export const GRIDDED: TileKind[] = ['heatmap', 'pivot']
 
 /** The tiles whose series is a second dimension rather than an optional
  *  split: a heatmap's other axis, where a sankey's flows go, and the ring a
  *  sunburst's parts sit in. */
-export const PAIRED: TileKind[] = ['heatmap', 'sankey', 'sunburst']
+export const PAIRED: TileKind[] = ['heatmap', 'sankey', 'sunburst', 'pivot']
 
 /** The tiles that fold the whole set to one number. */
 export const FOLDED: TileKind[] = ['gauge']
@@ -111,7 +111,7 @@ export const PLOTS: TileKind[] = ['scatter', 'bubble']
 /** The tiles that can draw more than one series at once. */
 export const MULTI_SERIES: TileKind[] = [
   'bar', 'column', 'line', 'area', 'scatter', 'bubble', 'heatmap', 'treemap', 'radar',
-  'sankey', 'sunburst',
+  'sankey', 'sunburst', 'pivot',
 ]
 
 /** The tiles a series dimension stacks on rather than drawing beside. */
@@ -135,6 +135,9 @@ export interface Tile {
    *  each date as it stands. */
   grain?: string
   series?: string
+  /** What a pivot's rows are bucketed into, when they are dates. Kept as
+   *  read; the inspector buckets only the columns. */
+  seriesGrain?: string
   aggregate?: 'sum' | 'count' | 'avg' | 'min' | 'max'
   /** Draws a multi-series bar, column or area as one stack per bucket —
    *  `percent` for each part as its share of its bucket's whole. */

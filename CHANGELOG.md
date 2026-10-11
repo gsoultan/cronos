@@ -40,6 +40,20 @@ with `CRONOS_EMBED_KEY_PREVIOUS` as the old key, change the hosts over, then
 rotate `CRONOS_SIGNING_KEY`. A host that signs tokens without `iat`, or for
 more than a day, must stop: those are refused from this build.
 
+**Pivots.** `kind: pivot` crosses two dimensions — `pivot: {rows, columns}` —
+with the block's `value` folded where they meet and a total on the right of each
+row and along the bottom. Totals are folded by the measure's aggregate rather
+than added, so a pivot of averages totals to the average of the rows behind it;
+a cell nothing matched is blank rather than zero; past 24 columns or 500 rows
+the rest is folded into a last "12 more" line, so nothing read is dropped. It is
+crossed on the server and sent as a table, so the embed, the portal, a PDF and a
+workbook draw it with no change — the embed is the size it was. A spreadsheet
+tab can be a pivot, with its cells left as numbers. The builder offers one, the
+demo's billing summary shows one, and the JasperReports importer brings a
+crosstab with one row group and one column group across as a pivot where it
+used to report it as not imported; see "Pivots" in
+[docs/report-format.md](docs/report-format.md).
+
 **Two example host applications, run in CI.** `integrations/` is a report
 embedded in a plain JavaScript page and in a React application, with the
 backend that signs their tokens, under a strict Content-Security-Policy.

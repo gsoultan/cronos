@@ -711,6 +711,68 @@ stepped — rather than eight categorical hues, because swapping two of them
 changes what the chart says. A reader should see the order in the colour instead
 of discovering there was one by reading the labels.
 
+### Pivots
+
+A **pivot** is a crosstab: one dimension down the side, one across the top, and
+a measure folded into every cell where they meet, with a total on the right of
+each row and along the bottom of each column.
+
+```yaml
+- kind: pivot
+  title: Billed by status and month
+  value: {field: total, aggregate: sum}
+  pivot:
+    rows: {field: status}
+    columns: {field: issued_at, grain: month}
+```
+
+The measure is the block's `value`, as a stat's is; only the two axes are the
+pivot's own. Either axis takes a `grain` when it is a date. `filter` narrows it
+as it narrows any block.
+
+The database folds each pair, and the server crosses them. Rows come in
+ascending order and columns in the order of what they are — dates by date,
+numbers by size — rather than by how their labels sort as text, so April does
+not land before January.
+
+The totals are folded by the measure's own aggregate, not added up. A `sum` or
+a `count` adds, a `min` keeps the smallest and a `max` the largest, and an
+`avg` brings the sum and count each average was divided from: the total of a
+row of averages is the average of the rows behind it, which is not the mean of
+the cells and is the number people look in the Total column for.
+
+A cell no row reached is blank, not zero — a pivot is mostly read for its gaps,
+which customer bought nothing in March, and a zero there is a sale of nothing.
+A cell whose rows had a null measure is a dash.
+
+It is bounded on both axes, and nothing it read is dropped. Past 24 columns the
+rest are folded into one last column, "12 more", and past 500 rows the same
+happens down the side, so the cells across a row still add up to its total. It
+reads at most 50,000 cells; one that reached that says so on its bottom row,
+"Total of the first 50,000 cells", rather than offering a total of less than it
+claims.
+
+A pivot is crossed where it is read and reaches every renderer as the table it
+then is — the embed, the portal, a PDF and a workbook draw it with the table
+they already draw. A paginated document prints one table: a pivot prints when
+it is the first table or pivot in the layout. A spreadsheet tab can be a pivot
+too, with its cells and totals left as numbers:
+
+```yaml
+- name: xlsx
+  renderer: spreadsheet
+  sheets:
+    - name: By month
+      value: {field: total}
+      pivot:
+        rows: {field: status}
+        columns: {field: issued_at, grain: month}
+```
+
+A tab is a list of `columns` or a pivot, not both. The JasperReports importer
+turns a crosstab with one row group and one column group into a pivot per
+measure; see [migrating-from-jasper.md](migrating-from-jasper.md).
+
 ### Maps
 
 A map is a chart type, and its layers are a list rather than a type per

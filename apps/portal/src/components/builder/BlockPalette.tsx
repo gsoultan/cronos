@@ -24,6 +24,7 @@ export const PALETTE: { kind: TileKind; label: string; hint: string; icon: strin
   { kind: 'sankey', label: 'Sankey', hint: 'Where it flows', icon: '⫘' },
   { kind: 'sunburst', label: 'Sunburst', hint: 'Parts within parts, as rings', icon: '◉' },
   { kind: 'calendar', label: 'Calendar', hint: 'Day by day, a year at a time', icon: '▣' },
+  { kind: 'pivot', label: 'Pivot', hint: 'One field against another, with totals', icon: '⊟' },
   { kind: 'table', label: 'Table', hint: 'Every row', icon: '▤' },
 ]
 

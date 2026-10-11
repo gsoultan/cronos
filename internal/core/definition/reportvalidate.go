@@ -57,6 +57,11 @@ func (o Output) validate(reportDefault string) error {
 		if len(o.Sheets) == 0 {
 			return fmt.Errorf("%w: spreadsheet output %q has no sheets", ErrInvalid, o.Name)
 		}
+		for i, s := range o.Sheets {
+			if err := s.validate(o.Name, i); err != nil {
+				return err
+			}
+		}
 		return nil
 	}
 	if len(o.Layout) == 0 {
@@ -109,7 +114,7 @@ func (o Output) validateBasemaps() error {
 func (b Block) validate(output string, i int, reportDefault string) error {
 	switch {
 	case !b.Kind.Valid():
-		return fmt.Errorf("%w: %s block %d has kind %q, want stat, chart, table or text",
+		return fmt.Errorf("%w: %s block %d has kind %q, want stat, chart, table, pivot or text",
 			ErrInvalid, output, i, b.Kind)
 	case b.Kind != TextBlock && b.DatasetFor(reportDefault) == "":
 		// Nothing to read. Rendering it empty would look like no data.
@@ -128,6 +133,10 @@ func (b Block) validateShape(output string, i int) error {
 	if b.Trend != nil && b.Kind != StatBlock {
 		return fmt.Errorf("%w: %s %s %d has a trend, which only a stat draws", ErrInvalid, output, b.Kind, i)
 	}
+	if b.Pivot != nil && b.Kind != PivotBlock {
+		return fmt.Errorf("%w: %s %s %d has a pivot:, which only a pivot reads — set kind: pivot",
+			ErrInvalid, output, b.Kind, i)
+	}
 	switch b.Kind {
 	case StatBlock:
 		if b.Value.Field == "" {
@@ -142,6 +151,8 @@ func (b Block) validateShape(output string, i int) error {
 		if len(b.Columns) == 0 {
 			return fmt.Errorf("%w: %s table %d lists no columns", ErrInvalid, output, i)
 		}
+	case PivotBlock:
+		return b.validatePivot(output, i)
 	case TextBlock:
 		if b.Text == "" {
 			return fmt.Errorf("%w: %s text %d has no text", ErrInvalid, output, i)

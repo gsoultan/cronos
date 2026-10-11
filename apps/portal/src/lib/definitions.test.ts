@@ -367,6 +367,20 @@ test('a report round trips, and blocks come back as palette entries', () => {
   expect(back.drops).toEqual([])
 })
 
+test('a pivot round trips, its axes where a heatmap keeps them', () => {
+  const pivot = {
+    kind: 'pivot', title: 'Billed by status and month', field: 'total', aggregate: 'avg',
+    series: 'status', groupBy: 'issued_at', grain: 'month', filter: "currency = 'EUR'",
+  }
+  const text = report({ name: 'Crossed', slug: 'crossed', dataset: 'invoices', blocks: [pivot] })
+  // The file the server reads: the measure is the block's value, the axes its pivot.
+  expect(text).toContain('kind: pivot')
+  expect(text).toContain('rows:\n')
+  const back = readReport(text)
+  expect(back.input.blocks[0]).toMatchObject(pivot)
+  expect(back.drops).toEqual([])
+})
+
 test('a schedule round trips, burst binding included', () => {
   const input = {
     name: 'Monthly invoices', slug: 'monthly-invoices', report: 'statement',
