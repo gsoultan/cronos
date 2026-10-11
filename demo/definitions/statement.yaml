@@ -13,6 +13,10 @@ spec:
     - name: pdf
       renderer: paginated
       page: {size: A4, orientation: portrait, margins: 18mm}
+      # A letterhead across the top, drawn by the Template in letterhead.yaml,
+      # and a line of text along the bottom in place of the built-in one.
+      header: {template: letterhead}
+      footer: {text: "Questions about this statement? billing@acme.example · page {{ .page }} of {{ .pages }}"}
       layout:
         - kind: stat
           label: Total billed

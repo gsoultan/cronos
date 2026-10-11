@@ -118,7 +118,7 @@ func scheduler(cfg config.Server, org, project string, serving func() (string, s
 		return nil, err
 	}
 
-	bursts := burst.New(repo, recipients{runner}, documents(runner), log, chans...).
+	bursts := burst.New(repo, recipients{runner}, documents(runner, repo), log, chans...).
 		// The repository, because it holds what is running rather than what was
 		// last published — and the run record must name the bytes that produced
 		// the document, not the ones somebody stored a moment later.
@@ -290,7 +290,7 @@ func publishing(store publish.Store, repo *file.Repository, records *sqlstore.St
 	if records != nil {
 		view.repo = repo
 	}
-	return publish.New(store, repo).WithReports(repo).
+	return publish.New(store, repo).WithReports(repo).WithTemplates(repo).
 		// So a delete can say what would break rather than breaking it.
 		WithCatalog(repo).
 		// And so a publish is proved against the database it will read, not
@@ -387,12 +387,10 @@ func adoptDirectory(ctx context.Context, store publish.Store, repo *file.Reposit
 	pr principal.Principal) (int, error) {
 
 	var n int
-	// Sources before datasets before reports before schedules, so a store that
-	// fails part way through holds a prefix that resolves rather than a report
-	// pointing at a dataset nothing put there.
-	for _, kind := range []string{
-		codec.KindDataSource, codec.KindDataset, codec.KindReport, codec.KindSchedule,
-	} {
+	// In codec.Kinds order, so a store that fails part way through holds a
+	// prefix that resolves rather than a report pointing at a dataset nothing
+	// put there.
+	for _, kind := range codec.Kinds {
 		for _, name := range repo.Names(kind) {
 			raw, ok := repo.Raw(kind, name)
 			if !ok {
@@ -519,9 +517,11 @@ func roster(records *sqlstore.Store) api.Roster {
 // panel and the same report attached to a monthly schedule must be the same
 // document — and two renderers built from the same parts are two places for
 // that to stop being true.
-func documents(runner *run.Service) burst.Documents {
+func documents(runner *run.Service, templates run.Templates) burst.Documents {
 	return run.NewStatements(runner, paginated.New(paginated.TypstCLI{})).
-		WithWorkbooks(spreadsheet.New())
+		WithWorkbooks(spreadsheet.New()).
+		// The project's own repository, as the runner's datasets are.
+		WithTemplates(templates)
 }
 
 // sending wires "email this report now", where there is somewhere to send it.
@@ -538,7 +538,7 @@ func sending(cfg config.Server, repo *file.Repository, runner *run.Service,
 		// deployment has none rather than offering to use one.
 		return nil
 	}
-	return send.New(repo, documents(runner), chans...)
+	return send.New(repo, documents(runner, repo), chans...)
 }
 
 // channelNames is what this deployment can deliver through.

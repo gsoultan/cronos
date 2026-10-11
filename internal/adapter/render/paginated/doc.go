@@ -16,9 +16,20 @@
 // images, so generated source would make every definition field a potential
 // path traversal. A fixed template with data holes has no such surface.
 //
-// Each render also gets a private root directory containing only its own two
+// Each render also gets a private root directory containing only its own
 // files. Typst cannot address anything outside its root, so even a template
 // bug cannot reach the server's filesystem.
+//
+// # An author's header and footer
+//
+// The one exception to "no source from a definition" is a Template: a Typst
+// file a report names as its header or footer, staged beside the document as
+// header.typ or footer.typ and imported by the fixed template. It is the
+// author's code, typeset, and it is held by the same walls as everything else
+// here — the root, which holds only this recipient's document; the timeout;
+// the subprocess, which takes a runaway render down alone; and no network,
+// because a package import is refused when the template is stored and the
+// compiler runs with its proxies pointed nowhere (see offline).
 //
 // # Memory
 //

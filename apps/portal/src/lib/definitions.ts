@@ -339,7 +339,7 @@ export interface ReportInput {
    * it does not relabel it as interactive — the same blocks, silently moved to
    * a different renderer, is how a monthly PDF stops being a PDF.
    */
-  output?: { name: string; renderer: string; page?: Yaml }
+  output?: { name: string; renderer: string; page?: Yaml; header?: Yaml; footer?: Yaml }
 }
 
 export interface ReportBlockInput {
@@ -455,6 +455,10 @@ export function report(input: ReportInput): string {
       // Paper size and margins. Inside a list the builder rewrites, so
       // carry-over cannot reach it and it is read back instead.
       page: input.output?.page,
+      // A paginated output's running header and footer, read back the same
+      // way: a letterhead lost on save is a statement nobody designed.
+      header: input.output?.header,
+      footer: input.output?.footer,
       layout: input.blocks.map(block),
     }],
   }
@@ -1001,7 +1005,10 @@ export function readReport(text: string): Loaded<ReportInput> {
       dataset: str(spec.dataset),
       filters: asList(spec.filters).map(readFilter),
       blocks: asList(shown.layout).map(readBlock),
-      output: { name: str(shown.name), renderer: str(shown.renderer), page: shown.page },
+      output: {
+        name: str(shown.name), renderer: str(shown.renderer),
+        page: shown.page, header: shown.header, footer: shown.footer,
+      },
     }
   }, report)
 }

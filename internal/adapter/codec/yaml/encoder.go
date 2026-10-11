@@ -71,6 +71,17 @@ func (e Encoder) Schedule(s definition.Schedule) ([]byte, error) {
 	}, s)
 }
 
+// Template encodes a template as a cronos.dev/v1 document, its source as a
+// literal block — it is a file somebody will read and diff.
+func (e Encoder) Template(t definition.Template) ([]byte, error) {
+	if err := t.Validate(); err != nil {
+		return nil, err
+	}
+	return e.document(KindTemplate, metadata{
+		Name: t.Name, Title: t.Title, Description: t.Description,
+	}, t, "source")
+}
+
 // document assembles the envelope around an already-checked definition.
 //
 // The spec is encoded to a node and then edited, rather than copied into a

@@ -1220,3 +1220,31 @@ test('a stat keeps its trend, and a calendar writes no grain', () => {
   expect([back[1]?.kind, back[1]?.groupBy]).toEqual(['calendar', 'issued_at'])
   expect(report({ ...readReport(yaml).input, name: 'R', slug: 'r', dataset: 'invoices' })).toBe(yaml)
 })
+
+test("a paginated output's letterhead and footer survive the round trip", () => {
+  const stored = [
+    'apiVersion: cronos.dev/v1',
+    'kind: Report',
+    'metadata:',
+    '  name: statement',
+    'spec:',
+    '  dataset: invoices',
+    '  outputs:',
+    '    - name: pdf',
+    '      renderer: paginated',
+    '      header:',
+    '        template: letterhead',
+    '      footer:',
+    '        text: "Page {{ .page }} of {{ .pages }}"',
+    '      layout:',
+    '        - kind: table',
+    '          columns: [id]',
+    '',
+  ].join('\n')
+
+  const back = readReport(stored)
+  expect(back.drops).toEqual([])
+  const saved = report(back.input)
+  expect(saved).toContain('template: letterhead')
+  expect(saved).toContain('Page {{ .page }} of {{ .pages }}')
+})
