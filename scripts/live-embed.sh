@@ -16,12 +16,9 @@ unset CRONOS_EMBED_KEY CRONOS_EMBED_KEY_PREVIOUS
 export CRONOS_DEFINITIONS=demo/definitions
 export CRONOS_SEED=demo/seed.sql
 export CRONOS_ADDR="${CRONOS_ADDR:-:8788}"
-# The project cronos-token mints for by default. It used not to matter: the
-# embed handler never read the organisation and project out of a token, so
-# tenancy came from the signing key alone and any token signed with it opened
-# this server. It matters now — a token names the project it acts in, and this
-# server serves one — and the demo was inconsistent, with the CLI defaulting to
-# acme/finance and the server to default/default.
+# The project this server serves, and so the one cronos-token mints for: it
+# reads the same two variables. The embed handler reads the organisation and
+# project out of a token, so a token naming another project opens nothing here.
 export CRONOS_ORG=acme
 export CRONOS_PROJECT=finance
 PORT="${CRONOS_ADDR#:}"

@@ -38,6 +38,14 @@ func (s *Store) Delivered(ctx context.Context, d history.Delivery) error {
 			bytes = excluded.bytes, error = excluded.error, at = excluded.at`),
 		d.RunID, d.Recipient, d.Channel, d.Destination, d.Filename,
 		d.Status, d.Attempts, d.Bytes, d.Error, stamp(d.At))
+	if err != nil || d.SHA256 == "" {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, s.sql(`
+		INSERT INTO cronos_delivery_digests (run_id, recipient, channel, sha256)
+		VALUES (?, ?, ?, ?)
+		ON CONFLICT (run_id, recipient, channel) DO UPDATE SET sha256 = excluded.sha256`),
+		d.RunID, d.Recipient, d.Channel, d.SHA256)
 	return err
 }
 
@@ -106,9 +114,12 @@ func (s *Store) Run(ctx context.Context, pr principal.Principal, id string) (his
 	}
 
 	rows, err := s.db.QueryContext(ctx, s.sql(`
-		SELECT run_id, recipient, channel, destination, filename,
-		       status, attempts, bytes, error, at
-		FROM cronos_deliveries WHERE run_id = ? ORDER BY recipient, channel`), id)
+		SELECT d.run_id, d.recipient, d.channel, d.destination, d.filename,
+		       d.status, d.attempts, d.bytes, COALESCE(g.sha256, ''), d.error, d.at
+		FROM cronos_deliveries d
+		LEFT JOIN cronos_delivery_digests g
+		  ON g.run_id = d.run_id AND g.recipient = d.recipient AND g.channel = d.channel
+		WHERE d.run_id = ? ORDER BY d.recipient, d.channel`), id)
 	if err != nil {
 		return run, nil, err
 	}
@@ -119,7 +130,7 @@ func (s *Store) Run(ctx context.Context, pr principal.Principal, id string) (his
 		var d history.Delivery
 		var at string
 		if err := rows.Scan(&d.RunID, &d.Recipient, &d.Channel, &d.Destination,
-			&d.Filename, &d.Status, &d.Attempts, &d.Bytes, &d.Error, &at); err != nil {
+			&d.Filename, &d.Status, &d.Attempts, &d.Bytes, &d.SHA256, &d.Error, &at); err != nil {
 			return run, nil, err
 		}
 		d.At, _ = time.Parse(time.RFC3339, at)

@@ -20,7 +20,54 @@ needs a deployment to act says so under **Upgrading**.
 
 ---
 
-## Unreleased
+## v2.0.0 — 2026-10-11
+
+A major, because some definitions, configurations and host tokens that v1.2.4
+accepted are now refused, and from 1.0 that takes a major. Each refusal closes
+a gap rather than removing a feature, and each is spelled out where it is
+described below. Before upgrading, check a deployment against this list:
+
+- **A host that signs embed tokens** without `iat`, or valid for more than a
+  day, is refused. See the first entry.
+- **A report naming a chart type cronos does not draw** is refused when stored.
+  Before, it rendered a message in the reader's browser. See "Seven more chart
+  types, and maps".
+- **An object store whose `uri:` names a single file** is refused at startup.
+  It is a prefix. **A dataset joining a datasource with a dash in its name**
+  needs `as:`. See "Upgrading" at the end of this release.
+- **A deployment with `CRONOS_PROJECTS`** must say which secrets each project
+  may read. A datasource naming one it may not read is not opened. See the
+  same section.
+
+A single-project deployment whose reports use the chart types it could already
+draw, and whose hosts mint short-lived tokens, upgrades with nothing to do.
+
+Besides that, this release adds maps over three basemaps, gathered in the
+database at any number of places and played through time; twenty-one chart types,
+drawn at their real size and printed with their words; a builder that draws
+every block as the server will; a report laid out as a dashboard; secrets kept
+sealed in the portal, per project; and a report element served by cronosd
+itself, with a key of its own for hosts.
+
+**The README's first token opens the report.** `cronos-token` minted for
+`acme/finance` unless told otherwise, and `cronosd` serves `default/default`
+unless told otherwise, so the quickstart's embed request answered "No such
+report." It now reads `CRONOS_ORG` and `CRONOS_PROJECT` the way the server
+does, so a token minted beside a server names the project that server holds.
+A script that relied on the old default without setting either variable
+passes `-org acme -project finance`.
+
+**Every delivered document is recorded with its SHA-256.** `GET
+/v1/runs/{id}` gives each delivery a `sha256`. Typst stamped the time of the
+compile into every PDF, and a workbook's parts were written in random order,
+so two renders of the same statement were different files. Both are fixed: the
+same document rendered by the same release is the same bytes, so a file a
+customer forwards can be checked against the run that sent it. See "The same
+document, the same bytes" in docs/rendering.md. A PDF no longer carries a
+creation date; when it was sent is the run's record.
+
+*Upgrading:* a table is added on first start. Deliveries recorded before have
+no digest.
 
 **A host application no longer holds the key to the portal.** Embed tokens are
 signed by a host's backend, and the key it was given for that was

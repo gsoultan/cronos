@@ -384,13 +384,15 @@ ran, what period it covered, and where each document went.
 
 ```bash
 curl -H "Authorization: Bearer $CRONOS_ADMIN_KEY" localhost:8787/v1/runs/run_1786458499_322e1a57
-#   c-1 | file | c-1 | delivered | attempts 1 | 25063 bytes
+#   c-1 | file | c-1 | delivered | attempts 1 | 25063 bytes | sha256 4f1c…
 ```
 
 That is the auditor's question — what did this customer receive, at which
 address, after how many attempts — and it is why the version is recorded
 alongside: a run naming one can be replayed against exactly the document that
-produced it.
+produced it. Each delivery also carries the SHA-256 of the file that went out.
+A render is reproducible, so a PDF a customer forwards can be checked against
+the record without cronos keeping a copy — see docs/rendering.md.
 
 A run is written when it *starts*. A burst that crashed halfway is precisely
 the one somebody needs to look at, and a history that only contains finished

@@ -512,6 +512,26 @@ CREATE TABLE IF NOT EXISTS cronos_secrets (
   PRIMARY KEY (org, project, name)
 );`,
 	},
+	{
+		ID:   15,
+		Name: "a delivered document's digest",
+		/*
+		   The SHA-256 of each document as it was handed to its channel.
+
+		   Its own table rather than a column, for the reason migration 4
+		   gives. A delivery recorded before this has no row here: nothing was
+		   hashed then, and a digest made up afterwards would be a claim
+		   nobody checked.
+		*/
+		SQL: `
+CREATE TABLE IF NOT EXISTS cronos_delivery_digests (
+  run_id    TEXT NOT NULL,
+  recipient TEXT NOT NULL,
+  channel   TEXT NOT NULL,
+  sha256    TEXT NOT NULL,
+  PRIMARY KEY (run_id, recipient, channel)
+);`,
+	},
 }
 
 // migrationTable records what has run. Created outside the ordered list,

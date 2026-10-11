@@ -3,7 +3,9 @@ package burst_test
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"log/slog"
 	"os"
@@ -20,6 +22,7 @@ import (
 	"github.com/gsoultan/cronos/internal/app/burst"
 	"github.com/gsoultan/cronos/internal/app/run"
 	"github.com/gsoultan/cronos/internal/core/definition"
+	"github.com/gsoultan/cronos/internal/core/history"
 	"github.com/gsoultan/cronos/internal/core/principal"
 	"github.com/gsoultan/cronos/internal/core/query"
 	_ "modernc.org/sqlite"
@@ -565,5 +568,49 @@ func TestABurstWithNothingWatchingStillRuns(t *testing.T) {
 	}
 	if result.Delivered != 3 {
 		t.Fatalf("delivered %d of %d", result.Delivered, result.Recipients)
+	}
+}
+
+// ledger keeps what a burst recorded, so a test can read it back.
+type ledger struct {
+	mu         sync.Mutex
+	deliveries []history.Delivery
+}
+
+func (l *ledger) Begin(context.Context, history.Run) error { return nil }
+func (l *ledger) Finish(context.Context, string, history.Run) error {
+	return nil
+}
+func (l *ledger) Delivered(_ context.Context, d history.Delivery) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.deliveries = append(l.deliveries, d)
+	return nil
+}
+
+// Each delivery records the digest of the document that went out, which is
+// what lets an auditor check a file a customer forwards against the history:
+// rendering is reproducible, so the digest of a re-render is the same.
+func TestEachDeliveryRecordsTheDigestOfWhatWasSent(t *testing.T) {
+	svc, sched, out := setup(t)
+	var l ledger
+	svc.WithHistory(&l)
+
+	if _, err := svc.Run(context.Background(), sched,
+		burst.Run{"period": "2026-07"}, owner("")); err != nil {
+		t.Fatalf("burst: %v", err)
+	}
+	if len(l.deliveries) != 3 {
+		t.Fatalf("recorded %d deliveries", len(l.deliveries))
+	}
+	for _, d := range l.deliveries {
+		pdf, err := os.ReadFile(filepath.Join(out, d.Recipient, d.Filename))
+		if err != nil {
+			t.Fatal(err)
+		}
+		sum := sha256.Sum256(pdf)
+		if want := hex.EncodeToString(sum[:]); d.SHA256 != want {
+			t.Errorf("%s: recorded %q, the file is %q", d.Recipient, d.SHA256, want)
+		}
 	}
 }

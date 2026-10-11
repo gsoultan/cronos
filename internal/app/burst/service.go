@@ -3,6 +3,8 @@ package burst
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -443,6 +445,12 @@ func (b *Service) deliver(ctx context.Context, s definition.Schedule, spec defin
 	return err
 }
 
+// digest is the hex SHA-256 of a document, recorded beside where it went.
+func digest(doc []byte) string {
+	sum := sha256.Sum256(doc)
+	return hex.EncodeToString(sum[:])
+}
+
 // recordDelivery writes one row per recipient per channel.
 //
 // Both outcomes, not just failures: "we emailed them" is not an answer to an
@@ -454,7 +462,7 @@ func (b *Service) recordDelivery(ctx context.Context, runID, channel string,
 	record := history.Delivery{
 		RunID: runID, Recipient: d.To, Channel: channel,
 		Destination: d.To, Filename: d.Filename,
-		Attempts: attempts, Bytes: len(d.Document),
+		Attempts: attempts, Bytes: len(d.Document), SHA256: digest(d.Document),
 		Status: history.Delivered, At: b.now(),
 	}
 	if cause != nil {
