@@ -7,6 +7,13 @@
 
 #let data = json("data.json")
 
+// No creation date. Typst stamps the time of the compile by default, which
+// makes two renders of the same document differ by a second and nothing else,
+// and a PDF whose bytes depend on when it was drawn cannot be hashed into the
+// run history it is delivered under. When it was delivered is the run's to
+// record, not the document's.
+#set document(date: none)
+
 // A JSON null arrives as `none`, which has no `.len()` and no `.map()` — so an
 // omitted list takes the whole document down rather than drawing nothing. Every
 // list this template reads goes through here first, because "a key the payload

@@ -17,11 +17,16 @@ type Delivery struct {
 	Destination string `json:"destination"`
 	Filename    string `json:"filename,omitempty"`
 
-	Status   Status    `json:"status"`
-	Attempts int       `json:"attempts"`
-	Bytes    int       `json:"bytes"`
-	Error    string    `json:"error,omitempty"`
-	At       time.Time `json:"at"`
+	Status   Status `json:"status"`
+	Attempts int    `json:"attempts"`
+	Bytes    int    `json:"bytes"`
+	// SHA256 is the hex digest of the document as it was handed to the
+	// channel. A render is byte-for-byte reproducible, so re-rendering the
+	// recorded definition version over the same rows and hashing the result
+	// answers "is this the document we sent", without keeping the document.
+	SHA256 string    `json:"sha256,omitempty"`
+	Error  string    `json:"error,omitempty"`
+	At     time.Time `json:"at"`
 }
 
 /*

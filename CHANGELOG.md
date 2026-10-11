@@ -57,6 +57,18 @@ does, so a token minted beside a server names the project that server holds.
 A script that relied on the old default without setting either variable
 passes `-org acme -project finance`.
 
+**Every delivered document is recorded with its SHA-256.** `GET
+/v1/runs/{id}` gives each delivery a `sha256`. Typst stamped the time of the
+compile into every PDF, and a workbook's parts were written in random order,
+so two renders of the same statement were different files. Both are fixed: the
+same document rendered by the same release is the same bytes, so a file a
+customer forwards can be checked against the run that sent it. See "The same
+document, the same bytes" in docs/rendering.md. A PDF no longer carries a
+creation date; when it was sent is the run's record.
+
+*Upgrading:* a table is added on first start. Deliveries recorded before have
+no digest.
+
 **A host application no longer holds the key to the portal.** Embed tokens are
 signed by a host's backend, and the key it was given for that was
 `CRONOS_SIGNING_KEY` — the key that signs portal sessions. Whoever holds a key
