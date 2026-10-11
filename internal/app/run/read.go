@@ -24,6 +24,15 @@ func read(blk definition.Block, ds definition.Dataset, rows Rows, cov *Coverage)
 	case definition.TableBlock:
 		out.Columns, out.Rows, err = readTable(blk, ds, rows)
 		out.Total = len(out.Rows)
+	case definition.PivotBlock:
+		// Crossed here, and sent on as the table it now is.
+		var x crosstab
+		x, err = readPivot(blk, ds, rows)
+		out.Kind = string(definition.TableBlock)
+		out.Columns, out.Rows = x.table(blk, ds)
+		// Its rows, not its lines: the totals line is not a row anybody's
+		// data has, and past the cap the folded line stands for several.
+		out.Total = len(x.rows)
 	default:
 		err = fmt.Errorf("%w: cannot read a %q block", ErrNotRenderable, blk.Kind)
 	}

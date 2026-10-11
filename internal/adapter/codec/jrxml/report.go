@@ -34,6 +34,7 @@ type layout struct {
 	subtotals []string
 	sort      []definition.SortKey
 	charts    []definition.Block
+	pivots    []definition.Block
 	stats     []definition.Block
 }
 
@@ -82,7 +83,7 @@ func (t *translation) report(ds definition.Dataset) definition.Report {
 
 // layout reads the bands once.
 func (t *translation) layout() layout {
-	out := layout{title: t.title(), sort: t.sortKeys(), charts: t.chartBlocks()}
+	out := layout{title: t.title(), sort: t.sortKeys(), charts: t.chartBlocks(), pivots: t.pivotBlocks()}
 	out.columns = t.columns()
 	out.groupBy, out.pageBreak, out.subtotals = t.grouping(out.columns)
 	if out.groupBy != "" && !contains(out.columns, out.groupBy) {
@@ -123,6 +124,7 @@ func (t *translation) paginated(l layout) definition.Output {
 			Sort: l.sort, GroupBy: l.groupBy, PageBreak: l.pageBreak, Subtotals: l.subtotals,
 		})
 	}
+	out.Layout = append(out.Layout, t.printedPivots(l)...)
 	if len(out.Layout) == 1 && out.Layout[0].Kind == definition.TextBlock {
 		// A heading and nothing else is a blank page with a title on it, which
 		// reads as a report that found no data.
@@ -141,7 +143,29 @@ func (t *translation) interactive(l layout) definition.Output {
 			Kind: definition.TableBlock, Columns: l.columns, Sort: l.sort,
 		})
 	}
+	// Below the table, where a crosstab in the summary band was.
+	out.Layout = append(out.Layout, l.pivots...)
 	return out
+}
+
+// printedPivots is the pivots a paginated output can print.
+//
+// A document prints one table, and a pivot is a table: beside the detail
+// table it would be laid out and never drawn. So it is printed only where it
+// is the only one, and said where it is not.
+func (t *translation) printedPivots(l layout) []definition.Block {
+	if len(l.pivots) == 0 {
+		return nil
+	}
+	if len(l.columns) == 0 && len(l.pivots) == 1 {
+		return l.pivots
+	}
+	t.found.add(Review, "crosstab",
+		"a pivot is on the interactive output only: a paginated document prints one table, and this one prints the detail rows or the first pivot")
+	if len(l.columns) == 0 {
+		return l.pivots[:1]
+	}
+	return nil
 }
 
 // chartBlocks collects every chart in the document, in the order the sections

@@ -375,6 +375,8 @@ export interface ReportBlockInput {
   /** A stat's number over time. */
   trend?: { field: string; grain?: string; better?: string }
   series?: string
+  /** A pivot's rows' grain, when they are dates. */
+  seriesGrain?: string
   stacked?: boolean | 'percent'
   /** A plot's horizontal measure. */
   xField?: string
@@ -406,7 +408,7 @@ export function tileOf(b: ReportBlockInput): Omit<Tile, 'id' | 'span'> {
     kind: b.kind as TileKind, title: b.title ?? '', dataset: b.dataset,
     field: b.field, groupBy: b.groupBy, grain: b.grain,
     aggregate: b.aggregate as Tile['aggregate'],
-    series: b.series, stacked: b.stacked,
+    series: b.series, seriesGrain: b.seriesGrain, stacked: b.stacked,
     xField: b.xField, sizeField: b.sizeField, map: b.map,
     metrics: b.metrics as Tile['metrics'], target: b.target as Tile['target'],
     bands: b.bands, bins: b.bins, trend: b.trend as Tile['trend'],
@@ -422,7 +424,7 @@ export function blockInput(b: Tile): ReportBlockInput {
   return {
     kind: b.kind, title: b.title, dataset: b.dataset,
     field: b.field, groupBy: b.groupBy, grain: b.grain, aggregate: b.aggregate,
-    series: b.series, stacked: b.stacked,
+    series: b.series, seriesGrain: b.seriesGrain, stacked: b.stacked,
     xField: b.xField, sizeField: b.sizeField, map: b.map,
     metrics: b.metrics, target: b.target, bands: b.bands, bins: b.bins, trend: b.trend,
     columns: b.columns, filter: b.filter, sort: b.sort,
@@ -546,6 +548,19 @@ function block(b: ReportBlockInput): Yaml {
       kind: 'table', dataset: reads, title: b.title,
       columns: b.columns ?? [], pageSize: b.pageSize || undefined,
     })
+  }
+  if (b.kind === 'pivot') {
+    // The canvas keeps a pivot's axes where it keeps a heatmap's, which is
+    // what it draws like: the grouping across the top, the series down the
+    // side. A pivot sorts its own rows, so it takes no sort.
+    return {
+      kind: 'pivot', dataset: reads, title: b.title, filter: b.filter?.trim() || undefined,
+      value: { field: b.field, aggregate: b.aggregate ?? 'sum' },
+      pivot: {
+        rows: { field: b.series, grain: b.seriesGrain || undefined },
+        columns: { field: b.groupBy, grain: b.grain || undefined },
+      },
+    }
   }
   if (CHARTS[b.kind] || b.kind === 'chart') {
     const chart = CHARTS[b.kind] ?? b.chart ?? 'bar'
@@ -1055,6 +1070,18 @@ function readBlock(v: Yaml): ReportBlockInput {
       ...narrowing,
       kind, title: str(b.title), dataset: str(b.dataset) || undefined,
       columns: asList(b.columns).map(str), pageSize: num(b.pageSize),
+    }
+  }
+  if (kind === 'pivot') {
+    const value = asMap(b.value)
+    const rows = asMap(asMap(b.pivot).rows)
+    const columns = asMap(asMap(b.pivot).columns)
+    return {
+      ...narrowing,
+      kind, title: str(b.title), dataset: str(b.dataset) || undefined,
+      field: str(value.field), aggregate: str(value.aggregate) || undefined,
+      series: str(rows.field) || undefined, seriesGrain: str(rows.grain) || undefined,
+      groupBy: str(columns.field) || undefined, grain: str(columns.grain) || undefined,
     }
   }
   if (kind === 'chart') {

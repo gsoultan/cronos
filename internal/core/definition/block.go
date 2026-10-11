@@ -19,7 +19,7 @@ type Block struct {
 	Style string `json:"style,omitempty" yaml:"style,omitempty"`
 	Text  string `json:"text,omitempty" yaml:"text,omitempty"`
 
-	// Stat.
+	// Stat. Value is a pivot's measure too.
 	Label string     `json:"label,omitempty" yaml:"label,omitempty"`
 	Value MeasureRef `json:"value,omitzero" yaml:"value,omitempty"`
 	// Trend draws a stat's number over time under it, and reports its last
@@ -71,6 +71,9 @@ type Block struct {
 	GroupBy   string    `json:"groupBy,omitempty" yaml:"groupBy,omitempty"`
 	PageBreak string    `json:"pageBreak,omitempty" yaml:"pageBreak,omitempty"`
 	Subtotals []string  `json:"subtotals,omitempty" yaml:"subtotals,omitempty"`
+
+	// Pivot is the two dimensions a pivot crosses.
+	Pivot *Pivot `json:"pivot,omitempty" yaml:"pivot,omitempty"`
 }
 
 // DefaultPageSize is what a table returns when the author did not say.

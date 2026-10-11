@@ -440,15 +440,17 @@ await page.locator('[data-testid=canvas-block]').first().waitFor({ timeout: 2000
 ok('nothing in this report is beyond the editor',
   await page.locator('[data-testid=unmodelled-warning]').count() === 0)
 
-/* The canvas draws each block as the server would publish it: two stats and a
-   bar chart of this project's invoices, not a sample of what a stat or a bar
-   chart looks like. Only a map was, and every other chart was a sketch that
+/* The canvas draws each block as the server would publish it: two stats, a
+   bar chart and a pivot of this project's invoices, not a sample of what a
+   stat or a bar chart looks like. Only a map was, and every other chart was a sketch that
    could not say what the report would — the table stays a sample, its columns
    being the whole of what an author chooses. */
 await page.locator('[data-testid=server-preview] [part=bar]').first().waitFor({ timeout: 20000 })
 ok('the canvas draws its charts and stats from the server',
-  await page.locator('[data-testid=server-preview]').count() === 3
+  await page.locator('[data-testid=server-preview]').count() === 4
   && await page.locator('[data-testid=server-preview] [part=stat]').count() === 2)
+ok('a pivot is drawn crossed, as the table the server sends',
+  (await page.locator('[data-testid=server-preview] [part=table]').innerText()).includes('154,651.50'))
 ok('and none of them is one the server would refuse',
   await page.locator('[data-testid=preview-refused]').count() === 0)
 

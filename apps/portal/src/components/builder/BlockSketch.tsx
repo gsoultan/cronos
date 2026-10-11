@@ -214,6 +214,17 @@ function shape(kind: TileKind) {
             fill={s(1)} opacity={0.15 + ((r * 6 + c) % 6) * 0.17} />
         )))
 
+    case 'pivot':
+      // A grid of figures: a heading row, a label down the left, and the
+      // totals along the bottom and the right in the darker ink.
+      return Array.from({ length: 5 }, (_row, r) =>
+        Array.from({ length: 5 }, (_col, c) => (
+          <rect key={`${r}-${c}`} x={6 + c * 22} y={6 + r * 12} rx="1"
+            width={c === 0 ? 18 : 14} height="4"
+            fill={r === 0 || c === 0 ? 'var(--color-ink-muted)' : r === 4 || c === 4 ? 'var(--color-ink)' : s(1)}
+            opacity={r === 0 || c === 0 ? 0.5 : 0.8} />
+        )))
+
     case 'treemap':
       return [
         [4, 4, 62, 40], [4, 46, 62, 20], [68, 4, 48, 24], [68, 30, 48, 36],

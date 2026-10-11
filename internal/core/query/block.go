@@ -45,6 +45,8 @@ func (b Builder) shape(ds definition.Dataset, blk definition.Block, inner string
 		return b.chartSQL(ds, blk, inner)
 	case definition.TableBlock:
 		return b.tableSQL(ds, blk, inner)
+	case definition.PivotBlock:
+		return b.pivotSQL(ds, blk, inner)
 	}
 	return "", fmt.Errorf("%w: %q blocks are not compiled", ErrBadTemplate, blk.Kind)
 }

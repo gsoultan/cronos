@@ -213,7 +213,8 @@ export function BlockInspector({
           wrong control. */}
       {(is(CATEGORICAL, block.kind) || is(PLOTS, block.kind) || block.kind === 'map'
         || block.kind === 'combo' || block.kind === 'bullet' || block.kind === 'boxplot' || byRows(block)) && (
-        <Field label={block.kind === 'map' && !block.map?.region ? 'Labelled by' : 'Grouped by'}
+        <Field label={block.kind === 'map' && !block.map?.region ? 'Labelled by'
+          : block.kind === 'pivot' ? 'Across the top' : 'Grouped by'}
           help={groupHelp(block, fields)}>
           {/* Optional on a bullet chart and a box plot: without it, one for
               the whole set. */}
@@ -354,6 +355,7 @@ export function BlockInspector({
 }
 
 function seriesHelp(kind: Tile['kind']): string {
+  if (kind === 'pivot') return 'One row per value, with its total on the right.'
   if (is(GRIDDED, kind)) return 'The other axis of the grid. A heatmap needs both.'
   if (kind === 'sankey') return 'Where each flow goes: one node down the right per value.'
   if (kind === 'sunburst') return 'The inner ring: one segment per value, its parts around it.'
@@ -516,6 +518,7 @@ function groupHelp({ kind, map }: Tile, fields: FieldDef[]): string {
   }
   if (kind === 'map') return 'Names each region or point, in its tooltip and its legend.'
   if (is(PLOTS, kind)) return 'One dot per value of this field.'
+  if (kind === 'pivot') return 'One column per value, with their totals along the bottom.'
   if (is(GRIDDED, kind)) return 'Along the top of the grid.'
   if (kind === 'sankey') return 'Where each flow comes from: one node down the left per value.'
   if (kind === 'sunburst') return 'The outer ring: the parts of each inner segment.'

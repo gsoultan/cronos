@@ -53,10 +53,25 @@ function seed(kind: TileKind, visible: Dataset['fields']): Tile['metrics'] {
   ]
 }
 
+/**
+ * A pivot opens as the one most are: a date across the top by month, and
+ * something that is not a date down the side. Seeded like any other block it
+ * crossed the first two dimensions, and a date down the side is a column a day.
+ */
+function pivotAxes(visible: Dataset['fields']): Partial<Tile> {
+  const dims = visible.filter((f) => f.role === 'dimension')
+  const across = dims.find((f) => f.type === 'date') ?? dims[0]
+  const side = dims.find((f) => f !== across && f.type !== 'date') ?? dims.find((f) => f !== across)
+  return {
+    groupBy: across?.name, grain: across?.type === 'date' ? 'month' : undefined,
+    series: side?.name,
+  }
+}
+
 function spanFor(kind: TileKind): number {
   if (kind === 'stat' || kind === 'gauge') return 3
   if (kind === 'pie' || kind === 'donut') return 4
-  if (kind === 'table' || kind === 'map' || kind === 'treemap' || kind === 'heatmap') return 12
+  if (kind === 'table' || kind === 'pivot' || kind === 'map' || kind === 'treemap' || kind === 'heatmap') return 12
   return 6
 }
 
@@ -192,6 +207,7 @@ export function ReportForm({ onDone, onCancel, initial }: Props) {
           ?? visible.find((f) => f.role === 'dimension')?.name
         : undefined,
       columns: kind === 'table' ? visible.slice(0, 5).map((f) => f.name) : undefined,
+      ...(kind === 'pivot' ? pivotAxes(visible) : {}),
     }
     setBlocks((bs) => [...bs, block])
     setSelectedId(block.id)   // new blocks open their settings, so nothing is a mystery

@@ -45,6 +45,8 @@ type contents struct {
 	StackedAreaChart []chartElement `xml:"stackedAreaChart"`
 	PieCharts        []chartElement `xml:"pieChart"`
 	Pie3DCharts      []chartElement `xml:"pie3DChart"`
+
+	Crosstabs []crosstab `xml:"crosstab"`
 }
 
 // frame is a box around elements, with its own position.

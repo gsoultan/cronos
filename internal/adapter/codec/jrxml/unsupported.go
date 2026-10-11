@@ -112,6 +112,10 @@ var handled = map[string]bool{
 	"categoryDataset": true, "categorySeries": true, "categoryExpression": true,
 	"valueExpression": true, "seriesExpression": true,
 	"pieDataset": true, "keyExpression": true,
+
+	// Crosstabs, which import as pivots — see crosstab.go.
+	"crosstab": true, "crosstabDataset": true, "rowGroup": true, "columnGroup": true,
+	"bucket": true, "bucketExpression": true, "measure": true, "measureExpression": true,
 }
 
 // notCarried is what to say about the constructs worth explaining.
@@ -129,26 +133,20 @@ var notCarried = map[string]lost{
 	"returnValue":                  {Review, "subreport", "a value a subreport returned to its parent is not carried; whatever used it reads nothing"},
 	"subreportReturnValue":         {Review, "subreport", "a value a subreport returned to its parent is not carried; whatever used it reads nothing"},
 
-	"crosstab": {Review, "crosstab",
-		"a crosstab pivots rows into columns; cronos v1 has no pivot block, so this is not imported — a query that groups by both axes is the closest equivalent"},
-	"rowGroup":                  {Note, "crosstab", "part of a crosstab that was not imported"},
-	"columnGroup":               {Note, "crosstab", "part of a crosstab that was not imported"},
-	"crosstabCell":              {Note, "crosstab", "part of a crosstab that was not imported"},
-	"crosstabDataset":           {Note, "crosstab", "part of a crosstab that was not imported"},
-	"crosstabParameter":         {Note, "crosstab", "part of a crosstab that was not imported"},
-	"measure":                   {Note, "crosstab", "part of a crosstab that was not imported"},
-	"measureExpression":         {Note, "crosstab", "part of a crosstab that was not imported"},
-	"bucket":                    {Note, "crosstab", "part of a crosstab that was not imported"},
-	"bucketExpression":          {Note, "crosstab", "part of a crosstab that was not imported"},
-	"cellContents":              {Note, "crosstab", "part of a crosstab that was not imported"},
-	"crosstabHeader":            {Note, "crosstab", "part of a crosstab that was not imported"},
-	"crosstabRowHeader":         {Note, "crosstab", "part of a crosstab that was not imported"},
-	"crosstabColumnHeader":      {Note, "crosstab", "part of a crosstab that was not imported"},
-	"crosstabTotalRowHeader":    {Note, "crosstab", "part of a crosstab that was not imported"},
-	"crosstabTotalColumnHeader": {Note, "crosstab", "part of a crosstab that was not imported"},
-	"whenNoDataCell":            {Note, "crosstab", "part of a crosstab that was not imported"},
-	"titleCell":                 {Note, "crosstab", "part of a crosstab that was not imported"},
-	"headerCell":                {Note, "crosstab", "part of a crosstab that was not imported"},
+	// A crosstab whose groups and measure are fields imports as a pivot, and
+	// pivots() reports the ones that do not. What is lost either way is how it
+	// was drawn.
+	"crosstabCell":              {Note, "crosstab appearance", "a crosstab's cells and headers were drawn with their own text fields and formatting; a pivot draws as a table, with the rows' label on the left and totals on the right and bottom"},
+	"cellContents":              {Note, "crosstab appearance", "a crosstab's cells and headers were drawn with their own text fields and formatting; a pivot draws as a table, with the rows' label on the left and totals on the right and bottom"},
+	"crosstabHeader":            {Note, "crosstab appearance", "a crosstab's cells and headers were drawn with their own text fields and formatting; a pivot draws as a table, with the rows' label on the left and totals on the right and bottom"},
+	"crosstabRowHeader":         {Note, "crosstab appearance", "a crosstab's cells and headers were drawn with their own text fields and formatting; a pivot draws as a table, with the rows' label on the left and totals on the right and bottom"},
+	"crosstabColumnHeader":      {Note, "crosstab appearance", "a crosstab's cells and headers were drawn with their own text fields and formatting; a pivot draws as a table, with the rows' label on the left and totals on the right and bottom"},
+	"crosstabTotalRowHeader":    {Note, "crosstab appearance", "a crosstab's cells and headers were drawn with their own text fields and formatting; a pivot draws as a table, with the rows' label on the left and totals on the right and bottom"},
+	"crosstabTotalColumnHeader": {Note, "crosstab appearance", "a crosstab's cells and headers were drawn with their own text fields and formatting; a pivot draws as a table, with the rows' label on the left and totals on the right and bottom"},
+	"titleCell":                 {Note, "crosstab appearance", "a crosstab's cells and headers were drawn with their own text fields and formatting; a pivot draws as a table, with the rows' label on the left and totals on the right and bottom"},
+	"headerCell":                {Note, "crosstab appearance", "a crosstab's cells and headers were drawn with their own text fields and formatting; a pivot draws as a table, with the rows' label on the left and totals on the right and bottom"},
+	"whenNoDataCell":            {Note, "crosstab appearance", "what a crosstab drew when nothing matched is not carried; an empty pivot is a table with no rows"},
+	"crosstabParameter":         {Note, "crosstab", "a value passed into a crosstab for its expressions; a pivot crosses fields, so it reads none"},
 
 	"componentElement": {Review, "component",
 		"a component element — a Jasper table, list, barcode, map or spider chart — is not imported; a spider chart is a cronos radar, rebuilt as `chart: radar`"},

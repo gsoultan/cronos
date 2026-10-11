@@ -370,3 +370,34 @@ func TestAHistogramBinsInsideRowScope(t *testing.T) {
 		t.Errorf("a histogram of a string was compiled: %v", err)
 	}
 }
+
+// A pivot reads its pairs folded in the database, ordered down the rows; the
+// crossing is the reader's. An average brings the sum and count its totals are
+// worked out from, because a total of averages is not their average.
+func TestAPivotFoldsItsPairsInTheDatabase(t *testing.T) {
+	blk := definition.Block{
+		Kind: definition.PivotBlock, Value: definition.MeasureRef{Field: "total"},
+		Pivot: &definition.Pivot{
+			Rows:    definition.DimensionRef{Field: "status"},
+			Columns: definition.DimensionRef{Field: "issued_at", Grain: "month"},
+		},
+	}
+	sql := block(t, dated(), blk, Postgres{})
+	for _, want := range []string{
+		"SELECT status AS pivot_row, date_trunc('month', issued_at) AS pivot_column, SUM(total) AS value",
+		"GROUP BY status, date_trunc('month', issued_at)", "ORDER BY 1, 2", "LIMIT 50001",
+	} {
+		if !strings.Contains(sql, want) {
+			t.Errorf("missing %q:\n%s", want, sql)
+		}
+	}
+	if strings.Contains(sql, "part_sum") {
+		t.Errorf("a sum carries the parts of an average:\n%s", sql)
+	}
+
+	blk.Value.Aggregate = "avg"
+	if sql := block(t, dated(), blk, Postgres{}); !strings.Contains(sql,
+		"AVG(total) AS value, SUM(total) AS part_sum, COUNT(total) AS part_count") {
+		t.Errorf("an average is missing its parts:\n%s", sql)
+	}
+}

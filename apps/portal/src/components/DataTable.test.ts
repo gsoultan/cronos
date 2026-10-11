@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
-import { windowHeight } from './DataTable'
+import { renderCell, windowHeight } from './DataTable'
+import type { Field } from '../lib/types'
 
 /*
  * A table is as tall as its rows.
@@ -28,5 +29,22 @@ describe('a table window is sized to its rows', () => {
 
   test('no rows keeps one row of height rather than collapsing to a line', () => {
     expect(windowHeight(0, 420)).toBe(40)
+  })
+})
+
+/*
+ * An engine-formatted cell the engine left empty stays empty. It writes a null
+ * as a dash itself, so its empty string is a pivot's pair that no row reached,
+ * and drawing a dash there made "nothing" and "null" the same answer.
+ */
+describe('an empty cell', () => {
+  const field = (format?: string) =>
+    ({ name: 'c1', label: 'Jul 2026', type: 'string', role: 'measure', format }) as Field
+
+  test('the engine left empty stays empty', () => {
+    expect(renderCell(field('preformatted'), '')).toBe('')
+  })
+  test('anywhere else is a dash', () => {
+    expect(typeof renderCell(field(), '')).toBe('object')
   })
 })

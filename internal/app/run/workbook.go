@@ -72,6 +72,9 @@ func (s *Statements) sheet(ctx context.Context, r definition.Report, spec defini
 	if err != nil {
 		return SheetData{}, err
 	}
+	if spec.Pivot != nil {
+		return s.pivotSheet(ctx, r, ds, spec, params, pr)
+	}
 
 	blk := definition.Block{
 		Kind: definition.TableBlock, Columns: spec.Columns, PageSize: ExportLimit,

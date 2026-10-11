@@ -41,6 +41,15 @@ spec:
           x: {field: issued_at, grain: month}
           y: {field: total, aggregate: sum}
 
+        # Status down the side, months across, a total on each side. Crossed
+        # on the server and drawn as a table, so the embed draws it too.
+        - kind: pivot
+          title: Billed by status and month
+          value: {field: total, aggregate: sum}
+          pivot:
+            rows: {field: status}
+            columns: {field: issued_at, grain: month}
+
         - kind: table
           title: Invoices
           columns: [issued_at, status, total]

@@ -79,6 +79,7 @@ definitions**: a `Dataset` and a `Report`.
 | `<title>` first static text | a `text` block, and the report's title | |
 | `<barChart>` `<lineChart>` `<areaChart>` `<pieChart>` | a `chart` block | Category → x, value → y. A bar chart is a `column` unless its plot says `orientation="Horizontal"`, which is a `bar`; `stacked…` charts stack |
 | A report-level total that was printed | a `stat` block | Labelled with the caption beside it |
+| `<crosstab>` with one row and one column group | a `pivot` block per measure | Interactive output; the PDF too when there is no detail table, since a document prints one. Needs `$F{}` buckets and a sum, count, average, lowest or highest measure; one reading a `subDataset` is reported, as a chart's is. A date bucket imports unbucketed, with a note to set `grain` |
 | `pattern="¤#,##0.00"` | `format: currency` | The symbol is the author saying it is money |
 
 Each file also gains an **`interactive` output** it never had: the same columns
@@ -91,7 +92,6 @@ definition.
 | Not carried | Why | The usual translation |
 | :--- | :--- | :--- |
 | **Subreports** | cronos has no nested report | A second dataset and a second block, or a join in this query |
-| **Crosstabs** | No pivot block in v1 | A query grouping by both axes |
 | **Java expressions in a column** | No computed column | Put the expression in the dataset's `SELECT` |
 | **Scriptlets** | No code execution in a definition | Usually becomes SQL |
 | **Images and logos** | Not a block | The paginated output's `header.template`, a Typst file |
@@ -141,9 +141,9 @@ Nothing is written without `-out`. The default run prints the work list:
 
 ```
 jasper/auftrag.jrxml
-  review: crosstab — a crosstab pivots rows into columns; cronos v1 has no pivot
-          block, so this is not imported — a query that groups by both axes is
-          the closest equivalent
+  review: crosstab — a pivot is on the interactive output only: a paginated
+          document prints one table, and this one prints the detail rows or
+          the first pivot
   review: image — an image is not carried; a logo or letterhead belongs in the
           paginated output's header template, which is a Typst file
   note: 12 cosmetic differences — -v lists them
