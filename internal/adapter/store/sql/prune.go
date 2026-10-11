@@ -16,7 +16,7 @@ holding two million rows describing sends nobody will ask about again — on the
 same database that answers "did last night work", which is the question that
 gets slower.
 
-Deliveries first, then the runs they belong to. The other order leaves rows
+Digests and deliveries first, then the runs they belong to. The other order leaves rows
 whose run has gone, which is a table that can only be cleaned by knowing what
 used to be in another one.
 
@@ -29,6 +29,11 @@ func (s *Store) Prune(ctx context.Context, before time.Time) (runs, deliveries i
 	// Bounded by a subquery rather than a join, because the two tables are
 	// deleted from separately and a join would need the runs to still be
 	// there for the second delete — which is the order that cannot work.
+	if _, err := s.db.ExecContext(ctx, s.sql(`
+		DELETE FROM cronos_delivery_digests
+		WHERE run_id IN (SELECT id FROM cronos_runs WHERE started_at < ?)`), cutoff); err != nil {
+		return 0, 0, fmt.Errorf("sql: pruning delivery digests: %w", err)
+	}
 	result, err := s.db.ExecContext(ctx, s.sql(`
 		DELETE FROM cronos_deliveries
 		WHERE run_id IN (SELECT id FROM cronos_runs WHERE started_at < ?)`), cutoff)

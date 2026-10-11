@@ -94,11 +94,24 @@ CRONOS_PDF_OUT=/tmp/s.pdf go test ./internal/...    # leaves one to look at
 
 A template is a visual artefact and no assertion sees it. Open the PDF.
 
+## The same document, the same bytes
+
+A render is reproducible: the same document typeset by the same Typst release
+with the same fonts is the same file, byte for byte, whenever and wherever it
+runs. The template sets no creation date (`set document(date: none)`), each
+render's root is private and nothing about its path reaches the output, and
+system fonts are ignored. A spreadsheet writes its parts in a fixed order for
+the same reason.
+
+That is what lets run history record a SHA-256 for every delivered document
+rather than keep the document: re-render the recorded definition version over
+the same rows and the digest matches, or the file somebody forwarded is not
+what was sent. `TestTheSameDocumentRendersToTheSameBytes` holds it. A Typst
+upgrade may change the bytes, so compare against a render from the release
+that made the original.
+
 ## Still open
 
-- **Deterministic bytes.** Fonts are pinned, but Typst embeds a creation date;
-  two renders of the same document are not yet byte-identical. Needed before
-  content-addressed run history can hash a PDF.
 - **A brand sans.** Libertinus Serif is a good default and a poor brand. Ships
   with per-organisation branding, via `FontDir`.
 - **The header/footer templates** the report format allows

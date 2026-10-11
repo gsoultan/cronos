@@ -5,6 +5,8 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"maps"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -34,7 +36,12 @@ func Write(w io.Writer, b Book) error {
 		parts[fmt.Sprintf("xl/worksheets/sheet%d.xml", i+1)] = worksheet(s)
 	}
 
-	for name, body := range parts {
+	// In a fixed order, so one book is one sequence of bytes and a delivered
+	// workbook can be hashed into the run history. Ranging over the map wrote
+	// the parts in whatever order it gave, so two exports of the same rows
+	// differed. The content-types part goes first, where readers look for it.
+	for _, name := range slices.Sorted(maps.Keys(parts)) {
+		body := parts[name]
 		f, err := z.Create(name)
 		if err != nil {
 			return err
