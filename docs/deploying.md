@@ -223,6 +223,8 @@ And what should be:
 | `CRONOS_SHARED_SECRETS` | With `CRONOS_PROJECTS`: the deployment secrets every project may read, e.g. `mapbox-token`. No other deployment secret is readable by any project — see Secrets. |
 | `CRONOS_AUDIT` | `log` by default, `off` to stop it. |
 | `CRONOS_SMTP_HOST`, `CRONOS_SMTP_FROM` | A mail relay. Needed to deliver a schedule by email, and to invite anybody. |
+| `CRONOS_SFTP_ADDR`, `CRONOS_SFTP_USER`, `CRONOS_SFTP_KNOWN_HOSTS` | An SFTP server to drop documents on, with `CRONOS_SFTP_PASSWORD` or `CRONOS_SFTP_KEY_FILE`, and optionally `CRONOS_SFTP_ROOT`. The known_hosts file is required. See Delivering by SFTP. |
+| `CRONOS_WEBHOOK_SECRET`, `CRONOS_WEBHOOK_HOSTS` | A signing secret of 32 bytes or more and the comma-separated hosts documents may be posted to. Both, or startup refuses. See Delivering by webhook. |
 | `CRONOS_PORTAL_URL` | Where the portal is served, for links in email. Without it, invitations are not offered — there would be nothing to put in the link. |
 | `CRONOS_SCHEDULER=1` | Arms schedules. Off by default. Safe to set on every replica — see Running several. |
 | `CRONOS_SCHEDULER_TICK` | e.g. `10s`. How often armed schedules are checked; a minute by default, which is cron's own resolution. Lower it if "06:00" has to mean 06:00 rather than some time in the minute after. |
@@ -394,6 +396,90 @@ A host page with a Content-Security-Policy has to allow what a basemap loads:
 a request cronos would have to serve; `connect-src` is Google's copyright line,
 which the viewer asks for again as the reader pans, because it names whoever
 supplied the imagery in view. Only the providers a deployment uses need listing.
+
+## Delivering by SFTP
+
+`via: sftp` drops each document into a folder on one server — the server is
+the deployment's, and a schedule's `to:` names only the folder under
+`CRONOS_SFTP_ROOT`, so a value resolved from a customer's row cannot send a
+statement to a host somebody else chose.
+
+```bash
+CRONOS_SFTP_ADDR=files.bank.example:22
+CRONOS_SFTP_USER=acme
+CRONOS_SFTP_KEY_FILE=/etc/cronos/sftp_ed25519        # or CRONOS_SFTP_PASSWORD
+CRONOS_SFTP_KNOWN_HOSTS=/etc/cronos/known_hosts       # ssh-keyscan files.bank.example
+CRONOS_SFTP_ROOT=inbound
+```
+
+```yaml
+deliver:
+  - via: sftp
+    to: "statements/{{ .row.id }}"
+    attach: {filename: "statement-{{ .row.id }}-{{ .run.periodEnd }}.pdf"}
+```
+
+The server's key must be in the known_hosts file. A key that is missing or
+different is a refusal, every time, and not retried: a statement handed to a
+server that is not the bank is a breach, and there is nobody at six in the
+morning to answer "are you sure". Check the key you put there against one the
+other side gave you, not only against what `ssh-keyscan` printed.
+
+A file appears whole or not at all. It is written as `.name.part` and renamed,
+so software polling the folder never collects half a PDF, and a retried or
+resumed burst replaces what it delivered before. A burst shares one
+connection, opened again if the server drops it. Each folder and filename is
+cleaned as the file channel cleans them — no separators beyond the folder's own
+slashes, no dots at the start, never `..`.
+
+## Delivering by webhook
+
+`via: webhook` POSTs each document to an https URL, the document itself as the
+body, to hosts the deployment lists and nowhere else.
+
+```bash
+CRONOS_WEBHOOK_SECRET=$(openssl rand -hex 32)
+CRONOS_WEBHOOK_HOSTS=portal.acme.example,archive.acme.example
+```
+
+```yaml
+deliver:
+  - via: webhook
+    to: "https://portal.acme.example/statements/{{ .row.id }}"
+```
+
+The host list is the point. A URL is resolved from a schedule and often from a
+customer's row, and a server that will POST wherever a string says will post
+its customers' statements — signed with its secret — to anybody, including to
+services on the network it sits in. So a host not in the list is refused before
+any request is made, plain http is refused except to loopback, credentials in a
+URL are refused, and a redirect is not followed.
+
+Each request carries:
+
+| Header | |
+| :--- | :--- |
+| `Content-Type`, `Content-Disposition` | `application/pdf` or the spreadsheet type, and the filename the schedule resolved. |
+| `Cronos-Signature` | `t=<unix seconds>,v1=<hex>` — HMAC-SHA256 under the secret of the timestamp, a dot, and the body. |
+| `Idempotency-Key` | The same on every attempt at one delivery. A receiver that has it already answers 200 and keeps one copy. |
+| `Cronos-Subject` | The schedule's subject line, if it has one. |
+
+A receiver verifies before it stores:
+
+```python
+import hmac, hashlib, time
+
+def verify(secret: bytes, header: str, body: bytes, tolerance=300) -> bool:
+    parts = dict(p.split("=", 1) for p in header.split(","))
+    if abs(time.time() - int(parts["t"])) > tolerance:
+        return False                                  # a replay
+    want = hmac.new(secret, parts["t"].encode() + b"." + body, hashlib.sha256)
+    return hmac.compare_digest(want.hexdigest(), parts["v1"])
+```
+
+2xx is delivered. A 5xx, a 408, a 429 or no answer within thirty seconds is
+retried under the schedule's `onFailure.retries`; any other answer is final and
+recorded as failed with the first 512 bytes of what the receiver said.
 
 ## Terminating TLS
 

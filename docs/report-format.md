@@ -1149,10 +1149,15 @@ Every option states what the recipient will actually see, next to the control.
 
 ### Channels
 
-Three channels ship: `email`, `file` and `s3`. Which of them a deployment has
-depends on what it configured — `email` needs `CRONOS_SMTP_HOST`, `s3` needs an
-endpoint and credentials — and the portal offers the ones it has rather than a
-list compiled into the bundle.
+Five channels ship: `email`, `file`, `s3`, `sftp` and `webhook`. Which of them a
+deployment has depends on what it configured — `email` needs `CRONOS_SMTP_HOST`,
+`s3` an endpoint and credentials, `sftp` a server and its known host key,
+`webhook` a signing secret and the hosts it may post to — and the portal offers
+the ones it has rather than a list compiled into the bundle.
+
+What `to:` means is the channel's: an address for `email`, a folder for `file`
+and `sftp`, an `s3://bucket/key` for `s3`, and an https URL for `webhook`. See
+"Delivering by SFTP" and "Delivering by webhook" in docs/deploying.md.
 
 A schedule naming a channel the deployment has not got is refused at publish,
 with the list of what it does have. It used to be accepted and to fail in the
