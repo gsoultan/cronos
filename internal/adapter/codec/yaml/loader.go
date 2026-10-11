@@ -8,13 +8,20 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Kind names the four artifacts a repository holds.
+// Kind names the five artifacts a repository holds.
 const (
 	KindDataSource = "DataSource"
 	KindDataset    = "Dataset"
 	KindReport     = "Report"
 	KindSchedule   = "Schedule"
+	KindTemplate   = "Template"
 )
+
+// Kinds is every kind, each after the kinds it can name: a dataset names
+// sources, a report names datasets and templates, a schedule names a report.
+// Anything that writes them in bulk writes them in this order, so a store that
+// fails part way holds a prefix that resolves.
+var Kinds = []string{KindDataSource, KindDataset, KindTemplate, KindReport, KindSchedule}
 
 // Loader decodes definition documents.
 //
@@ -119,6 +126,25 @@ func (l Loader) Schedule(data []byte) (definition.Schedule, error) {
 	s.Description = e.Metadata.Description
 
 	return s, s.Validate()
+}
+
+// Template decodes a Template document and validates it.
+func (l Loader) Template(data []byte) (definition.Template, error) {
+	e, err := l.open(data, KindTemplate)
+	if err != nil {
+		return definition.Template{}, err
+	}
+
+	var t definition.Template
+	if err := strict(&e.Spec, &t); err != nil {
+		return definition.Template{}, fmt.Errorf("%w: template %q spec: %v",
+			ErrDecode, e.Metadata.Name, err)
+	}
+	t.Name = e.Metadata.Name
+	t.Title = e.Metadata.Title
+	t.Description = e.Metadata.Description
+
+	return t, t.Validate()
 }
 
 func (Loader) open(data []byte, want string) (envelope, error) {

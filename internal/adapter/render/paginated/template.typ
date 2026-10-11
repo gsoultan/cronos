@@ -31,14 +31,50 @@
   if starts.len() == 0 { none } else { starts.last() }
 }
 
+// Where page p sits in its recipient's statement: (page, pages), counted from
+// the statement's first page, or none on a page that belongs to no statement.
+#let stmt-position(p) = {
+  let start = group-at(p)
+  let ends = query(<stmt-end>).filter(m => m.location().page() >= p)
+  if start == none or ends.len() == 0 { return none }
+  let s = start.location().page()
+  (page: p - s + 1, pages: ends.first().location().page() - s + 1, group: start.value)
+}
+
+// What an author's header(ctx) or footer(ctx) is handed. Everything else it
+// might want is in data.json, which it may read: it is in the same root, and it
+// is this recipient's document and nobody else's.
+#let stmt-ctx(pos) = (
+  page: pos.page,
+  pages: pos.pages,
+  group: pos.group,
+  title: data.title,
+  period: data.period,
+  org: data.org,
+)
+
+// A report's own line of text: {{page}} and {{pages}} counted within the
+// statement. Shown as text, never evaluated, so an author's braces and hashes
+// are just characters.
+#let furniture-text(t, pos) = {
+  set text(size: 8pt, fill: luma(110))
+  align(center, t.replace("{{pages}}", str(pos.pages)).replace("{{page}}", str(pos.page)))
+}
+
 #let stmt-header = context {
-  let g = group-at(here().page())
-  if g != none {
+  let pos = stmt-position(here().page())
+  if pos == none { return }
+  if data.at("headerFile", default: false) {
+    import "header.typ": header
+    header(stmt-ctx(pos))
+  } else if data.at("header", default: none) != none and data.header.at("text", default: "") != "" {
+    furniture-text(data.header.text, pos)
+  } else {
     set text(size: 8pt, fill: luma(110))
     grid(
       columns: (1fr, auto),
       align(left)[*#data.org.name*],
-      align(right)[#g.value — #data.title],
+      align(right)[#pos.group — #data.title],
     )
     v(3pt)
     line(length: 100%, stroke: 0.4pt + luma(200))
@@ -49,17 +85,19 @@
 // It is the whole point of a burst: everyone receives something that reads as
 // though it were produced for them alone.
 #let stmt-footer = context {
-  let p = here().page()
-  let start = group-at(p)
-  let ends = query(<stmt-end>).filter(m => m.location().page() >= p)
-  if start != none and ends.len() > 0 {
-    let s = start.location().page()
-    let e = ends.first().location().page()
+  let pos = stmt-position(here().page())
+  if pos == none { return }
+  if data.at("footerFile", default: false) {
+    import "footer.typ": footer
+    footer(stmt-ctx(pos))
+  } else if data.at("footer", default: none) != none and data.footer.at("text", default: "") != "" {
+    furniture-text(data.footer.text, pos)
+  } else {
     set text(size: 8pt, fill: luma(110))
     grid(
       columns: (1fr, auto, 1fr),
       align(left)[#data.org.name],
-      align(center)[Page #(p - s + 1) of #(e - s + 1)],
+      align(center)[Page #pos.page of #pos.pages],
       align(right)[#data.period],
     )
   }

@@ -5,13 +5,14 @@ and writes them, the repository stores versions of them, and git can hold them.
 Every file carries `apiVersion` and `kind` so the format can evolve without
 breaking stored definitions.
 
-## Four kinds
+## Five kinds
 
 | Kind | Owns | Typically edited by |
 | :--- | :--- | :--- |
 | `DataSource` | Connection, credentials, resource limits | Platform / ops |
 | `Dataset` | Query, typed fields, parameters, row-level security | Analytics engineer |
 | `Report` | Layout and output profiles (interactive, PDF, spreadsheet) | Report author |
+| `Template` | A Typst letterhead or footer a PDF draws its pages with | Designer / report author |
 | `Schedule` | Cron, bursting, delivery, retry | Ops / business owner |
 
 ### There is no separate Dashboard kind
@@ -437,7 +438,7 @@ spec:
 
 `renderer` selects the backend: `interactive` emits a chart spec for the embed
 SDK, `paginated` compiles to PDF via Typst, `spreadsheet` produces XLSX. Header
-and footer templates for `paginated` are Typst files (`.typ`), which is why page
+and footer templates for `paginated` are Typst — see "Template" below — which is why page
 breaks, grouping and subtotals are semantics the renderer honours rather than CSS
 hints it approximates. Layout blocks are
 shared vocabulary; a renderer ignores properties it cannot honour (`pageBreak`
@@ -1082,6 +1083,63 @@ blocks if you need both. Two tables become one map by joining them in the
 dataset's query — the demo's `zones` dataset puts a zone's outline and its
 depot's position in one row — or by drawing one over the other with
 `overlays`, each at its own grain.
+
+## Template
+
+A paginated output's running header and footer are the built-in lines — the
+organisation and the report's title across the top, page X of Y along the
+bottom — unless the output says otherwise. It can say so with a line of text:
+
+```yaml
+footer: {text: "Questions? billing@acme.example · page {{ .page }} of {{ .pages }}"}
+```
+
+`{{ .page }}` and `{{ .pages }}` count within each recipient's own statement,
+not the run. Everything else in the line is printed as it is written: it is
+text, never Typst.
+
+Or it can name a `Template`, which is how a letterhead gets onto a statement:
+
+```yaml
+apiVersion: cronos.dev/v1
+kind: Template
+metadata:
+  name: letterhead
+spec:
+  source: |
+    #let header(ctx) = grid(
+      columns: (1fr, auto),
+      [*Acme Logistics* \ 12 Harbour Road, Rotterdam],
+      align(right)[#ctx.title \ Page #ctx.page of #ctx.pages],
+    )
+```
+
+```yaml
+    - name: pdf
+      renderer: paginated
+      page: {size: A4, margins: 25mm}
+      header: {template: letterhead}
+```
+
+The source is Typst. It defines `header(ctx)`, `footer(ctx)` or both, and a
+report naming it as a header needs the first, as a footer the second — checked
+when the report is published, not when the schedule fires. `ctx` carries
+`page` and `pages` (counted as above), `group` (whose statement the page
+belongs to), `title`, `period` and `org`. The whole document is in
+`data.json`, beside the template, if it needs more.
+
+What a template can reach is its render's own directory and nothing else: the
+document, the shipped template and itself. So a logo is written into it — SVG
+in a string, through `image(bytes("<svg …>"), format: "svg")` — and the example
+in `examples/templates/letterhead.yaml` does exactly that. A template may not
+import a Typst package, which would be fetched from the network inside the
+server; it is refused when stored, and the typesetter runs with no route out
+for an import computed at run time. A template is at most 256 KB.
+
+A header that grows taller than the top margin runs into the page, so a
+letterhead wants `margins` large enough to hold it. One output draws one or the
+other on each of its header and footer, never both. A template a report draws
+with cannot be deleted until the report stops naming it.
 
 ## Schedule
 

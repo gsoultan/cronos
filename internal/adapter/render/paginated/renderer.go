@@ -16,10 +16,21 @@ import (
 var template []byte
 
 const (
-	mainFile = "main.typ"
-	dataFile = "data.json"
-	outFile  = "out.pdf"
+	mainFile   = "main.typ"
+	dataFile   = "data.json"
+	outFile    = "out.pdf"
+	headerFile = "header.typ"
+	footerFile = "footer.typ"
 )
+
+// staged is the document as the template reads it: the document, and whether
+// a header or footer template was written beside it. The template cannot ask
+// whether a file exists without failing when it does not, so it is told.
+type staged struct {
+	document.Document
+	HeaderFile bool `json:"headerFile"`
+	FooterFile bool `json:"footerFile"`
+}
 
 // Renderer turns a Document into a PDF.
 //
@@ -58,14 +69,23 @@ func (r *Renderer) Render(ctx context.Context, doc document.Document, out io.Wri
 	return copyOut(pdf, out)
 }
 
-// stage writes the two files a render consists of. They are the only things in
-// the root, so they are the only things the typesetter can read.
+// stage writes the files a render consists of: the template, the document,
+// and a report's own header and footer templates if it has them. They are the
+// only things in the root, so they are the only things the typesetter can read
+// — an author's template included.
 func (r *Renderer) stage(root string, doc document.Document) error {
-	data, err := json.Marshal(doc)
+	data, err := json.Marshal(staged{Document: doc,
+		HeaderFile: doc.Header.Template != "", FooterFile: doc.Footer.Template != ""})
 	if err != nil {
 		return fmt.Errorf("paginated: encode document: %w", err)
 	}
 	files := map[string][]byte{mainFile: template, dataFile: data}
+	if doc.Header.Template != "" {
+		files[headerFile] = []byte(doc.Header.Template)
+	}
+	if doc.Footer.Template != "" {
+		files[footerFile] = []byte(doc.Footer.Template)
+	}
 	for name, content := range files {
 		if err := os.WriteFile(filepath.Join(root, name), content, 0o600); err != nil {
 			return fmt.Errorf("paginated: write %s: %w", name, err)

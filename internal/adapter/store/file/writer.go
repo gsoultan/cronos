@@ -160,9 +160,7 @@ func (w *Writer) List(ctx context.Context, pr principal.Principal) ([]publish.En
 		return nil, err
 	}
 	var out []publish.Entry
-	for _, kind := range []string{
-		codec.KindDataSource, codec.KindDataset, codec.KindReport, codec.KindSchedule,
-	} {
+	for _, kind := range codec.Kinds {
 		for _, name := range w.repo.Names(kind) {
 			raw, err := w.Get(ctx, pr, kind, name)
 			if err != nil {
@@ -208,6 +206,8 @@ func (w *Writer) pathFor(kind, name string) (string, error) {
 		return filepath.Join(w.dir, "reports", name+".yaml"), nil
 	case codec.KindSchedule:
 		return filepath.Join(w.dir, "schedules", name+".yaml"), nil
+	case codec.KindTemplate:
+		return filepath.Join(w.dir, "templates", name+".yaml"), nil
 	}
 	return "", fmt.Errorf("%w: %s", publish.ErrUnsupported, kind)
 }

@@ -43,7 +43,7 @@ spec:
         orientation: portrait
         margins: 20mm
       header:
-        template: templates/letterhead.typ
+        template: letterhead
       footer:
         text: "Page {{ .page }} of {{ .pages }}"
       layout:

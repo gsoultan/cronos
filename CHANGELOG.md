@@ -69,6 +69,27 @@ creation date; when it was sent is the run's record.
 *Upgrading:* a table is added on first start. Deliveries recorded before have
 no digest.
 
+**A statement can carry a letterhead.** A paginated output's `header:` and
+`footer:` were in the format and drew nothing: every PDF had the built-in lines
+whatever the report said. A `footer: {text: …}` line now replaces the built-in
+footer, with `{{ .page }}` and `{{ .pages }}` counted within each recipient's
+statement. And a new kind, `Template`, holds a Typst file defining `header(ctx)`
+or `footer(ctx)`, which a report names as `header: {template: letterhead}`. It
+is published, versioned and stored as every other definition is, a report naming
+one that does not exist or lacks the function is refused when stored, and a
+template in use cannot be deleted. See "Template" in docs/report-format.md and
+`examples/templates/letterhead.yaml`. The demo's statement now has one.
+
+A template is the author's Typst, typeset on the server, so it is held: it reads
+only its render's own directory, it may not import a package (refused when
+stored), and the typesetter now runs with every proxy pointed at a closed local
+port, so nothing it does can reach the network.
+
+*Upgrading:* `header.template` and `footer.template` name a `Template` now, not a
+file. A report that named a `.typ` path — which drew nothing — is refused when it
+loads, naming the output. Publish the file as a Template and name that, or
+remove the line.
+
 **A host application no longer holds the key to the portal.** Embed tokens are
 signed by a host's backend, and the key it was given for that was
 `CRONOS_SIGNING_KEY` — the key that signs portal sessions. Whoever holds a key
