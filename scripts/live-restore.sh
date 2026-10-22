@@ -52,6 +52,17 @@ PSQL="${CRONOS_PSQL:-psql}"
 PGDUMP="${CRONOS_PGDUMP:-pg_dump}"
 PSQL_DSN="${CRONOS_PSQL_DSN:-$DSN}"
 
+# A pg_dump newer than the server writes a backup that server cannot restore:
+# 17 began emitting `SET transaction_timeout`, which 16 rejects, and the drill
+# then fails at the restore with nothing saying why. Same rule as for real
+# backups — dump with the client that matches the server you restore into.
+server_major=$($PSQL "$PSQL_DSN" -tAc 'SHOW server_version_num' 2>/dev/null) ||
+	die "could not reach Postgres with $PSQL"
+server_major=$((server_major / 10000))
+dump_major=$($PGDUMP --version | sed -E 's/.* ([0-9]+)[.0-9]*.*/\1/')
+[ "$dump_major" -le "$server_major" ] 2>/dev/null ||
+	die "pg_dump $dump_major cannot write a backup Postgres $server_major restores — set CRONOS_PGDUMP to a pg_dump $server_major"
+
 go build -o bin/cronosd ./cmd/cronosd
 
 live_schema=cronos_restore_live
