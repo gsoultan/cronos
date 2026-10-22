@@ -172,9 +172,15 @@ jobs:
       # The restore drill from docs/deploying.md, run rather than described. A
       # backup nobody has restored is a hypothesis, and what breaks one is a
       # schema change — which the forward path never notices.
+      #
+      # pg_dump comes from the server's own image. The runner's apt client is
+      # whatever major Ubuntu ships, and a newer pg_dump writes settings an
+      # older server rejects: 17 added `SET transaction_timeout`, and Postgres
+      # 16 refused the whole restore the day the runner image moved.
       - name: restoring a backup, and serving from it
         env:
           CRONOS_POSTGRES_DSN: postgres://cronos:cronos@localhost:5432/cronos?sslmode=disable
+          CRONOS_PGDUMP: docker run --rm --network host postgres:16-alpine pg_dump
         run: ./scripts/live-restore.sh
 
   # Federation needs cgo and a 460 MB module download, so it is its own job:
