@@ -1275,6 +1275,10 @@ Step 4 is the one that matters. A database that restores and a product that
 serves are different claims, and only the second is the one anybody is asking
 about.
 
+Take the backup with a `pg_dump` no newer than the server you will restore
+into. A newer one writes settings an older server rejects — 17 began emitting
+`SET transaction_timeout`, and Postgres 16 refuses the whole file on it.
+
 `scripts/live-restore.sh` runs all four on every push, against a real Postgres:
 it stands a deployment up, backs it up, **drops the original**, restores into an
 empty schema, and renders the same report out of it — comparing the number, not
