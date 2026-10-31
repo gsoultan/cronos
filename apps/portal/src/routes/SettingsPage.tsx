@@ -24,9 +24,14 @@ import { SecretsPanel } from '../components/settings/SecretsPanel'
 import { LivePlatform } from '../components/LivePlatform'
 import { ApiError, platformAdmins, policy, profile, setPolicy } from '../lib/api'
 
-type Tab =
-  | 'organization' | 'people' | 'groups' | 'projects' | 'security' | 'secrets' | 'channels'
-  | 'platform'
+/*
+ * Four tabs, grouped by the question somebody arrives with, and a fifth for
+ * the deployment where it applies. There were eight, side by side: Groups
+ * apart from People, Projects apart from the organisation that holds them,
+ * Secrets apart from Security. Each part is now a section of the tab its
+ * question belongs to, and none of them was removed.
+ */
+type Tab = 'organization' | 'people' | 'security' | 'delivery' | 'platform'
 type Panel = 'none' | 'invite' | 'new-project'
 
 const CARD = 'mb-4 overflow-hidden rounded-lg border border-line bg-surface shadow-card'
@@ -92,10 +97,10 @@ export function SettingsPage() {
 
   return (
     <>
-      <PageHeader title="Settings" description="Who can reach what, at both levels." />
+      <PageHeader title="Settings" description="Your organization, its people, and how it signs in and sends." />
 
       <div className="mb-4 flex gap-1 overflow-x-auto border-b border-line" role="tablist">
-        {(tabs(platform !== null, editor)).map(([id, label]) => (
+        {(tabs(platform !== null)).map(([id, label]) => (
           <button key={id} type="button" role="tab" aria-selected={tab === id}
             onClick={() => setTab(id)}
             className={`shrink-0 cursor-pointer border-b-2 px-3 py-2.5 text-small font-medium ${
@@ -106,10 +111,8 @@ export function SettingsPage() {
                 deployment they described somebody's demo data — "People 6"
                 beside a project with one person in it. Shown only where
                 everything else is samples and announced as such. */}
-            {!connected() && (id === 'people' || id === 'projects') && (
-              <span className="ml-1.5 text-caption text-ink-muted">
-                {id === 'people' ? members.length : projects.filter((p) => p.orgId === org.id).length}
-              </span>
+            {!connected() && id === 'people' && (
+              <span className="ml-1.5 text-caption text-ink-muted">{members.length}</span>
             )}
           </button>
         ))}
@@ -209,11 +212,12 @@ export function SettingsPage() {
           Without this the fields keep the previous org's values after a switch. */}
       {tab === 'organization' && <OrganizationPanel key={org.id} canAdmin={canAdminOrg} />}
 
-      {tab === 'groups' && <GroupsPanel canAdmin={canAdminOrg} />}
+      {/* Beside the people rather than under Security: a group is who somebody
+          is, and an administrator arriving to confine a person looks where the
+          people are. */}
+      {tab === 'people' && <div className="mt-4"><GroupsPanel canAdmin={canAdminOrg} /></div>}
 
-      {tab === 'channels' && <ChannelsPanel canAdmin={canAdminOrg} />}
-
-      {tab === 'secrets' && editor && <SecretsPanel />}
+      {tab === 'delivery' && <ChannelsPanel canAdmin={canAdminOrg} />}
 
       {/* The policy panel is the designed shape of a feature the engine does
           not enforce: its switches are React state over the sample directory,
@@ -228,9 +232,16 @@ export function SettingsPage() {
 
       {tab === 'security' && connected() && <LiveSecurity />}
 
+      {/* After who may sign in, and apart from it: these are what the
+          project's definitions sign in to other things with. Not shown to
+          anybody who cannot change a definition — the server refuses a viewer
+          the list as well as the values, so it would be a section that only
+          ever says no. */}
+      {tab === 'security' && editor && <div className="mt-4"><SecretsPanel /></div>}
+
       {tab === 'platform' && platform !== null && <LivePlatform me={platform} />}
 
-      {tab === 'projects' && (
+      {tab === 'organization' && (
         <section className={CARD}>
           <div className={HEAD}>
             <div>
@@ -268,7 +279,7 @@ export function SettingsPage() {
           {!canAdminProject && (
             <p className="border-t border-line px-4 py-3 text-small text-ink-muted">
               You need to be a project admin to change who can reach a project.
-              Expand a person on the People tab to manage their access.
+              Expand a person under People to manage their access.
             </p>
           )}
         </section>
@@ -294,27 +305,22 @@ function LiveSecurity() {
         <h2 className="text-lead font-semibold text-ink">Security</h2>
       </div>
       <div className="grid gap-4 p-4 text-small text-ink-secondary">
+        {/* One sentence each. Why an administrator cannot enrol or remove
+            somebody else's second factor — they hold the phone, and removing
+            one is what a social-engineering call asks for — and why there is
+            no device list — sessions are signed, not stored — are reasons for
+            the code, not instructions for the reader. */}
         <p>
-          <strong className="text-ink">Two-factor authentication</strong> is per
-          account and set up by its owner, from{' '}
-          <Link to="/account" className="text-accent">Your account</Link>. There
-          is no path by which an administrator enrols, inspects or removes
-          somebody else&rsquo;s — enrolling for another person is meaningless,
-          they hold the phone, and removing one is what a social-engineering
-          call asks for.
+          <strong className="text-ink">Two-factor authentication</strong> is set
+          up by each person on{' '}
+          <Link to="/account" className="text-accent">Your account</Link>.
         </p>
         <p>
-          <strong className="text-ink">Sessions</strong> last eight hours and are
-          signed rather than stored, so there is no device list and no way to end
-          one and keep another. Ending all of them at once is on the account
-          page, and it is what to press if a laptop goes missing.
+          <strong className="text-ink">Sessions</strong> last eight hours. Anyone
+          can end all of theirs at once from the same page.
         </p>
         <RequireTwoFactor />
-        <p>
-          Everything that changes access — adding somebody, changing a role,
-          turning access off, enrolling or removing a second factor — is in the
-          audit log.
-        </p>
+        <p>Every change to who can get in is recorded in the audit log.</p>
       </div>
     </section>
   )
@@ -326,26 +332,13 @@ function LiveSecurity() {
  * Hidden rather than disabled: a tab that exists and refuses is a tab that says
  * there is a deployment-administration tier and this account is not in it,
  * which is exactly what the server's 404 declines to say.
- *
- * Secrets likewise, for anybody who cannot change a definition. The server
- * refuses a viewer the list as well as the values — which passwords a project
- * holds and what each one opens is a map of where to aim — so a tab would be
- * a door that opens onto a refusal.
  */
-function tabs(isPlatformAdmin: boolean, isEditor: boolean): (readonly [Tab, string])[] {
+function tabs(isPlatformAdmin: boolean): (readonly [Tab, string])[] {
   const shown: (readonly [Tab, string])[] = [
     ['organization', 'Organization'],
     ['people', 'People'],
-    // Beside People rather than under Security: a group is who somebody is,
-    // and an administrator arriving to confine a person looks where the people
-    // are.
-    ['groups', 'Groups'],
-    ['projects', 'Projects'],
     ['security', 'Security'],
-    // Beside Security, and apart from it: that tab is who may sign in, this
-    // one is what the project's definitions sign in to other things with.
-    ...(isEditor ? [['secrets', 'Secrets'] as const] : []),
-    ['channels', 'Channels'],
+    ['delivery', 'Delivery'],
   ]
   return isPlatformAdmin ? [...shown, ['platform', 'Deployment'] as const] : shown
 }
