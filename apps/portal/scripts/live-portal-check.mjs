@@ -59,9 +59,13 @@ ok('the sample figures are gone', !body.includes('49.9M'))
    has filtered and a number has not moved. Shown unconditionally it was four
    identical captions on an unfiltered screen, naming a filter the page did not
    even offer a control for — so this now drives the control a reader would. */
+/* Enter, not the button: the filter bar is a form, so a reader who types and
+   presses Enter is not left looking at a report that ignored them. */
 await page.locator('[data-testid=filter-region]').fill('North')
-await page.locator('[data-testid=apply-filters]').click()
+await page.locator('[data-testid=filter-region]').press('Enter')
 await page.locator('[data-testid=unaffected]').first().waitFor({ timeout: 30000 })
+ok('Enter in a filter applies it',
+  await page.locator('[data-testid=apply-filters]').isDisabled())
 
 ok('a block says the filter that misses it does not apply',
   (await page.locator('[data-testid=unaffected]').first().innerText()).includes('Region'))

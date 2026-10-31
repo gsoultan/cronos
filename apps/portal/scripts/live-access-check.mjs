@@ -36,10 +36,12 @@ await page.locator('[data-testid=sidebar], [data-testid=nav-rail], nav').first()
 await page.goto(`${B}/reports/billing-summary`, { waitUntil: 'domcontentloaded' })
 await page.locator('[data-testid=live-report]').waitFor({ timeout: 20000 })
 
+/* Under Share, as its own tab: one button for "who sees this". */
+await page.click('[data-testid=share-button]')
 ok('an administrator is offered the access control on a report',
-  await page.locator('[data-testid=access-button]').count() === 1)
+  await page.locator('[data-testid=share-tab-access]').count() === 1)
 
-await page.click('[data-testid=access-button]')
+await page.click('[data-testid=share-tab-access]')
 const panel = page.locator('[data-testid=access-panel]')
 await panel.waitFor({ timeout: 15000 })
 

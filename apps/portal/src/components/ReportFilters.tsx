@@ -76,7 +76,11 @@ export function ReportFilters({ filters, value, onApply }: {
   }
 
   return (
-    <section data-testid="report-filters"
+    /* A form, so Enter in any box applies — the button is for the mouse. */
+    <form data-testid="report-filters" onSubmit={(e) => {
+      e.preventDefault()
+      if (dirty) onApply(toFilters(filters, draft, value))
+    }}
       className="mb-6 rounded-lg border border-line bg-surface p-4 shadow-card">
       <div className="flex flex-wrap items-end gap-4">
         {filters.map((f) => (
@@ -97,8 +101,7 @@ export function ReportFilters({ filters, value, onApply }: {
           {/* Applied on a button rather than on every keystroke. A report is a
               query against somebody's warehouse, and a filter bar that re-runs
               as you type is a cost their DBA notices. */}
-          <Button size="xs" disabled={!dirty} data-testid="apply-filters"
-            onClick={() => onApply(toFilters(filters, draft, value))}>
+          <Button size="xs" type="submit" disabled={!dirty} data-testid="apply-filters">
             Apply
           </Button>
           {anySet && (
@@ -109,7 +112,7 @@ export function ReportFilters({ filters, value, onApply }: {
           )}
         </div>
       </div>
-    </section>
+    </form>
   )
 }
 
