@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { DeleteAction } from './DeleteAction'
+import { RowMenu } from './RowMenu'
 import { TestConnection } from './TestConnection'
 import { Tag } from './StatusPill'
 import { Pagination, paginate } from './Pagination'
@@ -7,8 +7,12 @@ import type { DatasetSummary, SourceSummary } from '../lib/api'
 
 const CARD = 'mb-6 overflow-hidden rounded-lg border border-line bg-surface shadow-card'
 const HEAD = 'flex flex-wrap items-center justify-between gap-4 border-b border-line p-4'
-const ROW = 'flex flex-wrap items-center gap-4 border-b border-line px-4 py-3 last:border-b-0'
-const EDIT = 'ml-auto shrink-0 text-small text-ink-muted underline hover:text-ink'
+/* The whole row opens the editor: its title link is stretched over it, and
+   the few controls that do something else sit above that on their own layer. */
+const ROW = `relative flex flex-wrap items-center gap-4 border-b border-line px-4 py-3
+             last:border-b-0 hover:bg-hover`
+const OPEN = 'font-semibold text-ink no-underline after:absolute after:inset-0'
+const ACTIONS = 'relative z-10 ml-auto flex shrink-0 items-center gap-2'
 
 /**
  * Sources and datasets as the server has them.
@@ -40,7 +44,8 @@ export function LiveSources({ sources, page, size, onPage }: {
             {view.slice.map((s) => (
               <li key={s.name} className={ROW}>
                 <span className="grid min-w-[200px] flex-1 gap-0.5">
-                  <span className="font-semibold text-ink">{s.title || s.name}</span>
+                  <Link to="/data/sources/$name/edit" params={{ name: s.name }}
+                    className={OPEN}>{s.title || s.name}</Link>
                   <span className="text-small text-ink-secondary">
                     {s.description ?? s.detail}
                   </span>
@@ -52,14 +57,12 @@ export function LiveSources({ sources, page, size, onPage }: {
                     part nobody reads the file for: what this source will spend
                     on one query, and how much it will hand back. */}
                 <span className="text-caption text-ink-muted">
-                  {s.timeout} · {s.maxRows.toLocaleString('en')} rows
+                  up to {s.maxRows.toLocaleString('en')} rows · {s.timeout}
                 </span>
                 <Tag>{s.driver}</Tag>
-                <span className={`${EDIT} flex items-center gap-3 no-underline`}>
+                <span className={ACTIONS}>
                   <TestConnection name={s.name} />
-                  <Link to="/data/sources/$name/edit" params={{ name: s.name }}
-                    className="underline hover:text-ink">Edit</Link>
-                  <DeleteAction kind="DataSource" name={s.name} label={s.title || s.name} />
+                  <RowMenu kind="DataSource" name={s.name} label={s.title || s.name} />
                 </span>
               </li>
             ))}
@@ -96,22 +99,21 @@ export function LiveDatasets({ datasets, page, size, onPage }: {
             {view.slice.map((d) => (
               <li key={d.name} className={ROW}>
                 <span className="grid min-w-[220px] flex-1 gap-0.5">
-                  <span className="font-semibold text-ink">{d.title || d.name}</span>
+                  <Link to="/data/datasets/$name/edit" params={{ name: d.name }}
+                    className={OPEN}>{d.title || d.name}</Link>
                   <span className="text-small text-ink-secondary">{d.description}</span>
                 </span>
                 <span className="flex gap-1">
                   <Tag>{d.fields} fields</Tag>
-                  {d.measures > 0 && <Tag>summarisable</Tag>}
                   {/* Whether an embedded end customer sees only their own rows
                       is the one property of a dataset somebody should not have
-                      to open the file to learn. */}
-                  {d.rowScoped && <Tag>row scoped</Tag>}
+                      to open the file to learn. Whether it has measures is in
+                      the editor, which is where it matters. */}
+                  {d.rowScoped && <Tag>Scoped to viewer</Tag>}
                 </span>
                 <span className="text-small text-ink-secondary">{d.sources.join(', ')}</span>
-                <span className={`${EDIT} flex items-center gap-3 no-underline`}>
-                  <Link to="/data/datasets/$name/edit" params={{ name: d.name }}
-                    className="underline hover:text-ink">Edit</Link>
-                  <DeleteAction kind="Dataset" name={d.name} label={d.title || d.name} />
+                <span className={ACTIONS}>
+                  <RowMenu kind="Dataset" name={d.name} label={d.title || d.name} />
                 </span>
               </li>
             ))}

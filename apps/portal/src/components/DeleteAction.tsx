@@ -14,13 +14,17 @@ import { ApiError, deleteDefinition } from '../lib/api'
  * itself. Two implementations of "what depends on what" is one more than can
  * be kept in step.
  */
-export function DeleteAction({ kind, name, label }: {
+export function DeleteAction({ kind, name, label, confirming = false, onCancel }: {
   kind: string
   name: string
   /** What to call it in the confirmation. The title, not the identifier. */
   label?: string
+  /** Start at the question, for a caller that has already been asked to delete. */
+  confirming?: boolean
+  /** Called when the question is put away, so that caller can take its place back. */
+  onCancel?: () => void
 }) {
-  const [state, setState] = useState<'idle' | 'confirm' | 'busy'>('idle')
+  const [state, setState] = useState<'idle' | 'confirm' | 'busy'>(confirming ? 'confirm' : 'idle')
   const [refused, setRefused] = useState('')
   const queries = useQueryClient()
 
@@ -42,7 +46,7 @@ export function DeleteAction({ kind, name, label }: {
         <span role="alert" data-testid="delete-refused" className="text-caption text-ink">
           {refused}
         </span>
-        <button type="button" onClick={() => setRefused('')}
+        <button type="button" onClick={() => { setRefused(''); onCancel?.() }}
           className="shrink-0 cursor-pointer text-small text-ink-muted underline">Dismiss</button>
       </span>
     )
@@ -56,7 +60,7 @@ export function DeleteAction({ kind, name, label }: {
         <span className="text-ink-secondary">Delete {label ?? name}?</span>
         <button type="button" onClick={go} data-testid="delete-confirm"
           className="cursor-pointer font-medium text-ink underline">Delete</button>
-        <button type="button" onClick={() => setState('idle')}
+        <button type="button" onClick={() => { setState('idle'); onCancel?.() }}
           className="cursor-pointer text-ink-muted underline">Cancel</button>
       </span>
     )

@@ -114,7 +114,7 @@ export function DataPage() {
     return (
       <>
         <PageHeader title="Data"
-          description="Sources are connections. Datasets are governed queries against them — reports bind to datasets, never to a source directly."
+          description="Sources are your connections. Datasets are the queries reports read through them."
           /* The same two actions the sample page has always had. Their absence
              here meant a real deployment could edit and delete the sources it
              booted with and never add one: the wizard existed, published
@@ -141,7 +141,7 @@ export function DataPage() {
     <>
       <PageHeader
         title="Data"
-        description="Sources are connections. Datasets are governed queries against them — reports bind to datasets, never to a source directly."
+        description="Sources are your connections. Datasets are the queries reports read through them."
         actions={editable ? (
           <>
             <Button variant="default" onClick={() => setPanel('source')}>Connect a source</Button>
@@ -235,7 +235,6 @@ export function DataPage() {
                       </span>
                       <span className="flex gap-1">
                         <Tag>{d.fields} fields</Tag>
-                        {d.measures && <Tag>summarisable</Tag>}
                       </span>
                       <span className="text-small text-ink-secondary">{d.source}</span>
                       <span className="text-caption text-ink-muted">
