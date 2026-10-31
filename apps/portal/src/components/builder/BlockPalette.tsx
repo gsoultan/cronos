@@ -28,34 +28,60 @@ export const PALETTE: { kind: TileKind; label: string; hint: string; icon: strin
   { kind: 'table', label: 'Table', hint: 'Every row', icon: '▤' },
 ]
 
+/*
+ * The same kinds, grouped by what somebody wants the block to show. Twenty-five
+ * entries in one column ran past the bottom of the editor and had to be
+ * scrolled to find a table; in six groups of two-across they fit, and the
+ * group name answers the question the author arrived with.
+ */
+export const GROUPS: { name: string; kinds: TileKind[] }[] = [
+  { name: 'Numbers and tables', kinds: ['stat', 'table', 'pivot', 'gauge'] },
+  { name: 'Compare', kinds: ['bar', 'column', 'combo', 'bullet', 'radar', 'heatmap'] },
+  { name: 'Over time', kinds: ['line', 'area', 'waterfall', 'calendar'] },
+  { name: 'Parts of a whole', kinds: ['pie', 'donut', 'treemap', 'sunburst', 'funnel'] },
+  { name: 'Spread', kinds: ['scatter', 'bubble', 'histogram', 'boxplot'] },
+  { name: 'Maps and flows', kinds: ['map', 'sankey'] },
+]
+
 /**
- * A narrow strip rather than a row of cards across the top.
+ * A column beside the canvas rather than a row of cards across the top.
  *
  * The palette is used once per block and then ignored; the canvas is looked at
- * constantly. Giving the palette 72px of width instead of 140px of height is
- * the whole trade, and the canvas gets the difference.
- *
- * It scrolls within its own height. There is an entry per kind of chart, and
- * past a dozen the strip was taller than the editor: it ran out of the bottom
- * of the page, over whatever the form had put there.
+ * constantly, so the palette takes width and never height. Each button names
+ * its kind without "chart" — the group heading already says it is one — and
+ * keeps the full name for its accessible label and tooltip.
  */
 export function BlockPalette({ onAdd }: { onAdd: (kind: TileKind) => void }) {
   return (
     <div data-testid="block-palette"
-      className="flex shrink-0 gap-2 [scrollbar-width:thin] max-lg:flex-row max-lg:overflow-x-auto
-                 lg:min-h-0 lg:w-[76px] lg:flex-col lg:overflow-y-auto">
-      <p className="sticky top-0 z-10 hidden bg-plane pb-1 text-micro font-semibold tracking-[0.06em] text-ink-muted uppercase lg:block">
-        Add
-      </p>
-      {PALETTE.map((p) => (
-        <button key={p.kind} type="button" onClick={() => onAdd(p.kind)}
-          title={`${p.label} — ${p.hint}`} aria-label={`Add ${p.label}`}
-          className="grid shrink-0 cursor-pointer place-items-center gap-1 rounded-md border
-                     border-dashed border-line bg-surface px-2 py-3 text-ink
-                     hover:border-solid hover:border-accent hover:bg-accent-wash">
-          <span aria-hidden className="text-lead leading-none text-accent">{p.icon}</span>
-          <span className="text-center text-micro leading-tight font-medium">{p.label}</span>
-        </button>
+      className="flex shrink-0 gap-3 [scrollbar-width:thin] max-lg:overflow-x-auto
+                 lg:min-h-0 lg:w-[168px] lg:flex-col lg:overflow-y-auto">
+      {GROUPS.map((g) => (
+        <section key={g.name} className="shrink-0">
+          <h3 className="mb-1 text-micro font-semibold tracking-[0.06em] whitespace-nowrap
+                         text-ink-muted uppercase">
+            {g.name}
+          </h3>
+          <div className="grid grid-cols-2 gap-1 max-lg:flex">
+            {g.kinds.map((kind) => {
+              const p = PALETTE.find((x) => x.kind === kind)!
+              return (
+                <button key={kind} type="button" onClick={() => onAdd(kind)}
+                  title={`${p.label} — ${p.hint}`} aria-label={`Add ${p.label}`}
+                  className="flex min-w-0 cursor-pointer items-center gap-1 rounded-md border
+                             border-line bg-surface px-1 py-1.5 text-left text-ink
+                             hover:border-accent hover:bg-accent-wash max-lg:shrink-0">
+                  <span aria-hidden className="w-3 shrink-0 text-center leading-none text-accent">
+                    {p.icon}
+                  </span>
+                  <span className="truncate text-micro font-medium">
+                    {p.label.replace(/ chart$/, '').replace('Bars + line', 'Bar + line')}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        </section>
       ))}
     </div>
   )
