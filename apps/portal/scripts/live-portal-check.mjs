@@ -795,7 +795,8 @@ const bearer = (token) => ({ authorization: `Bearer ${token}` })
 const secretsPage = await browser.newPage({ viewport: { width: 1440, height: 900 } })
 secretsPage.on('pageerror', (e) => errors.push(String(e)))
 await secretsPage.goto(`${B}/settings`, { waitUntil: 'domcontentloaded' })
-await secretsPage.locator('[role=tab]:has-text("Secrets")').click()
+// Secrets are a section of Security, under who may sign in.
+await secretsPage.locator('[role=tab]:has-text("Security")').click()
 await secretsPage.locator('[data-testid=secrets-panel]').waitFor({ timeout: 15000 })
 
 /* Listed although nothing stores it and no report names it: a Mapbox map with
@@ -884,9 +885,10 @@ await viewerContext.addInitScript(() => localStorage.setItem('cronos.user', JSON
 const viewerPage = await viewerContext.newPage()
 viewerPage.on('pageerror', (e) => errors.push(String(e)))
 await viewerPage.goto(`${B}/settings`, { waitUntil: 'domcontentloaded' })
-await viewerPage.locator('[role=tab]:has-text("Security")').waitFor({ timeout: 15000 })
-ok('and a viewer is not offered the Secrets tab',
-  await viewerPage.locator('[role=tab]:has-text("Secrets")').count() === 0)
+await viewerPage.locator('[role=tab]:has-text("Security")').click()
+await viewerPage.locator('[data-testid=live-security]').waitFor({ timeout: 15000 })
+ok('and a viewer is not offered the secrets',
+  await viewerPage.locator('[data-testid=secrets-panel]').count() === 0)
 await viewerContext.close()
 
 /* Removing it says what uses it and both ways that can go, then does it. The
@@ -989,7 +991,7 @@ ok('the definition names the secret, encoded for the URL it sits in, and holds n
   && !scratchDefinition.includes('horse'))
 
 await page.goto(`${B}/settings`, { waitUntil: 'domcontentloaded' })
-await page.locator('[role=tab]:has-text("Secrets")').click()
+await page.locator('[role=tab]:has-text("Security")').click()
 const scratchRow = page.locator('[data-testid=secret-row][data-secret="scratch-warehouse_password"]')
 await scratchRow.waitFor({ timeout: 15000 })
 ok('and the password is stored in the project',
