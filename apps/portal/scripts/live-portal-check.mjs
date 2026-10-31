@@ -294,7 +294,7 @@ ok('and the source they read', data.includes('warehouse'))
    how much it may hand back. */
 ok('a source shows its limits', data.includes('30s') && data.includes('100,000'))
 /* Whether an embedded end customer sees only their own rows. */
-ok('a row-scoped dataset says so', data.includes('row scoped'))
+ok('a row-scoped dataset says so', data.includes('Scoped to viewer'))
 /* And the sample fixture is nowhere near it. */
 ok('the sample sources are gone', !data.includes('Northwind'))
 
@@ -672,7 +672,7 @@ await stranger.close()
    who may remove a definition, and whether anything still reads it. */
 
 await page.goto(`${B}/data`, { waitUntil: 'domcontentloaded' })
-await page.locator('[data-testid=datasets-card] [data-testid=delete-action]').first()
+await page.locator('[data-testid=datasets-card] [data-testid=row-menu]').first()
   .waitFor({ timeout: 15000 })
 
 /* invoices is read by billing-summary. Removing it would leave that report to
@@ -680,12 +680,22 @@ await page.locator('[data-testid=datasets-card] [data-testid=delete-action]').fi
    longer exists to explain itself. */
 const invoices = page.locator('[data-testid=datasets-card] li')
   .filter({ hasText: 'invoices' }).first()
+// Behind ⋯, so Delete is not a few pixels from opening the row.
+await invoices.locator('[data-testid=row-menu]').click()
 await invoices.locator('[data-testid=delete-action]').click()
 await invoices.locator('[data-testid=delete-confirm]').click()
 await invoices.locator('[data-testid=delete-refused]').waitFor({ timeout: 15000 })
 const stopped = await invoices.locator('[data-testid=delete-refused]').innerText()
 ok('a dataset a report reads is not deleted', stopped.includes('still read by'))
 ok('and the refusal names the report', stopped.includes('billing-summary'))
+
+/* The row is the way in. It used to be a title beside "Edit" and "Delete";
+   now a click anywhere on it that is not one of its own controls opens it. */
+await page.locator('[data-testid=datasets-card] li').filter({ hasText: 'Customer list' })
+  .first().click({ position: { x: 400, y: 20 } })
+await page.waitForURL(/\/data\/datasets\/customer-list\/edit$/, { timeout: 15000 })
+  .catch(() => {})
+ok('clicking a row opens its editor', page.url().endsWith('/data/datasets/customer-list/edit'))
 
 /* The report still runs, which is the claim the refusal was protecting. */
 await page.goto(`${B}/reports/billing-summary`, { waitUntil: 'domcontentloaded' })

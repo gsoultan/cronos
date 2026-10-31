@@ -1,14 +1,16 @@
 import { useState } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
-import { DeleteAction } from './DeleteAction'
+import { RowMenu } from './RowMenu'
 import { Tag } from './StatusPill'
 import { ApiError, runSchedule } from '../lib/api'
 import { EmptyState } from './EmptyState'
 import type { ScheduleSummary } from '../lib/api'
 
 const CARD = 'overflow-hidden rounded-lg border border-line bg-surface shadow-card'
-const ROW = 'flex flex-wrap items-center gap-4 border-b border-line px-4 py-3 last:border-b-0'
+/* As on the Data page: the row opens the editor, Run now and ⋯ sit above it. */
+const ROW = `relative flex flex-wrap items-center gap-4 border-b border-line px-4 py-3
+             last:border-b-0 hover:bg-hover`
 
 /**
  * Schedules as the server has them.
@@ -31,14 +33,17 @@ export function LiveSchedules({ schedules }: { schedules: ScheduleSummary[] }) {
         {schedules.map((s) => (
           <li key={s.name} className={ROW}>
             <span className="grid min-w-[220px] flex-1 gap-0.5">
-              <span className="font-semibold text-ink">{s.title || s.name}</span>
+              <Link to="/schedules/$name/edit" params={{ name: s.name }}
+                className="font-semibold text-ink no-underline after:absolute after:inset-0">
+                {s.title || s.name}
+              </Link>
               <span className="text-small text-ink-secondary">
                 {s.description ?? `${s.report} · ${s.output}`}
               </span>
             </span>
 
             <span className="flex flex-wrap gap-1">
-              {s.bursts && <Tag>one per {s.over}</Tag>}
+              {s.bursts && <Tag title={`One document per row of ${s.over}`}>One per recipient</Tag>}
               {s.channels.map((c) => <Tag key={c}>{c}</Tag>)}
             </span>
 
@@ -52,16 +57,13 @@ export function LiveSchedules({ schedules }: { schedules: ScheduleSummary[] }) {
                   a promise the deployment has not made. */}
               {s.next ? `next ${new Date(s.next).toLocaleString('en-GB', {
                 dateStyle: 'medium', timeStyle: 'short',
-              })}` : 'not scheduled here'}
+              })}` : <span title="This server runs no scheduler, so nothing here fires on its own. Run now still works.">
+                Scheduler off on this server</span>}
             </span>
 
-            <span className="ml-auto flex shrink-0 items-center gap-3">
+            <span className="relative z-10 ml-auto flex shrink-0 items-center gap-2">
               <RunNow name={s.name} />
-              <Link to="/schedules/$name/edit" params={{ name: s.name }}
-                className="text-small text-ink-muted underline hover:text-ink">
-                Edit
-              </Link>
-              <DeleteAction kind="Schedule" name={s.name} label={s.title || s.name} />
+              <RowMenu kind="Schedule" name={s.name} label={s.title || s.name} />
             </span>
           </li>
         ))}

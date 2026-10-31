@@ -22,9 +22,14 @@ export function StatusPill({ value }: { value: string }) {
 }
 
 /** A neutral label chip — outputs, roles, counts. */
-export function Tag({ children, accent }: { children: React.ReactNode; accent?: boolean }) {
+export function Tag({ children, accent, title }: {
+  children: React.ReactNode
+  accent?: boolean
+  /** The longer form, for a tag whose short words leave a detail out. */
+  title?: string
+}) {
   return (
-    <span className={`rounded-full px-2 py-px text-micro font-medium ${
+    <span title={title} className={`rounded-full px-2 py-px text-micro font-medium ${
       accent ? 'bg-accent-wash text-ink' : 'bg-sunken text-ink-secondary'
     }`}>
       {children}
