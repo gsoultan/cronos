@@ -15,7 +15,8 @@ describe('the trail to a page', () => {
     expect(crumbs('/')).toEqual(['Reports'])
     expect(crumbs('/data')).toEqual(['Data'])
     expect(crumbs('/schedules')).toEqual(['Schedules'])
-    expect(crumbs('/activity')).toEqual(['Activity'])
+    // Run history is a tab of Schedules, and the trail says so.
+    expect(crumbs('/activity')).toEqual(['Schedules', 'History'])
     expect(crumbs('/settings')).toEqual(['Settings'])
     expect(crumbs('/account')).toEqual(['Your account'])
   })

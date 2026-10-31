@@ -31,12 +31,30 @@ await page.keyboard.press('[')
 ok('"[" expands again', await until(collapsed, 'false'))
 
 // The shortcut must not fire while typing.
-await page.click('input[placeholder="Search reports and data…"]').catch(() => {})
-await page.locator('header input[type=search]').fill('a[b')
+await page.keyboard.press('ControlOrMeta+k')
+await page.locator('[data-testid=jump-input]').fill('a[b')
 await settle()
 ok('"[" typed into a field does not toggle', await collapsed() === 'false')
 ok('the bracket reached the input',
-  (await page.locator('header input[type=search]').inputValue()).includes('['))
+  (await page.locator('[data-testid=jump-input]').inputValue()).includes('['))
+await page.keyboard.press('Escape')
+ok('Escape closes ⌘K', await until(() => page.locator('[data-testid=jump-to]').count(), 0))
+
+// ⌘K goes somewhere: the header search used to keep what was typed and do nothing.
+await page.click('[data-testid=jump-button]')
+await page.locator('[data-testid=jump-input]').fill('sched')
+await page.keyboard.press('Enter')
+ok('⌘K takes you to what you typed',
+  await until(() => new URL(page.url()).pathname, '/schedules'))
+await page.goto(`${B}/data`, { waitUntil: 'domcontentloaded' })
+await page.waitForSelector('[data-testid=sidebar]')
+
+// Account, theme and sign-out live behind the avatar.
+await page.click('[data-testid=account-menu]')
+ok('the avatar opens a menu with the theme in it',
+  await page.getByRole('menuitem', { name: /dark theme/i }).isVisible())
+await page.keyboard.press('Escape')
+ok('Escape closes it', await until(() => page.getByRole('menu').count(), 0))
 
 // Collapse persists across a reload.
 await page.click('[data-testid=sidebar-toggle]')

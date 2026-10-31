@@ -9,6 +9,7 @@ import { useWorkspace } from '../lib/WorkspaceContext'
 import { canEdit } from '../lib/workspace'
 import { useCatalog } from '../lib/useCatalog'
 import { LiveSchedules } from '../components/LiveSchedules'
+import { ScheduleTabs } from '../components/ScheduleTabs'
 
 const SCHEDULES = [
   {
@@ -61,6 +62,7 @@ export function SchedulesPage() {
       <>
         <PageHeader title="Schedules"
           description="What goes out, when, and to whom." />
+        <ScheduleTabs />
         <LiveSchedules schedules={catalog.data?.schedules ?? []} />
       </>
     )
@@ -80,9 +82,10 @@ export function SchedulesPage() {
     <>
       <PageHeader
         title="Schedules"
-        description="What sends automatically, and what happened last time."
+        description="What goes out, when, and to whom."
         actions={editable ? <Button onClick={() => setAdding(true)}>New schedule</Button> : undefined}
       />
+      <ScheduleTabs />
 
       {SCHEDULES.length === 0 ? (
         <EmptyState title="Nothing is scheduled"
