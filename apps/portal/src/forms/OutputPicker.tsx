@@ -1,15 +1,15 @@
 const OUTPUTS = [
   {
     id: 'interactive', label: 'Interactive', icon: '◱',
-    hint: 'On screen, filterable. This is what embeds into another application.',
+    hint: 'On screen and filterable; this is what embeds.',
   },
   {
     id: 'pdf', label: 'PDF', icon: '▤',
-    hint: 'Print-ready pages with headers, grouping and subtotals. What gets mailed out.',
+    hint: 'Printed pages with grouping and subtotals.',
   },
   {
     id: 'xlsx', label: 'Excel', icon: '▦',
-    hint: 'One row per record, so people can carry on working with it.',
+    hint: 'A workbook, one row per record.',
   },
 ]
 
@@ -32,10 +32,36 @@ export function OutputPicker({ value, onChange, compact }: Props) {
     onChange(next.length ? next : ['interactive'])
   }
 
+  /* In the editor's rail, a checklist: three cards there took the whole
+     height of the inspector before anybody reached the filters below them. */
+  if (compact) {
+    return (
+      <div className="grid gap-1">
+        {OUTPUTS.map((o) => {
+          const on = value.includes(o.id)
+          return (
+            <button key={o.id} type="button" role="switch" aria-checked={on}
+              onClick={() => toggle(o.id)}
+              className="flex cursor-pointer items-start gap-2.5 rounded-md px-1 py-1.5 text-left
+                         text-ink hover:bg-hover">
+              <span aria-hidden className={`mt-0.5 grid size-4 shrink-0 place-items-center
+                rounded-sm border text-micro leading-none ${on
+                  ? 'border-accent bg-accent text-white' : 'border-line bg-surface'}`}>
+                {on ? '✓' : ''}
+              </span>
+              <span className="grid">
+                <span className="font-medium">{o.label}</span>
+                <span className="text-caption text-ink-secondary">{o.hint}</span>
+              </span>
+            </button>
+          )
+        })}
+      </div>
+    )
+  }
+
   return (
-    <div className={compact
-        ? 'grid gap-2'
-        : 'grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(210px,1fr))]'}>
+    <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(210px,1fr))]">
       {OUTPUTS.map((o) => {
         const on = value.includes(o.id)
         return (
