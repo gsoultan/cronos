@@ -59,7 +59,8 @@ export function ReportsPage() {
   const folders = useMemo(() => {
     const term = q.trim().toLowerCase()
     const matched = visible.filter((r) =>
-      !term || r.label.toLowerCase().includes(term) || r.folder.toLowerCase().includes(term))
+      !term || r.label.toLowerCase().includes(term) || r.folder.toLowerCase().includes(term)
+        || (r.description ?? '').toLowerCase().includes(term))
     const byFolder = new Map<string, typeof visible>()
     for (const r of matched) {
       const list = byFolder.get(r.folder) ?? []
@@ -75,7 +76,7 @@ export function ReportsPage() {
   const header = (
     <PageHeader
       title="Reports"
-      description="Dashboards, statements and exports — all reports, differing only in what they output."
+      description="Dashboards, statements and exports."
       actions={editable ? newReport : undefined}
     />
   )
@@ -154,7 +155,13 @@ export function ReportsPage() {
                                bg-surface p-4 text-ink no-underline shadow-card transition
                                duration-150 ease-out-quick hover:-translate-y-px hover:border-accent">
                     <span className="font-semibold">{r.label}</span>
-                    <span className="flex-1 text-small text-ink-secondary">{r.description}</span>
+                    {/* Two lines, so a card is as tall as its neighbours and a
+                        folder reads as a row of reports rather than one essay
+                        beside two titles. The rest is on the report. */}
+                    <span title={r.description}
+                      className="line-clamp-2 flex-1 text-small text-ink-secondary">
+                      {r.description}
+                    </span>
                     <span className="flex flex-wrap gap-1">
                       {r.scheduled && (
                         <Tag accent>Sends to {r.scheduled.recipients.toLocaleString('en')}</Tag>
