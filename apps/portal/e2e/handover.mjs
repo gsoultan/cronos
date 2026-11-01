@@ -57,7 +57,7 @@ if (!/Billing summary/.test(ada)) die(`ada cannot see her own reports: ${ada.sli
 ok('ada sees acme/finance — Billing summary')
 
 // Load the pages that cache the most: the roster and the run history.
-for (const [path, want] of [['/data', /Datasets|Sources/], ['/activity', /Activity/]]) {
+for (const [path, want] of [['/data', /Datasets|Sources/], ['/activity', /History/]]) {
   await page.goto(PORTAL + path, { waitUntil: 'networkidle' })
   await page.waitForTimeout(1200)
   if (!want.test(await text())) die(`ada could not load ${path}`)
@@ -68,6 +68,7 @@ ok('and has loaded the pages that cache — data, activity')
 
 // -- Handed over -------------------------------------------------------------
 
+await page.getByTestId('account-menu').click()
 await page.getByTestId('sign-out').click()
 await page.waitForTimeout(2000)
 if (await page.getByTestId('email').count() !== 1) die('signing out did not reach the sign-in page')

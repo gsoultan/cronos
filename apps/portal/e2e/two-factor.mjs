@@ -163,7 +163,7 @@ must(await page.getByTestId('factor-code').count() === 1,
 await page.getByTestId('factor-code').fill(totp(shown, 1))
 await page.getByTestId('submit').click()
 await page.waitForTimeout(1500)
-must(await page.getByTestId('account-link').count() === 1, 'and the code signs in')
+must(await page.getByTestId('account-menu').count() === 1, 'and the code signs in')
 
 must(problems.length === 0, `no console errors${problems.length ? ':\n    ' + problems.join('\n    ') : ''}`)
 console.log('\nAll of it worked.')

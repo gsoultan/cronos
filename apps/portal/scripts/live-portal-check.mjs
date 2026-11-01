@@ -103,7 +103,8 @@ ok('a three-row table has no hole under it', hole < 1)
 /* The sheet's own `--cr-surface: #fff` beat the portal's themed one — an
    adopted sheet is unlayered, so it outranked the unlayered theme by coming
    last — and every chart stayed a white card on a dark page. */
-await layout.getByRole('button', { name: /dark theme/i }).click()
+await layout.getByTestId('account-menu').click()
+await layout.getByRole('menuitem', { name: /dark theme/i }).click()
 await layout.waitForTimeout(300)
 const card = await layout.getByTestId('chart').first().evaluate(
   (el) => getComputedStyle(el.firstElementChild).backgroundColor)
@@ -529,15 +530,15 @@ ok('a save keeps the datasets drawn over a map', fleetSaved.includes('overlays:'
 ok('and the control a filter was given', fleetSaved.includes('control: checkboxes'))
 ok('and the pair of fields an area narrows', /pings: "?lat,lon"?/.test(fleetSaved))
 
-/* -- Activity: what ran, and who got it ----------------------------------
+/* -- History: what ran, and who got it -----------------------------------
    Nothing has run yet, and the page says so rather than showing an empty
    table that could equally mean a broken query. */
 
 await page.goto(`${B}/activity`, { waitUntil: 'domcontentloaded' })
 /* Two waits, and both are load-bearing.
 
-   The first says React mounted. `text=Activity` matches the nav rail entry and
-   the breadcrumb, which render with the shell — it proves the app is on screen
+   The first says React mounted. `text=History` matches the tab and the
+   breadcrumb, which render with the route — it proves the app is on screen
    and nothing about whether the run history arrived.
 
    The second says the query settled. ActivityPage returns a Loading… element
@@ -553,7 +554,7 @@ await page.goto(`${B}/activity`, { waitUntil: 'domcontentloaded' })
    Order matters. Once the nav is on screen the route has rendered in the same
    commit, so the loader is present if the query is pending and already gone if
    it is not — and detached resolves immediately in that second case. */
-await page.locator('text=Activity').first().waitFor({ timeout: 15000 })
+await page.locator('text=History').first().waitFor({ timeout: 15000 })
 await page.locator('[data-testid=runs-loading]').waitFor({ state: 'detached', timeout: 15000 })
 ok('an empty history says nothing has run',
   (await page.locator('body').innerText()).includes('Nothing has run yet'))

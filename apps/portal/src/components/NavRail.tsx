@@ -1,25 +1,28 @@
 import { Link, useRouterState } from '@tanstack/react-router'
 import { Icon, type IconName } from './Icon'
 
-const NAV: { to: string; label: string; hint: string; icon: IconName }[] = [
-  { to: '/', label: 'Reports', hint: 'Run and schedule reports', icon: 'reports' },
-  { to: '/data', label: 'Data', hint: 'Sources and datasets', icon: 'data' },
-  { to: '/schedules', label: 'Schedules', hint: 'What sends, and when', icon: 'schedules' },
-  { to: '/activity', label: 'Activity', hint: 'What ran, and who got it', icon: 'activity' },
-  { to: '/settings', label: 'Settings', hint: 'People and projects', icon: 'settings' },
+/* `also` is the other paths a section owns, so its entry stays lit there. */
+const NAV: { to: string; label: string; icon: IconName; also?: string[] }[] = [
+  { to: '/', label: 'Reports', icon: 'reports', also: ['/reports'] },
+  { to: '/data', label: 'Data', icon: 'data' },
+  { to: '/schedules', label: 'Schedules', icon: 'schedules', also: ['/activity'] },
+  { to: '/settings', label: 'Settings', icon: 'settings' },
 ]
 
 /**
- * The five destinations.
+ * The four destinations.
  *
- * Five, and none of them Dashboards: there is no Dashboard artifact. A
- * dashboard is a report whose only output is interactive — see
- * docs/report-format.md.
+ * None of them Dashboards: there is no Dashboard artifact. A dashboard is a
+ * report whose only output is interactive — see docs/report-format.md.
  *
- * Activity sits beside Schedules rather than inside them because a run is not
- * a property of the schedule that caused it. Somebody asking "did anything
- * fail last night" is not asking about one schedule, and making them open each
- * in turn to find out is the question restated as a chore.
+ * Run history is the History tab of Schedules, at its own URL. It still lists
+ * every run across every schedule — "did anything fail last night" is not a
+ * question about one schedule — but it is where people look after asking
+ * what is scheduled, so it no longer needs a place of its own in the rail.
+ *
+ * One line per entry. Each used to carry a second line describing itself,
+ * which is read once and then is ten rows of text between somebody and the
+ * word they are looking for.
  *
  * `collapsed` narrows the rail at md and up only. Below that the rail is a
  * drawer, and a drawer that opens to four unlabelled icons is a worse memory
@@ -35,9 +38,8 @@ export function NavRail({ collapsed }: { collapsed: boolean }) {
         {NAV.map((item) => {
           /* Reports owns '/' and every '/reports/*' route, so opening or
              building a report keeps its own section lit. */
-          const active = item.to === '/'
-            ? path === '/' || path.startsWith('/reports')
-            : path.startsWith(item.to)
+          const active = (item.to === '/' ? path === '/' : path.startsWith(item.to))
+            || (item.also ?? []).some((p) => path.startsWith(p))
 
           return (
             <li key={item.to}>
@@ -53,12 +55,8 @@ export function NavRail({ collapsed }: { collapsed: boolean }) {
                   ${active ? 'bg-accent-wash text-ink' : 'text-ink'}`}>
                 <Icon name={item.icon} className={`size-[18px] shrink-0 ${
                   active ? 'text-accent' : 'text-ink-muted'}`} />
-                <span className={`min-w-0 ${collapsed ? 'md:hidden' : ''}`}>
-                  <span className="block text-body font-medium">{item.label}</span>
-                  <span className={`block text-caption ${
-                    active ? 'text-ink-secondary' : 'text-ink-muted'}`}>
-                    {item.hint}
-                  </span>
+                <span className={`min-w-0 text-body font-medium ${collapsed ? 'md:hidden' : ''}`}>
+                  {item.label}
                 </span>
               </Link>
             </li>

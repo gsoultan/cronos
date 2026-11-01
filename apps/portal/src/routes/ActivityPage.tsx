@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { PageHeader } from '../components/PageHeader'
 import { EmptyState } from '../components/EmptyState'
 import { Tag } from '../components/StatusPill'
+import { ScheduleTabs } from '../components/ScheduleTabs'
 import { relativeTime } from '../lib/format'
 import { useRun, useRuns } from '../lib/useRuns'
 import type { Run, RunDelivery } from '../lib/api'
@@ -28,7 +29,8 @@ export function ActivityPage() {
   if (!live) {
     return (
       <>
-        <PageHeader title="Activity" description="What ran, and who received it." />
+        <PageHeader title="Schedules" description="What went out, and who received it." />
+        <ScheduleTabs />
         <EmptyState title="Nothing has run here"
           description="Run history comes from a server. This portal is showing sample data, which has none — connect it to a cronos deployment and every send appears here." />
       </>
@@ -48,8 +50,9 @@ export function ActivityPage() {
 
   return (
     <>
-      <PageHeader title="Activity"
-        description="Every scheduled send, newest first. A partial result is its own state: the successes went out, and only the failures need attention." />
+      <PageHeader title="Schedules"
+        description="What went out, and who received it." />
+      <ScheduleTabs />
 
       {runs.length === 0 ? (
         <EmptyState title="Nothing has run yet"

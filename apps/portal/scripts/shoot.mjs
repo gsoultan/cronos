@@ -59,7 +59,8 @@ await page.waitForTimeout(250)
 await shot('03-filter-builder')
 
 // Dark mode is a selected palette, not an inversion — it needs looking at too.
-await page.click('button[aria-label*="dark theme"]')
+await page.click('[data-testid=account-menu]')
+await page.click('[role=menuitem][aria-label*="dark theme"]')
 await page.waitForTimeout(300)
 await shot('04-report-dark')
 

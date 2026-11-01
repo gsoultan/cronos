@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { Link, useRouterState } from '@tanstack/react-router'
 import { Icon } from './Icon'
 import { Brand } from './Brand'
-import { useWorkspace } from '../lib/WorkspaceContext'
 import { currentUser, endSession, type SignedInUser } from '../lib/api'
+
+/* The list behind ⌘K, fetched the first time somebody opens it. */
+const JumpTo = lazy(() => import('./JumpTo').then((m) => ({ default: m.JumpTo })))
 
 interface Props {
   collapsed: boolean
@@ -31,7 +33,8 @@ const SECTIONS: Record<string, string> = {
   reports: 'Reports',
   data: 'Data',
   schedules: 'Schedules',
-  activity: 'Activity',
+  // Run history is a tab of Schedules, so it is named as one.
+  activity: 'Schedules',
   settings: 'Settings',
   account: 'Your account',
 }
@@ -66,6 +69,8 @@ export function crumbs(path: string): string[] {
   // page where somebody chooses one.
   if (section === 'reports' && parts[0] === 'new') return [head, 'New report']
 
+  if (section === 'activity') return [head, 'History']
+
   const kind = KINDS[parts[0] ?? '']
   return [head, ...(kind ? [kind, ...parts.slice(1)] : parts)]
 }
@@ -81,10 +86,6 @@ export function crumbs(path: string): string[] {
 export function Header({ collapsed, onToggleSidebar, drawerOpen, onToggleDrawer,
   theme, onToggleTheme }: Props) {
   const path = useRouterState({ select: (s) => s.location.pathname })
-  const { org, project } = useWorkspace()
-  // Read once per render rather than held in state: a sign-out takes the whole
-  // shell down to the sign-in page, so there is nothing here to keep in step.
-  const me = currentUser()
 
   const trail = crumbs(path)
 
@@ -123,13 +124,10 @@ export function Header({ collapsed, onToggleSidebar, drawerOpen, onToggleDrawer,
         <Brand />
       </Link>
 
-      {/* Where you are. The switcher in the rail is how you change it; this is
-          only ever a label, so it is not a second control competing with it. */}
+      {/* Where you are within the workspace. Which workspace is the switcher's
+          job, directly below; naming the organisation and project here too
+          said the same thing twice on every page. */}
       <nav aria-label="Breadcrumb" className="ml-2 hidden min-w-0 items-center gap-2 md:flex">
-        <span className="text-line" aria-hidden>/</span>
-        <span className="truncate text-small text-ink-secondary">{org.name}</span>
-        <span className="text-line" aria-hidden>/</span>
-        <span className="truncate text-small text-ink-secondary">{project.name}</span>
         {trail.map((crumb, i) => (
           <span key={crumb} className="flex min-w-0 items-center gap-2">
             <span className="text-line" aria-hidden>/</span>
@@ -144,47 +142,27 @@ export function Header({ collapsed, onToggleSidebar, drawerOpen, onToggleDrawer,
         ))}
       </nav>
 
-      <div className="ml-auto flex items-center gap-1">
-        <GlobalSearch />
-
-        <button type="button" onClick={onToggleTheme}
-          aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} theme`}
-          className="grid size-8 cursor-pointer place-items-center rounded-md text-ink-secondary
-                     hover:bg-hover hover:text-ink">
-          <Icon name={theme === 'light' ? 'moon' : 'sun'} />
-        </button>
-
-        <Link to="/account" aria-label="Your account" title={me ? me.email : 'Your account'}
-          data-testid="account-link"
-          className="grid size-8 place-items-center rounded-full border border-line
-                     bg-sunken text-small font-semibold text-ink-secondary no-underline
-                     hover:border-accent">
-          {initials(me)}
-        </Link>
-
-        {me && (
-          <button type="button" onClick={() => void endSession()}
-            aria-label="Sign out" title="Sign out" data-testid="sign-out"
-            className="grid size-8 cursor-pointer place-items-center rounded-md
-                       text-ink-secondary hover:bg-hover hover:text-ink">
-            <Icon name="sign-out" />
-          </button>
-        )}
+      <div className="ml-auto flex items-center gap-2">
+        <JumpButton />
+        <AccountMenu theme={theme} onToggleTheme={onToggleTheme} />
       </div>
     </header>
   )
 }
 
-/** Collapses to an icon on narrow screens; ⌘K focuses it anywhere. */
-function GlobalSearch() {
-  const input = useRef<HTMLInputElement>(null)
-  const [value, setValue] = useState('')
+/**
+ * Opens ⌘K. A button that looks like a search field, because that is where
+ * people look for one; it holds no text of its own, so nothing typed into it
+ * can be lost.
+ */
+function JumpButton() {
+  const [open, setOpen] = useState(false)
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault()
-        input.current?.focus()
+        setOpen((o) => !o)
       }
     }
     window.addEventListener('keydown', onKey)
@@ -192,21 +170,93 @@ function GlobalSearch() {
   }, [])
 
   return (
-    <div className="relative hidden sm:block">
-      <span className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2
-                       text-ink-muted">
+    <>
+      <button type="button" onClick={() => setOpen(true)} data-testid="jump-button"
+        aria-label="Jump to a report, dataset, schedule or page" aria-haspopup="dialog"
+        className="flex h-8 cursor-pointer items-center gap-2 rounded-md border border-line
+                   bg-sunken px-2.5 text-small text-ink-muted hover:border-accent
+                   max-sm:w-8 max-sm:justify-center max-sm:px-0">
         <Icon name="search" className="size-4" />
-      </span>
-      <input ref={input} type="search" value={value} aria-label="Search everything"
-        onChange={(e) => setValue(e.currentTarget.value)}
-        placeholder="Search reports and data…"
-        className="h-8 w-56 rounded-md border border-line bg-sunken pr-10 pl-8 text-small
-                   text-ink placeholder:text-ink-muted focus:w-72 focus:border-accent
-                   focus:bg-surface" />
-      <kbd className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2
-                      rounded-sm border border-line px-1 text-micro text-ink-muted">
-        ⌘K
-      </kbd>
+        <span className="max-sm:hidden">Jump to…</span>
+        <kbd className="rounded-sm border border-line px-1 text-micro max-sm:hidden">⌘K</kbd>
+      </button>
+      {open && (
+        <Suspense fallback={null}>
+          <JumpTo onClose={() => setOpen(false)} />
+        </Suspense>
+      )}
+    </>
+  )
+}
+
+/**
+ * Who is signed in, and the things that belong to them rather than to a page:
+ * their account, how the portal looks to them, and leaving.
+ *
+ * One control instead of three icons in a row. Hand-built rather than
+ * Mantine's Menu, because the header is in the eager bundle.
+ */
+function AccountMenu({ theme, onToggleTheme }: { theme: 'light' | 'dark'; onToggleTheme: () => void }) {
+  // Read once per render rather than held in state: a sign-out takes the whole
+  // shell down to the sign-in page, so there is nothing here to keep in step.
+  const me = currentUser()
+  const path = useRouterState({ select: (s) => s.location.pathname })
+  const [open, setOpen] = useState(false)
+  const box = useRef<HTMLDivElement>(null)
+
+  useEffect(() => { setOpen(false) }, [path])
+  useEffect(() => {
+    if (!open) return
+    const away = (e: MouseEvent) => {
+      if (!box.current?.contains(e.target as Node)) setOpen(false)
+    }
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
+    document.addEventListener('mousedown', away)
+    window.addEventListener('keydown', esc)
+    return () => {
+      document.removeEventListener('mousedown', away)
+      window.removeEventListener('keydown', esc)
+    }
+  }, [open])
+
+  const ITEM = `flex w-full cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-left
+                text-body text-ink no-underline hover:bg-hover`
+
+  return (
+    <div ref={box} className="relative">
+      <button type="button" onClick={() => setOpen((o) => !o)} data-testid="account-menu"
+        aria-label="Your account" aria-haspopup="menu" aria-expanded={open}
+        title={me ? me.email : 'Your account'}
+        className="grid size-8 cursor-pointer place-items-center rounded-full border border-line
+                   bg-sunken text-small font-semibold text-ink-secondary hover:border-accent">
+        {initials(me)}
+      </button>
+      {open && (
+        <div role="menu" aria-label="Your account"
+          className="absolute top-10 right-0 z-60 grid w-60 gap-0.5 rounded-lg border border-line
+                     bg-surface p-1.5 shadow-pop">
+          {me && (
+            <div className="border-b border-line px-2.5 pt-1 pb-2">
+              <p className="truncate text-body font-medium text-ink">{me.name || me.email}</p>
+              {me.name && <p className="truncate text-caption text-ink-muted">{me.email}</p>}
+            </div>
+          )}
+          <Link to="/account" role="menuitem" data-testid="account-link" className={ITEM}>
+            <Icon name="user" className="size-4 text-ink-muted" />Your account
+          </Link>
+          <button type="button" role="menuitem" onClick={onToggleTheme} className={ITEM}
+            aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} theme`}>
+            <Icon name={theme === 'light' ? 'moon' : 'sun'} className="size-4 text-ink-muted" />
+            {theme === 'light' ? 'Dark theme' : 'Light theme'}
+          </button>
+          {me && (
+            <button type="button" role="menuitem" onClick={() => void endSession()}
+              data-testid="sign-out" className={`${ITEM} border-t border-line`}>
+              <Icon name="sign-out" className="size-4 text-ink-muted" />Sign out
+            </button>
+          )}
+        </div>
+      )}
     </div>
   )
 }
