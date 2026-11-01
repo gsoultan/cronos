@@ -20,7 +20,12 @@ import { Tag } from '../StatusPill'
  * a padlock drawn from `grants.length` would say "restricted" about a report
  * everyone can see the moment the last grant is removed.
  */
-export function AccessPanel({ report, canAdmin }: { report: string; canAdmin: boolean }) {
+export function AccessPanel({ report, canAdmin, bare = false }: {
+  report: string
+  canAdmin: boolean
+  /** Inside another panel, which already draws the edge. */
+  bare?: boolean
+}) {
   const client = useQueryClient()
   const [kind, setKind] = useState<GrantKind>('group')
   const [subject, setSubject] = useState('')
@@ -102,7 +107,8 @@ export function AccessPanel({ report, canAdmin }: { report: string; canAdmin: bo
   ]
 
   return (
-    <section className="rounded-lg border border-line bg-surface p-4" data-testid="access-panel">
+    <section className={bare ? '' : 'rounded-lg border border-line bg-surface p-4'}
+      data-testid="access-panel">
       <h3 className="text-body font-semibold text-ink">Who can open this</h3>
 
       <p className="mt-1 max-w-[62ch] text-small text-ink-secondary">

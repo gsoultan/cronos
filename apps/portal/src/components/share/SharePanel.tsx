@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Button, MultiSelect, Select, Textarea, TextInput } from '@mantine/core'
 import { Field } from '../form/Field'
 import { ApiError, createShare, sendReport, type SendResult } from '../../lib/api'
@@ -16,9 +16,16 @@ interface Props {
   projectName: string
   outputs: string[]
   onClose: () => void
+  /**
+   * Who inside the project may open the report, for somebody who may change
+   * it. A tab of this panel rather than a button of its own beside Share: the
+   * two answer the same question, "who sees this", and two buttons for it was
+   * one more place to look.
+   */
+  access?: ReactNode
 }
 
-type Tab = 'send' | 'link'
+type Tab = 'send' | 'link' | 'access'
 
 const FORMATS: Record<string, string> = {
   pdf: 'PDF — print-ready pages',
@@ -35,7 +42,7 @@ const FORMATS: Record<string, string> = {
  * option states what the recipient will actually see, in a sentence, next to
  * the control, because "share" is the word under which data leaves.
  */
-export function SharePanel({ reportName, reportLabel, projectName, outputs, onClose }: Props) {
+export function SharePanel({ reportName, reportLabel, projectName, outputs, onClose, access }: Props) {
   const [tab, setTab] = useState<Tab>('send')
   /* Not 'email' regardless. This defaulted to email whatever the deployment
      had, so one with a file drop and no mail relay opened on a channel it
@@ -159,15 +166,17 @@ export function SharePanel({ reportName, reportLabel, projectName, outputs, onCl
         <div>
           <h2 className="text-lead font-semibold text-ink">Share “{reportLabel}”</h2>
           <p className="mt-1 text-small text-ink-secondary">
-            To send this on a schedule instead, use Schedule.
+            To send it regularly, add a schedule under Schedules.
           </p>
         </div>
         <Button variant="subtle" color="gray" size="xs" onClick={onClose}>Close</Button>
       </div>
 
       <div className="flex gap-1 overflow-x-auto border-b border-line px-3" role="tablist">
-        {([['send', 'Send now'], ['link', 'Get a link']] as const).map(([id, label]) => (
+        {([['send', 'Send now'], ['link', 'Get a link'],
+          ...(access ? [['access', 'People with access']] as const : [])] as const).map(([id, label]) => (
           <button key={id} type="button" role="tab" aria-selected={tab === id}
+            data-testid={`share-tab-${id}`}
             onClick={() => setTab(id)}
             className={`shrink-0 cursor-pointer border-b-2 px-3 py-2.5 text-small font-medium ${
               tab === id ? 'border-accent text-ink'
@@ -388,6 +397,7 @@ export function SharePanel({ reportName, reportLabel, projectName, outputs, onCl
           </p>
         </div>
       )}
+      {tab === 'access' && <div className="p-4">{access}</div>}
     </section>
   )
 }
