@@ -83,7 +83,7 @@ ok('and asking for one on sample data says why it cannot',
 
 // Channels are configurable, not assumed.
 await p.goto(B + '/settings', { waitUntil: 'domcontentloaded' })
-await p.click('[role=tab]:has-text("Channels")')
+await p.click('[role=tab]:has-text("Delivery")')
 await p.waitForSelector('[data-testid=channel-panel-telegram]')
 ok('telegram configuration lists the connected chats',
   await p.locator('[data-testid=channel-panel-telegram] >> text=Finance team').isVisible())

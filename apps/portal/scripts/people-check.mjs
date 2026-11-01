@@ -74,9 +74,10 @@ ok('a person expands to their project grants',
 ok('a last-seen time is never in the future',
   await p.locator('[data-testid=people-list] >> text=/^in /').count() === 0)
 
-await p.click('[role=tab]:has-text("Projects")')
+// Projects are a section of Organization, under its name and logo.
+await p.click('[role=tab]:has-text("Organization")')
 await p.waitForTimeout(300)
-ok('the projects tab counts people per project',
+ok('the organization tab counts people per project',
   await p.locator('text=/\\d+ (person|people)/').first().isVisible())
 
 console.log(errs.length ? '\nERRORS:\n' + errs.join('\n') : '\nno console errors')
