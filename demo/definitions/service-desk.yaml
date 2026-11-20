@@ -83,6 +83,13 @@ spec:
           target: {value: 0.85, label: Goal}
           bands: [0.85, 0.95]
 
+        # Four reasons of sixteen are half the work: where to start.
+        - kind: chart
+          chart: pareto
+          title: Why customers write
+          x: {field: reason}
+          y: {field: id, aggregate: count}
+
         # The long tail is the story: most tickets close fast, a few run on
         # for days.
         - kind: chart
@@ -153,6 +160,11 @@ spec:
           y: {field: within_sla, aggregate: avg}
           target: {value: 0.85, label: Goal}
           bands: [0.85, 0.95]
+        - kind: chart
+          chart: pareto
+          title: Why customers write
+          x: {field: reason}
+          y: {field: id, aggregate: count}
         - kind: chart
           chart: boxplot
           title: Resolution time by priority (h)

@@ -70,6 +70,8 @@ func readChart(out *Block, blk definition.Block, ds definition.Dataset, rows Row
 		var y Axis
 		out.Tracks, y, out.Axis2, err = readCombo(blk, rows)
 		out.YAxis = &y
+	case blk.Chart == definition.ParetoChart:
+		out.Tracks, out.YAxis, out.Axis2, err = readPareto(blk, ds, rows)
 	case blk.Chart == definition.FunnelChart:
 		out.Stages, err = readFunnel(blk, rows)
 	case blk.Chart == definition.WaterfallChart:

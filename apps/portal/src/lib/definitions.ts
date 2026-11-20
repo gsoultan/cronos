@@ -490,7 +490,7 @@ const CHARTS: Record<string, string> = {
   combo: 'combo', funnel: 'funnel', waterfall: 'waterfall',
   heatmap: 'heatmap', gauge: 'gauge', treemap: 'treemap',
   radar: 'radar', bullet: 'bullet', histogram: 'histogram', boxplot: 'boxplot',
-  sankey: 'sankey', sunburst: 'sunburst', calendar: 'calendar',
+  sankey: 'sankey', sunburst: 'sunburst', calendar: 'calendar', pareto: 'pareto',
 }
 
 /** The chart types whose horizontal axis is a measure rather than a bucket. */
@@ -503,7 +503,7 @@ const METERED = new Set(['combo', 'funnel'])
 const TARGETED = new Set(['gauge', 'bullet'])
 /** The charts with a value scale a reference line can cross, as the server
  *  has them. */
-const REFERENCED = new Set(['line', 'area', 'column', 'combo', 'waterfall', 'boxplot', 'scatter', 'bubble'])
+const REFERENCED = new Set(['line', 'area', 'column', 'combo', 'waterfall', 'boxplot', 'scatter', 'bubble', 'pareto'])
 
 /**
  * The filter bar, or nothing when the report has none.

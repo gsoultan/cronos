@@ -261,7 +261,9 @@ type orderedBy struct {
 //
 // A funnel and a treemap are read largest-first — a funnel because that is what
 // makes it a funnel, and a treemap because the squarified layout it feeds wants
-// its rectangles in descending order. Everything else reads along its buckets,
+// its rectangles in descending order — and a Pareto chart, whose running share
+// is only the few that make most of the whole when added up that way.
+// Everything else reads along its buckets,
 // which for a date is chronological and for a waterfall is the sequence the
 // running total accumulates in.
 func (b Builder) order(ds definition.Dataset, blk definition.Block, groups int) orderedBy {
@@ -269,7 +271,7 @@ func (b Builder) order(ds definition.Dataset, blk definition.Block, groups int) 
 		sql, err := orderBy(ds, blk.Sort)
 		return orderedBy{sql: sql, err: err}
 	}
-	if blk.Chart.Ordinal() && groups > 0 {
+	if blk.Chart.Ranked() && groups > 0 {
 		// By the value, which is the column after the grouping expressions.
 		// An ordinal, because an aggregate repeated in ORDER BY is a second
 		// place for it to drift out of step with the SELECT.

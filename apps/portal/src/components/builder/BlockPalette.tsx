@@ -12,6 +12,7 @@ export const PALETTE: { kind: TileKind; label: string; hint: string; icon: strin
   { kind: 'bubble', label: 'Bubble', hint: 'Three measures at once', icon: '◍' },
   { kind: 'map', label: 'Map', hint: 'Regions, points and flows', icon: '◈' },
   { kind: 'combo', label: 'Bars + line', hint: 'Two measures together', icon: '⊞' },
+  { kind: 'pareto', label: 'Pareto', hint: 'The few that make most of it', icon: '⫠' },
   { kind: 'funnel', label: 'Funnel', hint: 'Where people drop out', icon: '⧩' },
   { kind: 'waterfall', label: 'Waterfall', hint: 'What moved a total', icon: '⊪' },
   { kind: 'heatmap', label: 'Heatmap', hint: 'Two dimensions at once', icon: '▦' },
@@ -36,7 +37,7 @@ export const PALETTE: { kind: TileKind; label: string; hint: string; icon: strin
  */
 export const GROUPS: { name: string; kinds: TileKind[] }[] = [
   { name: 'Numbers and tables', kinds: ['stat', 'table', 'pivot', 'gauge'] },
-  { name: 'Compare', kinds: ['bar', 'column', 'combo', 'bullet', 'radar', 'heatmap'] },
+  { name: 'Compare', kinds: ['bar', 'column', 'combo', 'pareto', 'bullet', 'radar', 'heatmap'] },
   { name: 'Over time', kinds: ['line', 'area', 'waterfall', 'calendar'] },
   { name: 'Parts of a whole', kinds: ['pie', 'donut', 'treemap', 'sunburst', 'funnel'] },
   { name: 'Spread', kinds: ['scatter', 'bubble', 'histogram', 'boxplot'] },

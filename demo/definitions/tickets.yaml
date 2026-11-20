@@ -8,7 +8,7 @@ spec:
   sources:
     - ref: warehouse
   query: |
-    SELECT id, opened_at, priority, channel, team,
+    SELECT id, opened_at, priority, channel, team, reason,
            first_response_h, resolution_h, sla_h, csat,
            CASE WHEN resolution_h <= sla_h THEN 1.0 ELSE 0 END AS within_sla,
            CASE WHEN resolution_h > sla_h THEN resolution_h - sla_h END AS overrun_h
@@ -19,6 +19,7 @@ spec:
     - {name: priority,         type: string,  role: dimension, label: Priority}
     - {name: channel,          type: string,  role: dimension, label: Channel}
     - {name: team,             type: string,  role: dimension, label: Team}
+    - {name: reason,           type: string,  role: dimension, label: Reason}
     - {name: first_response_h, type: decimal, role: measure, aggregate: avg, label: First response (h), decimals: 1}
     - {name: resolution_h,     type: decimal, role: measure, aggregate: avg, label: Resolution (h), decimals: 1}
     - {name: sla_h,            type: decimal, role: measure, aggregate: avg, label: SLA (h), decimals: 1}

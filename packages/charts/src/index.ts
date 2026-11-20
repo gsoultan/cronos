@@ -78,6 +78,9 @@ export function drawChart(b: ChartBlock, opts: DrawOptions = {}): HTMLElement {
     case 'map':
       return mapBlock(b, opts)
     case 'combo':
+    // A Pareto chart is a combo the engine worked out: columns largest
+    // first, and their running share as a line on a scale to 100%.
+    case 'pareto':
       return comboBlock(b)
     case 'funnel':
       return funnelBlock(b)
