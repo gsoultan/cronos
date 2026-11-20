@@ -1262,3 +1262,21 @@ test("a paginated output's letterhead and footer survive the round trip", () => 
   expect(saved).toContain('template: letterhead')
   expect(saved).toContain('Page {{ .page }} of {{ .pages }}')
 })
+
+test('a chart\'s reference lines survive the round trip', () => {
+  const input = {
+    name: 'Revenue', slug: 'revenue', dataset: 'invoices',
+    blocks: [{
+      kind: 'column', title: 'By month', field: 'total', groupBy: 'issued_at', grain: 'month',
+      references: [{ value: 500000, label: 'Target' }, { stat: 'avg' as const }],
+    }],
+  }
+  const emitted = report(input)
+  expect(emitted).toContain('label: Target')
+  const back = readReport(emitted)
+  expect(back.input.blocks[0]?.references).toEqual([
+    { value: 500000, stat: undefined, label: 'Target' },
+    { value: undefined, stat: 'avg', label: undefined },
+  ])
+  expect(back.drops).toEqual([])
+})

@@ -163,6 +163,9 @@ export interface Tile {
   bands?: number[]
   /** About how many bins a histogram cuts its range into. */
   bins?: number
+  /** Lines across a chart's value scale: a target, an average. Kept as
+   *  read; the inspector does not edit them yet. */
+  references?: TileReference[]
   /** A stat's number over time, drawn under it. */
   trend?: TileTrend
   columns?: string[]
@@ -227,6 +230,13 @@ export interface TileTrend {
 }
 
 /** What a gauge or a bullet chart measures against: a column, or a number. */
+/** A reference line: a fixed value or a stat of what is drawn. */
+export interface TileReference {
+  value?: number
+  stat?: 'avg' | 'median' | 'min' | 'max'
+  label?: string
+}
+
 export interface TileTarget {
   field?: string
   aggregate?: 'sum' | 'count' | 'avg' | 'min' | 'max'

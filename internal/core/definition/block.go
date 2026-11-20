@@ -61,6 +61,9 @@ type Block struct {
 	// on round numbers, so the count is near this rather than exactly it;
 	// empty takes twelve.
 	Bins int `json:"bins,omitempty" yaml:"bins,omitempty"`
+	// References are lines across the chart's value scale — a target, a
+	// threshold, the average of the marks — see reference.go.
+	References []Reference `json:"references,omitempty" yaml:"references,omitempty"`
 	// Map is the geography a map block reads.
 	Map *MapSpec `json:"map,omitempty" yaml:"map,omitempty"`
 

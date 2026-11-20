@@ -22,6 +22,14 @@ needs a deployment to act says so under **Upgrading**.
 
 ## Unreleased
 
+**Reference lines.** A chart's `references:` draws up to three dashed lines
+across its value scale, each a fixed `value` ("Target") or a `stat` of what
+is drawn (`avg`, `median`, `min`, `max`), named with its figure in the
+measure's format, in the browser and the PDF. The scale widens to reach a
+line above or below the marks. On line, area, column, combo, waterfall, box
+plot, scatter and bubble charts. See "Reference lines" in
+[docs/report-format.md](docs/report-format.md).
+
 **A field's format is applied.** `format: currency` was accepted, documented
 and in the example dataset, and nothing applied it: a revenue field read
 "982,158.38" on every tile, bar, axis and table. A field's `format` now

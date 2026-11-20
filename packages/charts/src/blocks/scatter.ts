@@ -33,7 +33,7 @@ export function scatterBlock(b: ChartBlock): HTMLElement {
   const order = sizedPoints ? [...points].sort((p, q) => (q.weight ?? 0) - (p.weight ?? 0)) : points
   let entered = false
   sized(at, (width) => {
-    const c = cartesian({ width, height: PLOT_HEIGHT, m: measure(at), y, x })
+    const c = cartesian({ width, height: PLOT_HEIGHT, m: measure(at), y, x, references: b.references })
     const most = Math.max(10, Math.min(28, c.plot.h / 7))
     for (const p of order) {
       const dot = svg('circle', {
@@ -43,6 +43,7 @@ export function scatterBlock(b: ChartBlock): HTMLElement {
       tips.bind(dot, p.label, detail(p))
       c.marks.append(dot)
     }
+    c.nameReferences()
     if (!entered) c.svg.classList.add('enter')
     entered = true
     at.replaceChildren(c.svg)

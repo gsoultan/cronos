@@ -664,6 +664,36 @@ has.
   y: {field: total, aggregate: sum}
 ```
 
+#### Reference lines
+
+`references:` draws up to three lines across a chart's value scale, for what
+the marks are read against: a target, an SLA, the average. Each is a fixed
+`value`, in the measure's own units, or a `stat` of what the chart draws —
+`avg`, `median`, `min` or `max` — worked out after filters and of the stacks
+where the chart stacks, so it moves with the marks. `label` names it; a stat's
+line is named for the stat where it has none.
+
+```yaml
+- kind: chart
+  chart: column
+  title: Revenue by month
+  x: {field: ordered_at, grain: month}
+  y: {field: revenue, aggregate: sum}
+  references:
+    - {value: 1500000, label: Target}
+    - {stat: avg}
+```
+
+A line is dashed and named with its figure, in the measure's format, at the
+right end, in the browser and on paper, and drawn over the marks so a bar
+that missed the target does not hide it. The scale widens to reach a line
+outside the marks: a target nobody hit is the reason to draw one. They go on
+the charts with a value scale — `line`, `area`, `column`, `combo` (read
+against its left scale), `waterfall`, `boxplot` (stats of the medians),
+`scatter` and `bubble` — and not on one stacked to its whole, whose scale is
+shares. A line is not a series: it is not in the legend, and hiding every
+series leaves it where it is.
+
 ### Several measures at once
 
 `metrics:` replaces `y` on the types that read a list. A combo draws each

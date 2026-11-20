@@ -33,7 +33,7 @@ export function lineBlock(b: ChartBlock, area: boolean): HTMLElement {
   const shown = groups.map(() => true)
   let entered = false
   const draw = (width: number) => {
-    const c = cartesian({ width, height: PLOT_HEIGHT, m: measure(at), y, categories: buckets.map((x) => x.label) })
+    const c = cartesian({ width, height: PLOT_HEIGHT, m: measure(at), y, categories: buckets.map((x) => x.label), references: b.references })
     const xs = buckets.map((_, i) => c.band(i).x + c.band(i).w / 2)
     const floors = buckets.map(() => 0)
     const tops = groups.map((g, k) => {
@@ -45,6 +45,7 @@ export function lineBlock(b: ChartBlock, area: boolean): HTMLElement {
       return top
     })
     crosshair(c, xs, groups, tops, buckets, tips)
+    c.nameReferences()
     if (!entered) c.svg.classList.add('enter')
     entered = true
     at.replaceChildren(c.svg)

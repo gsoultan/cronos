@@ -319,6 +319,9 @@ tr:last-child td { border-bottom: 0 }
    nothing is firmer, because every bar stands on it. */
 .gridline { stroke: var(--cr-line); stroke-width: 1; shape-rendering: crispEdges }
 .gridline.base, .gridline.zero { stroke: color-mix(in srgb, var(--cr-ink-muted) 55%, transparent) }
+.reference { stroke: var(--cr-ink); stroke-width: 1.25; stroke-dasharray: 5 4; opacity: .7 }
+.reference-chip { fill: var(--cr-surface); opacity: .92 }
+.reference-label { font-size: 11px; font-weight: 600; fill: var(--cr-ink); font-variant-numeric: tabular-nums }
 
 .line { fill: none; stroke-width: 2.25; stroke-linejoin: round; stroke-linecap: round }
 .area { stroke: none }

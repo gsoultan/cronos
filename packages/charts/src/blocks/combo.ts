@@ -33,11 +33,12 @@ export function comboBlock(b: ChartBlock): HTMLElement {
   const redraw = sized(at, (width) => {
     const c = cartesian({
       width, height: PLOT_HEIGHT, m: measure(at), y, categories: buckets.map((x) => x.label),
-      y2: b.axis2, y2Colour: second ? hue(second.slot) : undefined,
+      y2: b.axis2, y2Colour: second ? hue(second.slot) : undefined, references: b.references,
     })
     const scale = (t: Track) => (t.secondary && b.axis2 ? b.axis2 : y)
     columns(c, tracks.filter((t, i) => shown[i] && t.draw === 'bar'), scale, tips)
     tracks.forEach((t, i) => { if (shown[i] && t.draw === 'line') line(c, t, scale(t), tips) })
+    c.nameReferences()
     if (!entered) c.svg.classList.add('enter')
     entered = true
     at.replaceChildren(c.svg)

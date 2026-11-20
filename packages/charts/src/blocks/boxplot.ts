@@ -26,8 +26,9 @@ export function boxplotBlock(b: ChartBlock): HTMLElement {
   let entered = false
   sized(at, (width) => {
     const c = cartesian({ width, height: PLOT_HEIGHT, m: measure(at), y,
-      categories: boxes.map((box) => box.label || b.title) })
+      categories: boxes.map((box) => box.label || b.title), references: b.references })
     boxes.forEach((box, i) => drawBox(c, box, i, tips))
+    c.nameReferences()
     if (!entered) c.svg.classList.add('enter')
     entered = true
     at.replaceChildren(c.svg)
