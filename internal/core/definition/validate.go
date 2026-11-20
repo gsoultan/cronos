@@ -105,6 +105,9 @@ func (d Dataset) validateFields() error {
 			// aggregate, and two reports will invent different ones.
 			return fmt.Errorf("%w: measure %q declares no aggregate", ErrInvalid, f.Name)
 		}
+		if err := f.validateFormat(); err != nil {
+			return err
+		}
 		seen[f.Name] = true
 	}
 	return d.validateCurrencyRefs(seen)

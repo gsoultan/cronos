@@ -26,9 +26,9 @@ spec:
     - {name: left_on,    type: date,    role: dimension, label: Left}
     - {name: status,     type: string,  role: dimension, label: Status}
     - {name: rating,     type: string,  role: dimension, label: Last rating}
-    - {name: salary,     type: decimal, role: measure, aggregate: avg, label: Salary}
-    - {name: engagement, type: decimal, role: measure, aggregate: avg, label: Engagement}
-    - {name: tenure,     type: decimal, role: measure, aggregate: avg, label: Tenure (years)}
+    - {name: salary,     type: decimal, role: measure, aggregate: avg, label: Salary, format: currency, currency: USD}
+    - {name: engagement, type: decimal, role: measure, aggregate: avg, label: Engagement, decimals: 1}
+    - {name: tenure,     type: decimal, role: measure, aggregate: avg, label: Tenure (years), decimals: 1}
     - {name: active,     type: number,  role: measure, aggregate: count, label: Headcount}
     - {name: leaver,     type: number,  role: measure, aggregate: count, label: Leavers}
     - {name: hire,       type: number,  role: measure, aggregate: count, label: Hires}

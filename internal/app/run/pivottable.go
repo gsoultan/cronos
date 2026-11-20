@@ -21,14 +21,15 @@ func (x crosstab) table(blk definition.Block, ds definition.Dataset) ([]Column, 
 	}
 	cols = append(cols, Column{Label: "Total", Align: "right"})
 
+	nf := formatOf(ds, blk.Value.Field)
 	out := make([][]string, 0, len(x.rows)+1)
 	for r, label := range x.rows {
 		row := make([]string, 0, len(cols))
 		row = append(row, label)
 		for c := range x.columns {
-			row = append(row, pivotCell(x.cells[r][c], x.nulls[[2]int{r, c}]))
+			row = append(row, pivotCell(nf, x.cells[r][c], x.nulls[[2]int{r, c}]))
 		}
-		out = append(out, append(row, pivotCell(x.rowTotals[r], false)))
+		out = append(out, append(row, pivotCell(nf, x.rowTotals[r], false)))
 	}
 	if len(x.rows) == 0 {
 		return cols, out
@@ -37,9 +38,9 @@ func (x crosstab) table(blk definition.Block, ds definition.Dataset) ([]Column, 
 	last := make([]string, 0, len(cols))
 	last = append(last, x.totalLabel())
 	for _, f := range x.columnTotals {
-		last = append(last, pivotCell(f, false))
+		last = append(last, pivotCell(nf, f, false))
 	}
-	return cols, append(out, append(last, pivotCell(x.total, false)))
+	return cols, append(out, append(last, pivotCell(nf, x.total, false)))
 }
 
 // totalLabel heads the bottom row, and says so when the totals are of less
@@ -56,10 +57,10 @@ func (x crosstab) totalLabel() string {
 //
 // Blank rather than zero, because a pivot is mostly read for its gaps — which
 // customer bought nothing in March — and a zero there is a sale of nothing.
-func pivotCell(f fold, null bool) string {
+func pivotCell(nf numberFormat, f fold, null bool) string {
 	switch {
 	case f.set:
-		return group(f.value, decimalsFor(f.value))
+		return nf.exact(f.value)
 	case null:
 		return "—"
 	}

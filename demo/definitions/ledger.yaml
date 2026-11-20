@@ -24,10 +24,10 @@ spec:
     - {name: line_no,        type: number,  role: dimension, hidden: true}
     - {name: line,           type: string,  role: dimension, label: Line}
     - {name: department,     type: string,  role: dimension, label: Department}
-    - {name: actual,         type: decimal, role: measure, aggregate: sum, label: Actual}
-    - {name: budget,         type: decimal, role: measure, aggregate: sum, label: Budget}
-    - {name: variance,       type: decimal, role: measure, aggregate: sum, label: Variance}
-    - {name: spend,          type: decimal, role: measure, aggregate: sum, label: Spend}
-    - {name: spend_budget,   type: decimal, role: measure, aggregate: sum, label: Spend budget}
-    - {name: revenue,        type: decimal, role: measure, aggregate: sum, label: Revenue}
-    - {name: revenue_budget, type: decimal, role: measure, aggregate: sum, label: Revenue budget}
+    - {name: actual,         type: decimal, role: measure, aggregate: sum, label: Actual, format: currency, currency: USD}
+    - {name: budget,         type: decimal, role: measure, aggregate: sum, label: Budget, format: currency, currency: USD}
+    - {name: variance,       type: decimal, role: measure, aggregate: sum, label: Variance, format: currency, currency: USD}
+    - {name: spend,          type: decimal, role: measure, aggregate: sum, label: Spend, format: currency, currency: USD}
+    - {name: spend_budget,   type: decimal, role: measure, aggregate: sum, label: Spend budget, format: currency, currency: USD}
+    - {name: revenue,        type: decimal, role: measure, aggregate: sum, label: Revenue, format: currency, currency: USD}
+    - {name: revenue_budget, type: decimal, role: measure, aggregate: sum, label: Revenue budget, format: currency, currency: USD}

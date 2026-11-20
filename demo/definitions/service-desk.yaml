@@ -48,9 +48,9 @@ spec:
 
         - kind: chart
           chart: gauge
-          title: Closed within SLA (%)
+          title: Closed within SLA
           y: {field: within_sla, aggregate: avg}
-          target: {value: 85, label: Goal}
+          target: {value: 0.85, label: Goal}
 
         # Mondays are the weekend's tickets arriving at once.
         - kind: chart
@@ -76,10 +76,10 @@ spec:
 
         - kind: chart
           chart: bullet
-          title: Within SLA by team (%)
+          title: Within SLA by team
           x: {field: team}
           y: {field: within_sla, aggregate: avg}
-          target: {value: 85, label: Goal}
+          target: {value: 0.85, label: Goal}
           bands: [0.85, 0.95]
 
         # The long tail is the story: most tickets close fast, a few run on
@@ -134,9 +134,9 @@ spec:
           value: {field: id, aggregate: count}
         - kind: chart
           chart: gauge
-          title: Closed within SLA (%)
+          title: Closed within SLA
           y: {field: within_sla, aggregate: avg}
-          target: {value: 85, label: Goal}
+          target: {value: 0.85, label: Goal}
         - kind: chart
           chart: column
           title: Tickets by month and priority
@@ -146,10 +146,10 @@ spec:
           y: {field: id, aggregate: count}
         - kind: chart
           chart: bullet
-          title: Within SLA by team (%)
+          title: Within SLA by team
           x: {field: team}
           y: {field: within_sla, aggregate: avg}
-          target: {value: 85, label: Goal}
+          target: {value: 0.85, label: Goal}
           bands: [0.85, 0.95]
         - kind: chart
           chart: boxplot

@@ -25,8 +25,8 @@ spec:
     - {name: source,      type: string,  role: dimension, label: Source}
     - {name: region,      type: string,  role: dimension, label: Region}
     - {name: stage,       type: number,  role: dimension, hidden: true}
-    - {name: amount,      type: decimal, role: measure, aggregate: sum, label: Pipeline value}
-    - {name: won_amount,  type: decimal, role: measure, aggregate: sum, label: Won value}
+    - {name: amount,      type: decimal, role: measure, aggregate: sum, label: Pipeline value, format: currency, currency: USD}
+    - {name: won_amount,  type: decimal, role: measure, aggregate: sum, label: Won value, format: currency, currency: USD}
     - {name: lead,        type: number,  role: measure, aggregate: count, label: Leads}
     - {name: qualified,   type: number,  role: measure, aggregate: count, label: Qualified}
     - {name: proposal,    type: number,  role: measure, aggregate: count, label: Proposal}

@@ -290,6 +290,8 @@ function field(f: Field): Yaml {
     // save at all.
     aggregate: f.role === 'measure' ? 'sum' : undefined,
     format: f.format === 'preformatted' ? undefined : f.format,
+    currency: f.format === 'currency' ? f.currency || undefined : undefined,
+    decimals: f.decimals,
   }
 }
 

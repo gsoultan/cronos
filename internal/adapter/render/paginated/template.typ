@@ -122,6 +122,11 @@
 #let columns = list-of(data.at("columns", default: ()))
 #let col-align = columns.map(c => if c.align == "right" { right } else { left })
 #let col-width = columns.map(c => if c.align == "right" { auto } else { 1fr })
+// A wide table is set smaller. Its figures take the width they need and its
+// names take what is left, so a pivot of twelve months and a total in a
+// currency left "Cost of goods" no room at all, and the name was printed
+// over the first month's figure.
+#let table-size = if columns.len() > 11 { 7.5pt } else if columns.len() > 7 { 9pt } else { 10pt }
 
 #let bill-to(g) = grid(
   columns: (1fr, auto),
@@ -403,6 +408,7 @@
   bill-to(g)
   v(14pt)
 
+  set text(size: table-size)
   table(
     columns: col-width,
     align: col-align,

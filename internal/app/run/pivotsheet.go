@@ -62,7 +62,7 @@ func (x crosstab) values() [][]Value {
 
 func sheetCell(f fold, null bool) Value {
 	if !f.set {
-		return Value{Text: pivotCell(f, null)}
+		return Value{Text: pivotCell(plainFormat, f, null)}
 	}
-	return Value{Number: f.value, Numeric: true, Text: pivotCell(f, null)}
+	return Value{Number: f.value, Numeric: true, Text: pivotCell(plainFormat, f, null)}
 }

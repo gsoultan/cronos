@@ -19,6 +19,6 @@ spec:
     - {name: category,   type: string,  role: dimension, label: Category}
     - {name: rep,        type: string,  role: dimension, label: Account manager}
     - {name: units,      type: number,  role: measure, aggregate: sum, label: Units}
-    - {name: revenue,    type: decimal, role: measure, aggregate: sum, label: Revenue}
-    - {name: cost,       type: decimal, role: measure, aggregate: sum, label: Cost of goods}
-    - {name: margin,     type: decimal, role: measure, aggregate: sum, label: Gross margin}
+    - {name: revenue,    type: decimal, role: measure, aggregate: sum, label: Revenue, format: currency, currency: USD}
+    - {name: cost,       type: decimal, role: measure, aggregate: sum, label: Cost of goods, format: currency, currency: USD}
+    - {name: margin,     type: decimal, role: measure, aggregate: sum, label: Gross margin, format: currency, currency: USD}

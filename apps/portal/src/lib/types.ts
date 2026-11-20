@@ -22,6 +22,10 @@ export interface Field {
    * and the column reads NaN.
    */
   format?: 'currency' | 'percent' | 'number' | 'preformatted'
+  /** The ISO 4217 code a `currency` field is written in: EUR, USD. */
+  currency?: string
+  /** How many places a figure keeps, where the format's own choice is not it. */
+  decimals?: number
   hidden?: boolean
 }
 

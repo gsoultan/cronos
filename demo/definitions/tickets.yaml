@@ -10,7 +10,7 @@ spec:
   query: |
     SELECT id, opened_at, priority, channel, team,
            first_response_h, resolution_h, sla_h, csat,
-           CASE WHEN resolution_h <= sla_h THEN 100.0 ELSE 0 END AS within_sla,
+           CASE WHEN resolution_h <= sla_h THEN 1.0 ELSE 0 END AS within_sla,
            CASE WHEN resolution_h > sla_h THEN resolution_h - sla_h END AS overrun_h
     FROM tickets
   fields:
@@ -19,11 +19,11 @@ spec:
     - {name: priority,         type: string,  role: dimension, label: Priority}
     - {name: channel,          type: string,  role: dimension, label: Channel}
     - {name: team,             type: string,  role: dimension, label: Team}
-    - {name: first_response_h, type: decimal, role: measure, aggregate: avg, label: First response (h)}
-    - {name: resolution_h,     type: decimal, role: measure, aggregate: avg, label: Resolution (h)}
-    - {name: sla_h,            type: decimal, role: measure, aggregate: avg, label: SLA (h)}
-    - {name: csat,             type: decimal, role: measure, aggregate: avg, label: Satisfaction}
-    # 100 for a ticket closed inside its SLA and 0 for one that was not, so
-    # its average is the share met, as a percentage.
-    - {name: within_sla,       type: decimal, role: measure, aggregate: avg, label: Within SLA (%)}
+    - {name: first_response_h, type: decimal, role: measure, aggregate: avg, label: First response (h), decimals: 1}
+    - {name: resolution_h,     type: decimal, role: measure, aggregate: avg, label: Resolution (h), decimals: 1}
+    - {name: sla_h,            type: decimal, role: measure, aggregate: avg, label: SLA (h), decimals: 1}
+    - {name: csat,             type: decimal, role: measure, aggregate: avg, label: Satisfaction, decimals: 1}
+    # 1 for a ticket closed inside its SLA and 0 for one that was not, so
+    # its average is the share met.
+    - {name: within_sla,       type: decimal, role: measure, aggregate: avg, label: Within SLA, format: percent}
     - {name: overrun_h,        type: decimal, role: measure, aggregate: sum, label: Hours over SLA}
