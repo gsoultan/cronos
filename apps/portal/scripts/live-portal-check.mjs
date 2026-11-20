@@ -303,7 +303,7 @@ ok('and the source they read', data.includes('warehouse'))
    how much it may hand back. */
 ok('a source shows its limits', data.includes('30s') && data.includes('100,000'))
 /* Whether an embedded end customer sees only their own rows. */
-ok('a row-scoped dataset says so', data.includes('Scoped to viewer'))
+ok('a row-scoped dataset says so', listed.includes('Scoped to viewer'))
 /* And the sample fixture is nowhere near it. */
 ok('the sample sources are gone', !data.includes('Northwind'))
 
@@ -687,8 +687,19 @@ await page.locator('[data-testid=datasets-card] [data-testid=row-menu]').first()
 /* invoices is read by billing-summary. Removing it would leave that report to
    fail on the next open — or at 06:00 on the first, naming a dataset that no
    longer exists to explain itself. */
-const invoices = page.locator('[data-testid=datasets-card] li')
-  .filter({ hasText: 'invoices' }).first()
+/* The list is paged, so a row is found by turning pages until it is on one:
+   which page a dataset lands on is how many the demo holds before it. */
+async function rowOf(text) {
+  const card = page.locator('[data-testid=datasets-card]')
+  const row = card.locator('li').filter({ hasText: text }).first()
+  for (let i = 0; i < 20 && await row.count() === 0; i++) {
+    const next = card.getByRole('button', { name: 'Next' })
+    if (!await next.isEnabled()) break
+    await next.click()
+  }
+  return row
+}
+const invoices = await rowOf('invoices')
 // Behind ⋯, so Delete is not a few pixels from opening the row.
 await invoices.locator('[data-testid=row-menu]').click()
 await invoices.locator('[data-testid=delete-action]').click()
@@ -700,8 +711,10 @@ ok('and the refusal names the report', stopped.includes('billing-summary'))
 
 /* The row is the way in. It used to be a title beside "Edit" and "Delete";
    now a click anywhere on it that is not one of its own controls opens it. */
-await page.locator('[data-testid=datasets-card] li').filter({ hasText: 'Customer list' })
-  .first().click({ position: { x: 400, y: 20 } })
+await page.goto(`${B}/data`, { waitUntil: 'domcontentloaded' })
+await page.locator('[data-testid=datasets-card] [data-testid=row-menu]').first()
+  .waitFor({ timeout: 15000 })
+await (await rowOf('Customer list')).click({ position: { x: 400, y: 20 } })
 await page.waitForURL(/\/data\/datasets\/customer-list\/edit$/, { timeout: 15000 })
   .catch(() => {})
 ok('clicking a row opens its editor', page.url().endsWith('/data/datasets/customer-list/edit'))
