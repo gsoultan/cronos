@@ -1,4 +1,4 @@
-import type { Axis } from './types'
+import type { Axis, RefLine } from './types'
 import { svg, n } from './svg'
 import { canvas, fit, label, type Measure } from './frame'
 
@@ -30,6 +30,9 @@ export interface Cartesian {
   y(v: number, axis?: Axis): number
   /** Category i's band: its left edge and width. */
   band(i: number): { x: number; w: number }
+  /** Names the reference lines, once the marks and their figures are drawn:
+   *  each label goes where it covers none of them. */
+  nameReferences(): void
   /** A value's position on the bottom axis, where it is measured. */
   x(v: number): number
 }
@@ -48,6 +51,8 @@ export interface CartesianSpec {
   x?: Axis
   /** Room above the plot for labels drawn over the tallest mark. */
   headroom?: number
+  /** Lines across the plot at a target or a stat, read against `y`. */
+  references?: RefLine[]
 }
 
 export function cartesian(s: CartesianSpec): Cartesian {
@@ -90,10 +95,23 @@ export function cartesian(s: CartesianSpec): Cartesian {
     labels.append(tick)
   }
 
+  const refs = svg('g', { class: 'references' })
+  root.insertBefore(refs, labels)
+  const lines = (s.references ?? []).filter((r) => r.value >= s.y.min && r.value <= s.y.max)
+  for (const r of lines) {
+    const at = n(y(r.value))
+    refs.append(svg('line', { class: 'reference', part: 'reference', x1: left, x2: s.width - right, y1: at, y2: at }))
+  }
+  const nameReferences = () => {
+    const box = { x1: left, x2: s.width - right, y1: top, y2: top + plotH }
+    const taken = figures(root, s.m)
+    for (const r of lines) taken.push(nameLine(refs, r, y(r.value), box, taken, s.m))
+  }
+
   if (s.categories) categoryLabels(labels, s.categories, band, s.height - 6, s.width, s.m)
   if (s.x) measuredLabels(labels, grid, s.x, left, plotW, top, top + plotH, s.width, s.height - 6, s.m)
 
-  return { svg: root, marks, plot: { x: left, y: top, w: plotW, h: plotH }, left, right, top, bottom, y, band, x }
+  return { svg: root, marks, plot: { x: left, y: top, w: plotW, h: plotH }, left, right, top, bottom, y, band, x, nameReferences }
 }
 
 /**
@@ -144,4 +162,56 @@ function measuredLabels(into: SVGGElement, grid: SVGGElement, a: Axis, left: num
     into.append(label(start, baseline, t.label, 'tick', 'start'))
     last = start + w
   }
+}
+
+type Box = { x1: number; x2: number; y1: number; y2: number }
+
+const overlaps = (a: Box, b: Box) => a.x1 < b.x2 && b.x1 < a.x2 && a.y1 < b.y2 && b.y1 < a.y2
+
+/** Where each figure already written over the marks sits: the words a
+ *  reference's name must not cover. Measured as the text is drawn — from its
+ *  anchor, its baseline and its width — rather than asked of a layout that a
+ *  chart not yet on the page does not have. Every figure is set at about the
+ *  size a tick is. */
+function figures(root: SVGSVGElement, m: Measure): Box[] {
+  const out: Box[] = []
+  for (const t of root.querySelectorAll<SVGTextElement>('text:not(.tick)')) {
+    const x = Number(t.getAttribute('x')), base = Number(t.getAttribute('y'))
+    const size = TICK_PX
+    const w = m(t.textContent ?? '', size)
+    const anchor = t.getAttribute('text-anchor')
+    const x1 = anchor === 'end' ? x - w : anchor === 'middle' ? x - w / 2 : x
+    out.push({ x1, x2: x1 + w, y1: base - size, y2: base + 3 })
+  }
+  // A line's points are figures too, read off the scale rather than written.
+  for (const d of root.querySelectorAll<SVGCircleElement>('circle')) {
+    const cx = Number(d.getAttribute('cx')), cy = Number(d.getAttribute('cy'))
+    const r = Number(d.getAttribute('r')) || 3
+    out.push({ x1: cx - r, x2: cx + r, y1: cy - r, y2: cy + r })
+  }
+  return out
+}
+
+/**
+ * A reference line's name and figure, on a chip of the surface so a bar
+ * under it does not take it: at the right end above the line, else the
+ * left, else under it — the first of those that covers no figure a mark
+ * carries, and the one covering fewest where all of them would.
+ */
+function nameLine(into: SVGGElement, r: RefLine, at: number, plot: Box, taken: Box[], m: Measure): Box {
+  const text = r.label ? `${r.label} ${r.formatted}` : r.formatted
+  const w = m(text, TICK_PX) + 8
+  const h = TICK_PX + 5
+  const spots: Box[] = []
+  for (const y1 of [at - h - 2, at + 2]) {
+    if (y1 < plot.y1 - 4 || y1 + h > plot.y2) continue
+    for (const x1 of [plot.x2 - w, plot.x1 + 2]) spots.push({ x1, x2: x1 + w, y1, y2: y1 + h })
+  }
+  if (spots.length === 0) spots.push({ x1: plot.x2 - w, x2: plot.x2, y1: at - h / 2, y2: at + h / 2 })
+  const covered = (b: Box) => taken.filter((t) => overlaps(b, t)).length
+  const spot = spots.reduce((best, b) => (covered(b) < covered(best) ? b : best))
+  into.append(
+    svg('rect', { class: 'reference-chip', x: n(spot.x1), y: n(spot.y1), width: n(w), height: n(h), rx: 3 }),
+    label(spot.x1 + 4, spot.y1 + h - 4, text, 'reference-label', 'start'))
+  return spot
 }

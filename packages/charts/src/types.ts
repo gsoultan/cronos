@@ -533,7 +533,18 @@ export interface ChartBlock {
   sankey?: Sankey
   /** A calendar's days, in date order. */
   days?: Day[]
+  /** Lines across the value scale — a target, an average — read against
+   *  `yAxis`, which the engine widened to reach each of them. */
+  references?: RefLine[]
   coverage?: Coverage
+}
+
+/** A reference line: what it is called, its value, and that value written
+ *  in the measure's format. */
+export interface RefLine {
+  label: string
+  value: number
+  formatted: string
 }
 
 export interface TableBlock {

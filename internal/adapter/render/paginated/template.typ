@@ -267,7 +267,10 @@
     // `curve`, not `path`: Typst 0.15 turned `path` into the SVG-data element
     // and an array of points is no longer what it takes.
     let pts = m.points.map(p => (p.at(0) * w, p.at(1) * h))
-    place(curve(stroke: m.at("stroke", default: 1.0) * 1pt + c,
+    // A dashed line is a reference across the plot, read against rather
+    // than one of the series.
+    let dash = if m.at("dash", default: false) { "dashed" } else { none }
+    place(curve(stroke: (paint: c, thickness: m.at("stroke", default: 1.0) * 1pt, dash: dash),
       curve.move(pts.first()),
       ..pts.slice(1).map(p => curve.line(p))))
   } else if m.kind == "poly" {

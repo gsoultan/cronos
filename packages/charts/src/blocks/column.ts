@@ -34,13 +34,14 @@ export function columnBlock(b: ChartBlock): HTMLElement {
   let entered = false
   const redraw = sized(at, (width) => {
     const m = measure(at)
-    const c = cartesian({ width, height: PLOT_HEIGHT, m, y, categories: buckets.map((x) => x.label), headroom: 18 })
+    const c = cartesian({ width, height: PLOT_HEIGHT, m, y, categories: buckets.map((x) => x.label), headroom: 18, references: b.references })
     const words = svg('g', { class: 'labels' })
     const live = groups.filter((_, i) => shown[i])
     const all = live.length === groups.length
     if (b.stacked && groups.length > 1) stacks(c, words, b, live, all, tips, m)
     else lanes(c, words, y, live, groups.length > 1, tips, m)
     c.svg.append(words)
+    c.nameReferences()
     if (!entered) c.svg.classList.add('enter')
     entered = true
     at.replaceChildren(c.svg)

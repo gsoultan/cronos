@@ -84,6 +84,9 @@ type Block struct {
 	Sankey *Sankey `json:"sankey,omitempty"`
 	// Days are a calendar's, in date order.
 	Days []Day `json:"days,omitempty"`
+	// References are lines across the value scale — a target, an average —
+	// each placed against YAxis, which reaches every one of them.
+	References []RefLine `json:"references,omitempty"`
 
 	// Table. Also never omitempty, for the same reason.
 	Columns []Column   `json:"columns"`

@@ -49,6 +49,7 @@ func (b *Block) writeChart(blk definition.Block, ds definition.Dataset) {
 		b.writeBins(formatOf(ds, blk.X.Field), y)
 	}
 	b.writeMarks(y)
+	writeRefs(b.References, y)
 	if !b.Percent {
 		writeAxis(b.YAxis, y)
 	}
@@ -127,6 +128,7 @@ func (b *Block) writeTracks(blk definition.Block, ds definition.Dataset) {
 	}
 	if left != nil {
 		writeAxis(b.YAxis, *left)
+		writeRefs(b.References, *left)
 	}
 	if right != nil {
 		writeAxis(b.Axis2, *right)
@@ -183,5 +185,14 @@ func writeAxis(a *Axis, nf numberFormat) {
 	for i := range a.Ticks {
 		t := &a.Ticks[i]
 		t.Label = nf.tick(a.Min + t.At*(a.Max-a.Min))
+	}
+}
+
+func writeRefs(refs []RefLine, nf numberFormat) {
+	if nf.plain() {
+		return
+	}
+	for i := range refs {
+		refs[i].Formatted = nf.short(refs[i].Value)
 	}
 }

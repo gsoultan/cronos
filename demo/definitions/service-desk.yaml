@@ -73,6 +73,7 @@ spec:
           x: {field: opened_at, grain: month}
           series: {field: priority}
           y: {field: id, aggregate: count}
+          references: [{stat: avg, label: Monthly average}]
 
         - kind: chart
           chart: bullet
@@ -144,6 +145,7 @@ spec:
           x: {field: opened_at, grain: month}
           series: {field: priority}
           y: {field: id, aggregate: count}
+          references: [{stat: avg, label: Monthly average}]
         - kind: chart
           chart: bullet
           title: Within SLA by team

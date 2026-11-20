@@ -52,6 +52,9 @@ type Mark struct {
 	// reads as a series. Around a polygon it is an edge of paper, the gap
 	// that keeps two slices of a pie from reading as one fill.
 	Stroke float64 `json:"stroke,omitempty"`
+	// Dash draws a line dashed: a reference across the plot, which is
+	// read against and is not one of the series.
+	Dash bool `json:"dash,omitempty"`
 }
 
 // Dot shapes. A dot naming none is a circle; a key naming none is the

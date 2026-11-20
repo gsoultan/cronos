@@ -374,6 +374,8 @@ export interface ReportBlockInput {
   bands?: number[]
   /** About how many bins a histogram cuts. */
   bins?: number
+  /** Lines across a chart's value scale. */
+  references?: { value?: number; stat?: string; label?: string }[]
   /** A stat's number over time. */
   trend?: { field: string; grain?: string; better?: string }
   series?: string
@@ -414,6 +416,7 @@ export function tileOf(b: ReportBlockInput): Omit<Tile, 'id' | 'span'> {
     xField: b.xField, sizeField: b.sizeField, map: b.map,
     metrics: b.metrics as Tile['metrics'], target: b.target as Tile['target'],
     bands: b.bands, bins: b.bins, trend: b.trend as Tile['trend'],
+    references: b.references as Tile['references'],
     columns: b.columns, filter: b.filter,
     sort: b.sort?.map((k) => ({ field: k.field, dir: k.dir as 'asc' | 'desc' | undefined })),
   }
@@ -429,6 +432,7 @@ export function blockInput(b: Tile): ReportBlockInput {
     series: b.series, seriesGrain: b.seriesGrain, stacked: b.stacked,
     xField: b.xField, sizeField: b.sizeField, map: b.map,
     metrics: b.metrics, target: b.target, bands: b.bands, bins: b.bins, trend: b.trend,
+    references: b.references,
     columns: b.columns, filter: b.filter, sort: b.sort,
   }
 }
@@ -497,6 +501,9 @@ const METERED = new Set(['combo', 'funnel'])
 
 /** The chart types read against a target. */
 const TARGETED = new Set(['gauge', 'bullet'])
+/** The charts with a value scale a reference line can cross, as the server
+ *  has them. */
+const REFERENCED = new Set(['line', 'area', 'column', 'combo', 'waterfall', 'boxplot', 'scatter', 'bubble'])
 
 /**
  * The filter bar, or nothing when the report has none.
@@ -577,6 +584,7 @@ function block(b: ReportBlockInput): Yaml {
       target: TARGETED.has(chart) ? targetOf(b.target) : undefined,
       bands: chart === 'bullet' && b.bands?.length ? b.bands : undefined,
       bins: chart === 'histogram' && b.bins ? b.bins : undefined,
+      references: REFERENCED.has(chart) && b.references?.length ? b.references : undefined,
       series: b.series ? { field: b.series } : undefined,
       stacked: b.stacked || undefined,
       size: chart === 'bubble' && b.sizeField
@@ -1104,6 +1112,15 @@ function readBlock(v: Yaml): ReportBlockInput {
       stacked: b.stacked === true ? true : b.stacked === 'percent' ? 'percent' : undefined,
       xField: (chart === 'histogram' ? str(x.field) : str(asMap(b.xValue).field)) || undefined,
       bins: chart === 'histogram' ? num(b.bins) : undefined,
+      references: REFERENCED.has(chart) && asList(b.references).length
+        ? asList(b.references).map((raw) => {
+          const r = asMap(raw)
+          return {
+            value: num(r.value), stat: (str(r.stat) || undefined) as 'avg' | undefined,
+            label: str(r.label) || undefined,
+          }
+        })
+        : undefined,
       sizeField: str(asMap(b.size).field) || undefined,
       metrics: asList(b.metrics).map((raw) => {
         const metric = asMap(raw)

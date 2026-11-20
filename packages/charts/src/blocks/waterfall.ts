@@ -34,7 +34,7 @@ export function waterfallBlock(b: ChartBlock): HTMLElement {
   sized(at, (width) => {
     const m = measure(at)
     const c = cartesian({
-      width, height: PLOT_HEIGHT, m, y, categories: steps.map((s) => s.label), headroom: 20,
+      width, height: PLOT_HEIGHT, m, y, categories: steps.map((s) => s.label), headroom: 20, references: b.references,
     })
     steps.forEach((s, i) => {
       const band = c.band(i)
@@ -66,6 +66,7 @@ export function waterfallBlock(b: ChartBlock): HTMLElement {
         class: 'thread', x1: n(left + w), x2: n(nb.x + (nb.w - nw) / 2), y1: n(c.y(s.end)), y2: n(c.y(s.end)),
       }))
     })
+    c.nameReferences()
     if (!entered) c.svg.classList.add('enter')
     entered = true
     at.replaceChildren(c.svg)

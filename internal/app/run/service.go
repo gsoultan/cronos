@@ -217,6 +217,7 @@ func (s *Service) block(ctx context.Context, r definition.Report, blk definition
 	if err != nil {
 		return Block{}, err
 	}
+	out.reference(blk)
 	out.writeAs(blk, ds)
 	return out, nil
 }

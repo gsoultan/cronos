@@ -66,6 +66,8 @@ spec:
           metrics:
             - {field: revenue, aggregate: sum, label: Revenue, draw: bar}
             - {field: margin, aggregate: sum, label: Gross margin, draw: line}
+          # The annual target, a twelfth a month.
+          references: [{value: 541667, label: Monthly target}]
 
         - kind: chart
           chart: column
@@ -161,6 +163,8 @@ spec:
           metrics:
             - {field: revenue, aggregate: sum, label: Revenue, draw: bar}
             - {field: margin, aggregate: sum, label: Gross margin, draw: line}
+          # The annual target, a twelfth a month.
+          references: [{value: 541667, label: Monthly target}]
         - kind: chart
           chart: column
           title: Revenue by channel

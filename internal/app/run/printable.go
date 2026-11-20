@@ -37,6 +37,7 @@ func chartOf(b Block) document.Chart {
 	// that carries a note instead of marks took the whole document down.
 	c := document.Chart{Title: b.Title, Kind: b.Chart, Marks: []document.Mark{}}
 	drawOn(&c, b)
+	referencesOn(&c, b)
 	// A word with nothing to say — a category with no name, a figure with no
 	// formatting — is left off rather than sent: the document refuses a text
 	// mark it cannot draw, and a blank name is not worth a failed burst.
