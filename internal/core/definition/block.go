@@ -61,6 +61,10 @@ type Block struct {
 	// on round numbers, so the count is near this rather than exactly it;
 	// empty takes twelve.
 	Bins int `json:"bins,omitempty" yaml:"bins,omitempty"`
+	// Start and End are the dates each of a timeline's rows runs between:
+	// the earliest start and the latest end of the rows of each x.
+	Start DimensionRef `json:"start,omitzero" yaml:"start,omitempty"`
+	End   DimensionRef `json:"end,omitzero" yaml:"end,omitempty"`
 	// References are lines across the chart's value scale — a target, a
 	// threshold, the average of the marks — see reference.go.
 	References []Reference `json:"references,omitempty" yaml:"references,omitempty"`

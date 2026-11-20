@@ -96,6 +96,17 @@ spec:
           series: {field: department}
           y: {field: spend, aggregate: sum}
 
+        # What the year's spend is buying: each initiative from its first
+        # phase to its last, coloured by how it stands.
+        - kind: chart
+          chart: timeline
+          dataset: initiatives
+          title: The change programme
+          x: {field: initiative}
+          start: {field: starts_on}
+          end: {field: ends_on}
+          series: {field: status}
+
         - kind: pivot
           title: P&L by month
           value: {field: actual, aggregate: sum}
@@ -138,6 +149,14 @@ spec:
           filter: line_no >= 3
           x: {field: line}
           y: {field: spend, aggregate: sum}
+        - kind: chart
+          chart: timeline
+          dataset: initiatives
+          title: The change programme
+          x: {field: initiative}
+          start: {field: starts_on}
+          end: {field: ends_on}
+          series: {field: status}
         - kind: pivot
           title: P&L by month
           value: {field: actual, aggregate: sum}

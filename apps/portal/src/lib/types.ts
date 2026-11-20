@@ -80,7 +80,7 @@ export type TileKind =
   | 'bar' | 'column' | 'line' | 'area' | 'pie' | 'donut'
   | 'scatter' | 'bubble' | 'map'
   | 'combo' | 'funnel' | 'waterfall' | 'heatmap' | 'gauge' | 'treemap'
-  | 'radar' | 'bullet' | 'histogram' | 'boxplot' | 'sankey' | 'sunburst' | 'calendar' | 'pareto'
+  | 'radar' | 'bullet' | 'histogram' | 'boxplot' | 'sankey' | 'sunburst' | 'calendar' | 'pareto' | 'timeline'
 
 /** The tiles that bucket a dimension and fold a measure. */
 export const CATEGORICAL: TileKind[] = [
@@ -115,7 +115,7 @@ export const PLOTS: TileKind[] = ['scatter', 'bubble']
 /** The tiles that can draw more than one series at once. */
 export const MULTI_SERIES: TileKind[] = [
   'bar', 'column', 'line', 'area', 'scatter', 'bubble', 'heatmap', 'treemap', 'radar',
-  'sankey', 'sunburst', 'pivot',
+  'sankey', 'sunburst', 'pivot', 'timeline',
 ]
 
 /** The tiles a series dimension stacks on rather than drawing beside. */
@@ -151,6 +151,9 @@ export interface Tile {
   xField?: string
   /** The measure a bubble's radius reads. */
   sizeField?: string
+  /** The dates a timeline's bars run between. Undefined on every other kind. */
+  startField?: string
+  endField?: string
   /** The geography a map block reads. Undefined on every other kind. */
   map?: TileMap
   /** Several measures, for the kinds that read a list — a combo's bars and

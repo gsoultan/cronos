@@ -110,6 +110,7 @@ export function BlockInspector({
   const visible = fields.filter((f) => !f.hidden)
   const measures = visible.filter((f) => f.role === 'measure')
   const dimensions = visible.filter((f) => f.role === 'dimension')
+  const dates = visible.filter((f) => f.type === 'date')
 
   return (
     <div className="grid gap-4">
@@ -154,7 +155,7 @@ export function BlockInspector({
       </Field>
 
       {/* A histogram counts its rows: what it bins is chosen below. */}
-      {block.kind !== 'table' && (!is(METERED, block.kind) || byRows(block)) && block.kind !== 'histogram' && (
+      {block.kind !== 'table' && (!is(METERED, block.kind) || byRows(block)) && block.kind !== 'histogram' && block.kind !== 'timeline' && (
         <>
           <Field label="Measure" help={block.kind === 'boxplot'
             ? 'The number whose spread each box draws, read row by row.'
@@ -212,7 +213,8 @@ export function BlockInspector({
           Then this only groups them, and saying "Labelled by" would name the
           wrong control. */}
       {(is(CATEGORICAL, block.kind) || is(PLOTS, block.kind) || block.kind === 'map'
-        || block.kind === 'combo' || block.kind === 'bullet' || block.kind === 'boxplot' || byRows(block)) && (
+        || block.kind === 'combo' || block.kind === 'bullet' || block.kind === 'boxplot'
+        || block.kind === 'timeline' || byRows(block)) && (
         <Field label={block.kind === 'map' && !block.map?.region ? 'Labelled by'
           : block.kind === 'pivot' ? 'Across the top' : 'Grouped by'}
           help={groupHelp(block, fields)}>
@@ -253,6 +255,24 @@ export function BlockInspector({
             disabled={measures.length === 0}
             onChange={(v) => onChange({ xField: v ?? undefined })} />
         </Field>
+      )}
+
+      {/* A timeline's bar runs between two dates of each row. */}
+      {block.kind === 'timeline' && (
+        <>
+          <Field label="Starts" help="Each bar runs from the earliest of these.">
+            <Select data={opts(dates)} value={block.startField ?? null} allowDeselect={false}
+              placeholder={dates.length ? 'Choose a date' : 'This dataset has no dates'}
+              disabled={dates.length === 0} data-testid="timeline-start"
+              onChange={(v) => onChange({ startField: v ?? undefined })} />
+          </Field>
+          <Field label="Ends" help="To the latest of these.">
+            <Select data={opts(dates)} value={block.endField ?? null} allowDeselect={false}
+              placeholder={dates.length ? 'Choose a date' : 'This dataset has no dates'}
+              disabled={dates.length === 0} data-testid="timeline-end"
+              onChange={(v) => onChange({ endField: v ?? undefined })} />
+          </Field>
+        </>
       )}
 
       {block.kind === 'bubble' && (
@@ -360,6 +380,7 @@ function seriesHelp(kind: Tile['kind']): string {
   if (kind === 'sankey') return 'Where each flow goes: one node down the right per value.'
   if (kind === 'sunburst') return 'The inner ring: one segment per value, its parts around it.'
   if (kind === 'treemap') return 'Groups the rectangles, drawing one box per value.'
+  if (kind === 'timeline') return 'Colours each bar by its value: a status, a team.'
   return 'Draws one series per value of this field.'
 }
 
@@ -498,7 +519,8 @@ const byRows = (block: Tile) => block.kind === 'funnel' && !block.metrics?.lengt
 
 /** Whether a block's grouping is a date the file lets it bucket. */
 function grained(block: Tile, fields: FieldDef[]): boolean {
-  if (!block.groupBy || is(PLOTS, block.kind) || block.kind === 'calendar' || block.kind === 'map') return false
+  if (!block.groupBy || is(PLOTS, block.kind) || block.kind === 'calendar' || block.kind === 'map'
+    || block.kind === 'timeline') return false
   if (block.kind === 'gauge' || block.kind === 'histogram' || (block.kind === 'funnel' && !byRows(block))) return false
   return fields.find((f) => f.name === block.groupBy)?.type === 'date'
 }
@@ -522,6 +544,7 @@ function groupHelp({ kind, map }: Tile, fields: FieldDef[]): string {
   if (is(GRIDDED, kind)) return 'Along the top of the grid.'
   if (kind === 'sankey') return 'Where each flow comes from: one node down the left per value.'
   if (kind === 'sunburst') return 'The outer ring: the parts of each inner segment.'
+  if (kind === 'timeline') return 'One bar per value of this field.'
   if (kind === 'waterfall') return 'One step per value, in this order.'
   if (kind === 'funnel') return 'One stage per value of this field, largest first.'
   if (kind === 'radar') return 'One spoke per value of this field. Three or more.'

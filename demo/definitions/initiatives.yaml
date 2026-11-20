@@ -1,0 +1,19 @@
+apiVersion: cronos.dev/v1
+kind: Dataset
+metadata:
+  name: initiatives
+  title: Initiatives
+  description: The year's change programme, one row per phase of each initiative, with how it stands.
+spec:
+  sources:
+    - ref: warehouse
+  query: |
+    SELECT initiative, workstream, status, phase, starts_on, ends_on
+    FROM initiative_phases
+  fields:
+    - {name: initiative, type: string, role: dimension, label: Initiative}
+    - {name: workstream, type: string, role: dimension, label: Workstream}
+    - {name: status,     type: string, role: dimension, label: Status}
+    - {name: phase,      type: string, role: dimension, label: Phase}
+    - {name: starts_on,  type: date,   role: dimension, label: Starts}
+    - {name: ends_on,    type: date,   role: dimension, label: Ends}

@@ -533,6 +533,8 @@ export interface ChartBlock {
   sankey?: Sankey
   /** A calendar's days, in date order. */
   days?: Day[]
+  /** A timeline's bars, read along `xAxis`, which is in days. */
+  spans?: Span[]
   /** Lines across the value scale — a target, an average — read against
    *  `yAxis`, which the engine widened to reach each of them. */
   references?: RefLine[]
@@ -589,3 +591,16 @@ export interface ReportPayload {
 
 /** What a host page sets to narrow the report. */
 export type FilterValues = Record<string, { op: string; values: unknown[] }>
+
+/** A timeline's bar: what it is, the days it runs between (since 1970, on
+ *  `xAxis`), its dates as read, and the whole of it for a tooltip. */
+export interface Span {
+  label: string
+  series?: string
+  slot: number
+  from: number
+  to: number
+  start: string
+  end: string
+  said: string
+}

@@ -1280,3 +1280,23 @@ test('a chart\'s reference lines survive the round trip', () => {
   ])
   expect(back.drops).toEqual([])
 })
+
+test('a timeline writes its dates and no measure, and reads them back', () => {
+  const input = {
+    name: 'Plan', slug: 'plan', dataset: 'initiatives',
+    blocks: [{
+      kind: 'timeline', title: 'Programme', groupBy: 'initiative', grain: 'month',
+      startField: 'starts_on', endField: 'ends_on', series: 'status', field: 'cost',
+    }],
+  }
+  const emitted = report(input)
+  expect(emitted).toContain('chart: timeline')
+  expect(emitted).toContain('field: starts_on')
+  expect(emitted).not.toContain('cost')
+  expect(emitted).not.toContain('grain')
+  const back = readReport(emitted)
+  expect(back.input.blocks[0]).toMatchObject({
+    kind: 'timeline', groupBy: 'initiative', startField: 'starts_on', endField: 'ends_on', series: 'status',
+  })
+  expect(back.drops).toEqual([])
+})

@@ -557,3 +557,36 @@ CREATE TABLE headcount_plan (department TEXT PRIMARY KEY, planned REAL);
 INSERT INTO headcount_plan VALUES
   ('Engineering', 90), ('Sales', 58), ('Operations', 50),
   ('Customer support', 36), ('Marketing', 32), ('Finance & HR', 26);
+
+-- The year's change programme: each initiative in its phases, and how it
+-- stands. A phase is a row; an initiative is a bar from its first phase's
+-- start to its last one's end.
+CREATE TABLE initiative_phases (
+  initiative TEXT, workstream TEXT, status TEXT, phase TEXT, starts_on TEXT, ends_on TEXT
+);
+INSERT INTO initiative_phases VALUES
+  ('Holiday campaign',        'Marketing',  'Done',     'Plan',     '2025-09-15', '2025-10-24'),
+  ('Holiday campaign',        'Marketing',  'Done',     'Run',      '2025-11-03', '2025-12-31'),
+  ('New warehouse in Leeds',  'Operations', 'Done',     'Fit-out',  '2025-11-10', '2026-02-27'),
+  ('New warehouse in Leeds',  'Operations', 'Done',     'Go-live',  '2026-03-02', '2026-03-27'),
+  ('Returns portal',          'Digital',    'Done',     'Build',    '2025-12-01', '2026-03-13'),
+  ('Returns portal',          'Digital',    'Done',     'Rollout',  '2026-03-16', '2026-04-10'),
+  ('Spring range launch',     'Product',    'Done',     'Design',   '2025-11-17', '2026-01-30'),
+  ('Spring range launch',     'Product',    'Done',     'Launch',   '2026-02-02', '2026-03-20'),
+  ('ERP migration',           'Finance',    'At risk',  'Discovery','2026-01-12', '2026-03-27'),
+  ('ERP migration',           'Finance',    'At risk',  'Build',    '2026-03-30', '2026-10-30'),
+  ('ERP migration',           'Finance',    'At risk',  'Cutover',  '2026-11-02', '2027-01-29'),
+  ('Wholesale portal',        'Digital',    'On track', 'Build',    '2026-02-16', '2026-07-31'),
+  ('Wholesale portal',        'Digital',    'On track', 'Pilot',    '2026-08-03', '2026-11-27'),
+  ('Denver store',            'Retail',     'Done',     'Fit-out',  '2026-03-02', '2026-05-29'),
+  ('Denver store',            'Retail',     'Done',     'Opening',  '2026-06-01', '2026-06-12'),
+  ('Summer sale',             'Marketing',  'Done',     'Run',      '2026-06-15', '2026-08-14'),
+  ('Recycled-fabric range',   'Product',    'On track', 'Sourcing', '2026-04-06', '2026-09-25'),
+  ('Recycled-fabric range',   'Product',    'On track', 'Launch',   '2026-09-28', '2026-12-18'),
+  ('Support chatbot',         'Digital',    'At risk',  'Build',    '2026-05-04', '2026-10-16'),
+  ('Support chatbot',         'Digital',    'At risk',  'Rollout',  '2026-10-19', '2026-12-11'),
+  ('Singapore distributor',   'Sales',      'On track', 'Contract', '2026-07-06', '2026-09-18'),
+  ('Singapore distributor',   'Sales',      'On track', 'First orders', '2026-09-21', '2026-12-04'),
+  ('Holiday campaign 2026',   'Marketing',  'Planned',  'Plan',     '2026-09-14', '2026-10-30'),
+  ('Holiday campaign 2026',   'Marketing',  'Planned',  'Run',      '2026-11-02', '2026-12-31'),
+  ('Pricing review',          'Finance',    'Planned',  'Analysis', '2026-10-05', '2027-01-15');

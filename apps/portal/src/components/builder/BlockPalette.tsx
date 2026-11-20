@@ -24,6 +24,7 @@ export const PALETTE: { kind: TileKind; label: string; hint: string; icon: strin
   { kind: 'boxplot', label: 'Box plot', hint: 'Its spread, by category', icon: '⧈' },
   { kind: 'sankey', label: 'Sankey', hint: 'Where it flows', icon: '⫘' },
   { kind: 'sunburst', label: 'Sunburst', hint: 'Parts within parts, as rings', icon: '◉' },
+  { kind: 'timeline', label: 'Timeline', hint: 'What runs when: a plan or a roadmap', icon: '☰' },
   { kind: 'calendar', label: 'Calendar', hint: 'Day by day, a year at a time', icon: '▣' },
   { kind: 'pivot', label: 'Pivot', hint: 'One field against another, with totals', icon: '⊟' },
   { kind: 'table', label: 'Table', hint: 'Every row', icon: '▤' },
@@ -38,7 +39,7 @@ export const PALETTE: { kind: TileKind; label: string; hint: string; icon: strin
 export const GROUPS: { name: string; kinds: TileKind[] }[] = [
   { name: 'Numbers and tables', kinds: ['stat', 'table', 'pivot', 'gauge'] },
   { name: 'Compare', kinds: ['bar', 'column', 'combo', 'pareto', 'bullet', 'radar', 'heatmap'] },
-  { name: 'Over time', kinds: ['line', 'area', 'waterfall', 'calendar'] },
+  { name: 'Over time', kinds: ['line', 'area', 'waterfall', 'calendar', 'timeline'] },
   { name: 'Parts of a whole', kinds: ['pie', 'donut', 'treemap', 'sunburst', 'funnel'] },
   { name: 'Spread', kinds: ['scatter', 'bubble', 'histogram', 'boxplot'] },
   { name: 'Maps and flows', kinds: ['map', 'sankey'] },

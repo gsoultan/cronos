@@ -61,6 +61,8 @@ func drawOn(c *document.Chart, b Block) {
 		c.Square = true
 	case b.Bullets != nil:
 		bullets(c, b)
+	case b.Spans != nil:
+		printTimeline(c, b)
 	case b.Bins != nil:
 		printBins(c, b)
 	case b.Boxes != nil:
