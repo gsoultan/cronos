@@ -22,6 +22,21 @@ needs a deployment to act says so under **Upgrading**.
 
 ## Unreleased
 
+**A field's format is applied.** `format: currency` was accepted, documented
+and in the example dataset, and nothing applied it: a revenue field read
+"982,158.38" on every tile, bar, axis and table. A field's `format` now
+decides how its figures are written on stats and their trends, every chart
+type except maps, their scales, tables, pivots and the PDF. `currency` takes a
+new `currency:` ISO 4217 code ("€6.2M", "€982,158" on a chart, "€982,158.38"
+in a table); `percent` writes a fraction ("87.3%") and its trend moves in
+points; a new `decimals:` fixes the places kept. A field with no format reads
+exactly as before. **Upgrading:** a dataset whose field has a `format` other
+than `number`, `currency`, `percent` or `preformatted`, a `currency` that is
+not three capitals, or a `currency` on a field that is not `format: currency`
+is now refused when stored — before, each was ignored. A `percent` field
+holding 0–100 rather than a fraction will read a hundred times too large;
+divide it in the query.
+
 **Four business reports in the demo.** `demo/seed.sql` adds a year of an
 invented outdoor-gear company — orders, a wholesale pipeline, a management
 ledger against budget, support tickets and a staff roster — and

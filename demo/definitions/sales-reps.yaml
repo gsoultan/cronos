@@ -15,5 +15,5 @@ spec:
   fields:
     - {name: rep,    type: string,  role: dimension, label: Account manager}
     - {name: region, type: string,  role: dimension, label: Region}
-    - {name: sold,   type: decimal, role: measure, aggregate: sum, label: Sold}
-    - {name: quota,  type: decimal, role: measure, aggregate: sum, label: Quota}
+    - {name: sold,   type: decimal, role: measure, aggregate: sum, label: Sold, format: currency, currency: USD}
+    - {name: quota,  type: decimal, role: measure, aggregate: sum, label: Quota, format: currency, currency: USD}

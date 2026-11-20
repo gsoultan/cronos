@@ -116,6 +116,9 @@ func TestAChartsFiguresAndScaleAreInTheCurrency(t *testing.T) {
 	if got["North"] != "€2.2M" || got["South"] != "€87,412" {
 		t.Errorf("bars read %v, want €2.2M and €87,412", got)
 	}
+	if foot := b.YAxis.Ticks[0].Label; foot != "€0" {
+		t.Errorf("the scale starts at %q, want €0", foot)
+	}
 	last := b.YAxis.Ticks[len(b.YAxis.Ticks)-1]
 	if !strings.HasPrefix(last.Label, "€") {
 		t.Errorf("the scale is not in euros: %+v", b.YAxis.Ticks)

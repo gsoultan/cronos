@@ -118,7 +118,9 @@ func (n numberFormat) places(abs float64, glance bool) int {
 	switch {
 	case n.decimals >= 0:
 		return n.decimals
-	case n.kind == "currency" && glance && abs >= 1000:
+	case n.kind == "currency" && glance && (abs >= 1000 || abs == math.Trunc(abs)):
+		// A whole amount is whole at a glance too: a scale's foot is $0,
+		// not $0.00.
 		return 0
 	case n.kind == "currency":
 		return 2
@@ -155,3 +157,16 @@ func (n numberFormat) change(last, before float64) (string, bool) {
 // cells use it for their text, because the number beside it is the value a
 // workbook formats for itself.
 var plainFormat = numberFormat{decimals: -1}
+
+// tick writes a scale's figure. Ticks fall on round numbers, so the places a
+// field keeps for its own figures are only zeros there: 50, not 50.0.
+func (n numberFormat) tick(v float64) string {
+	s := n.short(v)
+	if n.kind == "currency" || !strings.Contains(s, ".") {
+		return s
+	}
+	end := strings.LastIndexAny(s, "0123456789") + 1
+	body, suffix := s[:end], s[end:]
+	body = strings.TrimRight(strings.TrimRight(body, "0"), ".")
+	return body + suffix
+}

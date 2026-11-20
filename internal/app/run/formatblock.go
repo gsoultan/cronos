@@ -182,6 +182,6 @@ func writeAxis(a *Axis, nf numberFormat) {
 	}
 	for i := range a.Ticks {
 		t := &a.Ticks[i]
-		t.Label = nf.short(a.Min + t.At*(a.Max-a.Min))
+		t.Label = nf.tick(a.Min + t.At*(a.Max-a.Min))
 	}
 }
