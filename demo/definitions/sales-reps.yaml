@@ -1,0 +1,19 @@
+apiVersion: cronos.dev/v1
+kind: Dataset
+metadata:
+  name: sales-reps
+  title: Account managers against quota
+  description: One row per account manager — what they sold this year and what they were asked to.
+spec:
+  sources:
+    - ref: warehouse
+  # One row each, so a quota is summed once rather than once per order.
+  query: |
+    SELECT r.rep, r.region, r.quota,
+           (SELECT SUM(o.revenue) FROM sales_orders o WHERE o.rep = r.rep) AS sold
+    FROM sales_reps r
+  fields:
+    - {name: rep,    type: string,  role: dimension, label: Account manager}
+    - {name: region, type: string,  role: dimension, label: Region}
+    - {name: sold,   type: decimal, role: measure, aggregate: sum, label: Sold}
+    - {name: quota,  type: decimal, role: measure, aggregate: sum, label: Quota}

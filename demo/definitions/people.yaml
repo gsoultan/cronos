@@ -1,0 +1,34 @@
+apiVersion: cronos.dev/v1
+kind: Dataset
+metadata:
+  name: people
+  title: People
+  description: Everyone employed since 2017 — department, level, pay, engagement and, for those who left, when.
+spec:
+  sources:
+    - ref: warehouse
+  query: |
+    SELECT id, department, level, location, hired_on, left_on, salary,
+           engagement, rating,
+           CASE WHEN left_on IS NULL THEN 'Active' ELSE 'Left' END AS status,
+           CASE WHEN left_on IS NULL THEN id END AS active,
+           CASE WHEN left_on >= '2025-11-01' THEN id END AS leaver,
+           CASE WHEN hired_on >= '2025-11-01' THEN id END AS hire,
+           round((julianday(COALESCE(left_on, '2026-11-01')) - julianday(hired_on)) / 365.25, 1)
+             AS tenure
+    FROM employees
+  fields:
+    - {name: id,         type: number,  role: dimension, hidden: true}
+    - {name: department, type: string,  role: dimension, label: Department}
+    - {name: level,      type: string,  role: dimension, label: Level}
+    - {name: location,   type: string,  role: dimension, label: Location}
+    - {name: hired_on,   type: date,    role: dimension, label: Hired}
+    - {name: left_on,    type: date,    role: dimension, label: Left}
+    - {name: status,     type: string,  role: dimension, label: Status}
+    - {name: rating,     type: string,  role: dimension, label: Last rating}
+    - {name: salary,     type: decimal, role: measure, aggregate: avg, label: Salary}
+    - {name: engagement, type: decimal, role: measure, aggregate: avg, label: Engagement}
+    - {name: tenure,     type: decimal, role: measure, aggregate: avg, label: Tenure (years)}
+    - {name: active,     type: number,  role: measure, aggregate: count, label: Headcount}
+    - {name: leaver,     type: number,  role: measure, aggregate: count, label: Leavers}
+    - {name: hire,       type: number,  role: measure, aggregate: count, label: Hires}

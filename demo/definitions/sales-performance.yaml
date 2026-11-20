@@ -1,0 +1,211 @@
+apiVersion: cronos.dev/v1
+kind: Report
+metadata:
+  name: sales-performance
+  title: Sales performance
+  folder: Sales
+  description: A year of Trailhead Outfitters' orders — revenue, margin, channels, account managers against quota, and the wholesale pipeline.
+spec:
+  dataset: sales
+
+  filters:
+    - name: period
+      label: Period
+      type: date
+      control: range
+      bind:
+        sales: ordered_at
+        pipeline: created_at
+    - name: region
+      label: Region
+      type: enum
+      control: checkboxes
+      values: [North America, Europe, Asia Pacific, Latin America]
+      bind:
+        sales: region
+        sales-reps: region
+        pipeline: region
+    - name: channel
+      label: Channel
+      type: enum
+      control: checkboxes
+      values: [Online, Retail stores, Wholesale]
+      bind:
+        sales: channel
+
+  outputs:
+    - name: interactive
+      renderer: interactive
+      layout:
+        - kind: stat
+          label: Revenue
+          value: {field: revenue, aggregate: sum}
+          trend: {field: ordered_at, grain: month}
+        - kind: stat
+          label: Gross margin
+          value: {field: margin, aggregate: sum}
+          trend: {field: ordered_at, grain: month}
+        - kind: stat
+          label: Orders
+          value: {field: id, aggregate: count}
+          trend: {field: ordered_at, grain: month}
+
+        # The number the board asked for in January.
+        - kind: chart
+          chart: gauge
+          title: Revenue against the annual target
+          y: {field: revenue, aggregate: sum}
+          target: {value: 6500000, label: Target}
+
+        # Revenue and the margin it carried on one scale: the gap between the
+        # bars and the line is the cost of goods.
+        - kind: chart
+          chart: combo
+          title: Revenue and gross margin by month
+          x: {field: ordered_at, grain: month}
+          metrics:
+            - {field: revenue, aggregate: sum, label: Revenue, draw: bar}
+            - {field: margin, aggregate: sum, label: Gross margin, draw: line}
+
+        - kind: chart
+          chart: column
+          title: Revenue by channel
+          stacked: true
+          x: {field: ordered_at, grain: month}
+          series: {field: channel}
+          y: {field: revenue, aggregate: sum}
+
+        # Wholesale moves the volume; its margin is what it costs.
+        - kind: chart
+          chart: bubble
+          title: Categories — units, revenue and margin
+          x: {field: category}
+          xValue: {field: units, aggregate: sum}
+          y: {field: revenue, aggregate: sum}
+          size: {field: margin, aggregate: sum}
+
+        - kind: chart
+          chart: treemap
+          title: Categories within regions
+          x: {field: category}
+          series: {field: region}
+          y: {field: revenue, aggregate: sum}
+
+        - kind: chart
+          chart: heatmap
+          title: Revenue by region and month
+          x: {field: ordered_at, grain: month}
+          series: {field: region}
+          y: {field: revenue, aggregate: sum}
+
+        - kind: chart
+          chart: sankey
+          title: From channel to category
+          x: {field: channel}
+          series: {field: category}
+          y: {field: revenue, aggregate: sum}
+
+        - kind: chart
+          chart: bullet
+          title: Account managers against quota
+          dataset: sales-reps
+          x: {field: rep}
+          y: {field: sold, aggregate: sum}
+          target: {field: quota, aggregate: sum, label: Quota}
+          bands: [0.8, 1.0]
+
+        # Stages as columns, in the order they are listed.
+        - kind: chart
+          chart: funnel
+          title: Wholesale pipeline
+          dataset: pipeline
+          metrics:
+            - {field: lead,        aggregate: count, label: Leads}
+            - {field: qualified,   aggregate: count, label: Qualified}
+            - {field: proposal,    aggregate: count, label: Proposal}
+            - {field: negotiation, aggregate: count, label: Negotiation}
+            - {field: won,         aggregate: count, label: Won}
+
+        - kind: chart
+          chart: column
+          title: Pipeline won by source
+          dataset: pipeline
+          x: {field: source}
+          y: {field: won_amount, aggregate: sum}
+
+        - kind: chart
+          chart: calendar
+          title: Revenue by day
+          x: {field: ordered_at}
+          y: {field: revenue, aggregate: sum}
+
+        - kind: table
+          title: Largest orders
+          columns: [ordered_at, region, channel, category, rep, units, revenue, margin]
+          sort:
+            - {field: revenue, dir: desc}
+          pageSize: 25
+
+    # The monthly pack the regional leads get on the first working day.
+    - name: pdf
+      renderer: paginated
+      page: {size: a4, orientation: landscape, margins: 14mm}
+      layout:
+        - kind: stat
+          label: Revenue
+          value: {field: revenue, aggregate: sum}
+        - kind: chart
+          chart: combo
+          title: Revenue and gross margin by month
+          x: {field: ordered_at, grain: month}
+          metrics:
+            - {field: revenue, aggregate: sum, label: Revenue, draw: bar}
+            - {field: margin, aggregate: sum, label: Gross margin, draw: line}
+        - kind: chart
+          chart: column
+          title: Revenue by channel
+          stacked: true
+          x: {field: ordered_at, grain: month}
+          series: {field: channel}
+          y: {field: revenue, aggregate: sum}
+        - kind: chart
+          chart: bullet
+          title: Account managers against quota
+          dataset: sales-reps
+          x: {field: rep}
+          y: {field: sold, aggregate: sum}
+          target: {field: quota, aggregate: sum, label: Quota}
+          bands: [0.8, 1.0]
+        - kind: chart
+          chart: funnel
+          title: Wholesale pipeline
+          dataset: pipeline
+          metrics:
+            - {field: lead,        aggregate: count, label: Leads}
+            - {field: qualified,   aggregate: count, label: Qualified}
+            - {field: proposal,    aggregate: count, label: Proposal}
+            - {field: negotiation, aggregate: count, label: Negotiation}
+            - {field: won,         aggregate: count, label: Won}
+        - kind: chart
+          chart: heatmap
+          title: Revenue by region and month
+          x: {field: ordered_at, grain: month}
+          series: {field: region}
+          y: {field: revenue, aggregate: sum}
+        - kind: pivot
+          title: Revenue by category and month
+          value: {field: revenue, aggregate: sum}
+          pivot:
+            rows: {field: category}
+            columns: {field: ordered_at, grain: month}
+
+    - name: xlsx
+      renderer: spreadsheet
+      sheets:
+        - name: Orders
+          columns: [ordered_at, region, channel, category, rep, units, revenue, cost, margin]
+        - name: By month
+          value: {field: revenue}
+          pivot:
+            rows: {field: category}
+            columns: {field: ordered_at, grain: month}
