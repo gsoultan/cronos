@@ -22,6 +22,13 @@ needs a deployment to act says so under **Upgrading**.
 
 ## Unreleased
 
+**Timelines.** `chart: timeline` draws each category of `x` as a bar between
+its `start` and `end` dates along a calendar, coloured by `series`, in the
+browser and the PDF: a roadmap or a project plan, where several rows of a
+category (its phases) are one bar from the first start to the last end. The
+demo's management P&L gains the year's change programme from a new
+`initiatives` dataset.
+
 **Pareto charts.** `chart: pareto` ranks the categories of `x` largest first
 as columns, with a line of their running share of the whole on a 0–100%
 scale, in the browser, the PDF and the builder's palette. The demo's service

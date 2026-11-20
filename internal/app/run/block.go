@@ -82,6 +82,8 @@ type Block struct {
 	Boxes []Box `json:"boxes,omitempty"`
 	// Sankey is a flow chart, laid out.
 	Sankey *Sankey `json:"sankey,omitempty"`
+	// Spans are a timeline's bars, read along XAxis, which is days.
+	Spans []Span `json:"spans,omitempty"`
 	// Days are a calendar's, in date order.
 	Days []Day `json:"days,omitempty"`
 	// References are lines across the value scale — a target, an average —

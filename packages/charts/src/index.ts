@@ -13,6 +13,7 @@ import { pieBlock } from './blocks/pie'
 import { scatterBlock } from './blocks/scatter'
 import { mapBlock } from './blocks/map'
 import { comboBlock } from './blocks/combo'
+import { timelineBlock } from './blocks/timeline'
 import { funnelBlock } from './blocks/funnel'
 import { waterfallBlock } from './blocks/waterfall'
 import { heatmapBlock } from './blocks/heatmap'
@@ -106,6 +107,8 @@ export function drawChart(b: ChartBlock, opts: DrawOptions = {}): HTMLElement {
       return sunburstBlock(b)
     case 'calendar':
       return calendarBlock(b)
+    case 'timeline':
+      return timelineBlock(b)
     default:
       return unsupported(`${b.chart} charts need a newer viewer`)
   }
@@ -119,6 +122,6 @@ export { css, documentCss, LAYER } from './styles'
 export type {
   Arc, Axis, Bar, Bin, Block, Bounds, Box, Bullet, Cell, Day, Sankey, SankeyLink, SankeyNode, Cells, ChartBlock, Coverage, Credit, Delta, DrawOptions,
   FilterDef, FilterValues, FrameMark, Frames, Gauge, GeoMap, Group, LegendStop, MapArea, MapDetail, MapKey, MapPick,
-  MapViewAsk, MapViewer, Marker, Point, Rect, RefLine, ReportPayload, Shape, Stage, StatBlock, Step, TableBlock,
+  MapViewAsk, MapViewer, Marker, Point, Rect, RefLine, ReportPayload, Shape, Span, Stage, StatBlock, Step, TableBlock,
   TextBlock, Tick, Tiles, Track,
 } from './types'

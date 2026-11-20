@@ -37,6 +37,8 @@ func (b Builder) chartSQL(ds definition.Dataset, blk definition.Block, inner str
 		return b.rangeSQL(ds, blk, inner)
 	case blk.Chart == definition.BoxplotChart:
 		return b.boxSQL(ds, blk, inner)
+	case blk.Chart == definition.TimelineChart:
+		return b.timelineSQL(ds, blk, inner)
 	case blk.Chart == definition.CalendarChart:
 		// A calendar's cells are days, whether or not its x says so.
 		blk.X.Grain = "day"
@@ -204,6 +206,41 @@ func (b Builder) plotSQL(ds definition.Dataset, blk definition.Block, inner stri
 		sel = append(sel, size+" AS size")
 	}
 	return b.wrap(sel, inner, blk, group, b.order(ds, blk, len(group)))
+}
+
+// timelineSQL reads each category of x with the earliest start and the
+// latest end of its rows — a project that is several tasks is one bar from
+// the first to start to the last to finish — and its series, which colours
+// it. In order of starting, the order a plan is read in, unless the author
+// sorted it otherwise.
+func (b Builder) timelineSQL(ds definition.Dataset, blk definition.Block, inner string) (string, error) {
+	label, err := column(ds, blk.X.Field)
+	if err != nil {
+		return "", err
+	}
+	start, err := column(ds, blk.Start.Field)
+	if err != nil {
+		return "", err
+	}
+	end, err := column(ds, blk.End.Field)
+	if err != nil {
+		return "", err
+	}
+	sel := []string{label + " AS label", "MIN(" + start + ") AS start", "MAX(" + end + ") AS finish"}
+	group := []string{label}
+	if blk.Series.Field != "" {
+		s, err := column(ds, blk.Series.Field)
+		if err != nil {
+			return "", err
+		}
+		sel = append(sel, s+" AS series")
+		group = append(group, s)
+	}
+	order := orderedBy{sql: "\nORDER BY 2, 3, 1"}
+	if len(blk.Sort) > 0 {
+		order = b.order(ds, blk, len(group))
+	}
+	return b.wrap(sel, inner, blk, group, order)
 }
 
 // measure renders one MeasureRef as its aggregate applied to its column.

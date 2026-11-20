@@ -190,6 +190,8 @@ func (b Block) validateChart(output string, i int) error {
 		return b.validateBullet(output, i)
 	case b.Chart.Distributes():
 		return b.validateSpread(output, i)
+	case b.Chart == TimelineChart:
+		return b.validateTimeline(output, i)
 	case len(b.Metrics) > 0:
 		return b.validateMetrics(output, i)
 	}
@@ -238,6 +240,9 @@ func (b Block) validateChartFields(output string, i int) error {
 	case b.Target.Set() && !b.Chart.Targeted():
 		return fmt.Errorf("%w: %s chart %d sets a target, which only a gauge or a bullet "+
 			"chart reads", ErrInvalid, output, i)
+	case (b.Start.Field != "" || b.End.Field != "") && b.Chart != TimelineChart:
+		return fmt.Errorf("%w: %s chart %d sets a start or an end, which only a timeline "+
+			"reads", ErrInvalid, output, i)
 	case len(b.Bands) > 0 && b.Chart != BulletChart:
 		return fmt.Errorf("%w: %s chart %d sets bands, which shade a bullet chart's track "+
 			"and a %s chart has none", ErrInvalid, output, i, b.Chart)

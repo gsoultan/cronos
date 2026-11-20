@@ -59,6 +59,10 @@ const (
 	// causes, customers or products that make up most of it, and where the
 	// long tail starts.
 	ParetoChart ChartType = "pareto"
+	// TimelineChart draws each category of x as a bar from its start date to
+	// its end along a calendar: a roadmap, a project plan, a booking sheet —
+	// what runs when, and what overlaps.
+	TimelineChart ChartType = "timeline"
 )
 
 // chartTypes is every type, in the order an error message should list them.
@@ -67,7 +71,7 @@ var chartTypes = []ChartType{
 	ScatterChart, BubbleChart, MapChart,
 	ComboChart, FunnelChart, WaterfallChart, HeatmapChart, GaugeChart, TreemapChart,
 	RadarChart, BulletChart, HistogramChart, BoxplotChart, SankeyChart, SunburstChart,
-	CalendarChart, ParetoChart,
+	CalendarChart, ParetoChart, TimelineChart,
 }
 
 // Valid reports whether c is a type every renderer knows how to refuse or draw.
@@ -171,6 +175,9 @@ func (c ChartType) Stacks() bool { return c == BarChart || c == ColumnChart || c
 func (c ChartType) MultiSeries() bool {
 	switch c {
 	case BarChart, ColumnChart, LineChart, AreaChart, ScatterChart, BubbleChart, RadarChart:
+		return true
+	// A timeline colours its bars by series: a status, a team, a phase.
+	case TimelineChart:
 		return true
 	// A heatmap's second dimension is not an alternative to one series, it is
 	// the other axis of the grid — so `series` is required rather than

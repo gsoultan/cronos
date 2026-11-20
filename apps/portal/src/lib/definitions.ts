@@ -386,6 +386,9 @@ export interface ReportBlockInput {
   xField?: string
   /** A bubble's radius measure. */
   sizeField?: string
+  /** A timeline's dates. */
+  startField?: string
+  endField?: string
   /**
    * The builder's own type rather than a copy of it. The copy lagged: it had
    * no `region` or `simplify`, so opening a map that set either and saving it
@@ -414,6 +417,7 @@ export function tileOf(b: ReportBlockInput): Omit<Tile, 'id' | 'span'> {
     aggregate: b.aggregate as Tile['aggregate'],
     series: b.series, seriesGrain: b.seriesGrain, stacked: b.stacked,
     xField: b.xField, sizeField: b.sizeField, map: b.map,
+    startField: b.startField, endField: b.endField,
     metrics: b.metrics as Tile['metrics'], target: b.target as Tile['target'],
     bands: b.bands, bins: b.bins, trend: b.trend as Tile['trend'],
     references: b.references as Tile['references'],
@@ -431,6 +435,7 @@ export function blockInput(b: Tile): ReportBlockInput {
     field: b.field, groupBy: b.groupBy, grain: b.grain, aggregate: b.aggregate,
     series: b.series, seriesGrain: b.seriesGrain, stacked: b.stacked,
     xField: b.xField, sizeField: b.sizeField, map: b.map,
+    startField: b.startField, endField: b.endField,
     metrics: b.metrics, target: b.target, bands: b.bands, bins: b.bins, trend: b.trend,
     references: b.references,
     columns: b.columns, filter: b.filter, sort: b.sort,
@@ -490,7 +495,7 @@ const CHARTS: Record<string, string> = {
   combo: 'combo', funnel: 'funnel', waterfall: 'waterfall',
   heatmap: 'heatmap', gauge: 'gauge', treemap: 'treemap',
   radar: 'radar', bullet: 'bullet', histogram: 'histogram', boxplot: 'boxplot',
-  sankey: 'sankey', sunburst: 'sunburst', calendar: 'calendar', pareto: 'pareto',
+  sankey: 'sankey', sunburst: 'sunburst', calendar: 'calendar', pareto: 'pareto', timeline: 'timeline',
 }
 
 /** The chart types whose horizontal axis is a measure rather than a bucket. */
@@ -591,6 +596,8 @@ function block(b: ReportBlockInput): Yaml {
         ? { field: b.sizeField, aggregate: b.aggregate ?? 'sum' }
         : undefined,
       map: chart === 'map' ? mapSpec(b.map) : undefined,
+      start: chart === 'timeline' && b.startField ? { field: b.startField } : undefined,
+      end: chart === 'timeline' && b.endField ? { field: b.endField } : undefined,
     })
   }
   return narrowed({ kind: b.kind, dataset: reads, title: b.title, text: b.title })
@@ -611,7 +618,7 @@ function xOf(chart: string, b: ReportBlockInput): Yaml {
   if (chart === 'histogram') return b.xField ? { field: b.xField } : undefined
   if (staged(chart, b) || chart === 'gauge' || !b.groupBy) return undefined
   // A calendar's cells are days whatever its x says, so it says nothing.
-  return { field: b.groupBy, grain: PLOTTED.has(chart) || chart === 'calendar' ? undefined : b.grain || undefined }
+  return { field: b.groupBy, grain: PLOTTED.has(chart) || chart === 'calendar' || chart === 'timeline' ? undefined : b.grain || undefined }
 }
 
 /**
@@ -621,7 +628,8 @@ function xOf(chart: string, b: ReportBlockInput): Yaml {
  * names a measure to fold over each bin.
  */
 function yOf(chart: string, b: ReportBlockInput): Yaml {
-  if (chart === 'combo' || staged(chart, b)) return undefined
+  // A timeline's bars are as long as their dates: it reads no measure.
+  if (chart === 'combo' || chart === 'timeline' || staged(chart, b)) return undefined
   if (chart === 'boxplot') return { field: b.field }
   if (chart === 'histogram' && !b.field) return undefined
   return { field: b.field, aggregate: b.aggregate ?? 'sum' }
@@ -1122,6 +1130,8 @@ function readBlock(v: Yaml): ReportBlockInput {
         })
         : undefined,
       sizeField: str(asMap(b.size).field) || undefined,
+      startField: str(asMap(b.start).field) || undefined,
+      endField: str(asMap(b.end).field) || undefined,
       metrics: asList(b.metrics).map((raw) => {
         const metric = asMap(raw)
         return {

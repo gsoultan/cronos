@@ -535,6 +535,7 @@ The type is a closed set, checked when the report is stored:
 | `sunburst` | `x` + `series` dimensions, `y` | `series` as an inner ring, its parts of `x` around it |
 | `calendar` | `x` date, `y` measure | A year a block of weeks, each day shaded |
 | `pareto` | `x` dimension, `y` measure | Columns largest first, and their running share |
+| `timeline` | `x` dimension, `start` + `end` dates | A bar per category between its dates |
 
 `series:` names a second dimension to split by, and `stacked: true` stacks the
 result — on `bar`, `column` and `area` only, because a stacked line has a top
@@ -600,6 +601,26 @@ and its columns take reference lines.
   title: Why customers write
   x: {field: reason}
   y: {field: id, aggregate: count}
+```
+
+A `timeline` draws each category of `x` as a bar from its `start` date to its
+`end` along a calendar: a roadmap, a project plan, a booking sheet. The rows
+of a category are one bar, from the earliest start to the latest end, so an
+initiative stored as its phases draws as the initiative. Bars come in the
+order they start unless `sort:` says otherwise, are coloured by `series` (a
+status, a team) with a key, and run to the end of their last day, so a
+one-day task is a day long. A timeline reads no measure and its dates take no
+grain. On paper each bar is named on the left and the months are ruled.
+
+```yaml
+- kind: chart
+  chart: timeline
+  dataset: initiatives
+  title: The change programme
+  x: {field: initiative}
+  start: {field: starts_on}
+  end: {field: ends_on}
+  series: {field: status}
 ```
 
 A `stat` takes a `trend:` — a date and a period — and draws its number over

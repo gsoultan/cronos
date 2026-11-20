@@ -199,6 +199,12 @@ function shape(kind: TileKind) {
         </>
       )
 
+    case 'timeline':
+      // Bars staggered along a calendar, overlapping: what runs when.
+      return ([[8, 40], [30, 46], [22, 30], [58, 38], [74, 36]] as const).map(([x, w], i) => (
+        <rect key={i} x={x} y={8 + i * 11} width={w} height="7" rx="2" fill={s(i % 3 === 1 ? 2 : 1)} />
+      ))
+
     case 'pareto':
       // Columns falling away, and the running share rising over them to the
       // top: the few that make most of it.
