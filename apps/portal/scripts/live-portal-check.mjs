@@ -284,16 +284,20 @@ const data = await page.locator('body').innerText()
 /* By the name the author gave them, not the identifier. A definition may carry
    a title, and the whole point of one is that the interface uses it — a page
    headed "statement-lines" is showing somebody a primary key. */
-/* Paged, six to a page: the demo holds ten since it gained a parcel network,
-   and "Statement lines" is on the second. Paging to it is the claim — every
-   dataset the server has is reachable — where asserting it on the first page
-   was a claim about how many the demo happened to hold. */
+/* Paged, six to a page. Every page is read, because every dataset the server
+   has being reachable is the claim — asserting names on the first or second
+   page was a claim about how many the demo happened to hold, and broke each
+   time the demo gained some. */
 const datasets = page.locator('[data-testid=datasets-card]')
-await datasets.getByRole('button', { name: 'Next' }).click()
-const second = await datasets.innerText()
+const next = datasets.getByRole('button', { name: 'Next' })
+let listed = await datasets.innerText()
+for (let i = 0; i < 20 && await next.isEnabled(); i++) {
+  await next.click()
+  listed += await datasets.innerText()
+}
 ok('the data page lists the datasets the server has',
-  data.includes('Invoices') && data.includes('Active customers')
-  && second.includes('Statement lines'))
+  listed.includes('Invoices') && listed.includes('Active customers')
+  && listed.includes('Statement lines') && listed.includes('Support tickets'))
 ok('and the source they read', data.includes('warehouse'))
 /* The limits are what nobody opens the file for: what one query may spend, and
    how much it may hand back. */
