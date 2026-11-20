@@ -247,3 +247,296 @@ SELECT i, depot, carrier,
   -- Slow near the depot and in town, faster out on the road.
   round(12 + 70 * pace * min(r / 0.4, 1), 1)
 FROM placed;
+
+-- ---------------------------------------------------------------------------
+-- The business showcase: one year of Trailhead Outfitters, a mid-sized
+-- outdoor-gear company, read the way its sales, finance, support and people
+-- teams read it. Invented, but shaped like the real thing: a Christmas peak,
+-- wholesale that moves volume at a thinner margin, tickets that pile up on a
+-- Monday, a funnel that leaks most at qualification. Generated from hashed row
+-- numbers rather than random(), so every boot draws the same charts.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE sales_orders (
+  id INTEGER PRIMARY KEY, ordered_at TEXT, region TEXT, channel TEXT,
+  category TEXT, rep TEXT, units REAL, revenue REAL, cost REAL
+);
+
+INSERT INTO sales_orders
+WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 9000),
+k(k) AS (VALUES (1), (2), (3), (4), (5), (6), (7)),
+h AS (SELECT i, k, abs(sin(i * 12.9898 + k * 78.233)) * 43758.5453 AS x FROM n, k),
+u AS (
+  SELECT i,
+    max(CASE k WHEN 1 THEN x - floor(x) END) AS day,
+    max(CASE k WHEN 2 THEN x - floor(x) END) AS rg,
+    max(CASE k WHEN 3 THEN x - floor(x) END) AS ch,
+    max(CASE k WHEN 4 THEN x - floor(x) END) AS ct,
+    max(CASE k WHEN 5 THEN x - floor(x) END) AS qty,
+    max(CASE k WHEN 6 THEN x - floor(x) END) AS px,
+    max(CASE k WHEN 7 THEN x - floor(x) END) AS who
+  FROM h GROUP BY i
+),
+-- Skewed towards the end of the year, so the business grows across it.
+o AS (
+  SELECT i, rg, ch, ct, qty, px, who,
+    date('2025-11-01', '+' || CAST(floor(365 * pow(day, 0.85)) AS INTEGER) || ' days') AS d
+  FROM u
+),
+p AS (
+  SELECT i, d, qty, px, who,
+    CASE WHEN rg < 0.38 THEN 'North America' WHEN rg < 0.66 THEN 'Europe'
+         WHEN rg < 0.87 THEN 'Asia Pacific' ELSE 'Latin America' END AS region,
+    CASE WHEN ch < 0.46 THEN 'Online' WHEN ch < 0.82 THEN 'Retail stores'
+         ELSE 'Wholesale' END AS channel,
+    CASE WHEN ct < 0.27 THEN 'Outerwear' WHEN ct < 0.50 THEN 'Footwear'
+         WHEN ct < 0.66 THEN 'Packs & bags' WHEN ct < 0.86 THEN 'Accessories'
+         ELSE 'Camping gear' END AS category,
+    CASE substr(d, 6, 2) WHEN '11' THEN 1.30 WHEN '12' THEN 1.55 WHEN '01' THEN 0.80
+         WHEN '02' THEN 0.85 WHEN '07' THEN 1.10 ELSE 1.0 END AS season
+  FROM o
+),
+q AS (
+  SELECT p.*,
+    CASE channel WHEN 'Wholesale' THEN 10 + floor(qty * 30)
+                 ELSE 1 + floor(qty * qty * 6) END AS units,
+    CASE category WHEN 'Outerwear' THEN 189 WHEN 'Footwear' THEN 129
+         WHEN 'Packs & bags' THEN 94 WHEN 'Accessories' THEN 32 ELSE 249 END AS list,
+    CASE category WHEN 'Outerwear' THEN 0.42 WHEN 'Footwear' THEN 0.47
+         WHEN 'Packs & bags' THEN 0.38 WHEN 'Accessories' THEN 0.30 ELSE 0.52 END AS made
+  FROM p
+)
+SELECT i, d, region, channel, category,
+  CASE region
+    WHEN 'North America' THEN CASE WHEN who < 0.55 THEN 'Hannah Brooks' ELSE 'Daniel Kim' END
+    WHEN 'Europe'        THEN CASE WHEN who < 0.55 THEN 'Amara Okafor' ELSE 'Lukas Meyer' END
+    WHEN 'Asia Pacific'  THEN CASE WHEN who < 0.55 THEN 'Priya Raman' ELSE 'Kenji Sato' END
+    ELSE CASE WHEN who < 0.55 THEN 'Sofia Alvarez' ELSE 'Mateo Rojas' END END,
+  units,
+  -- Wholesale buys at 62% of list; everyone else pays list, give or take a
+  -- promotion, and pays more of it in the peak.
+  round(units * list * (0.9 + 0.2 * px) * season
+        * CASE channel WHEN 'Wholesale' THEN 0.62 ELSE 1 END, 2),
+  round(units * list * made, 2)
+FROM q;
+
+-- What each rep was asked to sell this year.
+CREATE TABLE sales_reps (rep TEXT PRIMARY KEY, region TEXT, quota REAL);
+INSERT INTO sales_reps VALUES
+  ('Hannah Brooks', 'North America', 1200000), ('Daniel Kim',  'North America', 1050000),
+  ('Amara Okafor',  'Europe',         900000), ('Lukas Meyer', 'Europe',         820000),
+  ('Priya Raman',   'Asia Pacific',   700000), ('Kenji Sato',  'Asia Pacific',   650000),
+  ('Sofia Alvarez', 'Latin America',  420000), ('Mateo Rojas', 'Latin America',  430000);
+
+-- The B2B pipeline: how far each opportunity got. 1 lead, 2 qualified,
+-- 3 proposal, 4 negotiation, 5 won.
+CREATE TABLE deals (
+  id INTEGER PRIMARY KEY, created_at TEXT, source TEXT, region TEXT,
+  amount REAL, stage INTEGER
+);
+
+INSERT INTO deals
+WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 900),
+k(k) AS (VALUES (1), (2), (3), (4), (5)),
+h AS (SELECT i, k, abs(sin(i * 4.1414 + k * 91.317)) * 23421.631 AS x FROM n, k),
+u AS (
+  SELECT i,
+    max(CASE k WHEN 1 THEN x - floor(x) END) AS day,
+    max(CASE k WHEN 2 THEN x - floor(x) END) AS src,
+    max(CASE k WHEN 3 THEN x - floor(x) END) AS rg,
+    max(CASE k WHEN 4 THEN x - floor(x) END) AS size,
+    max(CASE k WHEN 5 THEN x - floor(x) END) AS fate
+  FROM h GROUP BY i
+),
+s AS (
+  SELECT i, day, rg, size,
+    CASE WHEN src < 0.40 THEN 'Inbound' WHEN src < 0.70 THEN 'Outbound'
+         WHEN src < 0.88 THEN 'Partner' ELSE 'Trade show' END AS source,
+    -- Partners bring warmer deals; cold outreach leaks at every step.
+    min(fate + CASE WHEN src < 0.40 THEN 0.04 WHEN src < 0.70 THEN -0.06
+                    WHEN src < 0.88 THEN 0.12 ELSE 0 END, 0.999) AS f
+  FROM u
+)
+SELECT i,
+  date('2025-11-01', '+' || CAST(floor(365 * day) AS INTEGER) || ' days'),
+  source,
+  CASE WHEN rg < 0.38 THEN 'North America' WHEN rg < 0.66 THEN 'Europe'
+       WHEN rg < 0.87 THEN 'Asia Pacific' ELSE 'Latin America' END,
+  round(5000 + 75000 * size * size, -2),
+  1 + (f > 0.40) + (f > 0.64) + (f > 0.80) + (f > 0.89)
+FROM s;
+
+-- The general ledger, summarised to the lines a management P&L reads.
+-- Revenue and cost of goods are the orders above, so the finance report and
+-- the sales report agree; operating costs are a monthly run-rate per
+-- department, with the overspends and savings a real year has. Costs are
+-- negative, so a line's sum is what it did to profit.
+CREATE TABLE gl_lines (
+  period TEXT, line_no INTEGER, line TEXT, department TEXT,
+  actual REAL, budget REAL
+);
+
+INSERT INTO gl_lines
+SELECT substr(ordered_at, 1, 7) || '-01', 1, 'Revenue', 'Sales',
+  round(sum(revenue), 2),
+  round(sum(revenue) * (0.93 + 0.14 * abs(sin(CAST(substr(ordered_at, 6, 2) AS REAL) * 3.7))), -3)
+FROM sales_orders GROUP BY 1;
+
+INSERT INTO gl_lines
+SELECT substr(ordered_at, 1, 7) || '-01', 2, 'Cost of goods', 'Operations',
+  -round(sum(cost), 2),
+  -round(sum(cost) * (0.95 + 0.08 * abs(sin(CAST(substr(ordered_at, 6, 2) AS REAL) * 1.9))), -3)
+FROM sales_orders GROUP BY 1;
+
+INSERT INTO gl_lines
+WITH RECURSIVE m(i, period) AS (
+  SELECT 0, '2025-11-01'
+  UNION ALL SELECT i + 1, date(period, '+1 month') FROM m WHERE i < 11
+),
+plan(line_no, line, department, monthly, peak) AS (VALUES
+  (3, 'Payroll',     'Sales',        32000, 1.00), (3, 'Payroll', 'Marketing', 14000, 1.00),
+  (3, 'Payroll',     'Engineering',  36000, 1.00), (3, 'Payroll', 'Operations', 19000, 1.15),
+  (3, 'Payroll',     'G&A',          15000, 1.00),
+  (4, 'Marketing',   'Marketing',    12000, 1.80),
+  (5, 'Technology',  'Engineering',   9000, 1.00),
+  (6, 'Facilities',  'G&A',          10000, 1.00),
+  (7, 'Travel',      'Sales',         4000, 0.60)
+)
+SELECT period, line_no, line, department,
+  -round(b * (0.88 + 0.26 * abs(sin(i * 2.31 + line_no * 1.7 + length(department)))), 2),
+  -b
+FROM (
+  SELECT m.i, m.period, p.line_no, p.line, p.department,
+    p.monthly * CASE WHEN substr(m.period, 6, 2) IN ('11', '12') THEN p.peak ELSE 1 END
+      * (1 + m.i * 0.01) AS b
+  FROM m, plan p
+);
+
+-- Support tickets: when they came in, how urgent, who took them, how long
+-- they took, and — where the customer answered the survey — how it went.
+CREATE TABLE tickets (
+  id INTEGER PRIMARY KEY, opened_at TEXT, priority TEXT, channel TEXT,
+  team TEXT, first_response_h REAL, resolution_h REAL, sla_h REAL, csat REAL
+);
+
+INSERT INTO tickets
+WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 3200),
+k(k) AS (VALUES (1), (2), (3), (4), (5), (6), (7)),
+h AS (SELECT i, k, abs(sin(i * 7.7713 + k * 31.997)) * 51234.987 AS x FROM n, k),
+u AS (
+  SELECT i,
+    max(CASE k WHEN 1 THEN x - floor(x) END) AS day,
+    max(CASE k WHEN 2 THEN x - floor(x) END) AS pr,
+    max(CASE k WHEN 3 THEN x - floor(x) END) AS ch,
+    max(CASE k WHEN 4 THEN x - floor(x) END) AS tm,
+    max(CASE k WHEN 5 THEN x - floor(x) END) AS z1,
+    max(CASE k WHEN 6 THEN x - floor(x) END) AS z2,
+    max(CASE k WHEN 7 THEN x - floor(x) END) AS cs
+  FROM h GROUP BY i
+),
+o AS (
+  SELECT u.*, CAST(floor(365 * day) AS INTEGER) AS off,
+    date('2025-11-01', '+' || CAST(floor(365 * day) AS INTEGER) || ' days') AS d0
+  FROM u
+),
+-- Most weekend tickets wait for the week: Monday takes the brunt, the rest
+-- are the ones that were never urgent enough to send until Tuesday.
+w AS (
+  SELECT o.*,
+    CASE strftime('%w', d0)
+      WHEN '6' THEN CASE WHEN cs < 0.30 THEN d0 WHEN cs < 0.55 THEN date(d0, '+2 days')
+                         ELSE date(d0, '+' || (3 + CAST(floor((cs - 0.55) * 8.8) AS INTEGER)) || ' days') END
+      WHEN '0' THEN CASE WHEN cs < 0.20 THEN d0 WHEN cs < 0.50 THEN date(d0, '+1 days')
+                         ELSE date(d0, '+' || (2 + CAST(floor((cs - 0.50) * 8) AS INTEGER)) || ' days') END
+      ELSE d0 END AS d
+  FROM o
+),
+t AS (
+  SELECT i, d, off, z1, z2, cs,
+    CASE WHEN pr < 0.07 THEN 'P1 Urgent' WHEN pr < 0.28 THEN 'P2 High'
+         WHEN pr < 0.80 THEN 'P3 Normal' ELSE 'P4 Low' END AS priority,
+    CASE WHEN ch < 0.42 THEN 'Email' WHEN ch < 0.70 THEN 'Chat'
+         WHEN ch < 0.86 THEN 'Phone' ELSE 'Web form' END AS channel,
+    CASE WHEN tm < 0.30 THEN 'Orders & delivery' WHEN tm < 0.55 THEN 'Returns'
+         WHEN tm < 0.80 THEN 'Product questions' ELSE 'Billing' END AS team,
+    -- A normal deviate, for a log-normal handling time.
+    sqrt(-2 * ln(0.0001 + 0.9998 * z1)) * cos(2 * pi() * z2) AS g
+  FROM w
+),
+r AS (
+  SELECT t.*,
+    CASE priority WHEN 'P1 Urgent' THEN 3 WHEN 'P2 High' THEN 10 WHEN 'P3 Normal' THEN 26 ELSE 50 END
+      * CASE team WHEN 'Product questions' THEN 1.35 WHEN 'Billing' THEN 0.8 ELSE 1 END
+      -- The team gets quicker across the year.
+      * (1.25 - 0.45 * off / 365.0)
+      * exp(0.75 * g) AS took,
+    CASE priority WHEN 'P1 Urgent' THEN 8 WHEN 'P2 High' THEN 24 WHEN 'P3 Normal' THEN 48 ELSE 96 END AS sla
+  FROM t
+)
+-- A weekend ticket moved past the year's end stays on the year's last day.
+SELECT i, min(d, '2026-10-31'), priority, channel, team,
+  round(min(took * 0.18 * (0.5 + cs), took), 1),
+  round(took, 1),
+  sla,
+  CASE WHEN cs < 0.42 THEN NULL
+       ELSE min(5, max(1, round(4.6 - 1.6 * (took > sla) - 0.9 * abs(g) * (g > 0.8) + (cs - 0.7)))) END
+FROM r;
+
+-- People: everyone hired since 2017, and those who have since left.
+CREATE TABLE employees (
+  id INTEGER PRIMARY KEY, department TEXT, level TEXT, location TEXT,
+  hired_on TEXT, left_on TEXT, salary REAL, engagement REAL, rating TEXT
+);
+
+INSERT INTO employees
+WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 340),
+k(k) AS (VALUES (1), (2), (3), (4), (5), (6), (7)),
+h AS (SELECT i, k, abs(sin(i * 3.3317 + k * 47.123)) * 39113.517 AS x FROM n, k),
+u AS (
+  SELECT i,
+    max(CASE k WHEN 1 THEN x - floor(x) END) AS dp,
+    max(CASE k WHEN 2 THEN x - floor(x) END) AS lv,
+    max(CASE k WHEN 3 THEN x - floor(x) END) AS lc,
+    max(CASE k WHEN 4 THEN x - floor(x) END) AS hire,
+    max(CASE k WHEN 5 THEN x - floor(x) END) AS stay,
+    max(CASE k WHEN 6 THEN x - floor(x) END) AS pay,
+    max(CASE k WHEN 7 THEN x - floor(x) END) AS mood
+  FROM h GROUP BY i
+),
+e AS (
+  SELECT i, stay, pay, mood,
+    CASE WHEN dp < 0.30 THEN 'Engineering' WHEN dp < 0.50 THEN 'Sales'
+         WHEN dp < 0.68 THEN 'Operations' WHEN dp < 0.80 THEN 'Customer support'
+         WHEN dp < 0.91 THEN 'Marketing' ELSE 'Finance & HR' END AS department,
+    -- Numbered the way a career ladder is, which is also the order they read in.
+    CASE WHEN lv < 0.22 THEN 'L1 Associate' WHEN lv < 0.55 THEN 'L2 Professional'
+         WHEN lv < 0.80 THEN 'L3 Senior' WHEN lv < 0.94 THEN 'L4 Lead' ELSE 'L5 Director' END AS level,
+    CASE WHEN lc < 0.34 THEN 'Amsterdam' WHEN lc < 0.56 THEN 'Denver'
+         WHEN lc < 0.72 THEN 'London' WHEN lc < 0.84 THEN 'Singapore' ELSE 'Remote' END AS location,
+    -- More hiring in the last two years than the five before them.
+    date('2017-01-09', '+' || CAST(floor(3580 * pow(hire, 0.6)) AS INTEGER) || ' days') AS hired_on
+  FROM u
+)
+SELECT i, department, level, location, hired_on,
+  CASE WHEN stay < 0.17 AND julianday(hired_on) < julianday('2026-08-01')
+    THEN min(date(hired_on, '+' || CAST(120 + floor(stay / 0.17 * 1100) AS INTEGER) || ' days'), '2026-10-30')
+  END,
+  round(
+    CASE level WHEN 'L1 Associate' THEN 48000 WHEN 'L2 Professional' THEN 66000 WHEN 'L3 Senior' THEN 88000
+               WHEN 'L4 Lead' THEN 112000 ELSE 150000 END
+    * CASE department WHEN 'Engineering' THEN 1.18 WHEN 'Customer support' THEN 0.82
+                      WHEN 'Operations' THEN 0.9 ELSE 1 END
+    * CASE location WHEN 'Denver' THEN 1.15 WHEN 'London' THEN 1.08 WHEN 'Singapore' THEN 1.02 ELSE 1 END
+    * (0.88 + 0.24 * pay), -2),
+  round(58 + 34 * mood
+    + CASE department WHEN 'Engineering' THEN 4 WHEN 'Customer support' THEN -6
+                      WHEN 'Sales' THEN -2 ELSE 0 END, 0),
+  CASE WHEN mood < 0.12 THEN 'Below expectations' WHEN mood < 0.55 THEN 'Meets expectations'
+       WHEN mood < 0.88 THEN 'Exceeds expectations' ELSE 'Outstanding' END
+FROM e;
+
+-- What each department was funded to have by the end of the year.
+CREATE TABLE headcount_plan (department TEXT PRIMARY KEY, planned REAL);
+INSERT INTO headcount_plan VALUES
+  ('Engineering', 90), ('Sales', 58), ('Operations', 50),
+  ('Customer support', 36), ('Marketing', 32), ('Finance & HR', 26);

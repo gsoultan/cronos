@@ -1,0 +1,18 @@
+apiVersion: cronos.dev/v1
+kind: Dataset
+metadata:
+  name: headcount
+  title: Headcount against plan
+  description: One row per department — who is employed today and how many the plan funded.
+spec:
+  sources:
+    - ref: warehouse
+  query: |
+    SELECT p.department, p.planned,
+           (SELECT COUNT(*) FROM employees e
+             WHERE e.department = p.department AND e.left_on IS NULL) AS employed
+    FROM headcount_plan p
+  fields:
+    - {name: department, type: string, role: dimension, label: Department}
+    - {name: employed,   type: number, role: measure, aggregate: sum, label: Employed}
+    - {name: planned,    type: number, role: measure, aggregate: sum, label: Planned}

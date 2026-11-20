@@ -20,6 +20,23 @@ needs a deployment to act says so under **Upgrading**.
 
 ---
 
+## Unreleased
+
+**Four business reports in the demo.** `demo/seed.sql` adds a year of an
+invented outdoor-gear company — orders, a wholesale pipeline, a management
+ledger against budget, support tickets and a staff roster — and
+`demo/definitions` reads it as the reports those teams would open:
+`sales-performance` (revenue against target, channels, account managers
+against quota, the pipeline as a funnel), `management-pnl` (a revenue to
+operating profit waterfall, revenue against budget, department spend against
+budget), `service-desk` (tickets by day, resolution time against SLA by team
+and priority, satisfaction) and `people-overview` (headcount against plan,
+levels, pay, engagement). Each has a paginated output, and the sales and P&L
+reports a spreadsheet one. Nothing a deployment runs changes; the demo boots a
+second or so slower for the extra rows.
+
+---
+
 ## v2.0.0 — 2026-10-11
 
 A major, because some definitions, configurations and host tokens that v1.2.4

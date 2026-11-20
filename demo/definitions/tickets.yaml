@@ -1,0 +1,29 @@
+apiVersion: cronos.dev/v1
+kind: Dataset
+metadata:
+  name: tickets
+  title: Support tickets
+  description: Every customer ticket this year, with how long it took against its SLA.
+spec:
+  sources:
+    - ref: warehouse
+  query: |
+    SELECT id, opened_at, priority, channel, team,
+           first_response_h, resolution_h, sla_h, csat,
+           CASE WHEN resolution_h <= sla_h THEN 100.0 ELSE 0 END AS within_sla,
+           CASE WHEN resolution_h > sla_h THEN resolution_h - sla_h END AS overrun_h
+    FROM tickets
+  fields:
+    - {name: id,               type: number,  role: dimension, hidden: true}
+    - {name: opened_at,        type: date,    role: dimension, label: Opened}
+    - {name: priority,         type: string,  role: dimension, label: Priority}
+    - {name: channel,          type: string,  role: dimension, label: Channel}
+    - {name: team,             type: string,  role: dimension, label: Team}
+    - {name: first_response_h, type: decimal, role: measure, aggregate: avg, label: First response (h)}
+    - {name: resolution_h,     type: decimal, role: measure, aggregate: avg, label: Resolution (h)}
+    - {name: sla_h,            type: decimal, role: measure, aggregate: avg, label: SLA (h)}
+    - {name: csat,             type: decimal, role: measure, aggregate: avg, label: Satisfaction}
+    # 100 for a ticket closed inside its SLA and 0 for one that was not, so
+    # its average is the share met, as a percentage.
+    - {name: within_sla,       type: decimal, role: measure, aggregate: avg, label: Within SLA (%)}
+    - {name: overrun_h,        type: decimal, role: measure, aggregate: sum, label: Hours over SLA}

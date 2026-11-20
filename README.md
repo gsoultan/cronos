@@ -18,7 +18,10 @@ There is nothing to set up. `make dev` seeds an administrator into a gitignored
 SQLite file and prints it — `dev@cronos.local` / `cronos-dev-password` — so the
 portal on http://localhost:5173 opens on the sign-in page rather than a form,
 and the demo serves `demo/definitions` over `demo/seed.sql`, so there is real
-data behind the first report you open.
+data behind the first report you open. Besides the billing and parcel-network
+reports it carries four a business would recognise — sales performance, a
+management P&L, customer service and people — which between them use nearly every
+chart type cronos draws.
 
 ```bash
 export CRONOS_SIGNING_KEY="development-key-at-least-32-bytes-long"

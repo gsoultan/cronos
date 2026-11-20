@@ -1,0 +1,155 @@
+apiVersion: cronos.dev/v1
+kind: Report
+metadata:
+  name: people-overview
+  title: People
+  folder: People
+  description: Headcount against plan, hiring and leaving, pay by level, and how engaged each department is.
+spec:
+  dataset: people
+
+  filters:
+    - name: department
+      label: Department
+      type: enum
+      control: checkboxes
+      values: [Engineering, Sales, Operations, Customer support, Marketing, Finance & HR]
+      bind:
+        people: department
+        headcount: department
+    - name: location
+      label: Location
+      type: enum
+      values: [Amsterdam, Denver, London, Singapore, Remote]
+      bind:
+        people: location
+
+  outputs:
+    - name: interactive
+      renderer: interactive
+      layout:
+        - kind: stat
+          label: Headcount
+          value: {field: active, aggregate: count}
+        - kind: stat
+          label: Hired this year
+          value: {field: hire, aggregate: count}
+        - kind: stat
+          label: Left this year
+          value: {field: leaver, aggregate: count}
+        - kind: stat
+          label: Engagement score
+          filter: status = 'Active'
+          value: {field: engagement, aggregate: avg}
+
+        - kind: chart
+          chart: bullet
+          title: Headcount against plan
+          dataset: headcount
+          x: {field: department}
+          y: {field: employed, aggregate: sum}
+          target: {field: planned, aggregate: sum, label: Plan}
+          bands: [0.9, 1.0]
+
+        - kind: chart
+          chart: sunburst
+          title: Departments and levels
+          filter: status = 'Active'
+          x: {field: level}
+          series: {field: department}
+          y: {field: active, aggregate: count}
+
+        - kind: chart
+          chart: column
+          title: Hiring by year and department
+          stacked: true
+          x: {field: hired_on, grain: year}
+          series: {field: department}
+          y: {field: id, aggregate: count}
+
+        - kind: chart
+          chart: radar
+          title: Engagement by department
+          filter: status = 'Active'
+          x: {field: department}
+          y: {field: engagement, aggregate: avg}
+
+        - kind: chart
+          chart: boxplot
+          title: Salary by level
+          filter: status = 'Active'
+          x: {field: level}
+          y: {field: salary}
+
+        - kind: chart
+          chart: histogram
+          title: Tenure (years)
+          filter: status = 'Active'
+          x: {field: tenure}
+          bins: 10
+
+        - kind: chart
+          chart: heatmap
+          title: Where each department works
+          filter: status = 'Active'
+          x: {field: location}
+          series: {field: department}
+          y: {field: active, aggregate: count}
+
+        - kind: chart
+          chart: bar
+          title: Leavers this year by department
+          x: {field: department}
+          y: {field: leaver, aggregate: count}
+
+        - kind: chart
+          chart: sankey
+          title: Department to last rating
+          filter: status = 'Active'
+          x: {field: department}
+          series: {field: rating}
+          y: {field: active, aggregate: count}
+
+        - kind: pivot
+          title: Headcount by department and level
+          filter: status = 'Active'
+          value: {field: active, aggregate: count}
+          pivot:
+            rows: {field: department}
+            columns: {field: level}
+
+    - name: pdf
+      renderer: paginated
+      page: {size: a4, orientation: portrait, margins: 16mm}
+      layout:
+        - kind: stat
+          label: Headcount
+          value: {field: active, aggregate: count}
+        - kind: chart
+          chart: bullet
+          title: Headcount against plan
+          dataset: headcount
+          x: {field: department}
+          y: {field: employed, aggregate: sum}
+          target: {field: planned, aggregate: sum, label: Plan}
+          bands: [0.9, 1.0]
+        - kind: chart
+          chart: sunburst
+          title: Departments and levels
+          filter: status = 'Active'
+          x: {field: level}
+          series: {field: department}
+          y: {field: active, aggregate: count}
+        - kind: chart
+          chart: boxplot
+          title: Salary by level
+          filter: status = 'Active'
+          x: {field: level}
+          y: {field: salary}
+        - kind: pivot
+          title: Headcount by department and level
+          filter: status = 'Active'
+          value: {field: active, aggregate: count}
+          pivot:
+            rows: {field: department}
+            columns: {field: level}

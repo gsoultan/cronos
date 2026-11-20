@@ -1,0 +1,157 @@
+apiVersion: cronos.dev/v1
+kind: Report
+metadata:
+  name: management-pnl
+  title: Management P&L
+  folder: Finance
+  description: Revenue to operating profit for the year, each month against budget, and where the money went by department.
+spec:
+  dataset: ledger
+
+  filters:
+    - name: period
+      label: Period
+      type: date
+      control: range
+      bind:
+        ledger: period
+    - name: department
+      label: Department
+      type: enum
+      control: checkboxes
+      values: [Sales, Marketing, Engineering, Operations, G&A]
+      bind:
+        ledger: department
+
+  outputs:
+    - name: interactive
+      renderer: interactive
+      layout:
+        - kind: stat
+          label: Revenue
+          value: {field: revenue, aggregate: sum}
+          trend: {field: period, grain: month}
+        - kind: stat
+          label: Operating profit
+          value: {field: actual, aggregate: sum}
+          trend: {field: period, grain: month}
+        - kind: stat
+          label: Operating costs
+          value: {field: spend, aggregate: sum}
+          trend: {field: period, grain: month, better: lower}
+
+        # The bridge every board pack opens with: what revenue became, line by
+        # line, in the order the P&L reads.
+        - kind: chart
+          chart: waterfall
+          title: Revenue to operating profit
+          x: {field: line}
+          y: {field: actual, aggregate: sum}
+          sort:
+            - {field: line_no}
+
+        - kind: chart
+          chart: combo
+          title: Revenue against budget
+          x: {field: period, grain: month}
+          metrics:
+            - {field: revenue, aggregate: sum, label: Actual, draw: bar}
+            - {field: revenue_budget, aggregate: sum, label: Budget, draw: line}
+
+        - kind: chart
+          chart: column
+          title: Operating profit by month
+          x: {field: period, grain: month}
+          y: {field: actual, aggregate: sum}
+
+        # Spend against what each department was given, a row each.
+        - kind: chart
+          chart: bullet
+          title: Department spend against budget
+          x: {field: department}
+          y: {field: spend, aggregate: sum}
+          target: {field: spend_budget, aggregate: sum, label: Budget}
+          bands: [0.9, 1.0]
+
+        - kind: chart
+          chart: donut
+          title: Where operating costs go
+          filter: line_no >= 3
+          x: {field: line}
+          y: {field: spend, aggregate: sum}
+
+        - kind: chart
+          chart: area
+          title: Operating costs by line
+          stacked: true
+          filter: line_no >= 3
+          x: {field: period, grain: month}
+          series: {field: line}
+          y: {field: spend, aggregate: sum}
+
+        - kind: chart
+          chart: heatmap
+          title: Spend by department and month
+          x: {field: period, grain: month}
+          series: {field: department}
+          y: {field: spend, aggregate: sum}
+
+        - kind: pivot
+          title: P&L by month
+          value: {field: actual, aggregate: sum}
+          pivot:
+            rows: {field: line}
+            columns: {field: period, grain: month}
+
+    # The pack that goes to the board: two pages, landscape.
+    - name: pdf
+      renderer: paginated
+      page: {size: a4, orientation: landscape, margins: 14mm}
+      layout:
+        - kind: stat
+          label: Operating profit
+          value: {field: actual, aggregate: sum}
+        - kind: chart
+          chart: waterfall
+          title: Revenue to operating profit
+          x: {field: line}
+          y: {field: actual, aggregate: sum}
+          sort:
+            - {field: line_no}
+        - kind: chart
+          chart: combo
+          title: Revenue against budget
+          x: {field: period, grain: month}
+          metrics:
+            - {field: revenue, aggregate: sum, label: Actual, draw: bar}
+            - {field: revenue_budget, aggregate: sum, label: Budget, draw: line}
+        - kind: chart
+          chart: bullet
+          title: Department spend against budget
+          x: {field: department}
+          y: {field: spend, aggregate: sum}
+          target: {field: spend_budget, aggregate: sum, label: Budget}
+          bands: [0.9, 1.0]
+        - kind: chart
+          chart: donut
+          title: Where operating costs go
+          filter: line_no >= 3
+          x: {field: line}
+          y: {field: spend, aggregate: sum}
+        - kind: pivot
+          title: P&L by month
+          value: {field: actual, aggregate: sum}
+          pivot:
+            rows: {field: line}
+            columns: {field: period, grain: month}
+
+    - name: xlsx
+      renderer: spreadsheet
+      sheets:
+        - name: P&L by month
+          value: {field: actual}
+          pivot:
+            rows: {field: line}
+            columns: {field: period, grain: month}
+        - name: Ledger
+          columns: [period, line, department, actual, budget, variance]

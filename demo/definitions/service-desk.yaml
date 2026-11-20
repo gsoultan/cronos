@@ -1,0 +1,169 @@
+apiVersion: cronos.dev/v1
+kind: Report
+metadata:
+  name: service-desk
+  title: Customer service
+  folder: Support
+  description: Ticket volume, how fast it was handled against SLA, and how customers rated it — by team, channel and priority.
+spec:
+  dataset: tickets
+
+  filters:
+    - name: period
+      label: Period
+      type: date
+      control: range
+      bind:
+        tickets: opened_at
+    - name: priority
+      label: Priority
+      type: enum
+      control: checkboxes
+      values: [P1 Urgent, P2 High, P3 Normal, P4 Low]
+      bind:
+        tickets: priority
+    - name: team
+      label: Team
+      type: enum
+      values: [Orders & delivery, Returns, Product questions, Billing]
+      bind:
+        tickets: team
+
+  outputs:
+    - name: interactive
+      renderer: interactive
+      layout:
+        - kind: stat
+          label: Tickets
+          value: {field: id, aggregate: count}
+          trend: {field: opened_at, grain: month, better: lower}
+        - kind: stat
+          label: Hours to resolve, on average
+          value: {field: resolution_h, aggregate: avg}
+          trend: {field: opened_at, grain: month, better: lower}
+        - kind: stat
+          label: Satisfaction (1–5)
+          value: {field: csat, aggregate: avg}
+          trend: {field: opened_at, grain: month}
+
+        - kind: chart
+          chart: gauge
+          title: Closed within SLA (%)
+          y: {field: within_sla, aggregate: avg}
+          target: {value: 85, label: Goal}
+
+        # Mondays are the weekend's tickets arriving at once.
+        - kind: chart
+          chart: calendar
+          title: Tickets by day
+          x: {field: opened_at}
+          y: {field: id, aggregate: count}
+
+        - kind: chart
+          chart: line
+          title: Hours to resolve, by priority
+          x: {field: opened_at, grain: month}
+          series: {field: priority}
+          y: {field: resolution_h, aggregate: avg}
+
+        - kind: chart
+          chart: column
+          title: Tickets by month and priority
+          stacked: true
+          x: {field: opened_at, grain: month}
+          series: {field: priority}
+          y: {field: id, aggregate: count}
+
+        - kind: chart
+          chart: bullet
+          title: Within SLA by team (%)
+          x: {field: team}
+          y: {field: within_sla, aggregate: avg}
+          target: {value: 85, label: Goal}
+          bands: [0.85, 0.95]
+
+        # The long tail is the story: most tickets close fast, a few run on
+        # for days.
+        - kind: chart
+          chart: boxplot
+          title: Resolution time by priority (h)
+          x: {field: priority}
+          y: {field: resolution_h}
+
+        - kind: chart
+          chart: histogram
+          title: First response time (h)
+          x: {field: first_response_h}
+          bins: 24
+
+        - kind: chart
+          chart: sankey
+          title: From channel to team
+          x: {field: channel}
+          series: {field: team}
+          y: {field: id, aggregate: count}
+
+        - kind: chart
+          chart: heatmap
+          title: Satisfaction by team and month
+          x: {field: opened_at, grain: month}
+          series: {field: team}
+          y: {field: csat, aggregate: avg}
+
+        - kind: chart
+          chart: radar
+          title: Hours to resolve, by team
+          x: {field: team}
+          y: {field: resolution_h, aggregate: avg}
+
+        - kind: table
+          title: Furthest past SLA
+          filter: overrun_h IS NOT NULL
+          columns: [opened_at, priority, team, channel, resolution_h, sla_h, overrun_h]
+          sort:
+            - {field: overrun_h, dir: desc}
+          pageSize: 25
+
+    # The weekly service review, one page.
+    - name: pdf
+      renderer: paginated
+      page: {size: a4, orientation: landscape, margins: 14mm}
+      layout:
+        - kind: stat
+          label: Tickets
+          value: {field: id, aggregate: count}
+        - kind: chart
+          chart: gauge
+          title: Closed within SLA (%)
+          y: {field: within_sla, aggregate: avg}
+          target: {value: 85, label: Goal}
+        - kind: chart
+          chart: column
+          title: Tickets by month and priority
+          stacked: true
+          x: {field: opened_at, grain: month}
+          series: {field: priority}
+          y: {field: id, aggregate: count}
+        - kind: chart
+          chart: bullet
+          title: Within SLA by team (%)
+          x: {field: team}
+          y: {field: within_sla, aggregate: avg}
+          target: {value: 85, label: Goal}
+          bands: [0.85, 0.95]
+        - kind: chart
+          chart: boxplot
+          title: Resolution time by priority (h)
+          x: {field: priority}
+          y: {field: resolution_h}
+        - kind: chart
+          chart: calendar
+          title: Tickets by day
+          x: {field: opened_at}
+          y: {field: id, aggregate: count}
+        - kind: table
+          title: Furthest past SLA
+          filter: overrun_h IS NOT NULL
+          columns: [opened_at, priority, team, channel, resolution_h, sla_h, overrun_h]
+          sort:
+            - {field: overrun_h, dir: desc}

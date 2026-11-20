@@ -1,0 +1,34 @@
+apiVersion: cronos.dev/v1
+kind: Dataset
+metadata:
+  name: pipeline
+  title: Wholesale pipeline
+  description: Every wholesale opportunity opened this year, and how far it got.
+spec:
+  sources:
+    - ref: warehouse
+  # Stages as columns, the way most CRMs export them: an opportunity carries
+  # its id in every stage it reached and nothing in the ones it did not, so a
+  # count of each column is a funnel.
+  query: |
+    SELECT id, created_at, source, region, amount, stage,
+           id AS lead,
+           CASE WHEN stage >= 2 THEN id END AS qualified,
+           CASE WHEN stage >= 3 THEN id END AS proposal,
+           CASE WHEN stage >= 4 THEN id END AS negotiation,
+           CASE WHEN stage >= 5 THEN id END AS won,
+           CASE WHEN stage >= 5 THEN amount END AS won_amount
+    FROM deals
+  fields:
+    - {name: id,          type: number,  role: dimension, hidden: true}
+    - {name: created_at,  type: date,    role: dimension, label: Opened}
+    - {name: source,      type: string,  role: dimension, label: Source}
+    - {name: region,      type: string,  role: dimension, label: Region}
+    - {name: stage,       type: number,  role: dimension, hidden: true}
+    - {name: amount,      type: decimal, role: measure, aggregate: sum, label: Pipeline value}
+    - {name: won_amount,  type: decimal, role: measure, aggregate: sum, label: Won value}
+    - {name: lead,        type: number,  role: measure, aggregate: count, label: Leads}
+    - {name: qualified,   type: number,  role: measure, aggregate: count, label: Qualified}
+    - {name: proposal,    type: number,  role: measure, aggregate: count, label: Proposal}
+    - {name: negotiation, type: number,  role: measure, aggregate: count, label: Negotiation}
+    - {name: won,         type: number,  role: measure, aggregate: count, label: Won}
