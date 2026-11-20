@@ -199,6 +199,19 @@ function shape(kind: TileKind) {
         </>
       )
 
+    case 'pareto':
+      // Columns falling away, and the running share rising over them to the
+      // top: the few that make most of it.
+      return (
+        <>
+          {([[10, 44], [32, 28], [54, 16], [76, 10], [98, 6]] as const).map(([x, h], i) => (
+            <rect key={i} x={x} y={64 - h} width="14" height={h} rx="1" fill={s(1)} />
+          ))}
+          <polyline points="17,34 39,22 61,15 83,11 105,8"
+            fill="none" stroke={s(2)} strokeWidth="2" strokeLinejoin="round" />
+        </>
+      )
+
     case 'waterfall':
       return [
         [8, 40, 22], [28, 26, 14], [48, 20, 6], [68, 26, 18], [88, 10, 44],

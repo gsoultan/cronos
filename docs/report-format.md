@@ -534,6 +534,7 @@ The type is a closed set, checked when the report is stored:
 | `sankey` | `x` + `series` dimensions, `y` | A band from each category of `x` to each of `series` |
 | `sunburst` | `x` + `series` dimensions, `y` | `series` as an inner ring, its parts of `x` around it |
 | `calendar` | `x` date, `y` measure | A year a block of weeks, each day shaded |
+| `pareto` | `x` dimension, `y` measure | Columns largest first, and their running share |
 
 `series:` names a second dimension to split by, and `stacked: true` stacks the
 result — on `bar`, `column` and `area` only, because a stacked line has a top
@@ -586,6 +587,20 @@ A `calendar` draws a measure per day of `x`, which must be a date — a year a
 block of weeks, Monday at the top, each day shaded by the quantile it falls in
 and every day with nothing in it an outline. Its `x` takes no grain but `day`:
 a month of days is one bucket of a column chart.
+
+A `pareto` ranks the categories of `x` largest first as columns, whatever
+`sort:` says, with a line of their running share of the whole against a
+scale of 0–100% on the right: the few reasons, customers or products that
+make most of it, and where the long tail starts. It is drawn as a combo is,
+and its columns take reference lines.
+
+```yaml
+- kind: chart
+  chart: pareto
+  title: Why customers write
+  x: {field: reason}
+  y: {field: id, aggregate: count}
+```
 
 A `stat` takes a `trend:` — a date and a period — and draws its number over
 those periods under the figure, with the last against the one before as the

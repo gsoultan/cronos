@@ -43,6 +43,15 @@ func (b *Block) writeChart(blk definition.Block, ds definition.Dataset) {
 	case blk.Chart.Mixes():
 		b.writeTracks(blk, ds)
 		return
+	case blk.Chart == definition.ParetoChart:
+		// The columns are the measure; the line is a share, written as one
+		// when it was read.
+		if len(b.Tracks) > 0 {
+			writeBars(b.Tracks[0].Bars, y)
+		}
+		writeRefs(b.References, y)
+		writeAxis(b.YAxis, y)
+		return
 	case blk.Chart == definition.FunnelChart:
 		b.writeStages(blk, ds, y)
 	case blk.Chart == definition.HistogramChart:

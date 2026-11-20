@@ -22,6 +22,12 @@ needs a deployment to act says so under **Upgrading**.
 
 ## Unreleased
 
+**Pareto charts.** `chart: pareto` ranks the categories of `x` largest first
+as columns, with a line of their running share of the whole on a 0–100%
+scale, in the browser, the PDF and the builder's palette. The demo's service
+desk report gains one of why customers write, from a new `reason` on its
+tickets.
+
 **Reference lines.** A chart's `references:` draws up to three dashed lines
 across its value scale, each a fixed `value` ("Target") or a `stat` of what
 is drawn (`avg`, `median`, `min`, `max`), named with its figure in the

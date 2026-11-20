@@ -33,7 +33,7 @@ var referenceStats = map[string]bool{"avg": true, "median": true, "min": true, "
 func (c ChartType) Referenced() bool {
 	switch c {
 	case LineChart, AreaChart, ColumnChart, ComboChart, WaterfallChart,
-		BoxplotChart, ScatterChart, BubbleChart:
+		BoxplotChart, ScatterChart, BubbleChart, ParetoChart:
 		return true
 	}
 	return false
@@ -46,8 +46,8 @@ func (b Block) validateReferences(output string, i int) error {
 	switch {
 	case !b.Chart.Referenced():
 		return fmt.Errorf("%w: %s chart %d draws reference lines, which cross a value scale "+
-			"and a %s chart has none — use a line, area, column, combo, waterfall, box plot "+
-			"or scatter", ErrInvalid, output, i, b.Chart)
+			"and a %s chart has none — use a line, area, column, combo, waterfall, box plot, "+
+			"scatter or pareto", ErrInvalid, output, i, b.Chart)
 	case b.Stacked.Shares():
 		return fmt.Errorf("%w: %s chart %d is stacked to its whole, whose scale is shares "+
 			"rather than the measure a reference is in", ErrInvalid, output, i)

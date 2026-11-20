@@ -54,6 +54,11 @@ const (
 	// the shape of a working week and a season, which a line of the same
 	// days smooths away.
 	CalendarChart ChartType = "calendar"
+	// ParetoChart ranks categories largest first as columns, with a line of
+	// the running share of the whole against a scale of 0–100%: the few
+	// causes, customers or products that make up most of it, and where the
+	// long tail starts.
+	ParetoChart ChartType = "pareto"
 )
 
 // chartTypes is every type, in the order an error message should list them.
@@ -62,7 +67,7 @@ var chartTypes = []ChartType{
 	ScatterChart, BubbleChart, MapChart,
 	ComboChart, FunnelChart, WaterfallChart, HeatmapChart, GaugeChart, TreemapChart,
 	RadarChart, BulletChart, HistogramChart, BoxplotChart, SankeyChart, SunburstChart,
-	CalendarChart,
+	CalendarChart, ParetoChart,
 }
 
 // Valid reports whether c is a type every renderer knows how to refuse or draw.
@@ -81,7 +86,7 @@ func (c ChartType) Categorical() bool {
 	switch c {
 	case BarChart, ColumnChart, LineChart, AreaChart, PieChart, DonutChart,
 		WaterfallChart, TreemapChart, HeatmapChart, RadarChart, SankeyChart, SunburstChart,
-		CalendarChart:
+		CalendarChart, ParetoChart:
 		return true
 	}
 	return false
@@ -125,6 +130,11 @@ func (c ChartType) Targeted() bool { return c == GaugeChart || c == BulletChart 
 // — a reader should see the sequence in the colour rather than have to read
 // the labels left to right to discover there was one.
 func (c ChartType) Ordinal() bool { return c == FunnelChart || c == TreemapChart }
+
+// Ranked reports whether the chart's categories are read largest first
+// whatever they are: a funnel and a treemap for their shape, and a Pareto
+// chart because its running share only means something added up that way.
+func (c ChartType) Ranked() bool { return c.Ordinal() || c == ParetoChart }
 
 // Diverging reports whether the chart's marks have a sign, so they take two
 // hues either side of a neutral rather than one.

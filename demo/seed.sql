@@ -416,7 +416,8 @@ FROM (
 -- they took, and — where the customer answered the survey — how it went.
 CREATE TABLE tickets (
   id INTEGER PRIMARY KEY, opened_at TEXT, priority TEXT, channel TEXT,
-  team TEXT, first_response_h REAL, resolution_h REAL, sla_h REAL, csat REAL
+  team TEXT, first_response_h REAL, resolution_h REAL, sla_h REAL, csat REAL,
+  reason TEXT
 );
 
 INSERT INTO tickets
@@ -459,6 +460,21 @@ t AS (
          WHEN ch < 0.86 THEN 'Phone' ELSE 'Web form' END AS channel,
     CASE WHEN tm < 0.30 THEN 'Orders & delivery' WHEN tm < 0.55 THEN 'Returns'
          WHEN tm < 0.80 THEN 'Product questions' ELSE 'Billing' END AS team,
+    -- Why the customer wrote, within the team it went to: a few reasons
+    -- make most of each team's work, as they do anywhere.
+    CASE WHEN tm < 0.30 THEN
+           CASE WHEN tm < 0.165 THEN 'Where is my order' WHEN tm < 0.24 THEN 'Late delivery'
+                WHEN tm < 0.276 THEN 'Address change' ELSE 'Missing item' END
+         WHEN tm < 0.55 THEN
+           CASE WHEN tm < 0.425 THEN 'Return request' WHEN tm < 0.4875 THEN 'Damaged item'
+                WHEN tm < 0.525 THEN 'Wrong size' ELSE 'Exchange' END
+         WHEN tm < 0.80 THEN
+           CASE WHEN tm < 0.65 THEN 'Sizing advice' WHEN tm < 0.7375 THEN 'Product question'
+                WHEN tm < 0.775 THEN 'Warranty claim' ELSE 'Stock enquiry' END
+         ELSE
+           CASE WHEN tm < 0.90 THEN 'Refund status' WHEN tm < 0.95 THEN 'Payment failed'
+                WHEN tm < 0.98 THEN 'Promo code' ELSE 'Invoice copy' END
+    END AS reason,
     -- A normal deviate, for a log-normal handling time.
     sqrt(-2 * ln(0.0001 + 0.9998 * z1)) * cos(2 * pi() * z2) AS g
   FROM w
@@ -479,7 +495,8 @@ SELECT i, min(d, '2026-10-31'), priority, channel, team,
   round(took, 1),
   sla,
   CASE WHEN cs < 0.42 THEN NULL
-       ELSE min(5, max(1, round(4.6 - 1.6 * (took > sla) - 0.9 * abs(g) * (g > 0.8) + (cs - 0.7)))) END
+       ELSE min(5, max(1, round(4.6 - 1.6 * (took > sla) - 0.9 * abs(g) * (g > 0.8) + (cs - 0.7)))) END,
+  reason
 FROM r;
 
 -- People: everyone hired since 2017, and those who have since left.

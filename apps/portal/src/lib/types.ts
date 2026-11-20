@@ -80,12 +80,12 @@ export type TileKind =
   | 'bar' | 'column' | 'line' | 'area' | 'pie' | 'donut'
   | 'scatter' | 'bubble' | 'map'
   | 'combo' | 'funnel' | 'waterfall' | 'heatmap' | 'gauge' | 'treemap'
-  | 'radar' | 'bullet' | 'histogram' | 'boxplot' | 'sankey' | 'sunburst' | 'calendar'
+  | 'radar' | 'bullet' | 'histogram' | 'boxplot' | 'sankey' | 'sunburst' | 'calendar' | 'pareto'
 
 /** The tiles that bucket a dimension and fold a measure. */
 export const CATEGORICAL: TileKind[] = [
   'bar', 'column', 'line', 'area', 'pie', 'donut', 'waterfall', 'heatmap', 'treemap', 'radar',
-  'sankey', 'sunburst', 'calendar', 'pivot',
+  'sankey', 'sunburst', 'calendar', 'pareto', 'pivot',
 ]
 
 /** The tiles that read a list of measures rather than one. */
