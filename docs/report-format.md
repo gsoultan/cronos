@@ -227,6 +227,49 @@ spec:
     - predicate: customer_id = {{ .scope.customer_id }}
 ```
 
+### Number formats
+
+A field says how its figures are written, once, and every place they appear
+follows it: a stat tile, a bar's label, a scale's ticks, a heatmap's cells, a
+table, a pivot, the PDF. A field that says nothing is written plainly, as it
+always was.
+
+| `format` | Writes | At a glance | In a table |
+| :--- | :--- | :--- | :--- |
+| *(none)* · `number` | the number | `6.2M` · `982,158.38` | `982,158.38` |
+| `currency` | money, in `currency:` | `€6.2M` · `€982,158` · `€32.50` | `€982,158.38` |
+| `percent` | a fraction as a percentage | `87.3%` | `87.3%` |
+| `preformatted` | text the query already wrote | as it came | as it came |
+
+```yaml
+fields:
+  - {name: revenue, type: decimal, role: measure, aggregate: sum,
+     format: currency, currency: EUR}
+  - {name: within_sla, type: decimal, role: measure, aggregate: avg,
+     format: percent}                 # 1 for met and 0 for not: the average is the share
+  - {name: rating, type: decimal, role: measure, aggregate: avg,
+     decimals: 1}
+```
+
+`currency:` is an ISO 4217 code; the common ones are written with their sign
+(`$`, `€`, `£`, `¥`, `₹` …) and the rest with the code (`CHF 1,200`). Money
+read at a glance drops its cents once it is in the thousands, because
+"€982,158.38" on a bar is six digits nobody reads; a table keeps them. A
+`percent` field holds a fraction — `0.873`, not `87.3` — which is what an
+average of ones and zeros already is, and what a target against it is
+written as: `target: {value: 0.85}`. Its trend moves in points, "+1.7 pts",
+because a share that rose from 82% to 85% did not rise by 3.7%. `decimals:`
+fixes the places a figure keeps, from 0 to 6, where the format's own choice
+is not the one wanted.
+
+A field whose rows carry their own currency — `currencyField:` — is written
+without a sign, since a total across two currencies has none; give it
+`currency:` where every row is in one.
+
+A combo writes each measure in its own field's format, and each scale in the
+format of the first measure read against it. A map's figures stay plain for
+now.
+
 ### Datasets bind per tile
 
 `spec.dataset` is the report's default. Any block may override it, which is what

@@ -130,3 +130,18 @@ func number(v any) (float64, bool) {
 	}
 	return 0, false
 }
+
+// tableCell renders one table value in its column's format. A value that is
+// not a number — a null, or text in a column somebody formatted — is the
+// database's to say, as cell says it. Text that is a number is formatted:
+// some drivers return a decimal as its digits.
+func tableCell(nf numberFormat, v any) string {
+	if nf.plain() {
+		return cell(v)
+	}
+	n, ok := number(v)
+	if !ok {
+		return cell(v)
+	}
+	return nf.exact(n)
+}

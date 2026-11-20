@@ -78,6 +78,20 @@ func TestValidateRejects(t *testing.T) {
 		{"a currency that is not a field", func(d *Dataset) {
 			d.Fields[2].CurrencyField = "ccy"
 		}, "which is not a field"},
+		// A format nothing draws would read plain without a word.
+		{"a format nobody draws", func(d *Dataset) {
+			d.Fields[2].Format = "money"
+		}, `format "money"`},
+		{"a currency that is not a code", func(d *Dataset) {
+			d.Fields[2].Format, d.Fields[2].Currency = "currency", "euro"
+		}, "ISO 4217"},
+		{"a currency on a field that is not money", func(d *Dataset) {
+			d.Fields[2].Currency = "EUR"
+		}, "is not format: currency"},
+		{"more decimals than a figure has", func(d *Dataset) {
+			seven := 7
+			d.Fields[2].Decimals = &seven
+		}, "want 0 to 6"},
 
 		// Empty reads as "no restriction" and would silently widen every query.
 		{"an empty row scope predicate", func(d *Dataset) {

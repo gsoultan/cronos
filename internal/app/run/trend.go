@@ -3,7 +3,6 @@ package run
 import (
 	"context"
 	"fmt"
-	"math"
 
 	"github.com/gsoultan/cronos/internal/core/definition"
 	"github.com/gsoultan/cronos/internal/core/principal"
@@ -42,25 +41,25 @@ func (s *Service) trended(ctx context.Context, blk definition.Block, ds definiti
 		return Block{}, err
 	}
 	out.Trend = points[max(0, len(points)-trendMost):]
-	out.Delta = deltaOf(out.Trend, blk.Trend.Lower())
+	out.Delta = deltaOf(out.Trend, blk.Trend.Lower(), formatOf(ds, blk.Value.Field))
 	return out, nil
 }
 
 // deltaOf is the last period against the one before: nothing where there is
 // no period before, or it was nothing — a change from zero has no share.
-func deltaOf(points []Bar, lower bool) *Delta {
+func deltaOf(points []Bar, lower bool, nf numberFormat) *Delta {
 	if len(points) < 2 {
 		return nil
 	}
 	last, before := points[len(points)-1], points[len(points)-2]
-	if before.Value == 0 {
+	said, ok := nf.change(last.Value, before.Value)
+	if !ok {
 		return nil
 	}
-	change := (last.Value - before.Value) / math.Abs(before.Value)
 	dir := "up"
-	if change < 0 {
+	if last.Value < before.Value {
 		dir = "down"
 	}
-	return &Delta{Value: fmt.Sprintf("%+.1f%%", change*100), Dir: dir,
-		Good: (change >= 0) != lower, Label: "vs " + before.Label}
+	return &Delta{Value: said, Dir: dir,
+		Good: (last.Value >= before.Value) != lower, Label: "vs " + before.Label}
 }

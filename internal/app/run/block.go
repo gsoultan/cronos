@@ -94,4 +94,8 @@ type Block struct {
 	Total int `json:"total,omitempty"`
 
 	Coverage *Coverage `json:"coverage,omitempty"`
+
+	// figure is a stat's number before it was written, so its measure's
+	// format can write it again. Not sent: Value is what a viewer shows.
+	figure *float64
 }

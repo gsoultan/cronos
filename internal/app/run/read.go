@@ -17,7 +17,7 @@ func read(blk definition.Block, ds definition.Dataset, rows Rows, cov *Coverage)
 	var err error
 	switch blk.Kind {
 	case definition.StatBlock:
-		out.Value, err = readStat(rows)
+		out.Value, out.figure, err = readStat(rows)
 	case definition.ChartBlock:
 		out.Chart = string(blk.Chart)
 		err = readChart(&out, blk, ds, rows)
@@ -222,23 +222,24 @@ func (b *Block) heights() []float64 {
 	return values
 }
 
-// readStat takes the single cell the aggregate produced.
-func readStat(rows Rows) (string, error) {
+// readStat takes the single cell the aggregate produced, as text and as the
+// number it was, so the measure's format can write it again.
+func readStat(rows Rows) (string, *float64, error) {
 	if !rows.Next() {
 		// No row at all, which an aggregate should not do — but a stat that
 		// renders nothing looks like a number that happens to be blank.
-		return "—", nil
+		return "—", nil, nil
 	}
 	var v any
 	if err := rows.Scan(&v); err != nil {
-		return "", err
+		return "", nil, err
 	}
 	n, ok := number(v)
 	if !ok {
 		// Nothing matched. Zero would be a claim; an em dash is the absence.
-		return "—", nil
+		return "—", nil, nil
 	}
-	return compact(n), nil
+	return compact(n), &n, nil
 }
 
 // readSeries reads (bucket, value) pairs.
@@ -262,6 +263,13 @@ func readTable(blk definition.Block, ds definition.Dataset, rows Rows) ([]Column
 		return nil, nil, err
 	}
 	cols := headings(blk, ds, names)
+	formats := make([]numberFormat, len(names))
+	for i := range names {
+		formats[i] = plainFormat
+		if i < len(blk.Columns) {
+			formats[i] = formatOf(ds, blk.Columns[i])
+		}
+	}
 
 	out := [][]string{}
 	for rows.Next() {
@@ -275,7 +283,7 @@ func readTable(blk definition.Block, ds definition.Dataset, rows Rows) ([]Column
 		}
 		row := make([]string, len(cells))
 		for i, c := range cells {
-			row[i] = cell(c)
+			row[i] = tableCell(formats[i], c)
 		}
 		out = append(out, row)
 	}
