@@ -122,6 +122,6 @@ export { css, documentCss, LAYER } from './styles'
 export type {
   Arc, Axis, Bar, Bin, Block, Bounds, Box, Bullet, Cell, Day, Sankey, SankeyLink, SankeyNode, Cells, ChartBlock, Coverage, Credit, Delta, DrawOptions,
   FilterDef, FilterValues, FrameMark, Frames, Gauge, GeoMap, Group, LegendStop, MapArea, MapDetail, MapKey, MapPick,
-  MapViewAsk, MapViewer, Marker, Point, Rect, RefLine, ReportPayload, Shape, Span, Stage, StatBlock, Step, TableBlock,
+  MapViewAsk, MapViewer, Marker, Point, Rect, RefLine, ReportPayload, Shape, Span, Stage, StatBlock, Step, TableBlock, TableColumn,
   TextBlock, Tick, Tiles, Track,
 } from './types'

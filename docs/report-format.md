@@ -862,6 +862,26 @@ reads at most 50,000 cells; one that reached that says so on its bottom row,
 "Total of the first 50,000 cells", rather than offering a total of less than it
 claims.
 
+A pivot across dates can draw each row as a small line, `sparkline: true` under
+`pivot:`. The line goes in a "Trend" column beside each row's name, so twelve
+months of a line of the P&L read as a shape before anyone reads a figure, and on
+a screen too narrow for every month it is still in view. Each row is drawn
+against its own lowest and highest month, so it shows a row's shape, not its
+size beside the others. A month nothing matched is drawn at nothing. The bottom
+row's line is the column totals. It is refused across anything that is not a
+date with a `grain`, because a line through categories only draws the order
+they sort in, and it is left out of a spreadsheet tab, whose cells hold numbers.
+
+```yaml
+- kind: pivot
+  title: P&L by month
+  value: {field: actual, aggregate: sum}
+  pivot:
+    rows: {field: line}
+    columns: {field: period, grain: month}
+    sparkline: true
+```
+
 A pivot is crossed where it is read and reaches every renderer as the table it
 then is — the embed, the portal, a PDF and a workbook draw it with the table
 they already draw. A paginated document prints one table: a pivot prints when
@@ -882,6 +902,28 @@ too, with its cells and totals left as numbers:
 A tab is a list of `columns` or a pivot, not both. The JasperReports importer
 turns a crosstab with one row group and one column group into a pivot per
 measure; see [migrating-from-jasper.md](migrating-from-jasper.md).
+
+### Data bars
+
+A table's `bars:` names columns whose figures each get a bar drawn behind
+them, as long as the figure's share of the largest in its column, in the
+browser, the embed and the PDF. The figure is still what is read. The bar is
+what is compared, so the largest orders on a page sort themselves by eye. A
+negative figure's bar is red and as long as its size. A cell that is not a
+number has no bar. Each column must be one the table lists.
+
+```yaml
+- kind: table
+  title: Largest orders
+  columns: [ordered_at, region, rep, revenue, margin]
+  bars: [revenue, margin]
+  sort:
+    - {field: revenue, dir: desc}
+  pageSize: 25
+```
+
+The largest is the largest on the rows sent. A table cut at its page size
+scales its bars to that page, which holds the bars they are read against.
 
 ### Maps
 

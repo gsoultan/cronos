@@ -1300,3 +1300,26 @@ test('a timeline writes its dates and no measure, and reads them back', () => {
   })
   expect(back.drops).toEqual([])
 })
+
+test('a table\'s data bars and a pivot\'s sparkline survive the round trip', () => {
+  const input = {
+    name: 'Book', slug: 'book', dataset: 'invoices',
+    blocks: [
+      { kind: 'table', title: 'Invoices', columns: ['customer_name', 'total'], bars: ['total', 'status'] },
+      { kind: 'pivot', title: 'By month', field: 'total', series: 'customer_name',
+        groupBy: 'issued_at', grain: 'month', sparkline: true },
+      { kind: 'pivot', title: 'By status', field: 'total', series: 'customer_name',
+        groupBy: 'status', sparkline: true },
+    ],
+  }
+  const emitted = report(input)
+  // A bar of a column the table no longer shows is left out, and a line
+  // across categories is not written: the server refuses both.
+  expect(emitted).toContain('bars:\n            - total\n')
+  expect(emitted.match(/sparkline: true/g)?.length).toBe(1)
+  const back = readReport(emitted)
+  expect(back.drops).toEqual([])
+  expect(back.input.blocks[0]?.bars).toEqual(['total'])
+  expect(back.input.blocks[1]?.sparkline).toBe(true)
+  expect(back.input.blocks[2]?.sparkline).toBeUndefined()
+})

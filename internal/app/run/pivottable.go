@@ -1,6 +1,8 @@
 package run
 
 import (
+	"slices"
+
 	"github.com/gsoultan/cronos/internal/core/definition"
 	"github.com/gsoultan/cronos/internal/core/query"
 )
@@ -14,7 +16,7 @@ import (
 // have meant four renderers learning to draw a grid of strings they already
 // draw.
 func (x crosstab) table(blk definition.Block, ds definition.Dataset) ([]Column, [][]string) {
-	cols := make([]Column, 0, len(x.columns)+2)
+	cols := make([]Column, 0, len(x.columns)+3)
 	cols = append(cols, Column{Label: labelOf(ds, blk.Pivot.Rows.Field)})
 	for _, c := range x.columns {
 		cols = append(cols, Column{Label: c, Align: "right"})
@@ -23,24 +25,53 @@ func (x crosstab) table(blk definition.Block, ds definition.Dataset) ([]Column, 
 
 	nf := formatOf(ds, blk.Value.Field)
 	out := make([][]string, 0, len(x.rows)+1)
+	lines := make([][]float64, 0, len(x.rows)+1)
 	for r, label := range x.rows {
-		row := make([]string, 0, len(cols))
+		row := make([]string, 0, len(cols)+1)
 		row = append(row, label)
 		for c := range x.columns {
 			row = append(row, pivotCell(nf, x.cells[r][c], x.nulls[[2]int{r, c}]))
 		}
 		out = append(out, append(row, pivotCell(nf, x.rowTotals[r], false)))
+		lines = append(lines, sparkOf(folded(x.cells[r])))
 	}
-	if len(x.rows) == 0 {
+	if len(x.rows) > 0 {
+		last := make([]string, 0, len(cols)+1)
+		last = append(last, x.totalLabel())
+		for _, f := range x.columnTotals {
+			last = append(last, pivotCell(nf, f, false))
+		}
+		out = append(out, append(last, pivotCell(nf, x.total, false)))
+		lines = append(lines, sparkOf(folded(x.columnTotals)))
+	}
+	if !blk.Pivot.Sparkline || len(x.columns) < 2 {
 		return cols, out
 	}
+	return withTrend(cols, out, lines)
+}
 
-	last := make([]string, 0, len(cols))
-	last = append(last, x.totalLabel())
-	for _, f := range x.columnTotals {
-		last = append(last, pivotCell(nf, f, false))
+// withTrend puts the sparkline beside the name of the row it draws. A year of
+// months is wider than a screen, and a line at the far end of it is the one
+// thing on the table that is meant to be read before the figures.
+func withTrend(cols []Column, rows [][]string, lines [][]float64) ([]Column, [][]string) {
+	cols = slices.Insert(cols, 1, Column{Label: "Trend", Spark: lines})
+	for i := range rows {
+		rows[i] = slices.Insert(rows[i], 1, "")
 	}
-	return cols, append(out, append(last, pivotCell(nf, x.total, false)))
+	return cols, rows
+}
+
+// folded is a row of folds as the line through them. A month nothing
+// matched is a month of nothing, so it is drawn at nothing rather than
+// skipped: a gap in a line of sales is a month with none.
+func folded(row []fold) []float64 {
+	out := make([]float64, len(row))
+	for i, f := range row {
+		if f.set {
+			out[i] = f.value
+		}
+	}
+	return out
 }
 
 // totalLabel heads the bottom row, and says so when the totals are of less

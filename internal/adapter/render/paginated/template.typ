@@ -121,7 +121,9 @@
 
 #let columns = list-of(data.at("columns", default: ()))
 #let col-align = columns.map(c => if c.align == "right" { right } else { left })
-#let col-width = columns.map(c => if c.align == "right" { auto } else { 1fr })
+// A column of data bars is given a width, so its bars have one to be a share
+// of; a column of sparklines is as wide as its line.
+#let col-width = columns.map(c => if c.at("bars", default: none) != none { 30mm } else if c.at("spark", default: none) != none { 18mm } else if c.align == "right" { auto } else { 1fr })
 // A wide table is set smaller. Its figures take the width they need and its
 // names take what is left, so a pivot of twelve months and a total in a
 // currency left "Cost of goods" no room at all, and the name was printed
@@ -145,6 +147,34 @@
     }
   ],
 )
+
+// A cell, with what its column draws in it: a data bar behind the figure, as
+// long as the server said, or a row's sparkline in place of a figure. Both
+// were worked out in Go; nothing here measures a number.
+#let cell-of(c, ri, body) = {
+  let bars = c.at("bars", default: none)
+  let spark = c.at("spark", default: none)
+  if bars != none and ri < bars.len() and bars.at(ri) != 0 {
+    let f = bars.at(ri)
+    let tone = if f < 0 { rgb("#e34948") } else { rgb("#2a78d6") }
+    box(width: 100%, {
+      place(left + horizon, rect(width: calc.abs(f) * 100%, height: 1.25em,
+        fill: tone.transparentize(80%), stroke: none, radius: 1pt))
+      body
+    })
+  } else if spark != none and ri < spark.len() and spark.at(ri).len() > 1 {
+    let pts = spark.at(ri)
+    let (w, h) = (16mm, 0.85em)
+    let at(i, v) = (i / (pts.len() - 1) * w, (1 - v) * h)
+    box(width: w, height: h, {
+      place(curve(stroke: (paint: luma(140), thickness: 0.7pt, join: "round"),
+        curve.move(at(0, pts.first())),
+        ..range(1, pts.len()).map(i => curve.line(at(i, pts.at(i))))))
+      let (x, y) = at(pts.len() - 1, pts.last())
+      place(dx: x - 1.1pt, dy: y - 1.1pt, circle(radius: 1.1pt, fill: rgb("#2a78d6"), stroke: none))
+    })
+  } else { body }
+}
 
 // The subtotal row. A column carries its total if the subtotal map has its
 // field; the first column carries the label instead. The template asks the
@@ -424,7 +454,8 @@
       size: 8pt, weight: "semibold", fill: luma(80), upper(c.label)))),
 
     table.hline(stroke: 0.5pt + luma(180)),
-    ..g.rows.flatten(),
+    ..g.rows.enumerate().map(((ri, row)) =>
+      row.enumerate().map(((ci, cell)) => cell-of(columns.at(ci), ri, cell))).flatten(),
     table.hline(stroke: 0.5pt + luma(180)),
     ..subtotal-row(g),
   )

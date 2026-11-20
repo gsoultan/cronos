@@ -1,6 +1,6 @@
 import { StatTile } from './StatTile'
 import { ServerChart } from './ServerChart'
-import { DataTable } from './DataTable'
+import { DataTable, type ColumnMarks } from './DataTable'
 import { Panel } from './Panel'
 import { EmptyState } from './EmptyState'
 import type { ReportBlock, ReportView } from '../lib/api'
@@ -168,7 +168,8 @@ function Block({ block, view, applied, mapView, filter }: {
       <div>
         <Panel title={block.title} flush
           meta={<span>{(block.total ?? block.rows.length).toLocaleString('en')} rows</span>}>
-          <DataTable fields={fieldsOf(block)} rows={rowObjects(block)} height={420} />
+          <DataTable fields={fieldsOf(block)} rows={rowObjects(block)} height={420}
+            marks={marksOf(block)} />
         </Panel>
         <Unaffected block={block} view={view} applied={applied} />
       </div>
@@ -246,6 +247,15 @@ function fieldsOf(block: TableBlock): Field[] {
     role: c.align === 'right' ? 'measure' : 'dimension',
     format: 'preformatted',
   })) as Field[]
+}
+
+/** The data bars and sparklines the engine sent, keyed to the fields. */
+export function marksOf(block: TableBlock): Record<string, ColumnMarks> {
+  const out: Record<string, ColumnMarks> = {}
+  ;(block.columns ?? []).forEach((c, i) => {
+    if (c.bars || c.spark) out[`c${i}`] = { bars: c.bars, spark: c.spark }
+  })
+  return out
 }
 
 /** Rows arrive as arrays; the table wants objects keyed to the fields. */

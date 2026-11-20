@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { bands, rowsOf } from './LiveReport'
+import { bands, marksOf, rowsOf } from './LiveReport'
 import { monthLabel } from '../lib/format'
 
 /*
@@ -117,4 +117,17 @@ describe('blocks are grouped into the rows they can share', () => {
   test('nothing in, nothing out', () => {
     expect(rowsOf([])).toEqual([])
   })
+})
+
+test('a table\'s bars and sparklines reach the columns that carry them', () => {
+  const marks = marksOf({
+    kind: 'table', title: 'P&L',
+    columns: [
+      { label: 'Line' },
+      { label: 'Total', align: 'right', bars: [1, -0.5] },
+      { label: 'Trend', spark: [[0, 1], [1, 0]] },
+    ],
+    rows: [['Revenue', '$10', ''], ['Costs', '-$5', '']],
+  })
+  expect(marks).toEqual({ c1: { bars: [1, -0.5], spark: undefined }, c2: { bars: undefined, spark: [[0, 1], [1, 0]] } })
 })

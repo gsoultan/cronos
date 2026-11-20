@@ -144,6 +144,7 @@ spec:
         - kind: table
           title: Largest orders
           columns: [ordered_at, region, channel, category, rep, units, revenue, margin]
+          bars: [revenue, margin]
           sort:
             - {field: revenue, dir: desc}
           pageSize: 25

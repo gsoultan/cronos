@@ -113,6 +113,7 @@ spec:
           pivot:
             rows: {field: line}
             columns: {field: period, grain: month}
+            sparkline: true
 
     # The pack that goes to the board: two pages, landscape.
     - name: pdf
@@ -163,6 +164,7 @@ spec:
           pivot:
             rows: {field: line}
             columns: {field: period, grain: month}
+            sparkline: true
 
     - name: xlsx
       renderer: spreadsheet

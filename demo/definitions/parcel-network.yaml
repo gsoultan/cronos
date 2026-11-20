@@ -205,6 +205,7 @@ spec:
           dataset: depots
           title: Depots
           columns: [city, region, carrier, capacity, staff]
+          bars: [capacity]
           sort:
             - {field: capacity, dir: desc}
 

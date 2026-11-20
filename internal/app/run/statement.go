@@ -156,7 +156,8 @@ func printedColumns(table Block) []document.Column {
 		if align == "" {
 			align = "left"
 		}
-		cols = append(cols, document.Column{Field: c.Label, Label: c.Label, Align: align})
+		cols = append(cols, document.Column{Field: c.Label, Label: c.Label, Align: align,
+			Bars: c.Bars, Spark: c.Spark})
 	}
 	return cols
 }

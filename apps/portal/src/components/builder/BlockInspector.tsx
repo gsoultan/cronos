@@ -322,6 +322,22 @@ export function BlockInspector({
         </Field>
       )}
 
+      {block.kind === 'table' && (block.columns ?? []).some((c) => measures.some((m) => m.name === c)) && (
+        <Field label="Data bars" required={false}
+          help="Draws each figure as a bar behind it, as long as its share of the column's largest.">
+          <MultiSelect data-testid="table-bars" clearable placeholder="No bars"
+            data={opts(measures.filter((m) => block.columns?.includes(m.name)))}
+            value={(block.bars ?? []).filter((f) => block.columns?.includes(f))}
+            onChange={(v) => onChange({ bars: v.length ? v : undefined })} />
+        </Field>
+      )}
+
+      {block.kind === 'pivot' && block.grain && (
+        <Checkbox label="Draw each row's trend beside its name" data-testid="pivot-sparkline"
+          checked={block.sparkline ?? false}
+          onChange={(e) => onChange({ sparkline: e.currentTarget.checked || undefined })} />
+      )}
+
       {block.kind === 'table' && (
         <Field label="Sorted by" required={false}
           help="The first key decides the order; the rest break ties.">

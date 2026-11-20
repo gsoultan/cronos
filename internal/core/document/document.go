@@ -70,6 +70,12 @@ func (d Document) validateRows() error {
 					ErrInvalid, g.Label, ri, len(row), want)
 			}
 		}
+		for _, c := range d.Columns {
+			if (c.Bars != nil && len(c.Bars) != len(g.Rows)) || (c.Spark != nil && len(c.Spark) != len(g.Rows)) {
+				return fmt.Errorf("%w: column %q draws a mark for a different number of rows than group %q has",
+					ErrInvalid, c.Field, g.Label)
+			}
+		}
 		for field := range g.Subtotal {
 			if !d.hasColumn(field) {
 				return fmt.Errorf("%w: group %q subtotals unknown column %q",
