@@ -549,10 +549,21 @@ export interface RefLine {
   formatted: string
 }
 
+export interface TableColumn {
+  label: string
+  align?: 'left' | 'right'
+  /** A data bar per row, -1 to 1 of the column's largest, drawn behind the
+   *  figure. Worked out by the server, which has the largest. */
+  bars?: number[]
+  /** A small line per row, its points 0 to 1 up the cell, each row against
+   *  its own range. The cells of this column are empty. */
+  spark?: number[][]
+}
+
 export interface TableBlock {
   kind: 'table'
   title: string
-  columns: { label: string; align?: 'left' | 'right' }[]
+  columns: TableColumn[]
   rows: string[][]
   /** Total matching rows, which may exceed the page returned. */
   total?: number

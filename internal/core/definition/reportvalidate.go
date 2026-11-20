@@ -139,6 +139,9 @@ func (b Block) validateShape(output string, i int) error {
 	if b.Trend != nil && b.Kind != StatBlock {
 		return fmt.Errorf("%w: %s %s %d has a trend, which only a stat draws", ErrInvalid, output, b.Kind, i)
 	}
+	if len(b.Bars) > 0 && b.Kind != TableBlock {
+		return fmt.Errorf("%w: %s %s %d has bars:, which only a table draws", ErrInvalid, output, b.Kind, i)
+	}
 	if b.Pivot != nil && b.Kind != PivotBlock {
 		return fmt.Errorf("%w: %s %s %d has a pivot:, which only a pivot reads — set kind: pivot",
 			ErrInvalid, output, b.Kind, i)
@@ -157,6 +160,7 @@ func (b Block) validateShape(output string, i int) error {
 		if len(b.Columns) == 0 {
 			return fmt.Errorf("%w: %s table %d lists no columns", ErrInvalid, output, i)
 		}
+		return b.validateBars(output, i)
 	case PivotBlock:
 		return b.validatePivot(output, i)
 	case TextBlock:

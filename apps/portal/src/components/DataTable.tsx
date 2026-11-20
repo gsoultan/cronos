@@ -12,6 +12,17 @@ interface Props {
   totalLabel?: string
   /** Scroll viewport height. Shorter inside a layout block than on a report. */
   height?: number
+  /** What a column draws in its cells, by field name: a data bar per row
+   *  behind the figure, or a sparkline per row in place of one. The server
+   *  worked both out; the table only places them. */
+  marks?: Record<string, ColumnMarks>
+}
+
+export interface ColumnMarks {
+  /** -1 to 1 of the column's largest. */
+  bars?: number[]
+  /** Points 0 to 1 up the cell, each row against its own range. */
+  spark?: number[][]
 }
 
 const ROW_H = 40
@@ -24,7 +35,7 @@ const MIN_COL = 140
  * A report can return a million rows; the DOM cannot. Only the visible window
  * is mounted, so scrolling stays smooth regardless of result size.
  */
-export function DataTable({ fields, rows, totalLabel, height = 460 }: Props) {
+export function DataTable({ fields, rows, totalLabel, height = 460, marks }: Props) {
   const parent = useRef<HTMLDivElement>(null)
 
   const virtualizer = useVirtualizer({
@@ -77,13 +88,23 @@ export function DataTable({ fields, rows, totalLabel, height = 460 }: Props) {
                     transform: `translateY(${v.start}px)`,
                     height: ROW_H,
                   }}>
-                  {cols.map((f) => (
-                    <div key={f.name}
-                      className={`truncate px-4 text-small ${
-                        f.role === 'measure' ? 'text-right tabular-nums' : ''}`}>
-                      {renderCell(f, row[f.name])}
-                    </div>
-                  ))}
+                  {cols.map((f) => {
+                    const bar = marks?.[f.name]?.bars?.[v.index]
+                    const line = marks?.[f.name]?.spark?.[v.index]
+                    return (
+                      <div key={f.name}
+                        className={`relative truncate px-4 text-small ${bar || line ? 'flex h-full items-center' : ''} ${
+                          f.role === 'measure' ? 'justify-end text-right tabular-nums' : ''}`}>
+                        {bar ? <DataBar share={bar} /> : null}
+                        {line && line.length > 1
+                          ? <RowSpark points={line} />
+                          // The figure is lifted over its bar; a cell with
+                          // none keeps its text as the cell's own.
+                          : bar ? <span className="relative truncate">{renderCell(f, row[f.name])}</span>
+                            : renderCell(f, row[f.name])}
+                      </div>
+                    )
+                  })}
                 </div>
               )
             })}
@@ -130,4 +151,37 @@ export function renderCell(field: Field, value: unknown) {
   if (field.format === 'currency') return currency(Number(value))
   if (field.role === 'measure') return Number(value).toLocaleString('en')
   return String(value)
+}
+
+/**
+ * A data bar: behind the figure, from the left of the cell, as long as its
+ * share of the column's largest. Red below nothing, so a loss is not read as
+ * a short gain.
+ */
+function DataBar({ share }: { share: number }) {
+  return (
+    <span data-testid="databar" aria-hidden
+      className={`absolute inset-y-2.5 left-3 rounded-sm ${
+        share < 0 ? 'bg-[color-mix(in_srgb,var(--color-delta-bad)_18%,transparent)]'
+          : 'bg-[color-mix(in_srgb,var(--color-accent)_18%,transparent)]'}`}
+      style={{ width: `calc((100% - 1.75rem) * ${Math.abs(share)})` }} />
+  )
+}
+
+const SPARK_W = 96
+const SPARK_H = 22
+
+/** A row's line, its last point in the accent. */
+function RowSpark({ points }: { points: number[] }) {
+  const x = (i: number) => 3 + (i / (points.length - 1)) * (SPARK_W - 6)
+  const y = (v: number) => 3 + (1 - v) * (SPARK_H - 6)
+  const d = points.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ')
+  const last = points.length - 1
+  return (
+    <svg data-testid="rowspark" width={SPARK_W} height={SPARK_H} aria-hidden className="block">
+      <path d={d} fill="none" stroke="var(--color-series-muted)" strokeWidth={1.5}
+        strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx={x(last)} cy={y(points[last] ?? 0.5)} r={2.5} fill="var(--color-accent)" />
+    </svg>
+  )
 }

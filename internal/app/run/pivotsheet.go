@@ -14,7 +14,11 @@ import (
 func (s *Statements) pivotSheet(ctx context.Context, r definition.Report, ds definition.Dataset,
 	spec definition.Sheet, params map[string]any, pr principal.Principal) (SheetData, error) {
 
-	blk := definition.Block{Kind: definition.PivotBlock, Value: spec.Value, Pivot: spec.Pivot}
+	// A cell of a sheet holds a number, not a drawing, so a tab leaves the
+	// sparkline out rather than writing a column of blanks under "Trend".
+	cross := *spec.Pivot
+	cross.Sparkline = false
+	blk := definition.Block{Kind: definition.PivotBlock, Value: spec.Value, Pivot: &cross}
 	engine, err := s.svc.engines.Engine(ctx, ds)
 	if err != nil {
 		return SheetData{}, err

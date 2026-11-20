@@ -78,6 +78,10 @@ type Block struct {
 	GroupBy   string    `json:"groupBy,omitempty" yaml:"groupBy,omitempty"`
 	PageBreak string    `json:"pageBreak,omitempty" yaml:"pageBreak,omitempty"`
 	Subtotals []string  `json:"subtotals,omitempty" yaml:"subtotals,omitempty"`
+	// Bars are the columns whose cells carry a data bar: the figure drawn
+	// behind itself, as long as its share of the column's largest. See
+	// databars.go.
+	Bars []string `json:"bars,omitempty" yaml:"bars,omitempty"`
 
 	// Pivot is the two dimensions a pivot crosses.
 	Pivot *Pivot `json:"pivot,omitempty" yaml:"pivot,omitempty"`

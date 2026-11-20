@@ -396,6 +396,10 @@ export interface ReportBlockInput {
    */
   map?: TileMap
   columns?: string[]
+  /** A table's columns that draw a data bar behind their figures. */
+  bars?: string[]
+  /** A pivot across dates draws each row's line beside its name. */
+  sparkline?: boolean
   pageSize?: number
   /** Narrows this block alone, as SQL the server compiles. */
   filter?: string
@@ -421,7 +425,7 @@ export function tileOf(b: ReportBlockInput): Omit<Tile, 'id' | 'span'> {
     metrics: b.metrics as Tile['metrics'], target: b.target as Tile['target'],
     bands: b.bands, bins: b.bins, trend: b.trend as Tile['trend'],
     references: b.references as Tile['references'],
-    columns: b.columns, filter: b.filter,
+    columns: b.columns, bars: b.bars, sparkline: b.sparkline, filter: b.filter,
     sort: b.sort?.map((k) => ({ field: k.field, dir: k.dir as 'asc' | 'desc' | undefined })),
   }
 }
@@ -438,7 +442,7 @@ export function blockInput(b: Tile): ReportBlockInput {
     startField: b.startField, endField: b.endField,
     metrics: b.metrics, target: b.target, bands: b.bands, bins: b.bins, trend: b.trend,
     references: b.references,
-    columns: b.columns, filter: b.filter, sort: b.sort,
+    columns: b.columns, bars: b.bars, sparkline: b.sparkline, filter: b.filter, sort: b.sort,
   }
 }
 
@@ -561,6 +565,10 @@ function block(b: ReportBlockInput): Yaml {
     return narrowed({
       kind: 'table', dataset: reads, title: b.title,
       columns: b.columns ?? [], pageSize: b.pageSize || undefined,
+      // Only the bars of columns still on the table: a column taken off it
+      // would leave a bar the server refuses as naming nothing it shows.
+      bars: b.bars?.filter((f) => b.columns?.includes(f)).length
+        ? b.bars.filter((f) => b.columns?.includes(f)) : undefined,
     })
   }
   if (b.kind === 'pivot') {
@@ -573,6 +581,8 @@ function block(b: ReportBlockInput): Yaml {
       pivot: {
         rows: { field: b.series, grain: b.seriesGrain || undefined },
         columns: { field: b.groupBy, grain: b.grain || undefined },
+        // Across dates only, which is what the server accepts it on.
+        sparkline: b.sparkline && b.grain ? true : undefined,
       },
     }
   }
@@ -1088,6 +1098,7 @@ function readBlock(v: Yaml): ReportBlockInput {
       ...narrowing,
       kind, title: str(b.title), dataset: str(b.dataset) || undefined,
       columns: asList(b.columns).map(str), pageSize: num(b.pageSize),
+      bars: b.bars ? asList(b.bars).map(str) : undefined,
     }
   }
   if (kind === 'pivot') {
@@ -1100,6 +1111,7 @@ function readBlock(v: Yaml): ReportBlockInput {
       field: str(value.field), aggregate: str(value.aggregate) || undefined,
       series: str(rows.field) || undefined, seriesGrain: str(rows.grain) || undefined,
       groupBy: str(columns.field) || undefined, grain: str(columns.grain) || undefined,
+      sparkline: asMap(b.pivot).sparkline === true || undefined,
     }
   }
   if (kind === 'chart') {

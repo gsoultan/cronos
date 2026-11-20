@@ -25,6 +25,7 @@ spec:
         - kind: table
           title: Customers
           columns: [name, city, billed]
+          bars: [billed]
     # A document as well as a page. Most real reports have both: something to
     # look at, and something to attach to an email on the first of the month.
     - name: pdf
@@ -37,5 +38,6 @@ spec:
         - kind: table
           title: Customers
           columns: [name, city, billed]
+          bars: [billed]
           sort:
             - {field: billed, dir: desc}

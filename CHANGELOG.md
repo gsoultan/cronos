@@ -22,6 +22,13 @@ needs a deployment to act says so under **Upgrading**.
 
 ## Unreleased
 
+**Data bars and sparklines.** A table's `bars:` draws a bar behind each figure
+in the columns it names, as long as its share of the column's largest, and a
+pivot across dates with `sparkline: true` draws each row's line in a "Trend"
+column beside its name. Both appear in the portal, the embed and the PDF, and
+the builder offers them. The demo's sales orders, depots and customers gain
+bars, and the management P&L gains a trend for every line.
+
 **Timelines.** `chart: timeline` draws each category of `x` as a bar between
 its `start` and `end` dates along a calendar, coloured by `series`, in the
 browser and the PDF: a roadmap or a project plan, where several rows of a

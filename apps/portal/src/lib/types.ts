@@ -172,6 +172,10 @@ export interface Tile {
   /** A stat's number over time, drawn under it. */
   trend?: TileTrend
   columns?: string[]
+  /** A table's columns that draw a data bar behind their figures. */
+  bars?: string[]
+  /** A pivot across dates draws each row's line beside its name. */
+  sparkline?: boolean
   /**
    * Narrows this block alone — "of which, overdue".
    *

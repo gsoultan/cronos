@@ -235,6 +235,19 @@ th {
   color: var(--cr-ink-muted);
 }
 td.r, th.r { text-align: right }
+/* A data bar sits behind its figure, from the left, as long as its share of
+   the column's largest: the figure stays the thing read, the bar the thing
+   compared. */
+td.barred { position: relative; min-width: 120px }
+td.barred .databar {
+  position: absolute; left: 4px; top: 5px; bottom: 5px; border-radius: 2px;
+  background: color-mix(in srgb, var(--cr-series-1, #2a78d6) 20%, transparent);
+}
+td.barred .databar.neg { background: color-mix(in srgb, var(--cr-serious, #e34948) 20%, transparent) }
+td.barred .figure { position: relative }
+td.sparked { padding-top: 3px; padding-bottom: 3px; line-height: 0 }
+.rowspark .trace { fill: none; stroke: var(--cr-ink-muted); stroke-width: 1.25; stroke-linejoin: round; stroke-linecap: round }
+.rowspark .end { fill: var(--cr-series-1, #2a78d6) }
 tr:last-child td { border-bottom: 0 }
 .scroll { overflow-x: auto; margin: 0 -16px; padding: 0 16px }
 

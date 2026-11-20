@@ -11,6 +11,11 @@ import "fmt"
 type Pivot struct {
 	Rows    DimensionRef `json:"rows" yaml:"rows"`
 	Columns DimensionRef `json:"columns" yaml:"columns"`
+	// Sparkline adds a column beside each row's name that draws each row across the
+	// top as a small line: twelve months of a line of the P&L read as a
+	// shape before anyone reads its figures. Only across dates, because a
+	// line through categories in alphabetical order is a shape of nothing.
+	Sparkline bool `json:"sparkline,omitempty" yaml:"sparkline,omitempty"`
 }
 
 // validate reports why a pivot cannot be stored.
@@ -27,6 +32,11 @@ func (b Block) validatePivot(output string, i int) error {
 		return fmt.Errorf("%w: %s pivot %d crosses %q with itself", ErrInvalid, output, i, p.Rows.Field)
 	case b.Value.Field == "":
 		return fmt.Errorf("%w: %s pivot %d measures no field — set value", ErrInvalid, output, i)
+	}
+	if p.Sparkline && p.Columns.Grain == "" {
+		return fmt.Errorf("%w: %s pivot %d draws a sparkline across %q, which is not a date "+
+			"with a grain — a line through categories draws the order they sort in",
+			ErrInvalid, output, i, p.Columns.Field)
 	}
 	for _, d := range []DimensionRef{p.Rows, p.Columns} {
 		if d.Grain != "" && !timeGrains[d.Grain] {

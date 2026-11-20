@@ -276,6 +276,8 @@ func readTable(blk definition.Block, ds definition.Dataset, rows Rows) ([]Column
 	}
 
 	out := [][]string{}
+	// The figures under the cells, kept only when a column draws bars.
+	var figures [][]*float64
 	for rows.Next() {
 		cells := make([]any, len(names))
 		into := make([]any, len(names))
@@ -290,6 +292,12 @@ func readTable(blk definition.Block, ds definition.Dataset, rows Rows) ([]Column
 			row[i] = tableCell(formats[i], c)
 		}
 		out = append(out, row)
+		if len(blk.Bars) > 0 {
+			figures = append(figures, figuresOf(cells))
+		}
+	}
+	if len(blk.Bars) > 0 {
+		dataBars(cols, blk, figures)
 	}
 	return cols, out, nil
 }
