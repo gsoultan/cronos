@@ -28,10 +28,23 @@ func printTimeline(c *document.Chart, b Block) {
 	for i, s := range b.Spans {
 		top, h := float64(i)*slot+slot*0.2, slot*0.6
 		from, to := x(s.From), x(s.To)
+		bar := document.Mark{Kind: document.RectMark, X: from, Y: top, W: maxOf(to-from, 0.003), H: h,
+			Tone: tone(s.Slot), Label: s.Label, Value: s.Said}
+		if s.Milestone {
+			// W is a dot's radius as a share of the width, so it stays
+			// round, or here square, whatever the box's proportions.
+			bar = document.Mark{Kind: document.DotMark, X: x(s.From + 0.5), Y: top + h/2, W: 0.006,
+				Shape: document.DiamondShape, Tone: tone(s.Slot), Label: s.Label, Value: s.Said}
+		}
+		c.Marks = append(c.Marks, bar, name(s.Label, top+h/2))
+	}
+	if b.Today != nil {
+		at := x(b.Today.Value)
 		c.Marks = append(c.Marks,
-			document.Mark{Kind: document.RectMark, X: from, Y: top, W: maxOf(to-from, 0.003), H: h,
-				Tone: tone(s.Slot), Label: s.Label, Value: s.Said},
-			name(s.Label, top+h/2))
+			document.Mark{Kind: document.LineMark, Points: [][2]float64{{at, 0}, {at, 1}},
+				Tone: "ink", Stroke: 0.8, Dash: true},
+			document.Mark{Kind: document.TextMark, X: at + 0.004, Y: 0.012, Anchor: "start",
+				Label: "Today · " + b.Today.Formatted, Tone: "ink", Strong: true})
 	}
 	c.Keys = spanKeys(b.Spans)
 }

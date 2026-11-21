@@ -16,6 +16,9 @@ func TestATimelineIsChecked(t *testing.T) {
 	if err := plan(func(*Block) {}).validateChart("interactive", 0); err != nil {
 		t.Fatalf("a plain timeline was refused: %v", err)
 	}
+	if err := plan(func(b *Block) { b.Today = true }).validateChart("interactive", 0); err != nil {
+		t.Fatalf("a timeline with today was refused: %v", err)
+	}
 	for _, c := range []struct {
 		name string
 		b    Block
@@ -28,6 +31,9 @@ func TestATimelineIsChecked(t *testing.T) {
 		{"dates on a column chart", Block{Kind: ChartBlock, Chart: ColumnChart,
 			X: DimensionRef{Field: "a"}, Y: MeasureRef{Field: "b"}, Start: DimensionRef{Field: "s"}},
 			"only a timeline"},
+		{"today on a column chart", Block{Kind: ChartBlock, Chart: ColumnChart,
+			X: DimensionRef{Field: "a"}, Y: MeasureRef{Field: "b"}, Today: true},
+			"only a timeline does"},
 	} {
 		err := c.b.validateChart("interactive", 0)
 		if !errors.Is(err, ErrInvalid) || !strings.Contains(err.Error(), c.says) {

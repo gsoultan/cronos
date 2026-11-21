@@ -23,6 +23,10 @@ type Span struct {
 	Start  string  `json:"start"`
 	End    string  `json:"end"`
 	Said   string  `json:"said"`
+	// Milestone is a row that starts and ends on one day: a launch, a
+	// deadline, a sign-off. Drawn as a point on its day rather than as a bar
+	// a day wide, which at a year's scale is a sliver nobody sees.
+	Milestone bool `json:"milestone,omitempty"`
 }
 
 const day = 24 * time.Hour
@@ -67,6 +71,9 @@ func readTimeline(blk definition.Block, rows Rows) ([]Span, *Axis, error) {
 			s.Slot = slots[s.Series]
 		}
 		s.Said = said(from, to)
+		if daysOf(from) == daysOf(to) {
+			s.Milestone, s.Said = true, from.Format("2 Jan 2006")
+		}
 		out = append(out, s)
 	}
 	if len(out) == 0 {
@@ -138,4 +145,15 @@ func calendarAxis(lo, hi float64) Axis {
 		out.Ticks = append(out.Ticks, Tick{At: (daysOf(t) - min) / (max - min), Label: name})
 	}
 	return out
+}
+
+// todayOn places the present day on a timeline's calendar, at its middle,
+// named with its date; none when the calendar does not reach it.
+func todayOn(axis Axis, now time.Time) *RefLine {
+	d := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	at := daysOf(d) + 0.5
+	if at < axis.Min || at > axis.Max {
+		return nil
+	}
+	return &RefLine{Label: "Today", Value: at, Formatted: d.Format("2 Jan")}
 }

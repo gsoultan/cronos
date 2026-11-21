@@ -89,6 +89,9 @@ type Block struct {
 	Sankey *Sankey `json:"sankey,omitempty"`
 	// Spans are a timeline's bars, read along XAxis, which is days.
 	Spans []Span `json:"spans,omitempty"`
+	// Today is the present day across a timeline, placed on XAxis in days,
+	// when the calendar reaches it.
+	Today *RefLine `json:"today,omitempty"`
 	// Days are a calendar's, in date order.
 	Days []Day `json:"days,omitempty"`
 	// References are lines across the value scale — a target, an average —

@@ -609,8 +609,15 @@ of a category are one bar, from the earliest start to the latest end, so an
 initiative stored as its phases draws as the initiative. Bars come in the
 order they start unless `sort:` says otherwise, are coloured by `series` (a
 status, a team) with a key, and run to the end of their last day, so a
-one-day task is a day long. A timeline reads no measure and its dates take no
+one-day task is a day long. A category that starts and ends on the same day
+is a milestone — a board review, a go-live — and draws as a diamond on its day
+rather than a bar a day wide. A timeline reads no measure and its dates take no
 grain. On paper each bar is named on the left and the months are ruled.
+
+`today: true` draws a dashed line at the present day across every row, labelled
+"Today · 21 Nov", so what is late and what is still to come read against the
+calendar rather than the reader's own date. The day is the server's, in UTC, at
+the moment the report runs; when the calendar does not reach it no line is drawn.
 
 ```yaml
 - kind: chart
@@ -621,6 +628,7 @@ grain. On paper each bar is named on the left and the months are ruled.
   start: {field: starts_on}
   end: {field: ends_on}
   series: {field: status}
+  today: true
 ```
 
 A `stat` takes a `trend:` — a date and a period — and draws its number over

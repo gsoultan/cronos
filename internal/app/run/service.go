@@ -1,6 +1,8 @@
 package run
 
 import (
+	"time"
+
 	"context"
 	"errors"
 	"fmt"
@@ -35,12 +37,18 @@ type Service struct {
 	datasets Datasets
 	engines  Engines
 	basemaps Basemaps
+	// now is the clock a timeline's today is read from: the wall clock,
+	// unless a test needs a day that stays put.
+	now func() time.Time
 }
 
 // New wires a Service.
 func New(d Datasets, e Engines) *Service {
-	return &Service{datasets: d, engines: e}
+	return &Service{datasets: d, engines: e, now: time.Now}
 }
+
+// WithClock replaces the clock a timeline's today is read from.
+func (s *Service) WithClock(now func() time.Time) *Service { s.now = now; return s }
 
 // WithBasemaps adds the tile providers a map's basemap may name. Without it a
 // map draws URL basemaps only — see templateTiles.
@@ -216,6 +224,9 @@ func (s *Service) block(ctx context.Context, r definition.Report, blk definition
 	}
 	if err != nil {
 		return Block{}, err
+	}
+	if blk.Today && out.XAxis != nil && out.Spans != nil {
+		out.Today = todayOn(*out.XAxis, s.now())
 	}
 	out.reference(blk)
 	out.writeAs(blk, ds)

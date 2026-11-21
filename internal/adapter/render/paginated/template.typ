@@ -299,6 +299,10 @@
     if shape == "square" {
       let s = r * 1.7725
       place(dx: x - s / 2, dy: y - s / 2, rect(width: s, height: s, fill: c, stroke: 0.5pt + white))
+    } else if shape == "diamond" {
+      let a = r * 1.6
+      place(polygon(fill: c, stroke: 0.5pt + white,
+        (x, y - a), (x + a, y), (x, y + a), (x - a, y)))
     } else if shape == "triangle" {
       let a = r * 2.6935
       let t = a * 0.8660

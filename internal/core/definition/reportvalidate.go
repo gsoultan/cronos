@@ -252,6 +252,8 @@ func (b Block) validateChartFields(output string, i int) error {
 	case b.Target.Set() && !b.Chart.Targeted():
 		return fmt.Errorf("%w: %s chart %d sets a target, which only a gauge or a bullet "+
 			"chart reads", ErrInvalid, output, i)
+	case b.Today && b.Chart != TimelineChart:
+		return fmt.Errorf("%w: %s chart %d draws today, which only a timeline does", ErrInvalid, output, i)
 	case (b.Start.Field != "" || b.End.Field != "") && b.Chart != TimelineChart:
 		return fmt.Errorf("%w: %s chart %d sets a start or an end, which only a timeline "+
 			"reads", ErrInvalid, output, i)
