@@ -324,6 +324,13 @@ export function BlockInspector({
         </Field>
       )}
 
+      {(block.kind === 'line' || block.kind === 'area' || block.kind === 'column') && block.series
+        && !block.stacked && (
+        <Checkbox label="A small chart for each series" data-testid="chart-facet"
+          checked={block.facet ?? false}
+          onChange={(e) => onChange({ facet: e.currentTarget.checked || undefined })} />
+      )}
+
       {block.kind === 'map' && (
         <MapFields block={block} dimensions={dimensions} onChange={onChange} />
       )}

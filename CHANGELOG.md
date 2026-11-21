@@ -22,6 +22,11 @@ needs a deployment to act says so under **Upgrading**.
 
 ## Unreleased
 
+**Small multiples.** `facet: true` on a line, area or column chart split by
+`series` draws a small chart a series on one shared scale, in the portal, the
+embed, the PDF and the builder. The demo's sales report gains revenue by
+channel, month by month.
+
 **Stats against a target.** A stat's `target:` (a fixed `value` or a `field`)
 draws a bar to the target under the figure and says how far along it is, in
 the portal and the embed, and the builder offers it. The portal's stat tiles

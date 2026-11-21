@@ -1340,3 +1340,21 @@ test('a stat\'s target survives the round trip', () => {
   expect(back.input.blocks[0]?.target).toMatchObject({ value: 6000000, label: 'Annual target' })
   expect(back.input.blocks[1]?.target).toBeUndefined()
 })
+
+test('small multiples survive the round trip, and give way to a stack', () => {
+  const input = {
+    name: 'Sales', slug: 'sales', dataset: 'orders',
+    blocks: [
+      { kind: 'line', title: 'By region', field: 'revenue', groupBy: 'ordered_at', grain: 'month',
+        series: 'region', facet: true },
+      { kind: 'column', title: 'Stacked', field: 'revenue', groupBy: 'ordered_at', grain: 'month',
+        series: 'region', stacked: true, facet: true },
+    ],
+  }
+  const emitted = report(input)
+  expect(emitted.match(/facet: true/g)?.length).toBe(1)
+  const back = readReport(emitted)
+  expect(back.drops).toEqual([])
+  expect(back.input.blocks[0]?.facet).toBe(true)
+  expect(back.input.blocks[1]?.facet).toBeUndefined()
+})

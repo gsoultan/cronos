@@ -111,6 +111,7 @@ func readChart(out *Block, blk definition.Block, ds definition.Dataset, rows Row
 func (out *Block) readSplit(blk definition.Block, rows Rows) error {
 	var err error
 	out.Stacked, out.Percent = blk.Stacked.On(), blk.Stacked.Shares()
+	out.Facets = blk.Facet
 	out.Groups, err = readGroups(rows, blk.X.Grain)
 	if err == nil && out.Stacked {
 		out.Totals = totals(out.Groups)

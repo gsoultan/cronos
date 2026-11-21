@@ -101,6 +101,16 @@ spec:
           series: {field: region}
           y: {field: revenue, aggregate: sum}
 
+        # Small multiples: a line a channel, side by side on one scale, where
+        # three lines across one plot crossed each other every month.
+        - kind: chart
+          chart: area
+          title: Revenue by channel, month by month
+          facet: true
+          x: {field: ordered_at, grain: month}
+          series: {field: channel}
+          y: {field: revenue, aggregate: sum}
+
         - kind: chart
           chart: sankey
           title: From channel to category
@@ -197,6 +207,16 @@ spec:
           title: Revenue by region and month
           x: {field: ordered_at, grain: month}
           series: {field: region}
+          y: {field: revenue, aggregate: sum}
+
+        # Small multiples: a line a channel, side by side on one scale, where
+        # three lines across one plot crossed each other every month.
+        - kind: chart
+          chart: area
+          title: Revenue by channel, month by month
+          facet: true
+          x: {field: ordered_at, grain: month}
+          series: {field: channel}
           y: {field: revenue, aggregate: sum}
         - kind: pivot
           title: Revenue by category and month

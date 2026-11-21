@@ -146,6 +146,8 @@ export interface Tile {
   /** Draws a multi-series bar, column or area as one stack per bucket —
    *  `percent` for each part as its share of its bucket's whole. */
   stacked?: boolean | 'percent'
+  /** A chart split by series drawn as small multiples. */
+  facet?: boolean
   /** The horizontal measure of a scatter or bubble, whose x is a number
    *  rather than a bucket. */
   xField?: string

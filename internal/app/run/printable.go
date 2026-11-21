@@ -32,6 +32,9 @@ func Printable(view View) []document.Chart {
 }
 
 func chartOf(b Block) document.Chart {
+	if b.Facets && len(b.Groups) > 1 {
+		return facetsOf(b)
+	}
 	// Marks starts empty rather than nil: a nil slice marshals as null, which
 	// the template reads as `none` and cannot call `.len()` on — so a chart
 	// that carries a note instead of marks took the whole document down.

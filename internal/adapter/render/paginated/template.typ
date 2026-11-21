@@ -357,6 +357,16 @@
 }
 
 #let chart(c) = block(breakable: false, above: 10pt, below: 10pt, {
+  let panels = list-of(c.at("panels", default: ()))
+  if panels.len() > 0 {
+    // Small multiples: the title once, then a small chart a series, three
+    // across, each named and each on the one scale.
+    text(size: 9pt, weight: "semibold")[#c.title]
+    v(2pt)
+    grid(columns: (1fr, 1fr, 1fr), column-gutter: 10pt, row-gutter: 2pt,
+      ..panels.map(p => chart(p)))
+    return
+  }
   text(size: 9pt, weight: "semibold")[#c.title]
   v(4pt)
   // Defaulted, not indexed. A key absent from a newer server's payload must

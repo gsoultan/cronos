@@ -21,7 +21,7 @@ const MARKED = 24
  * An area fades toward its floor, so a second series behind it still shows
  * through; stacked, each band is solid and sits on the ones below it.
  */
-export function lineBlock(b: ChartBlock, area: boolean): HTMLElement {
+export function lineBlock(b: ChartBlock, area: boolean, height = PLOT_HEIGHT): HTMLElement {
   const panel = chartPanel(b.title)
   const y = b.yAxis
   const groups: Group[] = b.groups ?? [{ label: b.title, slot: 0, bars: b.series ?? [] }]
@@ -33,7 +33,7 @@ export function lineBlock(b: ChartBlock, area: boolean): HTMLElement {
   const shown = groups.map(() => true)
   let entered = false
   const draw = (width: number) => {
-    const c = cartesian({ width, height: PLOT_HEIGHT, m: measure(at), y, categories: buckets.map((x) => x.label), references: b.references })
+    const c = cartesian({ width, height, m: measure(at), y, categories: buckets.map((x) => x.label), references: b.references })
     const xs = buckets.map((_, i) => c.band(i).x + c.band(i).w / 2)
     const floors = buckets.map(() => 0)
     const tops = groups.map((g, k) => {
