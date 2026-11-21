@@ -13,4 +13,8 @@ type Legend struct {
 	From string `json:"from"`
 	// To is the upper bound, formatted.
 	To string `json:"to"`
+
+	// lower and upper are the bounds as numbers, kept to write them again
+	// in the measure's format once it is known.
+	lower, upper float64
 }

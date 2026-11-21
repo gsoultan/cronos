@@ -61,6 +61,7 @@ func (s *Service) MapView(ctx context.Context, r definition.Report, req ViewRequ
 	if err := q.view(ctx, m, g, slotsOf(capped(req.Categories))); err != nil {
 		return nil, err
 	}
+	s.writeMap(ctx, r, blk, m)
 	return m, nil
 }
 

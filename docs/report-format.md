@@ -267,8 +267,12 @@ without a sign, since a total across two currencies has none; give it
 `currency:` where every row is in one.
 
 A combo writes each measure in its own field's format, and each scale in the
-format of the first measure read against it. A map's figures stay plain for
-now.
+format of the first measure read against it. A map writes its measure's
+format on every region, place, flow, route and hexagon, in each period of a
+timed map, and on its key's bounds — on screen and on paper — so a map of
+on-time share keys its shades "93.2%–95%". An overlay is written in its own
+dataset's format. A bubble's size measure, and the counts on a map too large to
+send place by place, stay plain.
 
 ### Datasets bind per tile
 

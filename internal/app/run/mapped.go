@@ -59,6 +59,10 @@ func (s *Service) whole(ctx context.Context, r definition.Report, blk definition
 	detail Detail, paper bool, params map[string]any, f query.Filters,
 	pr principal.Principal) (*GeoMap, error) {
 
+	var (
+		g   *GeoMap
+		err error
+	)
 	switch {
 	case !m.cut:
 		return m, nil
@@ -67,12 +71,25 @@ func (s *Service) whole(ctx context.Context, r definition.Report, blk definition
 		// says under itself that that is not all of it.
 		return m, nil
 	case pointed(blk.Map):
-		return s.large(ctx, r, blk, detail, paper, params, f, pr)
+		g, err = s.large(ctx, r, blk, detail, paper, params, f, pr)
 	case blk.Map.Draws(definition.H3Layer):
 		// Cells a warehouse indexed, more of them than a map's query holds.
-		return s.largeCells(ctx, r, blk, params, f, pr)
+		g, err = s.largeCells(ctx, r, blk, params, f, pr)
+	default:
+		return m, nil
 	}
-	return m, nil
+	if err == nil {
+		s.writeMap(ctx, r, blk, g)
+	}
+	return g, err
+}
+
+// writeMap writes a map read after the block's own pass in its measure's
+// format, as that pass wrote the map it replaced.
+func (s *Service) writeMap(ctx context.Context, r definition.Report, blk definition.Block, m *GeoMap) {
+	if ds, err := s.datasets.Dataset(ctx, blk.DatasetFor(r.Dataset)); err == nil {
+		m.writeAs(blk, ds)
+	}
 }
 
 /*

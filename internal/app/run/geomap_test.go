@@ -545,3 +545,38 @@ func TestACellIsSentOnThePathGrid(t *testing.T) {
 		t.Errorf("cells sent as %s", raw)
 	}
 }
+
+// A map's figures are in its measure's format, as a chart's are: the cost of
+// a region says pounds in its tooltip and in the key, not a bare number.
+func TestAMapSaysItsFiguresInTheirFormat(t *testing.T) {
+	b := draw(t, `- kind: chart
+  chart: map
+  title: Cost by region
+  x: {field: region}
+  y: {field: cost, aggregate: sum}
+  map: {geometry: shape}`)
+
+	if len(b.Map.Shapes) == 0 || len(b.Map.Legend) == 0 {
+		t.Fatalf("shapes %d, legend %d", len(b.Map.Shapes), len(b.Map.Legend))
+	}
+	for _, s := range b.Map.Shapes {
+		if !strings.HasPrefix(s.Formatted, "£") {
+			t.Errorf("%s reads %q, want pounds", s.Label, s.Formatted)
+		}
+	}
+	for _, l := range b.Map.Legend {
+		if !strings.HasPrefix(l.From, "£") || !strings.HasPrefix(l.To, "£") {
+			t.Errorf("a band reads %q–%q, want pounds", l.From, l.To)
+		}
+	}
+
+	dots := draw(t, `- kind: chart
+  chart: map
+  title: Cost by depot
+  x: {field: depot}
+  y: {field: cost, aggregate: sum}
+  map: {lat: lat, lon: lon}`)
+	if len(dots.Map.Markers) == 0 || !strings.HasPrefix(dots.Map.Markers[0].Formatted, "£") {
+		t.Errorf("a place reads %+v, want pounds", dots.Map.Markers)
+	}
+}

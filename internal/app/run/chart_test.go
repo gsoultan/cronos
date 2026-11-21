@@ -56,6 +56,7 @@ spec:
   # them without a column every positional insert would have to fill.
   query: >-
     SELECT region, shape, lat, lon, to_lat, to_lon, carrier, parcels, staff, depot, route,
+    parcels * 2.5 AS cost,
     date('2026-08-01', '+' || (length(depot) % 3) || ' days') AS day FROM depots
   fields:
     - {name: region,  type: string,  role: dimension, label: Region}
@@ -69,6 +70,7 @@ spec:
     - {name: carrier, type: string,  role: dimension, label: Carrier}
     - {name: parcels, type: decimal, role: measure, aggregate: sum, label: Parcels}
     - {name: staff,   type: decimal, role: measure, aggregate: sum, label: Staff}
+    - {name: cost,    type: decimal, role: measure, aggregate: sum, label: Cost, format: currency, currency: GBP}
     - {name: day,     type: date,    role: dimension, label: Day}`
 
 // charts names each test's own in-memory database.

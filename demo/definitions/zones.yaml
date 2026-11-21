@@ -12,7 +12,7 @@ spec:
   # tables become one dataset, which is the join below.
   query: |
     SELECT z.zone, z.depot, p.city, p.region, z.shape, p.lat, p.lon,
-           z.parcels, z.on_time, p.capacity
+           z.parcels, z.on_time / 100.0 AS on_time, p.capacity
     FROM zones z
     JOIN depots p ON p.depot = z.depot
   fields:
@@ -25,5 +25,6 @@ spec:
     - {name: lat,      type: decimal, role: dimension, hidden: true}
     - {name: lon,      type: decimal, role: dimension, hidden: true}
     - {name: parcels,  type: decimal, role: measure, aggregate: sum, label: Parcels a month}
-    - {name: on_time,  type: decimal, role: measure, aggregate: max, label: On time %}
+    # A share, so a map's key and tooltips say "94.2%" as a table would.
+    - {name: on_time,  type: decimal, role: measure, aggregate: max, label: On time, format: percent}
     - {name: capacity, type: decimal, role: measure, aggregate: sum, label: Parcels a day}
