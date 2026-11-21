@@ -57,6 +57,10 @@ type Deps struct {
 	// Channels are the ways this deployment can deliver something, so an
 	// interface offers what exists rather than what the format supports.
 	Channels []string
+	// Explains says in plain language what a report shows, with a model the
+	// deployment configured. Absent, the route is not mounted and the
+	// catalogue tells the portal not to offer it.
+	Explains Explaining
 	// Sends delivers one report now, to people somebody names. Absent, the
 	// share panel's Send tab has nothing behind it — which is what it had
 	// since it was drawn.
@@ -159,6 +163,11 @@ var (
 	// everyone behind one NAT may do between them. Twenty a second sustained
 	// is far above anybody clicking and far below a loop.
 	renderRate, renderBurst = 20.0, 120.0
+	// Explaining: each one is a render and a paid call to somebody else's
+	// model. Per token like a render, and far tighter — six a minute is a
+	// reader asking follow-ups, and ten at once is a panel opened on a report
+	// with every block explained.
+	explainRate, explainBurst = 6.0 / 60, 10.0
 )
 
 // Routes builds the HTTP surface.
@@ -224,6 +233,12 @@ func Routes(d Deps) http.Handler {
 	portalReports := NewPortalReports(embed, author, d.Log).WithGrants(granting)
 	mux.Handle("/v1/reports/{name}", perReader(portalReports))
 	mux.Handle("/v1/reports/{name}/map", perReader(NewPortalMaps(portalReports)))
+	if d.Explains != nil {
+		mux.Handle("/v1/reports/{name}/explain",
+			NewLimited(NewExplain(portalReports, d.Explains, d.Log),
+				NewLimit(explainRate, explainBurst), "Too many questions. Try again in a minute.").
+				BehindProxy(d.BehindProxy).By(ByBearer))
+	}
 
 	// Sending renders a document and hands it to a delivery channel, so it is
 	// limited like a render rather than not at all: the cost is a typesetter
@@ -240,7 +255,8 @@ func Routes(d Deps) http.Handler {
 	// for the names and then once per name is a page that loads in a hundred
 	// round trips.
 	mux.Handle("/v1/catalog",
-		NewCatalog(d.Projects, author, d.Log).WithChannels(d.Channels).WithGrants(granting))
+		NewCatalog(d.Projects, author, d.Log).WithChannels(d.Channels).WithGrants(granting).
+			Explaining(d.Explains != nil))
 
 	/*
 	   Managing who sees what, where there is somewhere to record it.

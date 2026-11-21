@@ -141,6 +141,23 @@ func (e *Embed) renderWith(w http.ResponseWriter, r *http.Request,
 		fail(w, http.StatusBadRequest, "The request could not be read.")
 		return
 	}
+	view, ok := e.rendered(w, r, pr, name, pinned, req)
+	if !ok {
+		return
+	}
+	send(w, http.StatusOK, view)
+}
+
+/*
+rendered is a report for this caller, or writes the refusal and says so.
+
+Separate from renderWith so that anything else built on a report's rendered
+view — an explanation of it — gets exactly the rows its caller would have been
+served, through the same row scope and the same audit line, rather than a
+second copy of this that drifts.
+*/
+func (e *Embed) rendered(w http.ResponseWriter, r *http.Request,
+	pr principal.Principal, name string, pinned map[string]any, req request) (run.View, bool) {
 
 	// The runtime this caller acts in, from their own token. Before the
 	// report is looked up, because looking one up in the wrong project is the
@@ -150,14 +167,14 @@ func (e *Embed) renderWith(w http.ResponseWriter, r *http.Request,
 		e.log.Info("no project for this caller",
 			"org", pr.OrgID, "project", pr.ProjectID, "err", err)
 		fail(w, http.StatusNotFound, "No such report.")
-		return
+		return run.View{}, false
 	}
 
 	report, err := project.Reports.Report(r.Context(), name)
 	if err != nil {
 		e.log.Info("report not found", "report", name, "err", err)
 		fail(w, http.StatusNotFound, "No such report.")
-		return
+		return run.View{}, false
 	}
 
 	view, err := project.Runner.Render(r.Context(), report, run.Request{
@@ -170,13 +187,13 @@ func (e *Embed) renderWith(w http.ResponseWriter, r *http.Request,
 		// what an audit is for, and the half a successes-only log cannot show.
 		audit(r.Context(), e.log, pr, ActionRead, name, Refused, scopeOf(pr))
 		e.report(w, name, err)
-		return
+		return run.View{}, false
 	}
 
 	// The event this whole product exists to be able to answer for: this
 	// person, through this token, saw these rows of this report.
 	audit(r.Context(), e.log, pr, ActionRead, name, Allowed, scopeOf(pr))
-	send(w, http.StatusOK, view)
+	return view, true
 }
 
 // merge layers the caller's parameters under the token's.

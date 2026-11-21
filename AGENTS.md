@@ -85,6 +85,7 @@ internal/
     burst/               One document per recipient, bounded     ✓
     schedule/            Cron loop, no catch-up, no overlap        ✓
     vault/               A project's secrets, sealed, write-only   ✓
+    explain/             A rendered view, read aloud by a model   ✓
   adapter/             Port implementations.
     codec/yaml/          The file format authors write, read and written ✓
     codec/jrxml/         JasperReports in. The 80%, and what it refused ✓
@@ -102,6 +103,7 @@ internal/
     deliver/s3/          Object storage, S3 API                  ✓
     deliver/sftp/        A folder on one server, host key required ✓
     deliver/webhook/     Signed HTTPS POST, to listed hosts only  ✓
+    llm/anthropic/       explain.Model over the Messages API      ✓
   platform/
     token/               Embed tokens — not JWT, see its doc.go ✓
     config/              Environment                            ✓

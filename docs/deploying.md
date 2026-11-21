@@ -225,6 +225,7 @@ And what should be:
 | `CRONOS_SMTP_HOST`, `CRONOS_SMTP_FROM` | A mail relay. Needed to deliver a schedule by email, and to invite anybody. |
 | `CRONOS_SFTP_ADDR`, `CRONOS_SFTP_USER`, `CRONOS_SFTP_KNOWN_HOSTS` | An SFTP server to drop documents on, with `CRONOS_SFTP_PASSWORD` or `CRONOS_SFTP_KEY_FILE`, and optionally `CRONOS_SFTP_ROOT`. The known_hosts file is required. See Delivering by SFTP. |
 | `CRONOS_WEBHOOK_SECRET`, `CRONOS_WEBHOOK_HOSTS` | A signing secret of 32 bytes or more and the comma-separated hosts documents may be posted to. Both, or startup refuses. See Delivering by webhook. |
+| `CRONOS_AI_API_KEY` | Lets readers ask what a report means, answered by a language model. Off without it. With `CRONOS_AI_MODEL` (`claude-opus-5-5` by default) and optionally `CRONOS_AI_PROVIDER` and `CRONOS_AI_BASE_URL`. See [Explaining reports](explaining.md) for exactly what is sent. |
 | `CRONOS_PORTAL_URL` | Where the portal is served, for links in email. Without it, invitations are not offered — there would be nothing to put in the link. |
 | `CRONOS_SCHEDULER=1` | Arms schedules. Off by default. Safe to set on every replica — see Running several. |
 | `CRONOS_SCHEDULER_TICK` | e.g. `10s`. How often armed schedules are checked; a minute by default, which is cron's own resolution. Lower it if "06:00" has to mean 06:00 rather than some time in the minute after. |
