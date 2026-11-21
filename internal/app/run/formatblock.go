@@ -10,8 +10,8 @@ number each mark already carries. One pass is one place to look when a figure
 reads wrong, and a reader added later is formatted without having to know that
 formats exist. A field that asks for nothing is left exactly as it was read.
 
-Maps are not rewritten: their figures are drawn from several datasets' fields
-per layer, and stay plain for now.
+A map is written by its own writeAs, because a map too large to send whole is
+read again after this pass and has to be written again then.
 */
 
 // writeAs rewrites the block's figures in the formats its fields declare.
@@ -35,6 +35,7 @@ func (b *Block) writeChart(blk definition.Block, ds definition.Dataset) {
 	y := formatOf(ds, blk.Y.Field)
 	switch {
 	case blk.Chart.Geographic():
+		b.Map.writeAs(blk, ds)
 		return
 	case blk.Chart.Plots():
 		x := formatOf(ds, blk.XValue.Field)

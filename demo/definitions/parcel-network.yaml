@@ -84,7 +84,7 @@ spec:
             layers: [polygon]
             geometry: shape
             ramp: diverging
-            midpoint: 95
+            midpoint: 0.95
             classify: jenks
             basemap: {provider: openstreetmap}
 
@@ -223,6 +223,13 @@ spec:
           x: {field: city}
           y: {field: parcels, aggregate: sum}
           map: {layers: [polygon, scatter], geometry: shape, lat: lat, lon: lon}
+        - kind: chart
+          chart: map
+          dataset: zones
+          title: On time against the 95% target
+          x: {field: city}
+          y: {field: on_time, aggregate: max}
+          map: {layers: [polygon], geometry: shape, ramp: diverging, midpoint: 0.95, classify: jenks}
         - kind: chart
           chart: map
           title: Parcels per ten-kilometre hexagon

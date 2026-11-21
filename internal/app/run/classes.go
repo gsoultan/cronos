@@ -98,7 +98,8 @@ func (c classes) legend(from, to float64) []Legend {
 		if (j > 0 && lower >= to) || (j < len(c.breaks) && upper < from) {
 			continue
 		}
-		out = append(out, Legend{Step: c.first + j, From: compact(lower), To: compact(upper)})
+		out = append(out, Legend{Step: c.first + j, From: compact(lower), To: compact(upper),
+			lower: lower, upper: upper})
 	}
 	return out
 }

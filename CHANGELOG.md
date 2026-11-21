@@ -22,6 +22,12 @@ needs a deployment to act says so under **Upgrading**.
 
 ## Unreleased
 
+**Maps in their number format.** A map's figures, which were always plain, now
+take the format of its measure's field: tooltips, labels and the key, on screen
+and in print, and an overlay its own dataset's. A map whose measure has
+`format: currency` or `percent` reads differently after upgrading. The demo's
+on-time share is a percentage, and is printed in the parcel network PDF.
+
 **Dumbbell charts.** `chart: dumbbell` with two `metrics` draws each category as
 an open dot where it ran from and a filled one where it ran to, joined by a
 line, with where it ended and the signed change beside it, in the portal, the
