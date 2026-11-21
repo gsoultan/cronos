@@ -48,8 +48,9 @@ export function cellOf(c: TableColumn | undefined, r: number, cell: string): HTM
   const shade = c?.shades?.[r] ?? -1
   if (shade >= 0) {
     const step = Math.min(shade, 5) + 1
-    return el('td', { class: `${align} shaded`,
-      style: `background: var(--cr-ramp-${step}); color: var(--cr-on-ramp-${step})` }, cell)
+    // A class a step rather than a style attribute: a host page whose policy
+    // allows no inline style blocks the attribute, and the cell went plain.
+    return el('td', { class: `${align} shaded ramp-${step}` }, cell)
   }
   const bar = c?.bars?.[r]
   if (bar) {
