@@ -214,7 +214,7 @@ if command -v bun >/dev/null; then
 	done
 	sleep 61 # the explanations above spent this reader's allowance
 	BASE="http://localhost:$WEB_PORT" SENT="$work/sent.jsonl" SHOT="${SHOT:-}" \
-		bun apps/portal/scripts/explain-check.mjs || die "the portal check failed"
+		bun apps/portal/scripts/live-explain-check.mjs || die "the portal check failed"
 fi
 
 say "All checks passed"
