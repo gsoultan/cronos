@@ -3,6 +3,8 @@ package run_test
 import (
 	"reflect"
 	"testing"
+
+	"github.com/gsoultan/cronos/internal/app/run"
 )
 
 // A data bar is each row's figure over the column's largest, and only in the
@@ -114,5 +116,29 @@ func TestAStatIsSetAgainstItsTarget(t *testing.T) {
   target: {field: staff, aggregate: sum}`)
 	if b.Goal == nil || b.Goal.Value != "77" || b.Goal.Said != "2857%" {
 		t.Fatalf("goal %+v, want 2,200 against 77 staff", b.Goal)
+	}
+}
+
+// A faceted chart is its groups on one scale, and prints as a panel each.
+func TestAFacetedChartPrintsAPanelASeries(t *testing.T) {
+	b := draw(t, `- kind: chart
+  chart: column
+  title: Parcels by region, a panel a carrier
+  facet: true
+  x: {field: region}
+  series: {field: carrier}
+  y: {field: parcels, aggregate: sum}`)
+	if !b.Facets || len(b.Groups) != 2 || b.YAxis == nil {
+		t.Fatalf("facets %v, groups %d, axis %v", b.Facets, len(b.Groups), b.YAxis)
+	}
+	if out := marshal(t, b); out["facets"] != true {
+		t.Errorf("payload %v does not say facets", keys(out))
+	}
+	charts := run.Printable(run.View{Blocks: []run.Block{b}})
+	if len(charts) != 1 || len(charts[0].Panels) != 2 {
+		t.Fatalf("printed %+v, want one chart of two panels", charts)
+	}
+	if p := charts[0].Panels[1]; p.Title != "Baltic" || len(p.Marks) == 0 || p.Keys != nil {
+		t.Errorf("panel %q: %d marks, keys %v", p.Title, len(p.Marks), p.Keys)
 	}
 }

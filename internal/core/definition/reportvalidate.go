@@ -185,6 +185,9 @@ func (b Block) validateChart(output string, i int) error {
 	if err := b.validateChartFields(output, i); err != nil {
 		return err
 	}
+	if err := b.validateFacet(output, i); err != nil {
+		return err
+	}
 	if err := b.validateReferences(output, i); err != nil {
 		return err
 	}

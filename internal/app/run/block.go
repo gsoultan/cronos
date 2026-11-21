@@ -42,6 +42,9 @@ type Block struct {
 	// against a scale of percentages. The values are still the values: the
 	// shares are worked out where they are drawn, from the parts on show.
 	Percent bool `json:"percent,omitempty"`
+	// Facets says the groups are drawn as small multiples, a small chart
+	// each, all against YAxis — one scale, so the panels compare.
+	Facets bool `json:"facets,omitempty"`
 	// Totals is the height of each stack, one per bucket, formatted.
 	//
 	// Sent rather than added up in the viewer. A viewer summing the segments

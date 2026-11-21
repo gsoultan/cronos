@@ -118,7 +118,9 @@ export function rowsOf(blocks: ReportBlock[]): ReportBlock[][] {
   // The row still taking blocks, or none — a table closes it and opens nothing.
   let open: ReportBlock[] | null = null
   for (const b of blocks) {
-    if (b.kind === 'table') {
+    // Small multiples are a row of charts already, and halved they are
+    // stacked one above another — a column of panels, not a row of them.
+    if (b.kind === 'table' || (b.kind === 'chart' && b.facets)) {
       out.push([b])
       open = null
     } else if (open) {

@@ -84,6 +84,9 @@ func (b Block) chartJSON(out map[string]any) {
 	if b.YAxis != nil {
 		out["yAxis"] = b.YAxis
 	}
+	if b.Facets {
+		out["facets"] = true
+	}
 	// Lines across that scale, which only a chart that drew some carries.
 	if len(b.References) > 0 {
 		out["references"] = b.References

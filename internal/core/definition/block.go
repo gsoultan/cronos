@@ -44,6 +44,10 @@ type Block struct {
 	// rather than side by side — `true`, or `percent` for each part as its
 	// share of the bucket. Refused on the types ChartType.Stacks rejects.
 	Stacked Stacking `json:"stacked,omitempty" yaml:"stacked,omitempty"`
+	// Facet draws a line, area or column chart split by series as small
+	// multiples: one small chart per series, side by side on the one scale,
+	// rather than every series tangled across one plot. See facet.go.
+	Facet bool `json:"facet,omitempty" yaml:"facet,omitempty"`
 	// Size is the measure a bubble's radius reads. A bubble without one is a
 	// scatter, and says so rather than drawing every dot the same size.
 	Size MeasureRef `json:"size,omitzero" yaml:"size,omitempty"`

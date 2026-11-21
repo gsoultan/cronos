@@ -504,6 +504,8 @@ export interface Rect {
 }
 
 export interface ChartBlock {
+  /** Draw the groups as small multiples, a small chart each on the one scale. */
+  facets?: boolean
   kind: 'chart'
   /** Which chart. A new type here is not a new block kind. */
   chart: string

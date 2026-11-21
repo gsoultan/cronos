@@ -382,6 +382,8 @@ export interface ReportBlockInput {
   /** A pivot's rows' grain, when they are dates. */
   seriesGrain?: string
   stacked?: boolean | 'percent'
+  /** A chart split by series drawn as small multiples. */
+  facet?: boolean
   /** A plot's horizontal measure. */
   xField?: string
   /** A bubble's radius measure. */
@@ -421,7 +423,7 @@ export function tileOf(b: ReportBlockInput): Omit<Tile, 'id' | 'span'> {
     kind: b.kind as TileKind, title: b.title ?? '', dataset: b.dataset,
     field: b.field, groupBy: b.groupBy, grain: b.grain,
     aggregate: b.aggregate as Tile['aggregate'],
-    series: b.series, seriesGrain: b.seriesGrain, stacked: b.stacked,
+    series: b.series, seriesGrain: b.seriesGrain, stacked: b.stacked, facet: b.facet,
     xField: b.xField, sizeField: b.sizeField, map: b.map,
     startField: b.startField, endField: b.endField,
     metrics: b.metrics as Tile['metrics'], target: b.target as Tile['target'],
@@ -439,7 +441,7 @@ export function blockInput(b: Tile): ReportBlockInput {
   return {
     kind: b.kind, title: b.title, dataset: b.dataset,
     field: b.field, groupBy: b.groupBy, grain: b.grain, aggregate: b.aggregate,
-    series: b.series, seriesGrain: b.seriesGrain, stacked: b.stacked,
+    series: b.series, seriesGrain: b.seriesGrain, stacked: b.stacked, facet: b.facet,
     xField: b.xField, sizeField: b.sizeField, map: b.map,
     startField: b.startField, endField: b.endField,
     metrics: b.metrics, target: b.target, bands: b.bands, bins: b.bins, trend: b.trend,
@@ -512,6 +514,8 @@ const METERED = new Set(['combo', 'funnel'])
 
 /** The chart types read against a target. */
 const TARGETED = new Set(['gauge', 'bullet'])
+/** The charts a series can split into small multiples. */
+const FACETED = new Set(['line', 'area', 'column'])
 /** The charts with a value scale a reference line can cross, as the server
  *  has them. */
 const REFERENCED = new Set(['line', 'area', 'column', 'combo', 'waterfall', 'boxplot', 'scatter', 'bubble', 'pareto'])
@@ -608,6 +612,9 @@ function block(b: ReportBlockInput): Yaml {
       references: REFERENCED.has(chart) && b.references?.length ? b.references : undefined,
       series: b.series ? { field: b.series } : undefined,
       stacked: b.stacked || undefined,
+      // Small multiples split by the series, which a stack adds up instead:
+      // the server refuses both, so the stack wins in the file.
+      facet: b.facet && b.series && !b.stacked && FACETED.has(chart) ? true : undefined,
       size: chart === 'bubble' && b.sizeField
         ? { field: b.sizeField, aggregate: b.aggregate ?? 'sum' }
         : undefined,
@@ -1138,6 +1145,7 @@ function readBlock(v: Yaml): ReportBlockInput {
       field: str(y.field), aggregate: str(y.aggregate) || undefined,
       series: str(asMap(b.series).field) || undefined,
       stacked: b.stacked === true ? true : b.stacked === 'percent' ? 'percent' : undefined,
+      facet: b.facet === true || undefined,
       xField: (chart === 'histogram' ? str(x.field) : str(asMap(b.xValue).field)) || undefined,
       bins: chart === 'histogram' ? num(b.bins) : undefined,
       references: REFERENCED.has(chart) && asList(b.references).length

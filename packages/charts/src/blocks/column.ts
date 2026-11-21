@@ -21,7 +21,7 @@ const VALUE_PX = 11
  * whole, each part is its share of its bucket, worked out here from the parts
  * on show, so hiding one gives the others its room rather than leaving a gap.
  */
-export function columnBlock(b: ChartBlock): HTMLElement {
+export function columnBlock(b: ChartBlock, height = PLOT_HEIGHT): HTMLElement {
   const panel = chartPanel(b.title)
   const groups: Group[] = b.groups ?? [{ label: b.title, slot: 0, bars: b.series ?? [] }]
   const buckets = groups[0]?.bars ?? []
@@ -34,7 +34,7 @@ export function columnBlock(b: ChartBlock): HTMLElement {
   let entered = false
   const redraw = sized(at, (width) => {
     const m = measure(at)
-    const c = cartesian({ width, height: PLOT_HEIGHT, m, y, categories: buckets.map((x) => x.label), headroom: 18, references: b.references })
+    const c = cartesian({ width, height, m, y, categories: buckets.map((x) => x.label), headroom: 18, references: b.references })
     const words = svg('g', { class: 'labels' })
     const live = groups.filter((_, i) => shown[i])
     const all = live.length === groups.length

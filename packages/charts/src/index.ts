@@ -8,6 +8,7 @@ import { boxplotBlock } from './blocks/boxplot'
 import { sankeyBlock } from './blocks/sankey'
 import { sunburstBlock } from './blocks/sunburst'
 import { calendarBlock } from './blocks/calendar'
+import { facetsBlock } from './blocks/facets'
 import { lineBlock } from './blocks/line'
 import { pieBlock } from './blocks/pie'
 import { scatterBlock } from './blocks/scatter'
@@ -60,6 +61,9 @@ export function drawBlock(b: Block, opts: DrawOptions = {}): HTMLElement {
  * for the same reason the one above does.
  */
 export function drawChart(b: ChartBlock, opts: DrawOptions = {}): HTMLElement {
+  if (b.facets && (b.groups?.length ?? 0) > 1 && ['line', 'area', 'column'].includes(b.chart)) {
+    return facetsBlock(b)
+  }
   switch (b.chart) {
     case 'bar':
       return barBlock(b)

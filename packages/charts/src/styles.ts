@@ -196,6 +196,11 @@ $SCOPE$[hidden] { display: none }
   padding: 16px;
   min-width: 0;
 }
+/* Small multiples: the panels inside a panel, without its frame, three
+   across where there is room for three and fewer where there is not. */
+.facets { display: grid; gap: 12px 20px; grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)) }
+.facets .panel { grid-column: auto; border: 0; padding: 0; background: none; box-shadow: none }
+.facets .panel h3 { font-size: 12px; margin-bottom: 4px }
 .panel h3 {
   margin: 0 0 10px;
   font-size: 14px;

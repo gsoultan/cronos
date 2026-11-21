@@ -715,6 +715,28 @@ has.
   y: {field: total, aggregate: sum}
 ```
 
+#### Small multiples
+
+A line, area or column chart split by `series` takes `facet: true` to draw a
+small chart for each series, side by side, instead of every series across one
+plot. The panels share one scale, so a panel that reaches higher is larger,
+not drawn against a different axis. Three channels' months read as three
+shapes, where three lines across one plot crossed each other every month.
+In the portal and the embed the panels sit three across where there is room,
+and on paper three across under the chart's title. It is refused without a
+`series`, and on a stacked chart, because a stack adds the series up and a
+facet draws them apart.
+
+```yaml
+- kind: chart
+  chart: area
+  title: Revenue by channel, month by month
+  facet: true
+  x: {field: ordered_at, grain: month}
+  series: {field: channel}
+  y: {field: revenue, aggregate: sum}
+```
+
 #### Reference lines
 
 `references:` draws up to three lines across a chart's value scale, for what

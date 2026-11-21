@@ -50,6 +50,10 @@ type Chart struct {
 	// result, or a chart type this renderer does not print. A page that simply
 	// omits a block looks like a report that was never written that way.
 	Note string `json:"note,omitempty"`
+	// Panels are small multiples: a small chart per series, set in a grid
+	// under the title, each with its own name and the one scale between
+	// them. A chart with panels draws no marks of its own.
+	Panels []Chart `json:"panels,omitempty"`
 }
 
 // Tick is one label on a printed scale.
@@ -72,6 +76,11 @@ type Key struct {
 func (c Chart) validate() error {
 	if c.Title == "" {
 		return fmt.Errorf("%w: a chart has no title", ErrInvalid)
+	}
+	for _, p := range c.Panels {
+		if err := p.validate(); err != nil {
+			return err
+		}
 	}
 	for _, m := range c.Marks {
 		switch m.Kind {
