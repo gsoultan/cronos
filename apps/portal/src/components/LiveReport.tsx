@@ -74,7 +74,9 @@ export function LiveReport({ view, applied = [], mapView, filter }: {
         <div className="grid min-w-0 gap-4 [grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),min(320px,100%)))]">
           {stats.map((b, i) => (
             <div key={b.title + i}>
-              <StatTile label={b.title} value={b.value ?? '—'} hero={i === 0} />
+              <StatTile label={b.title} value={b.value ?? '—'} hero={i === 0}
+                goal={b.kind === 'stat' ? b.goal : undefined}
+                trend={b.kind === 'stat' && (b.trend?.length ?? 0) > 1 ? b.trend?.map((t) => t.value) : undefined} />
               <Unaffected block={b} view={view} applied={applied} />
             </div>
           ))}

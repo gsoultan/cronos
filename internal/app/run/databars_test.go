@@ -93,3 +93,26 @@ func TestAShadedPivotStepsEveryCellButTheTotals(t *testing.T) {
 		t.Errorf("the labels or the totals column were shaded: %+v", b.Columns)
 	}
 }
+
+// A stat against a fixed target says how far along it is, in the figure's
+// own format; against a field, the target is folded over the same rows.
+func TestAStatIsSetAgainstItsTarget(t *testing.T) {
+	b := draw(t, `- kind: stat
+  label: Parcels
+  value: {field: parcels, aggregate: sum}
+  target: {value: 2750, label: Plan}`)
+	if b.Goal == nil || b.Goal.Label != "Plan" || b.Goal.Share != 0.8 || b.Goal.Said != "80%" || b.Goal.Value != "2,750" {
+		t.Fatalf("goal %+v, want 2,200 as 80%% of a 2,750 plan", b.Goal)
+	}
+	if out := marshal(t, b); out["goal"] == nil {
+		t.Errorf("payload %v carries no goal", keys(out))
+	}
+
+	b = draw(t, `- kind: stat
+  label: Parcels per head
+  value: {field: parcels, aggregate: sum}
+  target: {field: staff, aggregate: sum}`)
+	if b.Goal == nil || b.Goal.Value != "77" || b.Goal.Said != "2857%" {
+		t.Fatalf("goal %+v, want 2,200 against 77 staff", b.Goal)
+	}
+}

@@ -45,6 +45,7 @@ spec:
           label: Satisfaction (1–5)
           value: {field: csat, aggregate: avg}
           trend: {field: opened_at, grain: month}
+          target: {value: 4.5, label: Target}
 
         - kind: chart
           chart: gauge

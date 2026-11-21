@@ -17,7 +17,12 @@ func read(blk definition.Block, ds definition.Dataset, rows Rows, cov *Coverage)
 	var err error
 	switch blk.Kind {
 	case definition.StatBlock:
-		out.Value, out.figure, err = readStat(rows)
+		var target *float64
+		out.Value, out.figure, target, err = readStat(rows)
+		if blk.Target.Fixed() {
+			target = blk.Target.Value
+		}
+		out.Goal = goalOf(blk.Target, out.figure, target)
 	case definition.ChartBlock:
 		out.Chart = string(blk.Chart)
 		err = readChart(&out, blk, ds, rows)
@@ -227,23 +232,38 @@ func (b *Block) heights() []float64 {
 }
 
 // readStat takes the single cell the aggregate produced, as text and as the
-// number it was, so the measure's format can write it again.
-func readStat(rows Rows) (string, *float64, error) {
+// number it was, so the measure's format can write it again — and the target
+// beside it, when the statement folded one from a field.
+func readStat(rows Rows) (string, *float64, *float64, error) {
 	if !rows.Next() {
 		// No row at all, which an aggregate should not do — but a stat that
 		// renders nothing looks like a number that happens to be blank.
-		return "—", nil, nil
+		return "—", nil, nil, nil
 	}
-	var v any
-	if err := rows.Scan(&v); err != nil {
-		return "", nil, err
+	names, err := rows.Columns()
+	if err != nil {
+		return "", nil, nil, err
 	}
-	n, ok := number(v)
+	cells := make([]any, len(names))
+	into := make([]any, len(names))
+	for i := range cells {
+		into[i] = &cells[i]
+	}
+	if err := rows.Scan(into...); err != nil {
+		return "", nil, nil, err
+	}
+	var target *float64
+	if len(cells) > 1 {
+		if t, ok := number(cells[1]); ok {
+			target = &t
+		}
+	}
+	n, ok := number(cells[0])
 	if !ok {
 		// Nothing matched. Zero would be a claim; an em dash is the absence.
-		return "—", nil, nil
+		return "—", nil, target, nil
 	}
-	return compact(n), &n, nil
+	return compact(n), &n, target, nil
 }
 
 // readSeries reads (bucket, value) pairs.

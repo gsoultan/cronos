@@ -203,6 +203,20 @@ export function BlockInspector({
           onChange={(metrics) => onChange({ metrics })} />
       )}
 
+      {/* A stat's target is optional, so it is switched on first: a stat
+          without one is still a stat, where a gauge without one is not. */}
+      {block.kind === 'stat' && (
+        <Checkbox label="Measure against a target" data-testid="stat-target"
+          checked={block.target !== undefined}
+          onChange={(e) => onChange({
+            target: e.currentTarget.checked ? { field: measures[0]?.name } : undefined,
+          })} />
+      )}
+      {block.kind === 'stat' && block.target && (
+        <TargetField target={block.target} measures={measures}
+          onChange={(patch) => onChange({ target: { ...block.target, ...patch } })} />
+      )}
+
       {is(TARGETED, block.kind) && (
         <TargetField target={block.target ?? {}} measures={measures}
           onChange={(patch) => onChange({ target: { ...block.target, ...patch } })} />

@@ -22,6 +22,12 @@ needs a deployment to act says so under **Upgrading**.
 
 ## Unreleased
 
+**Stats against a target.** A stat's `target:` (a fixed `value` or a `field`)
+draws a bar to the target under the figure and says how far along it is, in
+the portal and the embed, and the builder offers it. The portal's stat tiles
+now also draw the trend line a stat's `trend:` asks for. The demo's revenue,
+satisfaction and hiring tiles have targets.
+
 **Shaded pivots.** `shade: true` under a pivot's `pivot:` colours each cell on
 the heatmap's ramp by where its figure falls among the others, leaving the
 totals plain, in the portal, the embed, the PDF and the builder. The demo's

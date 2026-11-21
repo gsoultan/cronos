@@ -29,6 +29,9 @@ func (b Block) MarshalJSON() ([]byte, error) {
 		if b.Delta != nil {
 			out["delta"] = b.Delta
 		}
+		if b.Goal != nil {
+			out["goal"] = b.Goal
+		}
 	case "chart":
 		out["chart"] = b.Chart
 		out["series"] = nonNilBars(b.Series)

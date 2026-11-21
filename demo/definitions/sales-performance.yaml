@@ -41,6 +41,7 @@ spec:
           label: Revenue
           value: {field: revenue, aggregate: sum}
           trend: {field: ordered_at, grain: month}
+          target: {value: 6500000, label: Annual target}
         - kind: stat
           label: Gross margin
           value: {field: margin, aggregate: sum}

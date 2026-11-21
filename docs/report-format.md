@@ -630,6 +630,21 @@ measure's to say, and `better: lower` says it, for days to pay or tickets
 open. The periods are the same statement a line chart of the measure would
 be, over the same rows the tile's own figure reads.
 
+A `stat` also takes a `target:`, as a gauge does: a fixed `value`, or a
+`field` folded over the same rows as the figure, in the same statement. The
+tile then draws a bar to the target under its figure and says how far along it
+is, "95% of annual target $6.5M", with the target in the measure's format. Past
+the target the bar is full, in the good tone, with a tick where the target
+fell. A target of zero is refused, because nothing is a share of it. Stat
+tiles are drawn in the portal and the embed; a PDF prints no tiles.
+
+```yaml
+- kind: stat
+  label: Revenue
+  value: {field: revenue, aggregate: sum}
+  target: {value: 6500000, label: Annual target}
+```
+
 ```yaml
 - kind: stat
   label: Billed

@@ -151,6 +151,11 @@ func (b Block) validateShape(output string, i int) error {
 		if b.Value.Field == "" {
 			return fmt.Errorf("%w: %s stat %d measures no field", ErrInvalid, output, i)
 		}
+		if b.Target.Set() {
+			if err := b.Target.validate(output, i, "stat"); err != nil {
+				return err
+			}
+		}
 		if b.Trend != nil {
 			return b.Trend.validate(output, i)
 		}

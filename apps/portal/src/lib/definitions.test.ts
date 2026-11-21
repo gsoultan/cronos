@@ -1324,3 +1324,19 @@ test('a table\'s data bars and a pivot\'s sparkline survive the round trip', () 
   expect(back.input.blocks[2]?.sparkline).toBeUndefined()
   expect(back.input.blocks[2]?.shade).toBe(true)
 })
+
+test('a stat\'s target survives the round trip', () => {
+  const input = {
+    name: 'Sales', slug: 'sales', dataset: 'orders',
+    blocks: [
+      { kind: 'stat', title: 'Revenue', field: 'revenue', target: { value: 6000000, label: 'Annual target' } },
+      { kind: 'stat', title: 'Orders', field: 'orders' },
+    ],
+  }
+  const emitted = report(input)
+  expect(emitted).toContain('value: 6000000')
+  const back = readReport(emitted)
+  expect(back.drops).toEqual([])
+  expect(back.input.blocks[0]?.target).toMatchObject({ value: 6000000, label: 'Annual target' })
+  expect(back.input.blocks[1]?.target).toBeUndefined()
+})

@@ -1,4 +1,4 @@
-import type { Bar, StatBlock } from '../types'
+import type { Bar, Goal, StatBlock } from '../types'
 import { el } from '../dom'
 import { svg, n } from '../svg'
 import { canvas, sized } from '../frame'
@@ -36,6 +36,7 @@ export function statBlock(b: StatBlock): HTMLElement {
       el('b', { class: `pill ${tone}` }, `${b.delta.dir === 'up' ? '▲' : '▼'} ${b.delta.value}`),
       b.delta.label ? ` ${b.delta.label}` : ''))
   }
+  if (b.goal) panel.append(goalOf(b.goal))
   const trend = b.trend ?? []
   if (trend.length > 1) {
     const tips = withTips(panel)
@@ -70,4 +71,26 @@ function sparkline(width: number, trend: Bar[], tips: Tips): SVGSVGElement {
     root.append(dot)
   })
   return root
+}
+
+/**
+ * How far along the figure is: a bar to its target, and the share and the
+ * target in words. Past the target the bar is full and in the good tone,
+ * with a tick where the target fell, so 120% is not drawn as the same bar as
+ * 100%.
+ */
+function goalOf(g: Goal): HTMLElement {
+  const done = g.share >= 1
+  const fill = el('span', { class: `goal-fill${done ? ' done' : ''}` })
+  fill.style.width = `${Math.max(0, Math.min(g.share, 1)) * 100}%`
+  const track = el('span', { class: 'goal-track', role: 'img',
+    'aria-label': `${g.said} of ${g.label.toLowerCase()} ${g.value}` }, fill)
+  if (g.share > 1) {
+    const tick = el('span', { class: 'goal-tick' })
+    tick.style.left = `${(1 / g.share) * 100}%`
+    fill.style.width = '100%'
+    track.append(tick)
+  }
+  return el('div', { class: 'goal', part: 'goal' }, track,
+    el('p', { class: 'goal-said' }, el('b', {}, g.said), ` of ${g.label.toLowerCase()} ${g.value}`))
 }

@@ -61,10 +61,25 @@ func (b Builder) statSQL(ds definition.Dataset, blk definition.Block, inner stri
 	if err != nil {
 		return "", err
 	}
+	// A target from a field is folded over the same rows, in the same
+	// statement, so the figure and what it is measured against cannot be
+	// read from two different moments of the table.
+	target := ""
+	if blk.Target.Field != "" {
+		tfn, err := aggregateOf(ds, blk.Target.Ref())
+		if err != nil {
+			return "", err
+		}
+		tcol, err := column(ds, blk.Target.Field)
+		if err != nil {
+			return "", err
+		}
+		target = fmt.Sprintf(", %s(%s) AS target", tfn, tcol)
+	}
 	// Always aliased. Postgres names a bare SUM() column "sum", MySQL names it
 	// "SUM(total)", and a reader keyed on either breaks on the other.
-	return fmt.Sprintf("SELECT %s(%s) AS value\nFROM (\n%s\n) AS %s%s",
-		fn, field, inner, blockAlias, where(blk.Filter)), nil
+	return fmt.Sprintf("SELECT %s(%s) AS value%s\nFROM (\n%s\n) AS %s%s",
+		fn, field, target, inner, blockAlias, where(blk.Filter)), nil
 }
 
 // tableSQL selects the named columns, ordered and capped.

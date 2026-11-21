@@ -16,6 +16,8 @@ type Block struct {
 	// period against the one before.
 	Trend []Bar  `json:"trend,omitempty"`
 	Delta *Delta `json:"delta,omitempty"`
+	// Goal is a stat's figure against its target, when it has one.
+	Goal *Goal `json:"goal,omitempty"`
 
 	// Chart. Kind stays "chart" and the type travels beside it, so a line
 	// chart later is a new value here rather than a new kind every renderer

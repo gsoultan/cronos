@@ -34,6 +34,7 @@ spec:
         - kind: stat
           label: Hired this year
           value: {field: hire, aggregate: count}
+          target: {value: 60, label: Hiring plan}
         - kind: stat
           label: Left this year
           value: {field: leaver, aggregate: count}
