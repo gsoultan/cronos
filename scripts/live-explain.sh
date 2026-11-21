@@ -16,19 +16,22 @@
 #
 #   ./scripts/live-explain.sh
 #
-# Needs go and python3. Leaves nothing behind.
+# Needs go and python3; with bun, the portal is driven too. Leaves nothing
+# behind. SHOT=path saves a picture of the panel.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
 PORT=8798
 MODEL_PORT=8799
+WEB_PORT=5175
 API="http://127.0.0.1:$PORT"
 
 work=$(mktemp -d)
 cleanup() {
 	[ -n "${server:-}" ] && { kill "$server" 2>/dev/null || true; }
 	[ -n "${model:-}" ] && { kill "$model" 2>/dev/null || true; }
+	[ -n "${web:-}" ] && { pkill -P "$web" 2>/dev/null; kill "$web" 2>/dev/null || true; }
 	rm -rf "$work" || true
 	return 0
 }
@@ -46,6 +49,7 @@ boot() {
 		CRONOS_STORE_DSN="file:$work/cronos.db" \
 		CRONOS_SIGNING_KEY=0123456789abcdef0123456789abcdef \
 		CRONOS_SEED=demo/seed.sql CRONOS_SEED_SOURCE=warehouse \
+		CRONOS_ORIGINS="http://localhost:$WEB_PORT" \
 		"$@" ./bin/cronosd >>"$work/log" 2>&1 &
 	server=$!
 	for _ in $(seq 1 60); do
@@ -92,12 +96,17 @@ log = sys.argv[2]
 
 class Model(BaseHTTPRequestHandler):
     def do_POST(self):
-        body = self.rfile.read(int(self.headers["content-length"]))
+        body = json.loads(self.rfile.read(int(self.headers["content-length"])))
         with open(log, "a") as f:
             f.write(json.dumps({"path": self.path, "beta": self.headers.get("anthropic-beta", ""),
-                                "body": json.loads(body)}) + "\n")
+                                "body": body}) + "\n")
+        if "please fail" in body["messages"][0]["content"][0]["text"]:
+            self.send_response(500)
+            self.send_header("content-length", "0")
+            self.end_headers()
+            return
         reply = {"id": "msg_1", "type": "message", "role": "assistant", "model": "claude-opus-5-5",
-                 "content": [{"type": "text", "text": "Total billed is what was invoiced in the period."}],
+                 "content": [{"type": "text", "text": "Total billed is what was invoiced in the period.\n\nOutstanding is the part not yet paid."}],
                  "stop_reason": "end_turn", "usage": {"input_tokens": 1, "output_tokens": 1}}
         out = json.dumps(reply).encode()
         self.send_response(200)
@@ -191,5 +200,21 @@ for _ in $(seq 1 12); do
 done
 [ -n "$limited" ] || die "twelve explanations at once were all answered"
 ok "a reader asking in a loop is told to wait"
+
+# --- the portal ---------------------------------------------------------------
+
+if command -v bun >/dev/null; then
+	say "The portal"
+	( cd apps/portal && VITE_CRONOS_API="$API" VITE_CRONOS_TOKEN="$ADMIN" \
+		bunx vite --port "$WEB_PORT" --strictPort >"$work/web.log" 2>&1 ) &
+	web=$!
+	for _ in $(seq 1 60); do
+		curl -sf -o /dev/null "http://localhost:$WEB_PORT/" && break
+		sleep 0.5
+	done
+	sleep 61 # the explanations above spent this reader's allowance
+	BASE="http://localhost:$WEB_PORT" SENT="$work/sent.jsonl" SHOT="${SHOT:-}" \
+		bun apps/portal/scripts/live-explain-check.mjs || die "the portal check failed"
+fi
 
 say "All checks passed"
