@@ -245,6 +245,9 @@ td.barred .databar {
 }
 td.barred .databar.neg { background: color-mix(in srgb, var(--cr-serious, #e34948) 20%, transparent) }
 td.barred .figure { position: relative }
+/* A shaded pivot's cells sit edge to edge, as a heatmap's do. */
+td.shaded { border-bottom-color: var(--cr-surface, #fff); font-weight: 550 }
+${[1, 2, 3, 4, 5, 6].map((s) => `td.shaded.ramp-${s} { background: var(--cr-ramp-${s}); color: var(--cr-on-ramp-${s}) }`).join('\n')}
 td.sparked { padding-top: 3px; padding-bottom: 3px; line-height: 0 }
 .rowspark .trace { fill: none; stroke: var(--cr-ink-muted); stroke-width: 1.25; stroke-linejoin: round; stroke-linecap: round }
 .rowspark .end { fill: var(--cr-series-1, #2a78d6) }

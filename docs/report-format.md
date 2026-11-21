@@ -882,6 +882,14 @@ they sort in, and it is left out of a spreadsheet tab, whose cells hold numbers.
     sparkline: true
 ```
 
+`shade: true` under `pivot:` colours each cell by where its figure falls among
+the others, on the ramp a heatmap uses and classed the same way, by quantile,
+so the ramp is spent where the figures are. The large cells of a headcount by
+department and level are seen before any is read. The totals are left plain,
+because they are a different size of thing and would take the darkest shade
+from every cell, and so is a cell no row reached. It works on any pivot, in
+the portal, the embed and the PDF.
+
 A pivot is crossed where it is read and reaches every renderer as the table it
 then is — the embed, the portal, a PDF and a workbook draw it with the table
 they already draw. A paginated document prints one table: a pivot prints when

@@ -49,6 +49,7 @@ spec:
           pivot:
             rows: {field: status}
             columns: {field: issued_at, grain: month}
+            shade: true
 
         - kind: table
           title: Invoices

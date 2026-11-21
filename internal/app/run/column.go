@@ -19,4 +19,9 @@ type Column struct {
 	// width at 0 to 1 up its height, each row against its own lowest and
 	// highest: the shape of the row, not its size. Its cells are empty.
 	Spark [][]float64 `json:"spark,omitempty"`
+	// Shades is the ramp step of each row's cell, from 0, as a heatmap's
+	// cells carry theirs: the same quantile classes across every cell of a
+	// shaded pivot. -1 is a cell left plain — a total, or a pair no row
+	// reached.
+	Shades []int `json:"shades,omitempty"`
 }

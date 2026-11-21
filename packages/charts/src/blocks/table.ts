@@ -45,6 +45,13 @@ const SPARK_H = 18
  */
 export function cellOf(c: TableColumn | undefined, r: number, cell: string): HTMLElement {
   const align = c?.align === 'right' ? 'r' : ''
+  const shade = c?.shades?.[r] ?? -1
+  if (shade >= 0) {
+    const step = Math.min(shade, 5) + 1
+    // A class a step rather than a style attribute: a host page whose policy
+    // allows no inline style blocks the attribute, and the cell went plain.
+    return el('td', { class: `${align} shaded ramp-${step}` }, cell)
+  }
   const bar = c?.bars?.[r]
   if (bar) {
     return el('td', { class: `${align} barred` },

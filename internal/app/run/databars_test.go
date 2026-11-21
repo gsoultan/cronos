@@ -69,3 +69,27 @@ func TestASparklineOfOnePointIsLeftOut(t *testing.T) {
 		t.Errorf("headings %q", got)
 	}
 }
+
+// A shaded pivot carries a ramp step for each cell, classed across all of
+// them, and leaves the totals and the empty pairs plain.
+func TestAShadedPivotStepsEveryCellButTheTotals(t *testing.T) {
+	b := draw(t, `- kind: pivot
+  title: Parcels
+  value: {field: parcels}
+  pivot:
+    rows: {field: region}
+    columns: {field: carrier}
+    shade: true`)
+
+	// England 1,200 and 300, Scotland 700 and nothing.
+	aurora, baltic := b.Columns[1].Shades, b.Columns[2].Shades
+	if len(aurora) != 3 || aurora[2] != -1 || baltic[1] != -1 {
+		t.Fatalf("shades %v %v: a total and an empty pair are plain", aurora, baltic)
+	}
+	if !(aurora[0] > aurora[1] && aurora[1] > baltic[0]) {
+		t.Errorf("shades %v %v: 1,200 should be darker than 700, darker than 300", aurora, baltic)
+	}
+	if b.Columns[0].Shades != nil || b.Columns[3].Shades != nil {
+		t.Errorf("the labels or the totals column were shaded: %+v", b.Columns)
+	}
+}

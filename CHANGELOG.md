@@ -22,6 +22,12 @@ needs a deployment to act says so under **Upgrading**.
 
 ## Unreleased
 
+**Shaded pivots.** `shade: true` under a pivot's `pivot:` colours each cell on
+the heatmap's ramp by where its figure falls among the others, leaving the
+totals plain, in the portal, the embed, the PDF and the builder. The demo's
+headcount by department and level, and billing by status and month, are
+shaded.
+
 **Data bars and sparklines.** A table's `bars:` draws a bar behind each figure
 in the columns it names, as long as its share of the column's largest, and a
 pivot across dates with `sparkline: true` draws each row's line in a "Trend"

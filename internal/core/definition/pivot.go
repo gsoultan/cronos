@@ -16,6 +16,11 @@ type Pivot struct {
 	// shape before anyone reads its figures. Only across dates, because a
 	// line through categories in alphabetical order is a shape of nothing.
 	Sparkline bool `json:"sparkline,omitempty" yaml:"sparkline,omitempty"`
+	// Shade colours each cell by where its figure falls among the others, on
+	// the ramp a heatmap uses, so where the large cells are is seen before
+	// any is read. The totals are left plain: they are a different size of
+	// thing, and would take the darkest shade from every cell.
+	Shade bool `json:"shade,omitempty" yaml:"shade,omitempty"`
 }
 
 // validate reports why a pivot cannot be stored.

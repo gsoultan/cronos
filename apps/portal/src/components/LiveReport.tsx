@@ -253,7 +253,7 @@ function fieldsOf(block: TableBlock): Field[] {
 export function marksOf(block: TableBlock): Record<string, ColumnMarks> {
   const out: Record<string, ColumnMarks> = {}
   ;(block.columns ?? []).forEach((c, i) => {
-    if (c.bars || c.spark) out[`c${i}`] = { bars: c.bars, spark: c.spark }
+    if (c.bars || c.spark || c.shades) out[`c${i}`] = { bars: c.bars, spark: c.spark, shades: c.shades }
   })
   return out
 }
