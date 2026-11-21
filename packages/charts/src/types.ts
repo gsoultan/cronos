@@ -37,7 +37,20 @@ export interface StatBlock {
   delta?: Delta
   /** The number per period, oldest first, when the stat has a trend. */
   trend?: Bar[]
+  /** The figure against its target, when the stat has one. */
+  goal?: Goal
   coverage?: Coverage
+}
+
+/** A stat's figure against what it is meant to reach. */
+export interface Goal {
+  label: string
+  /** The target, formatted. */
+  value: string
+  /** The figure over the target: 0.79 is 79% of the way, past 1 is past it. */
+  share: number
+  /** The share as words: "79%". */
+  said: string
 }
 
 /** One point of a chart that draws a single series. */

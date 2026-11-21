@@ -1,5 +1,6 @@
 import { Sparkline } from './Sparkline'
 import { percent } from '../lib/format'
+import type { Goal } from '@cronos/charts'
 
 interface Props {
   label: string
@@ -12,6 +13,8 @@ interface Props {
   trend?: number[]
   /** Exactly one tile per view may be the hero. */
   hero?: boolean
+  /** The figure against its target, as the engine worked it out. */
+  goal?: Goal
 }
 
 /**
@@ -20,7 +23,7 @@ interface Props {
  * on colour alone.
  */
 export function StatTile({
-  label, value, delta, deltaPeriod, upIsGood = true, trend, hero,
+  label, value, delta, deltaPeriod, upIsGood = true, trend, hero, goal,
 }: Props) {
   const good = delta === undefined || delta === 0 ? null : delta > 0 === upIsGood
 
@@ -45,6 +48,34 @@ export function StatTile({
           {deltaPeriod && <span className="text-ink-muted">vs {deltaPeriod}</span>}
         </p>
       )}
+      {goal && <GoalBar goal={goal} />}
+    </div>
+  )
+}
+
+/**
+ * How far along the figure is: a bar to its target, full and in the good
+ * tone once it is reached, with a tick where the target fell when the figure
+ * is past it — so 120% is not drawn as the same bar as 100%.
+ */
+export function GoalBar({ goal }: { goal: Goal }) {
+  const done = goal.share >= 1
+  const width = Math.max(0, Math.min(goal.share, 1)) * 100
+  return (
+    <div className="mt-3" data-testid="stat-goal">
+      <div className="relative h-1.5 rounded-full bg-line" role="img"
+        aria-label={`${goal.said} of ${goal.label.toLowerCase()} ${goal.value}`}>
+        <div className={`absolute inset-y-0 left-0 rounded-full ${done ? 'bg-delta-good' : 'bg-accent'}`}
+          style={{ width: `${width}%` }} />
+        {goal.share > 1 && (
+          <div className="absolute -inset-y-1 w-0.5 -translate-x-1/2 bg-ink"
+            style={{ left: `${100 / goal.share}%` }} />
+        )}
+      </div>
+      <p className="mt-1.5 text-caption text-ink-muted tabular-nums">
+        <span className="font-semibold text-ink">{goal.said}</span>
+        {' '}of {goal.label.toLowerCase()} {goal.value}
+      </p>
     </div>
   )
 }

@@ -120,7 +120,7 @@ export { unaffectedNote } from './coverage'
 export { el, fill } from './dom'
 export { css, documentCss, LAYER } from './styles'
 export type {
-  Arc, Axis, Bar, Bin, Block, Bounds, Box, Bullet, Cell, Day, Sankey, SankeyLink, SankeyNode, Cells, ChartBlock, Coverage, Credit, Delta, DrawOptions,
+  Arc, Axis, Bar, Bin, Block, Bounds, Box, Bullet, Cell, Day, Sankey, SankeyLink, SankeyNode, Cells, ChartBlock, Coverage, Credit, Delta, DrawOptions, Goal,
   FilterDef, FilterValues, FrameMark, Frames, Gauge, GeoMap, Group, LegendStop, MapArea, MapDetail, MapKey, MapPick,
   MapViewAsk, MapViewer, Marker, Point, Rect, RefLine, ReportPayload, Shape, Span, Stage, StatBlock, Step, TableBlock, TableColumn,
   TextBlock, Tick, Tiles, Track,

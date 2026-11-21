@@ -383,6 +383,14 @@ tr:last-child td { border-bottom: 0 }
 
 /* A stat's line: its shape under the figure, washed, each period's point
    there to be pointed at and seen only then, the latest one always. */
+/* A stat against its target: a bar to the target, and the share in words. */
+.goal { margin-top: 10px }
+.goal-track { position: relative; display: block; height: 6px; border-radius: 3px; background: var(--cr-line) }
+.goal-fill { position: absolute; inset: 0 auto 0 0; border-radius: 3px; background: var(--cr-series-1, #2a78d6) }
+.goal-fill.done { background: var(--cr-good) }
+.goal-tick { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: var(--cr-ink) }
+.goal-said { margin: 6px 0 0; font-size: 12px; color: var(--cr-ink-muted); font-variant-numeric: tabular-nums }
+.goal-said b { color: var(--cr-ink); font-weight: 600 }
 .spark { margin-top: 8px; max-width: 100% }
 /* A chart wider than its panel at the smallest it can be drawn — a year of
    days — scrolls sideways rather than shrinking its squares to specks. */

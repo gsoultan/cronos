@@ -561,6 +561,9 @@ function block(b: ReportBlockInput): Yaml {
       trend: b.trend?.field
         ? { field: b.trend.field, grain: b.trend.grain ?? 'month', better: b.trend.better || undefined }
         : undefined,
+      // A fixed target of nothing is one nothing is a share of, which the
+      // server refuses; the form starts one there, so it is not written yet.
+      target: b.target?.value === 0 ? undefined : targetOf(b.target),
     })
   }
   if (b.kind === 'table') {
@@ -1094,6 +1097,7 @@ function readBlock(v: Yaml): ReportBlockInput {
             better: str(asMap(b.trend).better) || undefined,
           }
         : undefined,
+      target: b.target ? readTarget(asMap(b.target)) : undefined,
     }
   }
   if (kind === 'table') {

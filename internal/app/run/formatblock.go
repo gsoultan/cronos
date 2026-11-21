@@ -23,6 +23,9 @@ func (b *Block) writeAs(blk definition.Block, ds definition.Dataset) {
 			b.Value = nf.short(*b.figure)
 		}
 		writeBars(b.Trend, nf)
+		if b.Goal != nil && !nf.plain() {
+			b.Goal.Value = nf.short(b.Goal.target)
+		}
 	case definition.ChartBlock:
 		b.writeChart(blk, ds)
 	}
