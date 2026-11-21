@@ -39,9 +39,13 @@ export function dumbbellBlock(b: ChartBlock): HTMLElement {
   })
   const [from, to] = b.ends ?? []
   if (from && to) {
+    // Coloured through the style property rather than a style attribute,
+    // which a host page that allows no inline style blocks.
+    const filled = el('i', { class: 'swatch' })
+    filled.style.background = hue(0)
     panel.append(el('div', { class: 'legend', part: 'legend' },
       el('span', { class: 'key' }, el('i', { class: 'swatch from-swatch' }), from),
-      el('span', { class: 'key' }, el('i', { class: 'swatch', style: `background: ${hue(0)}` }), to)))
+      el('span', { class: 'key' }, filled, to)))
   }
   return panel
 }
