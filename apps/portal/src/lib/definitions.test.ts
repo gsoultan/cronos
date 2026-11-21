@@ -1375,3 +1375,23 @@ test('a timeline keeps its line at today through the round trip', () => {
   expect(back.input.blocks[0]?.today).toBe(true)
   expect(back.input.blocks[1]?.today).toBeUndefined()
 })
+
+test('a dumbbell writes its two measures and reads them back', () => {
+  const input = {
+    name: 'Desk', slug: 'desk', dataset: 'tickets',
+    blocks: [
+      { kind: 'dumbbell', title: 'Resolution against SLA', groupBy: 'team', field: 'csat',
+        metrics: [{ field: 'sla_h', aggregate: 'avg' }, { field: 'resolution_h', aggregate: 'avg', label: 'Took' }] },
+    ],
+  }
+  const emitted = report(input)
+  expect(emitted).toContain('chart: dumbbell')
+  expect(emitted).not.toMatch(/\n\s+y:/)
+  const back = readReport(emitted)
+  expect(back.drops).toEqual([])
+  const b = back.input.blocks[0]
+  expect(b?.kind).toBe('dumbbell')
+  expect(b?.groupBy).toBe('team')
+  expect(b?.metrics?.map((m) => m.field)).toEqual(['sla_h', 'resolution_h'])
+  expect(b?.metrics?.[1]?.label).toBe('Took')
+})

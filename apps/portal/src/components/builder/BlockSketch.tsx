@@ -205,6 +205,16 @@ function shape(kind: TileKind) {
         <rect key={i} x={x} y={8 + i * 11} width={w} height="7" rx="2" fill={s(i % 3 === 1 ? 2 : 1)} />
       ))
 
+    case 'dumbbell':
+      // An open dot and a filled one a row, joined: where each ran from and to.
+      return ([[14, 70], [30, 96], [52, 40], [20, 58]] as const).map(([a, b], i) => (
+        <g key={i}>
+          <line x1={a} x2={b} y1={14 + i * 14} y2={14 + i * 14} stroke="var(--color-line)" strokeWidth="3" strokeLinecap="round" />
+          <circle cx={a} cy={14 + i * 14} r="4" fill="var(--color-surface)" stroke="var(--color-ink-muted)" strokeWidth="2" />
+          <circle cx={b} cy={14 + i * 14} r="5" fill={s(1)} />
+        </g>
+      ))
+
     case 'pareto':
       // Columns falling away, and the running share rising over them to the
       // top: the few that make most of it.

@@ -227,7 +227,7 @@ export function BlockInspector({
           Then this only groups them, and saying "Labelled by" would name the
           wrong control. */}
       {(is(CATEGORICAL, block.kind) || is(PLOTS, block.kind) || block.kind === 'map'
-        || block.kind === 'combo' || block.kind === 'bullet' || block.kind === 'boxplot'
+        || block.kind === 'combo' || block.kind === 'dumbbell' || block.kind === 'bullet' || block.kind === 'boxplot'
         || block.kind === 'timeline' || byRows(block)) && (
         <Field label={block.kind === 'map' && !block.map?.region ? 'Labelled by'
           : block.kind === 'pivot' ? 'Across the top' : 'Grouped by'}
@@ -444,14 +444,18 @@ function Metrics({ kind, metrics, measures, onChange }: {
   onChange: (metrics: TileMetric[]) => void
 }) {
   const combo = kind === 'combo'
+  // A dumbbell is two measures exactly: where each row ran from, and to.
+  const pair = kind === 'dumbbell'
   const at = (i: number, patch: Partial<TileMetric>) =>
     onChange(metrics.map((m, j) => (j === i ? { ...m, ...patch } : m)))
 
   return (
-    <Field label={combo ? 'Measures' : 'Stages'} data-testid="metrics"
+    <Field label={combo ? 'Measures' : pair ? 'From and to' : 'Stages'} data-testid="metrics"
       help={combo
         ? 'Drawn together against the same buckets.'
-        : metrics.length
+        : pair
+          ? 'Two measures: an open dot where each row ran from, a filled one where it ran to.'
+          : metrics.length
           ? 'One stage per measure, in this order.'
           : 'Add one to make each stage a measure of its own, rather than a value of the field below.'}>
       <div className="grid gap-2">
@@ -488,7 +492,7 @@ function Metrics({ kind, metrics, measures, onChange }: {
           </div>
         ))}
         <button type="button" data-testid="add-metric"
-          disabled={measures.length === 0}
+          disabled={measures.length === 0 || (pair && metrics.length >= 2)}
           onClick={() => onChange([...metrics, {
             field: measures[0]?.name ?? '', aggregate: 'sum',
             draw: combo ? (metrics.length === 0 ? 'bar' : 'line') : undefined,

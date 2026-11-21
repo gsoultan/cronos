@@ -252,6 +252,10 @@ td.barred .databar.neg { background: color-mix(in srgb, var(--cr-serious, #e3494
 td.barred .figure { position: relative }
 /* A shaded pivot's cells sit edge to edge, as a heatmap's do. */
 td.shaded { border-bottom-color: var(--cr-surface, #fff); font-weight: 550 }
+.dumbbell-link { stroke: var(--cr-line); stroke-width: 3; stroke-linecap: round }
+.dumbbell-from { fill: var(--cr-surface); stroke: var(--cr-ink-muted); stroke-width: 2 }
+.dumbbell-to { stroke: var(--cr-surface); stroke-width: 1.5 }
+.swatch.from-swatch { background: var(--cr-surface) !important; box-shadow: inset 0 0 0 2px var(--cr-ink-muted) }
 .today { stroke: var(--cr-ink); stroke-width: 1.25; stroke-dasharray: 4 3 }
 .today-label { fill: var(--cr-ink); font-size: 11px; font-weight: 600 }
 .milestone { stroke: var(--cr-surface); stroke-width: 1.5 }

@@ -211,6 +211,9 @@ func (b Block) validateChart(output string, i int) error {
 		return fmt.Errorf("%w: %s chart %d is a combo, which draws a list of metrics — "+
 			"set metrics rather than y", ErrInvalid, output, i)
 	}
+	if b.Chart == DumbbellChart {
+		return b.validateDumbbell(output, i)
+	}
 	if b.X.Field == "" || b.Y.Field == "" {
 		return fmt.Errorf("%w: %s chart %d needs both x and y", ErrInvalid, output, i)
 	}
@@ -316,6 +319,9 @@ func (b Block) validateMetrics(output string, i int) error {
 		return fmt.Errorf("%w: %s chart %d sets both y and metrics", ErrInvalid, output, i)
 	}
 	mixes := b.Chart.Mixes()
+	if b.Chart == DumbbellChart {
+		return b.validateDumbbell(output, i)
+	}
 	if mixes && len(b.Metrics) < 2 {
 		return fmt.Errorf("%w: %s chart %d is a combo, which is two or more measures drawn "+
 			"together — with one it is whichever chart that measure asked for",

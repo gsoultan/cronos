@@ -536,6 +536,7 @@ The type is a closed set, checked when the report is stored:
 | `calendar` | `x` date, `y` measure | A year a block of weeks, each day shaded |
 | `pareto` | `x` dimension, `y` measure | Columns largest first, and their running share |
 | `timeline` | `x` dimension, `start` + `end` dates | A bar per category between its dates |
+| `dumbbell` | `x` dimension, two `metrics` | Two dots a category joined by a line: from and to |
 
 `series:` names a second dimension to split by, and `stacked: true` stacks the
 result — on `bar`, `column` and `area` only, because a stacked line has a top
@@ -629,6 +630,24 @@ the moment the report runs; when the calendar does not reach it no line is drawn
   end: {field: ends_on}
   series: {field: status}
   today: true
+```
+
+A `dumbbell` draws each category of `x` as two dots on one scale joined by a
+line: an open dot at the first of its two `metrics` and a filled one at the
+second — last year and this, the target and the outcome, before and after. The
+line's length is the change, which two bars side by side leave the reader to
+work out. Beside each row is where it ended and the change, signed and in the
+second metric's format; rows come largest end first unless `sort:` says
+otherwise. It takes exactly two metrics and an `x`, and no `y` or `series`.
+
+```yaml
+- kind: chart
+  chart: dumbbell
+  title: Resolution against SLA, by priority
+  x: {field: priority}
+  metrics:
+    - {field: sla_h, aggregate: avg, label: SLA}
+    - {field: resolution_h, aggregate: avg, label: Took}
 ```
 
 A `stat` takes a `trend:` — a date and a period — and draws its number over

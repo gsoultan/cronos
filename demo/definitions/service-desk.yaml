@@ -84,6 +84,16 @@ spec:
           target: {value: 0.85, label: Goal}
           bands: [0.85, 0.95]
 
+        # From the hours promised to the hours it took: the line between the
+        # dots is how far each priority runs over, or comes in under.
+        - kind: chart
+          chart: dumbbell
+          title: Resolution against SLA, by priority
+          x: {field: priority}
+          metrics:
+            - {field: sla_h, aggregate: avg, label: SLA}
+            - {field: resolution_h, aggregate: avg, label: Took}
+
         # Four reasons of sixteen are half the work: where to start.
         - kind: chart
           chart: pareto
@@ -161,6 +171,13 @@ spec:
           y: {field: within_sla, aggregate: avg}
           target: {value: 0.85, label: Goal}
           bands: [0.85, 0.95]
+        - kind: chart
+          chart: dumbbell
+          title: Resolution against SLA, by priority
+          x: {field: priority}
+          metrics:
+            - {field: sla_h, aggregate: avg, label: SLA}
+            - {field: resolution_h, aggregate: avg, label: Took}
         - kind: chart
           chart: pareto
           title: Why customers write

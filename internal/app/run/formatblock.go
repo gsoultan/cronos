@@ -46,6 +46,9 @@ func (b *Block) writeChart(blk definition.Block, ds definition.Dataset) {
 	case blk.Chart.Mixes():
 		b.writeTracks(blk, ds)
 		return
+	case blk.Chart == definition.DumbbellChart:
+		b.writeDumbbells(blk, ds)
+		return
 	case blk.Chart == definition.ParetoChart:
 		// The columns are the measure; the line is a share, written as one
 		// when it was read.

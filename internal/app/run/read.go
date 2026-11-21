@@ -77,6 +77,8 @@ func readChart(out *Block, blk definition.Block, ds definition.Dataset, rows Row
 		out.YAxis = &y
 	case blk.Chart == definition.TimelineChart:
 		out.Spans, out.XAxis, err = readTimeline(blk, rows)
+	case blk.Chart == definition.DumbbellChart:
+		out.Dumbbells, out.Ends, out.XAxis, err = readDumbbells(blk, rows)
 	case blk.Chart == definition.ParetoChart:
 		out.Tracks, out.YAxis, out.Axis2, err = readPareto(blk, ds, rows)
 	case blk.Chart == definition.FunnelChart:

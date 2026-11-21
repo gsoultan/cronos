@@ -308,6 +308,11 @@ func (b Builder) order(ds definition.Dataset, blk definition.Block, groups int) 
 		sql, err := orderBy(ds, blk.Sort)
 		return orderedBy{sql: sql, err: err}
 	}
+	if blk.Chart == definition.DumbbellChart && groups > 0 {
+		// Largest where it ended first: the second metric, after the row's
+		// name, is what a before and after is read for.
+		return orderedBy{sql: fmt.Sprintf("\nORDER BY %d DESC", groups+2)}
+	}
 	if blk.Chart.Ranked() && groups > 0 {
 		// By the value, which is the column after the grouping expressions.
 		// An ordinal, because an aggregate repeated in ORDER BY is a second

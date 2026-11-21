@@ -104,6 +104,8 @@ func (b Block) measuredJSON(out map[string]any) bool {
 		out["bullets"], out["bands"] = b.Bullets, b.Bands
 	case b.Bins != nil:
 		out["bins"] = b.Bins
+	case b.Dumbbells != nil:
+		out["dumbbells"], out["ends"] = b.Dumbbells, b.Ends
 	case b.Spans != nil:
 		out["spans"] = b.Spans
 		if b.Today != nil {
