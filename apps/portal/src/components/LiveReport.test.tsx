@@ -129,5 +129,8 @@ test('a table\'s bars and sparklines reach the columns that carry them', () => {
     ],
     rows: [['Revenue', '$10', ''], ['Costs', '-$5', '']],
   })
-  expect(marks).toEqual({ c1: { bars: [1, -0.5], spark: undefined }, c2: { bars: undefined, spark: [[0, 1], [1, 0]] } })
+  expect(marks).toEqual({
+    c1: { bars: [1, -0.5], spark: undefined, shades: undefined },
+    c2: { bars: undefined, spark: [[0, 1], [1, 0]], shades: undefined },
+  })
 })

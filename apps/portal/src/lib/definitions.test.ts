@@ -1309,7 +1309,7 @@ test('a table\'s data bars and a pivot\'s sparkline survive the round trip', () 
       { kind: 'pivot', title: 'By month', field: 'total', series: 'customer_name',
         groupBy: 'issued_at', grain: 'month', sparkline: true },
       { kind: 'pivot', title: 'By status', field: 'total', series: 'customer_name',
-        groupBy: 'status', sparkline: true },
+        groupBy: 'status', sparkline: true, shade: true },
     ],
   }
   const emitted = report(input)
@@ -1322,4 +1322,5 @@ test('a table\'s data bars and a pivot\'s sparkline survive the round trip', () 
   expect(back.input.blocks[0]?.bars).toEqual(['total'])
   expect(back.input.blocks[1]?.sparkline).toBe(true)
   expect(back.input.blocks[2]?.sparkline).toBeUndefined()
+  expect(back.input.blocks[2]?.shade).toBe(true)
 })

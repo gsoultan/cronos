@@ -152,6 +152,15 @@
 // long as the server said, or a row's sparkline in place of a figure. Both
 // were worked out in Go; nothing here measures a number.
 #let cell-of(c, ri, body) = {
+  let shades = c.at("shades", default: none)
+  if shades != none and ri < shades.len() and shades.at(ri) >= 0 {
+    // A shaded pivot's cell: the heatmap's ramp, and paper-white figures on
+    // its two darkest steps.
+    let s = shades.at(ri)
+    let ramp = (rgb("#cde2fb"), rgb("#9ec5f4"), rgb("#6da7ec"), rgb("#3987e5"), rgb("#256abf"), rgb("#104281"))
+    return table.cell(fill: ramp.at(calc.min(s, 5)),
+      text(fill: if s >= 4 { white } else { luma(35) }, body))
+  }
   let bars = c.at("bars", default: none)
   let spark = c.at("spark", default: none)
   if bars != none and ri < bars.len() and bars.at(ri) != 0 {

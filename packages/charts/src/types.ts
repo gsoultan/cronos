@@ -558,6 +558,8 @@ export interface TableColumn {
   /** A small line per row, its points 0 to 1 up the cell, each row against
    *  its own range. The cells of this column are empty. */
   spark?: number[][]
+  /** Each row's step on the heatmap ramp, from 0, or -1 for a plain cell. */
+  shades?: number[]
 }
 
 export interface TableBlock {

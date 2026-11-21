@@ -15,4 +15,6 @@ type Column struct {
 	// its points 0 to 1 up the cell. Both are placed, never worked out, here.
 	Bars  []float64   `json:"bars,omitempty"`
 	Spark [][]float64 `json:"spark,omitempty"`
+	// Shades is each row's ramp step from 0, or -1 for a cell left plain.
+	Shades []int `json:"shades,omitempty"`
 }

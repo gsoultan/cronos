@@ -400,6 +400,8 @@ export interface ReportBlockInput {
   bars?: string[]
   /** A pivot across dates draws each row's line beside its name. */
   sparkline?: boolean
+  /** A pivot's cells shaded on the heatmap ramp. */
+  shade?: boolean
   pageSize?: number
   /** Narrows this block alone, as SQL the server compiles. */
   filter?: string
@@ -425,7 +427,7 @@ export function tileOf(b: ReportBlockInput): Omit<Tile, 'id' | 'span'> {
     metrics: b.metrics as Tile['metrics'], target: b.target as Tile['target'],
     bands: b.bands, bins: b.bins, trend: b.trend as Tile['trend'],
     references: b.references as Tile['references'],
-    columns: b.columns, bars: b.bars, sparkline: b.sparkline, filter: b.filter,
+    columns: b.columns, bars: b.bars, sparkline: b.sparkline, shade: b.shade, filter: b.filter,
     sort: b.sort?.map((k) => ({ field: k.field, dir: k.dir as 'asc' | 'desc' | undefined })),
   }
 }
@@ -442,7 +444,7 @@ export function blockInput(b: Tile): ReportBlockInput {
     startField: b.startField, endField: b.endField,
     metrics: b.metrics, target: b.target, bands: b.bands, bins: b.bins, trend: b.trend,
     references: b.references,
-    columns: b.columns, bars: b.bars, sparkline: b.sparkline, filter: b.filter, sort: b.sort,
+    columns: b.columns, bars: b.bars, sparkline: b.sparkline, shade: b.shade, filter: b.filter, sort: b.sort,
   }
 }
 
@@ -583,6 +585,7 @@ function block(b: ReportBlockInput): Yaml {
         columns: { field: b.groupBy, grain: b.grain || undefined },
         // Across dates only, which is what the server accepts it on.
         sparkline: b.sparkline && b.grain ? true : undefined,
+        shade: b.shade || undefined,
       },
     }
   }
@@ -1112,6 +1115,7 @@ function readBlock(v: Yaml): ReportBlockInput {
       series: str(rows.field) || undefined, seriesGrain: str(rows.grain) || undefined,
       groupBy: str(columns.field) || undefined, grain: str(columns.grain) || undefined,
       sparkline: asMap(b.pivot).sparkline === true || undefined,
+      shade: asMap(b.pivot).shade === true || undefined,
     }
   }
   if (kind === 'chart') {

@@ -71,7 +71,8 @@ func (d Document) validateRows() error {
 			}
 		}
 		for _, c := range d.Columns {
-			if (c.Bars != nil && len(c.Bars) != len(g.Rows)) || (c.Spark != nil && len(c.Spark) != len(g.Rows)) {
+			if (c.Bars != nil && len(c.Bars) != len(g.Rows)) || (c.Spark != nil && len(c.Spark) != len(g.Rows)) ||
+				(c.Shades != nil && len(c.Shades) != len(g.Rows)) {
 				return fmt.Errorf("%w: column %q draws a mark for a different number of rows than group %q has",
 					ErrInvalid, c.Field, g.Label)
 			}

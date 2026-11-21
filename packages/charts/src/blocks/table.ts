@@ -45,6 +45,12 @@ const SPARK_H = 18
  */
 export function cellOf(c: TableColumn | undefined, r: number, cell: string): HTMLElement {
   const align = c?.align === 'right' ? 'r' : ''
+  const shade = c?.shades?.[r] ?? -1
+  if (shade >= 0) {
+    const step = Math.min(shade, 5) + 1
+    return el('td', { class: `${align} shaded`,
+      style: `background: var(--cr-ramp-${step}); color: var(--cr-on-ramp-${step})` }, cell)
+  }
   const bar = c?.bars?.[r]
   if (bar) {
     return el('td', { class: `${align} barred` },

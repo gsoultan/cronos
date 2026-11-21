@@ -176,6 +176,8 @@ export interface Tile {
   bars?: string[]
   /** A pivot across dates draws each row's line beside its name. */
   sparkline?: boolean
+  /** A pivot's cells shaded on the heatmap ramp. */
+  shade?: boolean
   /**
    * Narrows this block alone — "of which, overdue".
    *

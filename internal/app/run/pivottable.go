@@ -44,6 +44,9 @@ func (x crosstab) table(blk definition.Block, ds definition.Dataset) ([]Column, 
 		out = append(out, append(last, pivotCell(nf, x.total, false)))
 		lines = append(lines, sparkOf(folded(x.columnTotals)))
 	}
+	if blk.Pivot.Shade {
+		x.shade(cols)
+	}
 	if !blk.Pivot.Sparkline || len(x.columns) < 2 {
 		return cols, out
 	}
@@ -104,4 +107,34 @@ func labelOf(ds definition.Dataset, name string) string {
 		return f.Label
 	}
 	return name
+}
+
+// shade gives each column of cells its steps on the ramp, classed by quantile
+// across every cell that holds a figure, as a heatmap's are. The row labels,
+// the totals down the right and the totals row stay plain.
+func (x crosstab) shade(cols []Column) {
+	var values []float64
+	for r := range x.rows {
+		for c := range x.columns {
+			if x.cells[r][c].set {
+				values = append(values, x.cells[r][c].value)
+			}
+		}
+	}
+	breaks := steps(values)
+	for c := range x.columns {
+		shades := make([]int, 0, len(x.rows)+1)
+		for r := range x.rows {
+			f := x.cells[r][c]
+			if !f.set {
+				shades = append(shades, -1)
+				continue
+			}
+			shades = append(shades, stepOf(f.value, breaks))
+		}
+		if len(x.rows) > 0 {
+			shades = append(shades, -1)
+		}
+		cols[c+1].Shades = shades
+	}
 }

@@ -23,6 +23,8 @@ export interface ColumnMarks {
   bars?: number[]
   /** Points 0 to 1 up the cell, each row against its own range. */
   spark?: number[][]
+  /** Each row's step on the heatmap ramp, from 0, or -1 for a plain cell. */
+  shades?: number[]
 }
 
 const ROW_H = 40
@@ -91,9 +93,10 @@ export function DataTable({ fields, rows, totalLabel, height = 460, marks }: Pro
                   {cols.map((f) => {
                     const bar = marks?.[f.name]?.bars?.[v.index]
                     const line = marks?.[f.name]?.spark?.[v.index]
+                    const shade = marks?.[f.name]?.shades?.[v.index] ?? -1
                     return (
-                      <div key={f.name}
-                        className={`relative truncate px-4 text-small ${bar || line ? 'flex h-full items-center' : ''} ${
+                      <div key={f.name} style={shade >= 0 ? shadeOf(shade) : undefined}
+                        className={`relative truncate px-4 text-small ${bar || line || shade >= 0 ? 'flex h-full items-center' : ''} ${
                           f.role === 'measure' ? 'justify-end text-right tabular-nums' : ''}`}>
                         {bar ? <DataBar share={bar} /> : null}
                         {line && line.length > 1
@@ -184,4 +187,14 @@ function RowSpark({ points }: { points: number[] }) {
       <circle cx={x(last)} cy={y(points[last] ?? 0.5)} r={2.5} fill="var(--color-accent)" />
     </svg>
   )
+}
+
+/**
+ * A shaded pivot cell: the accent, stronger the further up the ramp, over
+ * whichever surface the theme has. The figure stays in ink: the strongest
+ * step stops short of where ink would stop reading on it in either theme.
+ */
+export function shadeOf(step: number): { background: string } {
+  const strength = 12 + Math.min(step, 5) * 13
+  return { background: `color-mix(in srgb, var(--color-accent) ${strength}%, transparent)` }
 }

@@ -332,6 +332,12 @@ export function BlockInspector({
         </Field>
       )}
 
+      {block.kind === 'pivot' && (
+        <Checkbox label="Shade the cells by their figures" data-testid="pivot-shade"
+          checked={block.shade ?? false}
+          onChange={(e) => onChange({ shade: e.currentTarget.checked || undefined })} />
+      )}
+
       {block.kind === 'pivot' && block.grain && (
         <Checkbox label="Draw each row's trend beside its name" data-testid="pivot-sparkline"
           checked={block.sparkline ?? false}

@@ -157,7 +157,7 @@ func printedColumns(table Block) []document.Column {
 			align = "left"
 		}
 		cols = append(cols, document.Column{Field: c.Label, Label: c.Label, Align: align,
-			Bars: c.Bars, Spark: c.Spark})
+			Bars: c.Bars, Spark: c.Spark, Shades: c.Shades})
 	}
 	return cols
 }
