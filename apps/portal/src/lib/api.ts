@@ -559,6 +559,8 @@ export interface Explanation {
  */
 export function explainReport(name: string, body: {
   filters?: RunFilters; block?: number; question?: string
+  /** The conversation so far, oldest first; the server keeps none. */
+  history?: { block?: number; question?: string; answer: string }[]
 }) {
   return call<Explanation>(`/v1/reports/${encodeURIComponent(name)}/explain`, {
     method: 'POST',

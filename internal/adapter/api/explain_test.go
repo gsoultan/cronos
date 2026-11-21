@@ -55,7 +55,9 @@ func (m *model) sent() string {
 	defer m.mu.Unlock()
 	var b strings.Builder
 	for _, p := range m.prompts {
-		b.WriteString(p.User)
+		for _, t := range p.Turns {
+			b.WriteString(t.Text)
+		}
 	}
 	return b.String()
 }
@@ -180,5 +182,23 @@ func TestNothingIsExplainedWithoutAModel(t *testing.T) {
 	w := postJSON(h, "/v1/reports/revenue/explain", viewerToken(t, s, "usr_acme"), map[string]any{})
 	if w.Code != http.StatusNotFound && w.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("status %d: %s", w.Code, w.Body)
+	}
+}
+
+// A follow-up sends the conversation back, and the model reads it as turns.
+func TestAFollowUpCarriesItsConversation(t *testing.T) {
+	m := &model{}
+	h, s := explainServer(t, explain.New(m))
+
+	w := postJSON(h, "/v1/reports/revenue/explain", viewerToken(t, s, "usr_acme"), map[string]any{
+		"question": "How could we raise it?",
+		"history":  []map[string]any{{"answer": "What: revenue is 1,234."}},
+	})
+	if w.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", w.Code, w.Body)
+	}
+	turns := m.prompts[0].Turns
+	if len(turns) != 3 || turns[1].Role != explain.RoleAssistant || turns[1].Text != "What: revenue is 1,234." {
+		t.Fatalf("turns %+v", turns)
 	}
 }

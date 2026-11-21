@@ -1,8 +1,8 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button, Select, Textarea } from '@mantine/core'
 import { Field } from './form/Field'
 import { explainReport, type ReportBlock, type RunFilters } from '../lib/api'
-import { explainTargets, suggestions, type ExplainTarget } from '../lib/explain'
+import { explainTargets, history, mostHistory, suggestions, type ExplainTarget } from '../lib/explain'
 
 interface Props {
   /** The report's API name, which is what the server renders again. */
@@ -15,6 +15,7 @@ interface Props {
 }
 
 interface Turn {
+  block?: number
   about: string
   question: string
   answer?: string
@@ -22,16 +23,17 @@ interface Turn {
 }
 
 /**
- * Asking what a report means.
+ * A conversation about a report.
  *
  * A reader picks the whole report or one block, asks in their own words or
- * picks a suggested question, and gets a short reading of the figures they can
- * see. Every answer says it was generated, because a model's reading of
+ * picks a suggested question, and gets a reading of the figures they can see
+ * or ideas for what to do about them. Follow-ups build on what was said: the
+ * panel sends the conversation back with each question, since the server keeps
+ * none. Every answer says it was generated, because a model's reading of
  * somebody's numbers is a starting point rather than a finding.
  *
- * Earlier answers stay above the box, newest last, so a follow-up can be read
- * against the answer it follows. Each is its own request: the server keeps no
- * conversation, and the panel says nothing that implies it does.
+ * Changing the filters starts again. The answers so far were about other
+ * numbers, and a follow-up read against them would mix the two.
  */
 export function ExplainPanel({ reportName, reportLabel, blocks, filters, onClose }: Props) {
   const targets = useMemo(() => explainTargets(blocks), [blocks])
@@ -39,15 +41,24 @@ export function ExplainPanel({ reportName, reportLabel, blocks, filters, onClose
   const [question, setQuestion] = useState('')
   const [turns, setTurns] = useState<Turn[]>([])
   const [asking, setAsking] = useState(false)
+  const end = useRef<HTMLDivElement>(null)
+
+  const filterKey = JSON.stringify(filters)
+  useEffect(() => { setTurns([]) }, [filterKey])
+  useEffect(() => { end.current?.scrollIntoView?.({ block: 'nearest' }) }, [turns.length])
 
   const target = targets.find((t) => key(t.block) === about) ?? WHOLE
+  const sofar = history(turns)
+  const full = sofar.length >= mostHistory
 
   async function ask(text: string) {
-    const turn: Turn = { about: target.label, question: text.trim() }
+    if (asking || full) return
+    const turn: Turn = { block: target.block, about: target.label, question: text.trim() }
     setAsking(true)
     try {
       const got = await explainReport(reportName, {
         filters, block: target.block, question: turn.question || undefined,
+        history: sofar.length ? sofar : undefined,
       })
       turn.answer = got.text
       setQuestion('')
@@ -64,17 +75,26 @@ export function ExplainPanel({ reportName, reportLabel, blocks, filters, onClose
       data-testid="explain-panel">
       <div className="flex items-start justify-between gap-4 border-b border-line p-4">
         <div>
-          <h2 className="text-lead font-semibold text-ink">Explain “{reportLabel}”</h2>
+          <h2 className="text-lead font-semibold text-ink">Ask about “{reportLabel}”</h2>
           <p className="mt-1 text-small text-ink-secondary">
-            Plain-language answers about the figures you can see, with the filters applied.
+            Explanations and ideas about the figures you can see, with the filters applied.
+            Ask follow-up questions in the same conversation.
           </p>
         </div>
-        <Button variant="subtle" color="gray" size="xs" onClick={onClose}>Close</Button>
+        <div className="flex shrink-0 gap-2">
+          {turns.length > 0 && (
+            <Button variant="default" size="xs" disabled={asking} data-testid="explain-reset"
+              onClick={() => setTurns([])}>New conversation</Button>
+          )}
+          <Button variant="subtle" color="gray" size="xs" onClick={onClose}>Close</Button>
+        </div>
       </div>
 
       {turns.length > 0 && (
-        <ol className="grid gap-4 border-b border-line p-4" data-testid="explain-answers">
-          {turns.map((t, i) => <Answer key={i} turn={t} />)}
+        <ol className="grid max-h-[60vh] gap-5 overflow-y-auto border-b border-line p-4"
+          data-testid="explain-answers" aria-live="polite">
+          {turns.map((t, i) => <Exchange key={i} turn={t} />)}
+          <div ref={end} />
         </ol>
       )}
 
@@ -85,28 +105,35 @@ export function ExplainPanel({ reportName, reportLabel, blocks, filters, onClose
             data={targets.map((t) => ({ value: key(t.block), label: t.label }))} />
         </Field>
 
-        <Field label="Your question" required={false}
-          help="Leave it empty for a summary of what this shows.">
+        <Field label={turns.length ? 'Follow-up question' : 'Your question'} required={false}
+          help="Leave it empty for an explanation of what this shows.">
           <Textarea data-testid="explain-question" autosize minRows={2} maxLength={500}
-            value={question} onChange={(e) => setQuestion(e.currentTarget.value)}
-            placeholder="For example: why is outstanding higher than last month?"
+            value={question} disabled={full} onChange={(e) => setQuestion(e.currentTarget.value)}
+            placeholder="For example: how could we bring outstanding down?"
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey && !asking) {
+              if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault()
                 void ask(question)
               }
             }} />
         </Field>
 
-        <div className="flex flex-wrap gap-2">
-          {suggestions(target).map((s) => (
-            <Button key={s} variant="default" size="xs" radius="xl" disabled={asking}
-              data-testid="explain-suggestion" onClick={() => void ask(s)}>{s}</Button>
-          ))}
-        </div>
+        {full ? (
+          <p className="text-small text-ink-secondary" data-testid="explain-full">
+            This conversation is as long as it can get. Start a new one to keep asking.
+          </p>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {suggestions(target, turns.length > 0).map((s) => (
+              <Button key={s} variant="default" size="xs" radius="xl" disabled={asking}
+                data-testid="explain-suggestion" onClick={() => void ask(s)}>{s}</Button>
+            ))}
+          </div>
+        )}
 
         <div>
-          <Button loading={asking} onClick={() => void ask(question)} data-testid="explain-ask">
+          <Button loading={asking} disabled={full} onClick={() => void ask(question)}
+            data-testid="explain-ask">
             {question.trim() ? 'Ask' : 'Explain'}
           </Button>
         </div>
@@ -115,14 +142,16 @@ export function ExplainPanel({ reportName, reportLabel, blocks, filters, onClose
   )
 }
 
-function Answer({ turn }: { turn: Turn }) {
+function Exchange({ turn }: { turn: Turn }) {
   return (
-    <li className="grid gap-1" data-testid="explain-answer">
-      <p className="text-caption text-ink-muted">
-        {turn.about}{turn.question ? ` · “${turn.question}”` : ''}
-      </p>
+    <li className="grid gap-2" data-testid="explain-answer">
+      <div className="max-w-[80%] justify-self-end rounded-lg border border-line bg-surface-sunken px-3 py-2 text-small text-ink"
+        data-testid="explain-asked">
+        <p className="text-caption text-ink-muted">{turn.about}</p>
+        <p>{turn.question || 'Explain what this shows.'}</p>
+      </div>
       {turn.answer !== undefined ? (
-        <>
+        <div className="grid gap-1">
           {/* Line breaks kept and nothing parsed: the answer is text, and
               rendering a model's output as markup is how a cell value in a
               warehouse becomes a link on somebody's screen. */}
@@ -130,9 +159,10 @@ function Answer({ turn }: { turn: Turn }) {
             {turn.answer}
           </p>
           <p className="text-caption text-ink-muted">
-            Generated by AI from the figures shown. Check anything important against the report.
+            Generated by AI from the figures shown. Treat advice as ideas to test, and check
+            anything important against the report.
           </p>
-        </>
+        </div>
       ) : (
         <p role="alert" data-testid="explain-error"
           className="rounded-md border border-serious/30 bg-serious/10 px-3 py-2 text-small text-ink">

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { explainTargets, suggestions } from './explain'
+import { explainTargets, history, suggestions } from './explain'
 import type { ReportBlock } from './api'
 
 const blocks = [
@@ -28,4 +28,20 @@ describe('explainTargets', () => {
 test('suggestions name what is being asked about', () => {
   expect(suggestions({ label: 'The whole report' })[0]).toBe('What does this report show?')
   expect(suggestions({ block: 1, label: 'x' })[0]).toBe('What does this show?')
+})
+
+test('a conversation under way is offered advice first', () => {
+  expect(suggestions({ label: 'x' }, true)[0]).toBe('How could we improve this?')
+  expect(suggestions({ label: 'x' })).toContain('How could we improve this?')
+})
+
+test('history sends back what was answered, and only that', () => {
+  expect(history([
+    { question: '', answer: 'What: billing.' },
+    { block: 1, question: 'Why?', error: 'No.' } as never,
+    { block: 0, question: 'Best month?', answer: 'March.' },
+  ])).toEqual([
+    { answer: 'What: billing.' },
+    { block: 0, question: 'Best month?', answer: 'March.' },
+  ])
 })

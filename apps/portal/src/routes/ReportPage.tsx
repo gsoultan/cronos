@@ -224,7 +224,7 @@ function ServerReport({ name, filters, onFilter, query }: {
           <>
             {canExplain && (
               <Button variant="default" data-testid="explain-button"
-                onClick={() => { setExplaining((v) => !v); setSharing(false) }}>Explain</Button>
+                onClick={() => { setExplaining((v) => !v); setSharing(false) }}>Ask AI</Button>
             )}
             <Button variant="default" onClick={() => { setSharing((v) => !v); setExplaining(false) }}
               data-testid="share-button">Share</Button>

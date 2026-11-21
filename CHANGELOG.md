@@ -32,6 +32,15 @@ bounded to 50 points a series and 20 table rows. `/v1/catalog` gains
 `explain`, true where the route is mounted. Recorded as `report.explain`. See
 [docs/explaining.md](docs/explaining.md).
 
+### Conversations about a report
+
+The explain panel is now a chat: a reader can ask follow-up questions about a
+chart and ask for advice on what to do about a figure. The endpoint takes an
+optional `history` of earlier questions and answers, at most twelve, and keeps
+none itself. Explanations are organised by 5W1H and advice is a MECE list of
+options, each tied to a figure and labelled as ideas to test. Changing the
+filters starts a new conversation.
+
 ## v2.0.0 — 2026-10-11
 
 A major, because some definitions, configurations and host tokens that v1.2.4

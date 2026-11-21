@@ -40,12 +40,17 @@ func NewExplain(p *PortalReports, e Explaining, log *slog.Logger) *Explain {
 	return &Explain{reports: p, explains: e, log: log}
 }
 
+// explainBody caps a request with a conversation in it: twelve earlier
+// exchanges at their longest, in four-byte runes, with room for the filters.
+const explainBody = 256 << 10
+
 // explainRequest is the report's own request, sent as it was to render it,
 // and what the reader is asking about it.
 type explainRequest struct {
 	request
-	Block    *int   `json:"block,omitempty"`
-	Question string `json:"question,omitempty"`
+	Block    *int               `json:"block,omitempty"`
+	Question string             `json:"question,omitempty"`
+	History  []explain.Exchange `json:"history,omitempty"`
 }
 
 func (h *Explain) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -59,7 +64,7 @@ func (h *Explain) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	var in explainRequest
 	if r.ContentLength != 0 {
-		dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBody))
+		dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, explainBody))
 		dec.DisallowUnknownFields()
 		if err := dec.Decode(&in); err != nil {
 			fail(w, http.StatusBadRequest, "The request could not be read.")
@@ -71,11 +76,14 @@ func (h *Explain) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	answer, err := h.explains.Explain(r.Context(), view, explain.Request{Block: in.Block, Question: in.Question})
+	answer, err := h.explains.Explain(r.Context(), view, explain.Request{
+		Block: in.Block, Question: in.Question, History: in.History,
+	})
 	// The length of the question and never its text: a question about a
 	// report is often a sentence about somebody's numbers, and the audit
-	// sink is not where those should be kept.
-	detail := map[string]any{"block": in.Block, "question": len(in.Question)}
+	// sink is not where those should be kept. Likewise the conversation's
+	// length and not its turns.
+	detail := map[string]any{"block": in.Block, "question": len(in.Question), "turns": len(in.History)}
 	if err != nil {
 		detail["reason"] = err.Error()
 		audit(r.Context(), h.log, pr, ActionExplain, name, Refused, detail)
