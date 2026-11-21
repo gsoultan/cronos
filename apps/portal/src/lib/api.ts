@@ -544,6 +544,28 @@ export function runReport(name: string, body: { filters?: RunFilters; params?: R
   })
 }
 
+/** A plain-language reading of a report, or of one of its blocks. */
+export interface Explanation {
+  text: string
+  block?: number
+}
+
+/**
+ * Asks the server to explain a report as this person sees it.
+ *
+ * The filters are the ones on screen, so the explanation is of the numbers the
+ * reader is looking at. The server renders the report again as them and sends
+ * the model only that — nothing here supplies a figure.
+ */
+export function explainReport(name: string, body: {
+  filters?: RunFilters; block?: number; question?: string
+}) {
+  return call<Explanation>(`/v1/reports/${encodeURIComponent(name)}/explain`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+}
+
 /**
  * A draft drawn as it would be published: the builder's preview. Checked as
  * publishing checks it, and refused with the same sentence; nothing is kept.
@@ -1376,6 +1398,8 @@ export interface CatalogView {
   schedules: ScheduleSummary[]
   /** What this deployment can deliver through. Empty means nothing can be sent. */
   channels?: string[]
+  /** Whether a model is configured to explain reports. Absent from an older server. */
+  explain?: boolean
 }
 
 export function readCatalog() {

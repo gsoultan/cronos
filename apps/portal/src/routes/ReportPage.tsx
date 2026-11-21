@@ -27,6 +27,7 @@ import { mapView, type RunFilters } from '../lib/api'
 import { useCatalog } from '../lib/useCatalog'
 import { LiveReport } from '../components/LiveReport'
 import { ReportFilters } from '../components/ReportFilters'
+import { ExplainPanel } from '../components/ExplainPanel'
 
 const EMPTY: Group = { id: 'root', kind: 'group', join: 'and', children: [] }
 
@@ -176,6 +177,9 @@ function ServerReport({ name, filters, onFilter, query }: {
      see this". The access tab is labelled for what it holds, so an
      administrator looking for it reads its name on the first click. */
   const [sharing, setSharing] = useState(false)
+  /* One panel under the header at a time: both push the report down, and
+     two open at once put the figures being asked about off the screen. */
+  const [explaining, setExplaining] = useState(false)
 
   /* The report's own outputs, not the three the format supports. Offering PDF
      for a report that has only an interactive profile produces a refusal from
@@ -183,6 +187,9 @@ function ServerReport({ name, filters, onFilter, query }: {
      was found. */
   const catalog = useCatalog()
   const outputs = catalog.data?.reports.find((r) => r.name === name)?.outputs ?? []
+  /* Offered only where the server has a model to ask. Without one the route
+     does not exist, and a button that can only fail is worse than none. */
+  const canExplain = catalog.data?.explain === true
 
   if (query.isPending) {
     return <p data-testid="report-loading" className="p-8 text-center text-ink-muted">Loading…</p>
@@ -215,7 +222,11 @@ function ServerReport({ name, filters, onFilter, query }: {
            against the route it belongs to. */
         actions={
           <>
-            <Button variant="default" onClick={() => setSharing((v) => !v)}
+            {canExplain && (
+              <Button variant="default" data-testid="explain-button"
+                onClick={() => { setExplaining((v) => !v); setSharing(false) }}>Explain</Button>
+            )}
+            <Button variant="default" onClick={() => { setSharing((v) => !v); setExplaining(false) }}
               data-testid="share-button">Share</Button>
             <Button variant="default" renderRoot={(props) => (
               <Link to="/reports/$name/edit" params={{ name }} {...props} />
@@ -236,6 +247,13 @@ function ServerReport({ name, filters, onFilter, query }: {
                offering a control that can only say no. */
             access={administers(org, project)
               ? <AccessPanel report={name} canAdmin bare /> : undefined} />
+        </div>
+      )}
+      {explaining && (
+        <div className="mb-6">
+          <ExplainPanel reportName={name} reportLabel={query.data.title}
+            blocks={query.data.blocks} filters={filters}
+            onClose={() => setExplaining(false)} />
         </div>
       )}
       {/* The filters the report declares. Present here for the first time:
