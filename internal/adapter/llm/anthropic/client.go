@@ -71,7 +71,7 @@ func (c *Client) Complete(ctx context.Context, p explain.Prompt) (string, error)
 		Model:        c.model,
 		MaxTokens:    maxTokens,
 		System:       []sdk.BetaTextBlockParam{{Text: p.System, CacheControl: sdk.NewBetaCacheControlEphemeralParam()}},
-		Messages:     []sdk.BetaMessageParam{sdk.NewBetaUserMessage(sdk.NewBetaTextBlock(p.User))},
+		Messages:     messages(p.Turns),
 		OutputConfig: sdk.BetaOutputConfigParam{Effort: sdk.BetaOutputConfigEffortLow},
 		Fallbacks:    sdk.BetaFallbacksParamOfDefault(),
 		Betas:        []sdk.AnthropicBeta{sdk.AnthropicBetaServerSideFallback2026_07_01},
@@ -89,6 +89,31 @@ func (c *Client) Complete(ctx context.Context, p explain.Prompt) (string, error)
 		}
 	}
 	return b.String(), nil
+}
+
+/*
+messages is the conversation in the API's shape.
+
+The first turn carries the report and is marked for caching: in a conversation
+it is the same on every request, so a follow-up is not billed the whole report
+again. A short single question falls under the API's minimum and the mark is
+ignored.
+*/
+func messages(turns []explain.Message) []sdk.BetaMessageParam {
+	out := make([]sdk.BetaMessageParam, 0, len(turns))
+	for i, t := range turns {
+		text := sdk.BetaTextBlockParam{Text: t.Text}
+		if i == 0 {
+			text.CacheControl = sdk.NewBetaCacheControlEphemeralParam()
+		}
+		content := []sdk.BetaContentBlockParamUnion{{OfText: &text}}
+		if t.Role == explain.RoleAssistant {
+			out = append(out, sdk.BetaMessageParam{OfAssistant: &sdk.BetaAssistantMessageParam{Content: content}})
+			continue
+		}
+		out = append(out, sdk.BetaMessageParam{OfUser: &sdk.BetaUserMessageParam{Content: content}})
+	}
+	return out
 }
 
 // provider keeps the status and drops the body: an API error can echo the

@@ -7,4 +7,6 @@ type Request struct {
 	Block *int
 	// Question is the reader's own, in their words. Empty asks for a summary.
 	Question string
+	// History is the conversation so far, oldest first. Empty starts one.
+	History []Exchange
 }

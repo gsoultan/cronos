@@ -15,7 +15,15 @@ could not have seen. What leaves is bounded too: see digest.
 What the model says is presented as a reading of those numbers and nothing
 more. The prompt tells it to use only the figures it was given, to say so when
 they cannot answer the question, and never to guess at causes the data does
-not show — and the portal labels every answer as generated.
+not show — and the portal labels every answer as generated. Advice on what
+to do next is offered too, as ideas to test, each tied to a figure.
+
+A conversation is the client's to keep. Each request carries the earlier
+questions and answers back, bounded, and the report is rendered again as the
+person asking every time, so a follow-up is always read against the figures on
+screen. A client can send history the model never wrote; that changes nothing
+about what the model is shown of the data, which is still only what that
+person could open.
 
 The model is a port. Which provider answers is the deployment's choice, and
 this package neither knows nor imports one.

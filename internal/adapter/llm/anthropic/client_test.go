@@ -39,7 +39,11 @@ func TestAnAnswerIsItsText(t *testing.T) {
 	srv, seen, raw := api(t, http.StatusOK, answered)
 	c := anthropic.New("sk-test", "", srv.URL)
 
-	got, err := c.Complete(context.Background(), explain.Prompt{System: "rules", User: "<report>…</report>"})
+	got, err := c.Complete(context.Background(), explain.Prompt{System: "rules", Turns: []explain.Message{
+		{Role: explain.RoleUser, Text: "<report>…</report>"},
+		{Role: explain.RoleAssistant, Text: "What: revenue."},
+		{Role: explain.RoleUser, Text: "<question>\nHow do we grow it?\n</question>"},
+	}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,15 +63,32 @@ func TestAnAnswerIsItsText(t *testing.T) {
 	if body["model"] != anthropic.DefaultModel || body["fallbacks"] != "default" {
 		t.Errorf("model %v, fallbacks %v", body["model"], body["fallbacks"])
 	}
+	msgs, _ := body["messages"].([]any)
+	if len(msgs) != 3 {
+		t.Fatalf("messages %v", body["messages"])
+	}
+	for i, role := range []string{"user", "assistant", "user"} {
+		m, _ := msgs[i].(map[string]any)
+		content, _ := m["content"].([]any)
+		block, _ := content[0].(map[string]any)
+		if m["role"] != role {
+			t.Errorf("message %d is %v", i, m["role"])
+		}
+		if _, cached := block["cache_control"]; cached != (i == 0) {
+			t.Errorf("message %d cache_control %v", i, block["cache_control"])
+		}
+	}
 	if oc, _ := body["output_config"].(map[string]any); oc["effort"] != "low" {
 		t.Errorf("output_config %v", body["output_config"])
 	}
 }
 
+var one = explain.Prompt{Turns: []explain.Message{{Role: explain.RoleUser, Text: "x"}}}
+
 func TestARefusalIsADecline(t *testing.T) {
 	srv, _, _ := api(t, http.StatusOK, `{"id":"msg_1","type":"message","role":"assistant",
 "model":"claude-opus-5-5","content":[],"stop_reason":"refusal","usage":{"input_tokens":1,"output_tokens":0}}`)
-	_, err := anthropic.New("sk", "", srv.URL).Complete(context.Background(), explain.Prompt{User: "x"})
+	_, err := anthropic.New("sk", "", srv.URL).Complete(context.Background(), one)
 	if !errors.Is(err, explain.ErrDeclined) {
 		t.Fatalf("err %v", err)
 	}
@@ -78,7 +99,7 @@ func TestARefusalIsADecline(t *testing.T) {
 func TestAFailureKeepsTheStatusAndNotTheBody(t *testing.T) {
 	srv, _, _ := api(t, http.StatusBadRequest,
 		`{"type":"error","error":{"type":"invalid_request_error","message":"revenue was 987654"}}`)
-	_, err := anthropic.New("sk", "claude-sonnet-5-5", srv.URL).Complete(context.Background(), explain.Prompt{User: "x"})
+	_, err := anthropic.New("sk", "claude-sonnet-5-5", srv.URL).Complete(context.Background(), one)
 	var f *anthropic.Failure
 	if !errors.As(err, &f) || f.Status != http.StatusBadRequest {
 		t.Fatalf("err %v", err)

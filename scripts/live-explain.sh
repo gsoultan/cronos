@@ -94,19 +94,32 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 log = sys.argv[2]
 
+READING = ("What: Total billed is what was invoiced in the period; outstanding is the part not yet paid.\n"
+           "Who: every customer this reader can see.\n"
+           "Why: the report does not show why.")
+ADVICE = ("Figure to move: outstanding.\n"
+          "1. Collect sooner: send reminders before the due date.\n"
+          "2. Bill less on credit: ask for deposits on large orders.\n"
+          "Check first: which customers hold the oldest unpaid invoices.\n"
+          "These are ideas to test.")
+
 class Model(BaseHTTPRequestHandler):
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers["content-length"])))
         with open(log, "a") as f:
             f.write(json.dumps({"path": self.path, "beta": self.headers.get("anthropic-beta", ""),
                                 "body": body}) + "\n")
-        if "please fail" in body["messages"][0]["content"][0]["text"]:
+        asked = body["messages"][-1]["content"][0]["text"]
+        if "please fail" in asked:
             self.send_response(500)
             self.send_header("content-length", "0")
             self.end_headers()
             return
+        text = READING
+        if "improve" in asked:
+            text = ADVICE
         reply = {"id": "msg_1", "type": "message", "role": "assistant", "model": "claude-opus-5-5",
-                 "content": [{"type": "text", "text": "Total billed is what was invoiced in the period.\n\nOutstanding is the part not yet paid."}],
+                 "content": [{"type": "text", "text": text}],
                  "stop_reason": "end_turn", "usage": {"input_tokens": 1, "output_tokens": 1}}
         out = json.dumps(reply).encode()
         self.send_response(200)
@@ -148,6 +161,32 @@ for leak in ("SELECT", "warehouse", "dsn", "postgres"):
     assert leak not in user, ("sent " + leak, user)
 PY
 ok "the model was sent the report as the reader sees it, and no query or source"
+
+say "A follow-up"
+: >"$work/sent.jsonl"
+out=$(explain "$ADMIN" billing-summary \
+	'{"question":"How could we improve outstanding?","history":[{"answer":"What: Total billed is what was invoiced."}]}')
+[ "$(tail -1 <<<"$out")" = 200 ] || die "a follow-up: $out"
+grep -q "Check first:" <<<"$out" || die "the advice did not come back: $out"
+python3 - "$work/sent.jsonl" <<'PY' || die "the follow-up did not reach the model as a conversation"
+import json, sys
+b = json.loads(open(sys.argv[1]).readline())["body"]
+m = b["messages"]
+assert [x["role"] for x in m] == ["user", "assistant", "user"], m
+assert m[0]["content"][0]["text"].startswith("<report>"), m[0]
+assert "cache_control" in m[0]["content"][0], m[0]
+assert m[1]["content"][0]["text"] == "What: Total billed is what was invoiced.", m[1]
+assert m[2]["content"][0]["text"] == "<question>\nHow could we improve outstanding?\n</question>", m[2]
+assert "<report>" not in m[2]["content"][0]["text"], m[2]
+for word in ("5W1H", "MECE", "Check first:"):
+    assert word in b["system"][0]["text"], word
+PY
+ok "the conversation went as turns, with the report once and cached, under the 5W1H and MECE rules"
+
+long=$(python3 -c 'import json; print(json.dumps({"history": [{"answer": "x"}] * 13}))')
+out=$(explain "$ADMIN" billing-summary "$long")
+[ "$(tail -1 <<<"$out")" = 400 ] || die "an over-long conversation: $out"
+ok "an over-long conversation is refused before anything is spent"
 
 # --- a confined viewer --------------------------------------------------------
 
@@ -195,7 +234,7 @@ ok "each one was audited, without the question's text"
 
 say "The limit"
 limited=
-for _ in $(seq 1 12); do
+for _ in $(seq 1 14); do
 	[ "$(explain "$budi" billing-summary | tail -1)" = 429 ] && { limited=1; break; }
 done
 [ -n "$limited" ] || die "twelve explanations at once were all answered"
