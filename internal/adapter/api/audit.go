@@ -79,8 +79,12 @@ const (
 	ActionResetSpend = "auth.password.reset"
 	// Sending a report to somebody by name. Recorded with every recipient:
 	// "who was this emailed to" is a question an audit exists to answer.
-	ActionSend   = "report.send"
-	ActionResume = "run.resume"
+	ActionSend = "report.send"
+	// A report explained by a model. Apart from report.read, which the render
+	// behind it records too, because "whose numbers left for a provider" is
+	// the question a privacy review asks of this one.
+	ActionExplain = "report.explain"
+	ActionResume  = "run.resume"
 )
 
 // Results. Two, because an audit that only records what succeeded answers the

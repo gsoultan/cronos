@@ -278,6 +278,11 @@ func Serve(log *slog.Logger) error {
 	// holding an address and the hash of a credential.
 	sweepInvitations(retention, records, log)
 
+	explains, model, err := explainingFor(cfg.AI, log)
+	if err != nil {
+		return err
+	}
+
 	handler := api.Routes(api.Deps{
 		Projects: projects, Signer: signer, EmbedSigner: embedSigner,
 		Origins: cfg.Origins, Log: log,
@@ -305,6 +310,7 @@ func Serve(log *slog.Logger) error {
 		Script:      embedscript.Bytes(),
 		Sends:       sendingFor(cfg, projects, runtimes, log),
 		Channels:    channelNames(cfg, log),
+		Explains:    explains,
 
 		Ready:   readinessFor(records, runtimes),
 		Metrics: metrics, MetricsElsewhere: cfg.MetricsAddr != "",
@@ -328,7 +334,9 @@ func Serve(log *slog.Logger) error {
 		"embed-script", len(embedscript.Bytes()) > 0,
 		// False is a deployment whose hosts sign embed tokens with the signing
 		// key. See embedSignerFor.
-		"embed-key", len(cfg.EmbedKey) > 0)
+		"embed-key", len(cfg.EmbedKey) > 0,
+		// Empty is a deployment that explains nothing — no key was set.
+		"explain", model)
 
 	/*
 	   Metrics on an address of their own, when asked for.

@@ -26,6 +26,9 @@ type Catalog struct {
 	// deployment with neither showed two options that could only fail — and
 	// the failure arrived after somebody had typed eight addresses.
 	Channels []string `json:"channels"`
+	// Explain says this deployment configured a model to explain reports, so
+	// the portal offers the button only where pressing it can work.
+	Explain bool `json:"explain"`
 }
 
 // SourceSummary is a connection, without its credentials.
@@ -165,6 +168,7 @@ type CatalogHandler struct {
 	projects Projects
 	// channels are the delivery channels this deployment has configured.
 	channels []string
+	explain  bool
 	// gate hides reports the caller may not open, so a list is not a way to
 	// learn the names of the ones they were not granted.
 	gate gate
@@ -189,6 +193,12 @@ func NewCatalog(projects Projects, a Principals, log *slog.Logger) *CatalogHandl
 // interface offers what exists rather than what the format supports.
 func (c *CatalogHandler) WithChannels(names []string) *CatalogHandler {
 	c.channels = names
+	return c
+}
+
+// Explaining says reports here can be explained.
+func (c *CatalogHandler) Explaining(on bool) *CatalogHandler {
+	c.explain = on
 	return c
 }
 
@@ -238,7 +248,7 @@ func (c *CatalogHandler) build(project *Project, open map[string]bool) Catalog {
 	out := Catalog{
 		Sources: []SourceSummary{}, Datasets: []DatasetSummary{},
 		Reports: []ReportSummary{}, Schedules: []ScheduleSummary{},
-		Channels: c.channels,
+		Channels: c.channels, Explain: c.explain,
 	}
 	if out.Channels == nil {
 		out.Channels = []string{}

@@ -20,6 +20,18 @@ needs a deployment to act says so under **Upgrading**.
 
 ---
 
+## Unreleased
+
+### Reports can be explained
+
+A reader can ask what a report means and get a plain-language answer from a
+language model. Off unless `CRONOS_AI_API_KEY` is set; nothing changes for a
+deployment that does not set it. `POST /v1/reports/{name}/explain` renders the
+report as the person asking and sends the model only what they were shown,
+bounded to 50 points a series and 20 table rows. `/v1/catalog` gains
+`explain`, true where the route is mounted. Recorded as `report.explain`. See
+[docs/explaining.md](docs/explaining.md).
+
 ## v2.0.0 — 2026-10-11
 
 A major, because some definitions, configurations and host tokens that v1.2.4

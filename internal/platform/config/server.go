@@ -153,6 +153,7 @@ type Server struct {
 	S3      S3
 	SFTP    SFTP
 	Webhook Webhook
+	AI      AI
 	// SeedSource names which datasource the seed applies to. Required when
 	// several are defined: the seed runs DDL, and picking one would be a guess.
 	SeedSource string
@@ -236,6 +237,12 @@ func Load() (Server, error) {
 		Webhook: Webhook{
 			Secret: os.Getenv("CRONOS_WEBHOOK_SECRET"),
 			Hosts:  hosts(os.Getenv("CRONOS_WEBHOOK_HOSTS")),
+		},
+		AI: AI{
+			Provider: env("CRONOS_AI_PROVIDER", "anthropic"),
+			APIKey:   os.Getenv("CRONOS_AI_API_KEY"),
+			Model:    os.Getenv("CRONOS_AI_MODEL"),
+			BaseURL:  os.Getenv("CRONOS_AI_BASE_URL"),
 		},
 	}
 	if origins := os.Getenv("CRONOS_ORIGINS"); origins != "" {
