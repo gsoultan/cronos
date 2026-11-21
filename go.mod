@@ -1,6 +1,6 @@
 module github.com/gsoultan/cronos
 
-go 1.26.10
+go 1.26.11
 
 require (
 	github.com/anthropics/anthropic-sdk-go/v2 v2.13.0
