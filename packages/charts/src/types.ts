@@ -162,6 +162,17 @@ export interface Sankey {
 
 /** One row of a bullet chart: a category's value and the target it is read
  *  against, each formatted by the engine that knew the unit. */
+/** A dumbbell chart's row: where a category ran from and where it ran to. */
+export interface Dumbbell {
+  label: string
+  from: number
+  to: number
+  fromSaid: string
+  toSaid: string
+  /** The difference, signed, in the second metric's format. */
+  change: string
+}
+
 export interface Bullet {
   label: string
   value: number
@@ -540,6 +551,10 @@ export interface ChartBlock {
   /** A bullet chart's rows, read along `xAxis`, and the fractions of each
    *  row's target its track is shaded at. */
   bullets?: Bullet[]
+  /** A dumbbell chart's rows, read along `xAxis`, and the names of the two
+   *  metrics, the one each row runs from first. */
+  dumbbells?: Dumbbell[]
+  ends?: string[]
   bands?: number[]
   /** A histogram's bins, read along `xAxis`; a box plot's boxes, one a
    *  category, read against `yAxis`. */

@@ -87,6 +87,10 @@ type Block struct {
 	Boxes []Box `json:"boxes,omitempty"`
 	// Sankey is a flow chart, laid out.
 	Sankey *Sankey `json:"sankey,omitempty"`
+	// Dumbbells are a dumbbell chart's rows, read along XAxis, and Ends the
+	// two metrics' names, the one each row runs from first.
+	Dumbbells []Dumbbell `json:"dumbbells,omitempty"`
+	Ends      []string   `json:"ends,omitempty"`
 	// Spans are a timeline's bars, read along XAxis, which is days.
 	Spans []Span `json:"spans,omitempty"`
 	// Today is the present day across a timeline, placed on XAxis in days,

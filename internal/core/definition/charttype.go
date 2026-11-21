@@ -63,6 +63,11 @@ const (
 	// its end along a calendar: a roadmap, a project plan, a booking sheet —
 	// what runs when, and what overlaps.
 	TimelineChart ChartType = "timeline"
+	// DumbbellChart draws each category of x as two dots on one scale joined
+	// by a line: the first of two metrics and the second — last year and
+	// this, the target and the outcome, before and after. The line's length
+	// is the change, which two bars side by side make the reader work out.
+	DumbbellChart ChartType = "dumbbell"
 )
 
 // chartTypes is every type, in the order an error message should list them.
@@ -71,7 +76,7 @@ var chartTypes = []ChartType{
 	ScatterChart, BubbleChart, MapChart,
 	ComboChart, FunnelChart, WaterfallChart, HeatmapChart, GaugeChart, TreemapChart,
 	RadarChart, BulletChart, HistogramChart, BoxplotChart, SankeyChart, SunburstChart,
-	CalendarChart, ParetoChart, TimelineChart,
+	CalendarChart, ParetoChart, TimelineChart, DumbbellChart,
 }
 
 // Valid reports whether c is a type every renderer knows how to refuse or draw.
@@ -106,7 +111,9 @@ func (c ChartType) Mixes() bool { return c == ComboChart }
 // which is how most warehouses model one — and does not when they are rows of
 // a stage dimension, which is the other honest shape. Both are supported
 // because both are what the data already looks like.
-func (c ChartType) Metered() bool { return c == ComboChart || c == FunnelChart }
+func (c ChartType) Metered() bool {
+	return c == ComboChart || c == FunnelChart || c == DumbbellChart
+}
 
 // Gridded reports whether the chart needs two dimensions to place a value.
 func (c ChartType) Gridded() bool { return c == HeatmapChart }

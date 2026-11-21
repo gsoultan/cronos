@@ -506,13 +506,14 @@ const CHARTS: Record<string, string> = {
   heatmap: 'heatmap', gauge: 'gauge', treemap: 'treemap',
   radar: 'radar', bullet: 'bullet', histogram: 'histogram', boxplot: 'boxplot',
   sankey: 'sankey', sunburst: 'sunburst', calendar: 'calendar', pareto: 'pareto', timeline: 'timeline',
+  dumbbell: 'dumbbell',
 }
 
 /** The chart types whose horizontal axis is a measure rather than a bucket. */
 const PLOTTED = new Set(['scatter', 'bubble'])
 
 /** The chart types that read a list of measures rather than one. */
-const METERED = new Set(['combo', 'funnel'])
+const METERED = new Set(['combo', 'funnel', 'dumbbell'])
 
 /** The chart types read against a target. */
 const TARGETED = new Set(['gauge', 'bullet'])
@@ -655,7 +656,7 @@ function xOf(chart: string, b: ReportBlockInput): Yaml {
  */
 function yOf(chart: string, b: ReportBlockInput): Yaml {
   // A timeline's bars are as long as their dates: it reads no measure.
-  if (chart === 'combo' || chart === 'timeline' || staged(chart, b)) return undefined
+  if (chart === 'combo' || chart === 'dumbbell' || chart === 'timeline' || staged(chart, b)) return undefined
   if (chart === 'boxplot') return { field: b.field }
   if (chart === 'histogram' && !b.field) return undefined
   return { field: b.field, aggregate: b.aggregate ?? 'sum' }

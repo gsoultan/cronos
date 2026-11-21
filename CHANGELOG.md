@@ -22,6 +22,12 @@ needs a deployment to act says so under **Upgrading**.
 
 ## Unreleased
 
+**Dumbbell charts.** `chart: dumbbell` with two `metrics` draws each category as
+an open dot where it ran from and a filled one where it ran to, joined by a
+line, with where it ended and the signed change beside it, in the portal, the
+embed, the PDF and the builder. The demo's customer service report gains
+resolution against SLA by priority.
+
 **Timelines: today and milestones.** `today: true` on a timeline draws a dashed
 line at the present day, and a row that starts and ends on one day is drawn as a
 diamond milestone, in the portal, the embed, the PDF and the builder. Any other

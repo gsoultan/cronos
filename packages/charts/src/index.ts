@@ -15,6 +15,7 @@ import { scatterBlock } from './blocks/scatter'
 import { mapBlock } from './blocks/map'
 import { comboBlock } from './blocks/combo'
 import { timelineBlock } from './blocks/timeline'
+import { dumbbellBlock } from './blocks/dumbbell'
 import { funnelBlock } from './blocks/funnel'
 import { waterfallBlock } from './blocks/waterfall'
 import { heatmapBlock } from './blocks/heatmap'
@@ -113,6 +114,8 @@ export function drawChart(b: ChartBlock, opts: DrawOptions = {}): HTMLElement {
       return calendarBlock(b)
     case 'timeline':
       return timelineBlock(b)
+    case 'dumbbell':
+      return dumbbellBlock(b)
     default:
       return unsupported(`${b.chart} charts need a newer viewer`)
   }

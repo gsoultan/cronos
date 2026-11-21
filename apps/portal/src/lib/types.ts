@@ -81,6 +81,7 @@ export type TileKind =
   | 'scatter' | 'bubble' | 'map'
   | 'combo' | 'funnel' | 'waterfall' | 'heatmap' | 'gauge' | 'treemap'
   | 'radar' | 'bullet' | 'histogram' | 'boxplot' | 'sankey' | 'sunburst' | 'calendar' | 'pareto' | 'timeline'
+  | 'dumbbell'
 
 /** The tiles that bucket a dimension and fold a measure. */
 export const CATEGORICAL: TileKind[] = [
@@ -89,7 +90,7 @@ export const CATEGORICAL: TileKind[] = [
 ]
 
 /** The tiles that read a list of measures rather than one. */
-export const METERED: TileKind[] = ['combo', 'funnel']
+export const METERED: TileKind[] = ['combo', 'funnel', 'dumbbell']
 
 /** The tiles that need a second dimension to place a value. */
 export const GRIDDED: TileKind[] = ['heatmap', 'pivot']
