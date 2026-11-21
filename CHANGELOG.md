@@ -22,6 +22,11 @@ needs a deployment to act says so under **Upgrading**.
 
 ## Unreleased
 
+**Timelines: today and milestones.** `today: true` on a timeline draws a dashed
+line at the present day, and a row that starts and ends on one day is drawn as a
+diamond milestone, in the portal, the embed, the PDF and the builder. Any other
+chart with `today:` is refused. The demo's change programme gains both.
+
 **Small multiples.** `facet: true` on a line, area or column chart split by
 `series` draws a small chart a series on one shared scale, in the portal, the
 embed, the PDF and the builder. The demo's sales report gains revenue by

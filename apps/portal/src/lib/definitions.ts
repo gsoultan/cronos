@@ -384,6 +384,8 @@ export interface ReportBlockInput {
   stacked?: boolean | 'percent'
   /** A chart split by series drawn as small multiples. */
   facet?: boolean
+  /** A timeline's line at the present day. */
+  today?: boolean
   /** A plot's horizontal measure. */
   xField?: string
   /** A bubble's radius measure. */
@@ -423,7 +425,7 @@ export function tileOf(b: ReportBlockInput): Omit<Tile, 'id' | 'span'> {
     kind: b.kind as TileKind, title: b.title ?? '', dataset: b.dataset,
     field: b.field, groupBy: b.groupBy, grain: b.grain,
     aggregate: b.aggregate as Tile['aggregate'],
-    series: b.series, seriesGrain: b.seriesGrain, stacked: b.stacked, facet: b.facet,
+    series: b.series, seriesGrain: b.seriesGrain, stacked: b.stacked, facet: b.facet, today: b.today,
     xField: b.xField, sizeField: b.sizeField, map: b.map,
     startField: b.startField, endField: b.endField,
     metrics: b.metrics as Tile['metrics'], target: b.target as Tile['target'],
@@ -441,7 +443,7 @@ export function blockInput(b: Tile): ReportBlockInput {
   return {
     kind: b.kind, title: b.title, dataset: b.dataset,
     field: b.field, groupBy: b.groupBy, grain: b.grain, aggregate: b.aggregate,
-    series: b.series, seriesGrain: b.seriesGrain, stacked: b.stacked, facet: b.facet,
+    series: b.series, seriesGrain: b.seriesGrain, stacked: b.stacked, facet: b.facet, today: b.today,
     xField: b.xField, sizeField: b.sizeField, map: b.map,
     startField: b.startField, endField: b.endField,
     metrics: b.metrics, target: b.target, bands: b.bands, bins: b.bins, trend: b.trend,
@@ -621,6 +623,7 @@ function block(b: ReportBlockInput): Yaml {
       map: chart === 'map' ? mapSpec(b.map) : undefined,
       start: chart === 'timeline' && b.startField ? { field: b.startField } : undefined,
       end: chart === 'timeline' && b.endField ? { field: b.endField } : undefined,
+      today: chart === 'timeline' && b.today ? true : undefined,
     })
   }
   return narrowed({ kind: b.kind, dataset: reads, title: b.title, text: b.title })
@@ -1146,6 +1149,7 @@ function readBlock(v: Yaml): ReportBlockInput {
       series: str(asMap(b.series).field) || undefined,
       stacked: b.stacked === true ? true : b.stacked === 'percent' ? 'percent' : undefined,
       facet: b.facet === true || undefined,
+      today: chart === 'timeline' && b.today === true ? true : undefined,
       xField: (chart === 'histogram' ? str(x.field) : str(asMap(b.xValue).field)) || undefined,
       bins: chart === 'histogram' ? num(b.bins) : undefined,
       references: REFERENCED.has(chart) && asList(b.references).length

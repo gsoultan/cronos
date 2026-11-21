@@ -97,7 +97,8 @@ spec:
           y: {field: spend, aggregate: sum}
 
         # What the year's spend is buying: each initiative from its first
-        # phase to its last, coloured by how it stands.
+        # phase to its last, coloured by how it stands; a one-day item, such
+        # as a board review, is a milestone.
         - kind: chart
           chart: timeline
           dataset: initiatives
@@ -106,6 +107,9 @@ spec:
           start: {field: starts_on}
           end: {field: ends_on}
           series: {field: status}
+          # A line at today, so what is late and what is still to come read
+          # against the calendar rather than the reader's own date.
+          today: true
 
         - kind: pivot
           title: P&L by month
@@ -158,6 +162,9 @@ spec:
           start: {field: starts_on}
           end: {field: ends_on}
           series: {field: status}
+          # A line at today, so what is late and what is still to come read
+          # against the calendar rather than the reader's own date.
+          today: true
         - kind: pivot
           title: P&L by month
           value: {field: actual, aggregate: sum}

@@ -550,6 +550,8 @@ export interface ChartBlock {
   days?: Day[]
   /** A timeline's bars, read along `xAxis`, which is in days. */
   spans?: Span[]
+  /** The present day across a timeline, in days, when its calendar reaches it. */
+  today?: RefLine
   /** Lines across the value scale — a target, an average — read against
    *  `yAxis`, which the engine widened to reach each of them. */
   references?: RefLine[]
@@ -631,4 +633,6 @@ export interface Span {
   start: string
   end: string
   said: string
+  /** Starts and ends on one day: drawn as a point on it, not a bar. */
+  milestone?: boolean
 }

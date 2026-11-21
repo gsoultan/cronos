@@ -286,6 +286,9 @@ export function BlockInspector({
               disabled={dates.length === 0} data-testid="timeline-end"
               onChange={(v) => onChange({ endField: v ?? undefined })} />
           </Field>
+          <Checkbox label="A line at today" data-testid="timeline-today"
+            checked={block.today ?? false}
+            onChange={(e) => onChange({ today: e.currentTarget.checked || undefined })} />
         </>
       )}
 

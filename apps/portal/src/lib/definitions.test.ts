@@ -1358,3 +1358,20 @@ test('small multiples survive the round trip, and give way to a stack', () => {
   expect(back.input.blocks[0]?.facet).toBe(true)
   expect(back.input.blocks[1]?.facet).toBeUndefined()
 })
+
+test('a timeline keeps its line at today through the round trip', () => {
+  const input = {
+    name: 'Plan', slug: 'plan', dataset: 'initiatives',
+    blocks: [
+      { kind: 'timeline', title: 'Programme', groupBy: 'initiative',
+        startField: 'starts_on', endField: 'ends_on', today: true },
+      { kind: 'line', title: 'Not a plan', field: 'revenue', groupBy: 'ordered_at', grain: 'month', today: true },
+    ],
+  }
+  const emitted = report(input)
+  expect(emitted.match(/today: true/g)?.length).toBe(1)
+  const back = readReport(emitted)
+  expect(back.drops).toEqual([])
+  expect(back.input.blocks[0]?.today).toBe(true)
+  expect(back.input.blocks[1]?.today).toBeUndefined()
+})

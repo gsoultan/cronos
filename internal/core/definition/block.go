@@ -69,6 +69,10 @@ type Block struct {
 	// the earliest start and the latest end of the rows of each x.
 	Start DimensionRef `json:"start,omitzero" yaml:"start,omitempty"`
 	End   DimensionRef `json:"end,omitzero" yaml:"end,omitempty"`
+	// Today draws a timeline's present day across it, when the calendar
+	// reaches it: what is late, what is under way and what is still to come
+	// read against one line rather than against the reader's own date.
+	Today bool `json:"today,omitempty" yaml:"today,omitempty"`
 	// References are lines across the chart's value scale — a target, a
 	// threshold, the average of the marks — see reference.go.
 	References []Reference `json:"references,omitempty" yaml:"references,omitempty"`

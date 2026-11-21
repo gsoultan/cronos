@@ -589,4 +589,7 @@ INSERT INTO initiative_phases VALUES
   ('Singapore distributor',   'Sales',      'On track', 'First orders', '2026-09-21', '2026-12-04'),
   ('Holiday campaign 2026',   'Marketing',  'Planned',  'Plan',     '2026-09-14', '2026-10-30'),
   ('Holiday campaign 2026',   'Marketing',  'Planned',  'Run',      '2026-11-02', '2026-12-31'),
-  ('Pricing review',          'Finance',    'Planned',  'Analysis', '2026-10-05', '2027-01-15');
+  ('Pricing review',          'Finance',    'Planned',  'Analysis', '2026-10-05', '2027-01-15'),
+  -- Milestones: a day, not a stretch of days, so drawn as a point on it.
+  ('Board strategy day',      'Leadership', 'Planned',  'Review',   '2026-12-09', '2026-12-09'),
+  ('Half-year results',       'Finance',    'Done',     'Publish',  '2026-07-23', '2026-07-23');

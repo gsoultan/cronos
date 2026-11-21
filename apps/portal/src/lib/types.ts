@@ -148,6 +148,8 @@ export interface Tile {
   stacked?: boolean | 'percent'
   /** A chart split by series drawn as small multiples. */
   facet?: boolean
+  /** A timeline's line at the present day. */
+  today?: boolean
   /** The horizontal measure of a scatter or bubble, whose x is a number
    *  rather than a bucket. */
   xField?: string

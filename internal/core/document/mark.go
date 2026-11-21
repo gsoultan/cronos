@@ -63,6 +63,8 @@ const (
 	CircleShape   = "circle"
 	SquareShape   = "square"
 	TriangleShape = "triangle"
+	// DiamondShape is a timeline's milestone: a day, not a stretch of them.
+	DiamondShape = "diamond"
 )
 
 // Mark kinds.

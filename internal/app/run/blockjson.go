@@ -106,6 +106,9 @@ func (b Block) measuredJSON(out map[string]any) bool {
 		out["bins"] = b.Bins
 	case b.Spans != nil:
 		out["spans"] = b.Spans
+		if b.Today != nil {
+			out["today"] = b.Today
+		}
 	default:
 		return false
 	}
